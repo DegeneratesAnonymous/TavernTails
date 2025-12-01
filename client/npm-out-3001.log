@@ -1,0 +1,1398 @@
+
+> client@0.1.0 start
+> react-scripts start
+
+Starting the development server...
+
+Compiled successfully!
+
+You can now view client in the browser.
+
+  Local:            http://localhost:3001
+  On Your Network:  http://10.0.0.164:3001
+
+Note that the development build is not optimized.
+To create a production build, use npm run build.
+
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+Files successfully emitted, waiting for typecheck results...
+Issues checking in progress...
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+Files successfully emitted, waiting for typecheck results...
+Issues checking in progress...
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+Files successfully emitted, waiting for typecheck results...
+Issues checking in progress...
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+Compiling...
+Compiled with warnings.
+
+[eslint] 
+src\components\NarrativeView.tsx
+  Line 33:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\NarrativeView.tsx
+  Line 33:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+webpack compiled with [1m[33m1 warning[39m[22m
+No issues found.
+Compiling...
+Compiled with warnings.
+
+[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 24:5:  React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 33:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 24:5:  React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 33:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+webpack compiled with [1m[33m1 warning[39m[22m
+No issues found.
+Compiling...
+Compiled with warnings.
+
+[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 25:5:  React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 33:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 25:5:  React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 33:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+webpack compiled with [1m[33m1 warning[39m[22m
+No issues found.
+Compiling...
+Compiled with warnings.
+
+[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 25:5:  React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 33:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 25:5:  React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 33:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+webpack compiled with [1m[33m1 warning[39m[22m
+No issues found.
+Compiling...
+Compiled with warnings.
+
+[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 25:5:  React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 33:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 25:5:  React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 33:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+webpack compiled with [1m[33m1 warning[39m[22m
+No issues found.
+Compiling...
+Compiled with warnings.
+
+[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 25:5:  React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 33:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 25:5:  React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 33:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+webpack compiled with [1m[33m1 warning[39m[22m
+No issues found.
+Compiling...
+Compiled with warnings.
+
+[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 25:5:  React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 33:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 25:5:  React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 33:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+webpack compiled with [1m[33m1 warning[39m[22m
+Files successfully emitted, waiting for typecheck results...
+Issues checking in progress...
+No issues found.
+Compiling...
+Failed to compile.
+
+[eslint] 
+src\components\SessionSettings.tsx
+  Line 52:61:  Unexpected use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each error.
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 27:5:  React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 33:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  Line 17:5:   React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+[1m[31mERROR[39m[22m in [1m[eslint] 
+src\components\SessionSettings.tsx
+  Line 52:61:  [1m[31mUnexpected[39m[22m[1m use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each [1m[31merror[39m[22m[1m.[39m[22m
+
+webpack compiled with [1m[31m1 error[39m[22m and [1m[33m1 warning[39m[22m
+No issues found.
+Compiling...
+Failed to compile.
+
+[eslint] 
+src\components\SessionSettings.tsx
+  Line 52:61:  Unexpected use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each error.
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 27:5:  React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 33:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  Line 17:5:   React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+[1m[31mERROR[39m[22m in [1m[eslint] 
+src\components\SessionSettings.tsx
+  Line 52:61:  [1m[31mUnexpected[39m[22m[1m use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each [1m[31merror[39m[22m[1m.[39m[22m
+
+webpack compiled with [1m[31m1 error[39m[22m and [1m[33m1 warning[39m[22m
+No issues found.
+Compiling...
+Failed to compile.
+
+[eslint] 
+src\components\SessionSettings.tsx
+  Line 52:61:  Unexpected use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each error.
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 32:37:  React Hook useEffect has a missing dependency: 'fetchSessions'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 33:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  Line 17:5:   React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+[1m[31mERROR[39m[22m in [1m[eslint] 
+src\components\SessionSettings.tsx
+  Line 52:61:  [1m[31mUnexpected[39m[22m[1m use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each [1m[31merror[39m[22m[1m.[39m[22m
+
+webpack compiled with [1m[31m1 error[39m[22m and [1m[33m1 warning[39m[22m
+Compiling...
+Failed to compile.
+
+[eslint] 
+src\components\SessionSettings.tsx
+  Line 52:61:  Unexpected use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each error.
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 34:37:  React Hook useEffect has a missing dependency: 'fetchSessions'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 33:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  Line 17:5:   React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+[1m[31mERROR[39m[22m in [1m[eslint] 
+src\components\SessionSettings.tsx
+  Line 52:61:  [1m[31mUnexpected[39m[22m[1m use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each [1m[31merror[39m[22m[1m.[39m[22m
+
+webpack compiled with [1m[31m1 error[39m[22m and [1m[33m1 warning[39m[22m
+No issues found.
+Compiling...
+Failed to compile.
+
+[eslint] 
+src\components\SessionSettings.tsx
+  Line 57:67:  Unexpected use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each error.
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 34:37:  React Hook useEffect has a missing dependency: 'fetchSessions'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 33:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  Line 22:5:   React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+[1m[31mERROR[39m[22m in [1m[eslint] 
+src\components\SessionSettings.tsx
+  Line 57:67:  [1m[31mUnexpected[39m[22m[1m use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each [1m[31merror[39m[22m[1m.[39m[22m
+
+webpack compiled with [1m[31m1 error[39m[22m and [1m[33m1 warning[39m[22m
+Compiling...
+Failed to compile.
+
+[eslint] 
+src\components\SessionSettings.tsx
+  Line 57:67:  Unexpected use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each error.
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 34:37:  React Hook useEffect has a missing dependency: 'fetchSessions'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 33:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  Line 22:5:   React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+[1m[31mERROR[39m[22m in [1m[eslint] 
+src\components\SessionSettings.tsx
+  Line 57:67:  [1m[31mUnexpected[39m[22m[1m use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each [1m[31merror[39m[22m[1m.[39m[22m
+
+webpack compiled with [1m[31m1 error[39m[22m and [1m[33m1 warning[39m[22m
+Compiling...
+Failed to compile.
+
+[eslint] 
+src\components\SessionSettings.tsx
+  Line 65:69:  Unexpected use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each error.
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 34:37:  React Hook useEffect has a missing dependency: 'fetchSessions'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 33:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  Line 22:5:   React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+[1m[31mERROR[39m[22m in [1m[eslint] 
+src\components\SessionSettings.tsx
+  Line 65:69:  [1m[31mUnexpected[39m[22m[1m use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each [1m[31merror[39m[22m[1m.[39m[22m
+
+webpack compiled with [1m[31m1 error[39m[22m and [1m[33m1 warning[39m[22m
+Compiling...
+Failed to compile.
+
+[eslint] 
+src\components\SessionSettings.tsx
+  Line 65:69:  Unexpected use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each error.
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 34:37:  React Hook useEffect has a missing dependency: 'fetchSessions'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 33:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  Line 22:5:   React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+[1m[31mERROR[39m[22m in [1m[eslint] 
+src\components\SessionSettings.tsx
+  Line 65:69:  [1m[31mUnexpected[39m[22m[1m use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each [1m[31merror[39m[22m[1m.[39m[22m
+
+webpack compiled with [1m[31m1 error[39m[22m and [1m[33m1 warning[39m[22m
+Compiling...
+Failed to compile.
+
+[eslint] 
+src\components\SessionSettings.tsx
+  Line 65:69:  Unexpected use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each error.
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 34:37:  React Hook useEffect has a missing dependency: 'fetchSessions'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 33:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  Line 22:5:   React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+[1m[31mERROR[39m[22m in [1m[eslint] 
+src\components\SessionSettings.tsx
+  Line 65:69:  [1m[31mUnexpected[39m[22m[1m use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each [1m[31merror[39m[22m[1m.[39m[22m
+
+webpack compiled with [1m[31m1 error[39m[22m and [1m[33m1 warning[39m[22m
+Compiling...
+Failed to compile.
+
+[eslint] 
+src\components\SessionSettings.tsx
+  Line 65:69:  Unexpected use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each error.
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 36:37:  React Hook useEffect has a missing dependency: 'fetchSessions'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 33:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  Line 22:5:   React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+[1m[31mERROR[39m[22m in [1m[eslint] 
+src\components\SessionSettings.tsx
+  Line 65:69:  [1m[31mUnexpected[39m[22m[1m use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each [1m[31merror[39m[22m[1m.[39m[22m
+
+webpack compiled with [1m[31m1 error[39m[22m and [1m[33m1 warning[39m[22m
+Compiling...
+Failed to compile.
+
+[eslint] 
+src\components\SessionSettings.tsx
+  Line 65:69:  Unexpected use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each error.
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 36:37:  React Hook useEffect has a missing dependency: 'fetchSessions'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  Line 22:5:   React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+[1m[31mERROR[39m[22m in [1m[eslint] 
+src\components\SessionSettings.tsx
+  Line 65:69:  [1m[31mUnexpected[39m[22m[1m use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each [1m[31merror[39m[22m[1m.[39m[22m
+
+webpack compiled with [1m[31m1 error[39m[22m and [1m[33m1 warning[39m[22m
+Compiling...
+Failed to compile.
+
+[eslint] 
+src\components\SessionSettings.tsx
+  Line 74:69:  Unexpected use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each error.
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 36:37:  React Hook useEffect has a missing dependency: 'fetchSessions'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  Line 25:5:   React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+[1m[31mERROR[39m[22m in [1m[eslint] 
+src\components\SessionSettings.tsx
+  Line 74:69:  [1m[31mUnexpected[39m[22m[1m use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each [1m[31merror[39m[22m[1m.[39m[22m
+
+webpack compiled with [1m[31m1 error[39m[22m and [1m[33m1 warning[39m[22m
+Compiling...
+Failed to compile.
+
+[eslint] 
+src\components\SessionSettings.tsx
+  Line 74:69:  Unexpected use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each error.
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 36:37:  React Hook useEffect has a missing dependency: 'fetchSessions'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  Line 25:5:   React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+[1m[31mERROR[39m[22m in [1m[eslint] 
+src\components\SessionSettings.tsx
+  Line 74:69:  [1m[31mUnexpected[39m[22m[1m use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each [1m[31merror[39m[22m[1m.[39m[22m
+
+webpack compiled with [1m[31m1 error[39m[22m and [1m[33m1 warning[39m[22m
+Compiling...
+Failed to compile.
+
+[eslint] 
+src\components\SessionSettings.tsx
+  Line 74:69:  Unexpected use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each error.
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 36:37:  React Hook useEffect has a missing dependency: 'fetchSessions'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  Line 25:5:   React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+[1m[31mERROR[39m[22m in [1m[eslint] 
+src\components\SessionSettings.tsx
+  Line 74:69:  [1m[31mUnexpected[39m[22m[1m use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each [1m[31merror[39m[22m[1m.[39m[22m
+
+webpack compiled with [1m[31m1 error[39m[22m and [1m[33m1 warning[39m[22m
+Compiling...
+Failed to compile.
+
+[eslint] 
+src\components\SessionSettings.tsx
+  Line 74:69:  Unexpected use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each error.
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 36:37:  React Hook useEffect has a missing dependency: 'fetchSessions'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  Line 25:5:   React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+[1m[31mERROR[39m[22m in [1m[eslint] 
+src\components\SessionSettings.tsx
+  Line 74:69:  [1m[31mUnexpected[39m[22m[1m use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each [1m[31merror[39m[22m[1m.[39m[22m
+
+webpack compiled with [1m[31m1 error[39m[22m and [1m[33m1 warning[39m[22m
+Compiling...
+Failed to compile.
+
+[eslint] 
+src\components\SessionSettings.tsx
+  Line 74:69:  Unexpected use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each error.
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 36:37:  React Hook useEffect has a missing dependency: 'fetchSessions'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  Line 25:5:   React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+[1m[31mERROR[39m[22m in [1m[eslint] 
+src\components\SessionSettings.tsx
+  Line 74:69:  [1m[31mUnexpected[39m[22m[1m use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each [1m[31merror[39m[22m[1m.[39m[22m
+
+webpack compiled with [1m[31m1 error[39m[22m and [1m[33m1 warning[39m[22m
+Files successfully emitted, waiting for typecheck results...
+Issues checking in progress...
+Compiling...
+Failed to compile.
+
+[eslint] 
+src\components\SessionSettings.tsx
+  Line 74:69:  Unexpected use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each error.
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 36:37:  React Hook useEffect has a missing dependency: 'fetchSessions'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  Line 25:5:   React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+[1m[31mERROR[39m[22m in [1m[eslint] 
+src\components\SessionSettings.tsx
+  Line 74:69:  [1m[31mUnexpected[39m[22m[1m use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each [1m[31merror[39m[22m[1m.[39m[22m
+
+webpack compiled with [1m[31m1 error[39m[22m and [1m[33m1 warning[39m[22m
+Compiling...
+Failed to compile.
+
+[eslint] 
+src\components\SessionSettings.tsx
+  Line 74:69:  Unexpected use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each error.
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 36:37:  React Hook useEffect has a missing dependency: 'fetchSessions'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  Line 25:5:   React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+[1m[31mERROR[39m[22m in [1m[eslint] 
+src\components\SessionSettings.tsx
+  Line 74:69:  [1m[31mUnexpected[39m[22m[1m use of 'confirm'  no-restricted-globals
+
+Search for the keywords to learn more about each [1m[31merror[39m[22m[1m.[39m[22m
+
+webpack compiled with [1m[31m1 error[39m[22m and [1m[33m1 warning[39m[22m
+Compiling...
+Compiled with warnings.
+
+[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 36:37:  React Hook useEffect has a missing dependency: 'fetchSessions'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  Line 25:5:   React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 36:37:  React Hook useEffect has a missing dependency: 'fetchSessions'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  Line 25:5:   React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+webpack compiled with [1m[33m1 warning[39m[22m
+No issues found.
+Compiling...
+Compiled with warnings.
+
+[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 36:37:  React Hook useEffect has a missing dependency: 'fetchSessions'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  Line 25:5:   React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 36:37:  React Hook useEffect has a missing dependency: 'fetchSessions'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  Line 25:5:   React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+webpack compiled with [1m[33m1 warning[39m[22m
+No issues found.
+Compiling...
+Compiled with warnings.
+
+[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 36:37:  React Hook useEffect has a missing dependency: 'fetchSessions'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  Line 25:5:   React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 36:37:  React Hook useEffect has a missing dependency: 'fetchSessions'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  Line 25:5:   React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+webpack compiled with [1m[33m1 warning[39m[22m
+No issues found.
+Compiling...
+Compiled with warnings.
+
+[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 36:37:  React Hook useEffect has a missing dependency: 'fetchSessions'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  Line 25:5:   React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 36:37:  React Hook useEffect has a missing dependency: 'fetchSessions'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  Line 25:5:   React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+webpack compiled with [1m[33m1 warning[39m[22m
+No issues found.
+Compiling...
+Compiled with warnings.
+
+[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 36:37:  React Hook useEffect has a missing dependency: 'fetchSessions'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  Line 25:5:   React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 36:37:  React Hook useEffect has a missing dependency: 'fetchSessions'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used                                                            @typescript-eslint/no-unused-vars
+  Line 25:5:   React Hook useEffect has a missing dependency: 'API'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+[39m[22m
+
+webpack compiled with [1m[33m1 warning[39m[22m
+No issues found.
+Compiling...
+Compiled with warnings.
+
+[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 36:37:  React Hook useEffect has a missing dependency: 'fetchSessions'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 36:37:  React Hook useEffect has a missing dependency: 'fetchSessions'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+[39m[22m
+
+webpack compiled with [1m[33m1 warning[39m[22m
+No issues found.
+Compiling...
+Compiled with warnings.
+
+[eslint] 
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+[39m[22m
+
+webpack compiled with [1m[33m1 warning[39m[22m
+Files successfully emitted, waiting for typecheck results...
+Issues checking in progress...
+Compiling...
+Compiled with warnings.
+
+[eslint] 
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+[39m[22m
+
+webpack compiled with [1m[33m1 warning[39m[22m
+Compiling...
+Compiled with warnings.
+
+[eslint] 
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+[39m[22m
+
+webpack compiled with [1m[33m1 warning[39m[22m
+Compiling...
+Compiled with warnings.
+
+[eslint] 
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+[39m[22m
+
+webpack compiled with [1m[33m1 warning[39m[22m
+No issues found.
+Compiling...
+Compiled with warnings.
+
+[eslint] 
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+[39m[22m
+
+webpack compiled with [1m[33m1 warning[39m[22m
+No issues found.
+Compiling...
+Compiled with warnings.
+
+[eslint] 
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\NarrativeView.tsx
+  Line 36:5:  React Hook useEffect has a missing dependency: 'sessionId'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+[39m[22m
+
+webpack compiled with [1m[33m1 warning[39m[22m
+No issues found.
+Compiling...
+Compiled with warnings.
+
+[eslint] 
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\SessionSettings.tsx
+  Line 10:10:  'loading' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+[39m[22m
+
+webpack compiled with [1m[33m1 warning[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled with warnings.
+
+[eslint] 
+src\agents\LoginSignupAgent.tsx
+  Line 21:9:  'devCredentials' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\agents\LoginSignupAgent.tsx
+  Line 21:9:  'devCredentials' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+[39m[22m
+
+webpack compiled with [1m[33m1 warning[39m[22m
+No issues found.
+Compiling...
+Compiled with warnings.
+
+[eslint] 
+src\agents\LoginSignupAgent.tsx
+  Line 21:9:  'devCredentials' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\agents\LoginSignupAgent.tsx
+  Line 21:9:  'devCredentials' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+[39m[22m
+
+webpack compiled with [1m[33m1 warning[39m[22m
+No issues found.
+Compiling...
+Compiled with warnings.
+
+[eslint] 
+src\agents\LoginSignupAgent.tsx
+  Line 122:9:  'handleDevLogin' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\agents\LoginSignupAgent.tsx
+  Line 122:9:  'handleDevLogin' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+[39m[22m
+
+webpack compiled with [1m[33m1 warning[39m[22m
+No issues found.
+Compiling...
+Compiled with warnings.
+
+[eslint] 
+src\agents\LoginSignupAgent.tsx
+  Line 122:9:  'handleDevLogin' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\agents\LoginSignupAgent.tsx
+  Line 122:9:  'handleDevLogin' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+[39m[22m
+
+webpack compiled with [1m[33m1 warning[39m[22m
+No issues found.
+Compiling...
+Compiled with warnings.
+
+[eslint] 
+src\agents\LoginSignupAgent.tsx
+  Line 122:9:  'handleDevLogin' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\agents\LoginSignupAgent.tsx
+  Line 122:9:  'handleDevLogin' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+[39m[22m
+
+webpack compiled with [1m[33m1 warning[39m[22m
+No issues found.
+Compiling...
+Compiled with warnings.
+
+[eslint] 
+src\agents\LoginSignupAgent.tsx
+  Line 122:9:  'handleDevLogin' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\agents\LoginSignupAgent.tsx
+  Line 122:9:  'handleDevLogin' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+[39m[22m
+
+webpack compiled with [1m[33m1 warning[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+Compiling...
+Compiled with warnings.
+
+[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 19:10:  'showCreateModal' is assigned a value but never used    @typescript-eslint/no-unused-vars
+  Line 20:10:  'newSessionName' is assigned a value but never used     @typescript-eslint/no-unused-vars
+  Line 20:26:  'setNewSessionName' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 19:10:  'showCreateModal' is assigned a value but never used    @typescript-eslint/no-unused-vars
+  Line 20:10:  'newSessionName' is assigned a value but never used     @typescript-eslint/no-unused-vars
+  Line 20:26:  'setNewSessionName' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+[39m[22m
+
+webpack compiled with [1m[33m1 warning[39m[22m
+Compiling...
+Compiled with warnings.
+
+[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 19:10:  'showCreateModal' is assigned a value but never used    @typescript-eslint/no-unused-vars
+  Line 20:10:  'newSessionName' is assigned a value but never used     @typescript-eslint/no-unused-vars
+  Line 20:26:  'setNewSessionName' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+Search for the keywords to learn more about each warning.
+To ignore, add // eslint-disable-next-line to the line before.
+
+[1m[33mWARNING[39m[22m in [1m[eslint] 
+src\components\LoggedInDashboard.tsx
+  Line 19:10:  'showCreateModal' is assigned a value but never used    @typescript-eslint/no-unused-vars
+  Line 20:10:  'newSessionName' is assigned a value but never used     @typescript-eslint/no-unused-vars
+  Line 20:26:  'setNewSessionName' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+[39m[22m
+
+webpack compiled with [1m[33m1 warning[39m[22m
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Failed to compile.
+
+Module not found: Error: Can't resolve './LoggedInDashboard.css' in 'C:\Users\colem\OneDrive\solottrpg\client\src\components'
+[1m[31mERROR[39m[22m in [1m./src/components/LoggedInDashboard.tsx[39m[22m [1m[32m7:0-33[39m[22m
+[1mModule [1m[31mnot found[39m[22m[1m: [1m[31mError[39m[22m[1m: Can't resolve './LoggedInDashboard.css' in 'C:\Users\colem\OneDrive\solottrpg\client\src\components'[39m[22m
+
+webpack compiled with [1m[31m1 error[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.
+Compiling...
+Compiled successfully!
+webpack compiled [1m[32msuccessfully[39m[22m
+No issues found.

@@ -1,0 +1,9 @@
+INFO:     Started server process [3932]
+INFO:     Waiting for application startup.
+INFO:solottrpg:Application startup: pid=3932 ts=1764217747
+INFO:solottrpg:Initializing database...
+INFO:solottrpg:Database ready
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8002 (Press CTRL+C to quit)
+INFO:solottrpg:--> GET http://127.0.0.1:8002/docs
+INFO:solottrpg:<-- 200 GET http://127.0.0.1:8002/docs

@@ -1,0 +1,5 @@
+INFO:     127.0.0.1:60384 - "POST /player/signup HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60384 - "POST /player/verify-email HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60384 - "POST /player/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53630 - "OPTIONS /player/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53630 - "POST /player/login HTTP/1.1" 401 Unauthorized

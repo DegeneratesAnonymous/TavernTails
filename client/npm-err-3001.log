@@ -1,0 +1,594 @@
+(node:42036) [DEP_WEBPACK_DEV_SERVER_ON_AFTER_SETUP_MIDDLEWARE] DeprecationWarning: 'onAfterSetupMiddleware' option is deprecated. Please use the 'setupMiddlewares' option.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:42036) [DEP_WEBPACK_DEV_SERVER_ON_BEFORE_SETUP_MIDDLEWARE] DeprecationWarning: 'onBeforeSetupMiddleware' option is deprecated. Please use the 'setupMiddlewares' option.
+ERROR in src/agents/LoginSignupAgent.tsx:171:5
+TS2304: Cannot find name 'setSignupCharacter'.
+  [0m [90m 169 |[39m     setSignupPassword([32m''[39m)[33m;[39m
+   [90m 170 |[39m     setSignupEmail([32m''[39m)[33m;[39m
+  [31m[1m>[22m[39m[90m 171 |[39m     setSignupCharacter([32m''[39m)[33m;[39m
+   [90m     |[39m     [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 172 |[39m     setIsSignup([36mfalse[39m)[33m;[39m
+   [90m 173 |[39m     setUnverifiedEmail([32m''[39m)[33m;[39m
+   [90m 174 |[39m     setVerificationToken([32m''[39m)[33m;[39m[0m
+
+ERROR in src/components/GameplayLayout.tsx:3:22
+TS2307: Cannot find module './SiteMenu' or its corresponding type declarations.
+  [0m [90m 1 |[39m [36mimport[39m [33mReact[39m [36mfrom[39m [32m'react'[39m
+   [90m 2 |[39m [36mimport[39m [32m'./GameplayLayout.css'[39m
+  [31m[1m>[22m[39m[90m 3 |[39m [36mimport[39m [33mSiteMenu[39m [36mfrom[39m [32m'./SiteMenu'[39m
+   [90m   |[39m                      [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 4 |[39m [36mimport[39m [33mNarrativeView[39m [36mfrom[39m [32m'./NarrativeView'[39m
+   [90m 5 |[39m [36mimport[39m [33mChat[39m [36mfrom[39m [32m'./Chat'[39m
+   [90m 6 |[39m [36mimport[39m [33mCharacterPanel[39m [36mfrom[39m [32m'./CharacterPanel'[39m[0m
+
+ERROR in src/components/GameplayLayout.tsx:4:27
+TS2307: Cannot find module './NarrativeView' or its corresponding type declarations.
+  [0m [90m 2 |[39m [36mimport[39m [32m'./GameplayLayout.css'[39m
+   [90m 3 |[39m [36mimport[39m [33mSiteMenu[39m [36mfrom[39m [32m'./SiteMenu'[39m
+  [31m[1m>[22m[39m[90m 4 |[39m [36mimport[39m [33mNarrativeView[39m [36mfrom[39m [32m'./NarrativeView'[39m
+   [90m   |[39m                           [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 5 |[39m [36mimport[39m [33mChat[39m [36mfrom[39m [32m'./Chat'[39m
+   [90m 6 |[39m [36mimport[39m [33mCharacterPanel[39m [36mfrom[39m [32m'./CharacterPanel'[39m
+   [90m 7 |[39m[0m
+
+ERROR in src/components/GameplayLayout.tsx:5:18
+TS2307: Cannot find module './Chat' or its corresponding type declarations.
+  [0m [90m 3 |[39m [36mimport[39m [33mSiteMenu[39m [36mfrom[39m [32m'./SiteMenu'[39m
+   [90m 4 |[39m [36mimport[39m [33mNarrativeView[39m [36mfrom[39m [32m'./NarrativeView'[39m
+  [31m[1m>[22m[39m[90m 5 |[39m [36mimport[39m [33mChat[39m [36mfrom[39m [32m'./Chat'[39m
+   [90m   |[39m                  [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 6 |[39m [36mimport[39m [33mCharacterPanel[39m [36mfrom[39m [32m'./CharacterPanel'[39m
+   [90m 7 |[39m
+   [90m 8 |[39m [36mexport[39m [36mdefault[39m [36mfunction[39m [33mGameplayLayout[39m(){[0m
+
+ERROR in src/components/GameplayLayout.tsx:6:28
+TS2307: Cannot find module './CharacterPanel' or its corresponding type declarations.
+  [0m [90m 4 |[39m [36mimport[39m [33mNarrativeView[39m [36mfrom[39m [32m'./NarrativeView'[39m
+   [90m 5 |[39m [36mimport[39m [33mChat[39m [36mfrom[39m [32m'./Chat'[39m
+  [31m[1m>[22m[39m[90m 6 |[39m [36mimport[39m [33mCharacterPanel[39m [36mfrom[39m [32m'./CharacterPanel'[39m
+   [90m   |[39m                            [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 7 |[39m
+   [90m 8 |[39m [36mexport[39m [36mdefault[39m [36mfunction[39m [33mGameplayLayout[39m(){
+   [90m 9 |[39m   [36mreturn[39m ([0m
+
+ERROR in src/components/GameplayLayout.tsx:4:27
+TS2307: Cannot find module './NarrativeView' or its corresponding type declarations.
+  [0m [90m 2 |[39m [36mimport[39m [32m'./GameplayLayout.css'[39m
+   [90m 3 |[39m [36mimport[39m [33mSiteMenu[39m [36mfrom[39m [32m'./SiteMenu'[39m
+  [31m[1m>[22m[39m[90m 4 |[39m [36mimport[39m [33mNarrativeView[39m [36mfrom[39m [32m'./NarrativeView'[39m
+   [90m   |[39m                           [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 5 |[39m [36mimport[39m [33mChat[39m [36mfrom[39m [32m'./Chat'[39m
+   [90m 6 |[39m [36mimport[39m [33mCharacterPanel[39m [36mfrom[39m [32m'./CharacterPanel'[39m
+   [90m 7 |[39m[0m
+
+ERROR in src/components/GameplayLayout.tsx:5:18
+TS2307: Cannot find module './Chat' or its corresponding type declarations.
+  [0m [90m 3 |[39m [36mimport[39m [33mSiteMenu[39m [36mfrom[39m [32m'./SiteMenu'[39m
+   [90m 4 |[39m [36mimport[39m [33mNarrativeView[39m [36mfrom[39m [32m'./NarrativeView'[39m
+  [31m[1m>[22m[39m[90m 5 |[39m [36mimport[39m [33mChat[39m [36mfrom[39m [32m'./Chat'[39m
+   [90m   |[39m                  [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 6 |[39m [36mimport[39m [33mCharacterPanel[39m [36mfrom[39m [32m'./CharacterPanel'[39m
+   [90m 7 |[39m
+   [90m 8 |[39m [36mexport[39m [36mdefault[39m [36mfunction[39m [33mGameplayLayout[39m(){[0m
+
+ERROR in src/components/GameplayLayout.tsx:6:28
+TS2307: Cannot find module './CharacterPanel' or its corresponding type declarations.
+  [0m [90m 4 |[39m [36mimport[39m [33mNarrativeView[39m [36mfrom[39m [32m'./NarrativeView'[39m
+   [90m 5 |[39m [36mimport[39m [33mChat[39m [36mfrom[39m [32m'./Chat'[39m
+  [31m[1m>[22m[39m[90m 6 |[39m [36mimport[39m [33mCharacterPanel[39m [36mfrom[39m [32m'./CharacterPanel'[39m
+   [90m   |[39m                            [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 7 |[39m
+   [90m 8 |[39m [36mexport[39m [36mdefault[39m [36mfunction[39m [33mGameplayLayout[39m(){
+   [90m 9 |[39m   [36mreturn[39m ([0m
+
+ERROR in src/components/GameplayLayout.tsx:5:18
+TS2307: Cannot find module './Chat' or its corresponding type declarations.
+  [0m [90m 3 |[39m [36mimport[39m [33mSiteMenu[39m [36mfrom[39m [32m'./SiteMenu'[39m
+   [90m 4 |[39m [36mimport[39m [33mNarrativeView[39m [36mfrom[39m [32m'./NarrativeView'[39m
+  [31m[1m>[22m[39m[90m 5 |[39m [36mimport[39m [33mChat[39m [36mfrom[39m [32m'./Chat'[39m
+   [90m   |[39m                  [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 6 |[39m [36mimport[39m [33mCharacterPanel[39m [36mfrom[39m [32m'./CharacterPanel'[39m
+   [90m 7 |[39m
+   [90m 8 |[39m [36mexport[39m [36mdefault[39m [36mfunction[39m [33mGameplayLayout[39m(){[0m
+
+ERROR in src/components/GameplayLayout.tsx:6:28
+TS2307: Cannot find module './CharacterPanel' or its corresponding type declarations.
+  [0m [90m 4 |[39m [36mimport[39m [33mNarrativeView[39m [36mfrom[39m [32m'./NarrativeView'[39m
+   [90m 5 |[39m [36mimport[39m [33mChat[39m [36mfrom[39m [32m'./Chat'[39m
+  [31m[1m>[22m[39m[90m 6 |[39m [36mimport[39m [33mCharacterPanel[39m [36mfrom[39m [32m'./CharacterPanel'[39m
+   [90m   |[39m                            [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 7 |[39m
+   [90m 8 |[39m [36mexport[39m [36mdefault[39m [36mfunction[39m [33mGameplayLayout[39m(){
+   [90m 9 |[39m   [36mreturn[39m ([0m
+
+ERROR in src/components/GameplayLayout.tsx:6:28
+TS2307: Cannot find module './CharacterPanel' or its corresponding type declarations.
+  [0m [90m 4 |[39m [36mimport[39m [33mNarrativeView[39m [36mfrom[39m [32m'./NarrativeView'[39m
+   [90m 5 |[39m [36mimport[39m [33mChat[39m [36mfrom[39m [32m'./Chat'[39m
+  [31m[1m>[22m[39m[90m 6 |[39m [36mimport[39m [33mCharacterPanel[39m [36mfrom[39m [32m'./CharacterPanel'[39m
+   [90m   |[39m                            [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 7 |[39m
+   [90m 8 |[39m [36mexport[39m [36mdefault[39m [36mfunction[39m [33mGameplayLayout[39m(){
+   [90m 9 |[39m   [36mreturn[39m ([0m
+
+ERROR in src/components/GameplayLayout.tsx:17:26
+TS2322: Type '{ sessionId: string | null | undefined; }' is not assignable to type 'IntrinsicAttributes'.
+  Property 'sessionId' does not exist on type 'IntrinsicAttributes'.
+  [0m [90m 15 |[39m       [33m<[39m[33mmain[39m className[33m=[39m[32m"gameplay-main"[39m[33m>[39m
+   [90m 16 |[39m         [33m<[39m[33msection[39m className[33m=[39m[32m"scene-area"[39m[33m>[39m
+  [31m[1m>[22m[39m[90m 17 |[39m           [33m<[39m[33mNarrativeView[39m sessionId[33m=[39m{sessionId} [33m/[39m[33m>[39m
+   [90m    |[39m                          [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 18 |[39m         [33m<[39m[33m/[39m[33msection[39m[33m>[39m
+   [90m 19 |[39m         [33m<[39m[33mdiv[39m className[33m=[39m[32m"bottom-row"[39m[33m>[39m
+   [90m 20 |[39m           [33m<[39m[33msection[39m className[33m=[39m[32m"chat-area"[39m[33m>[39m[33m<[39m[33mChat[39m[33m/[39m[33m>[39m[33m<[39m[33m/[39m[33msection[39m[33m>[39m[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:59:52
+TS2304: Cannot find name 'setShowCreateModal'.
+  [0m [90m 57 |[39m             [33m<[39m[33mp[39m[33m>[39m[33mPick[39m an option [36mfrom[39m the left to [36mget[39m started[33m.[39m[33m<[39m[33m/[39m[33mp[39m[33m>[39m
+   [90m 58 |[39m             [33m<[39m[33mdiv[39m style[33m=[39m{{marginTop[33m:[39m[35m12[39m}}[33m>[39m
+  [31m[1m>[22m[39m[90m 59 |[39m               [33m<[39m[33mbutton[39m className[33m=[39m[32m"btn"[39m onClick[33m=[39m{()[33m=>[39msetShowCreateModal([36mtrue[39m)}[33m>[39m[33mStart[39m [33mNew[39m [33mAdventure[39m[33m<[39m[33m/[39m[33mbutton[39m[33m>[39m
+   [90m    |[39m                                                    [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 60 |[39m             [33m<[39m[33m/[39m[33mdiv[39m[33m>[39m
+   [90m 61 |[39m             {showCreateModal [33m&&[39m (
+   [90m 62 |[39m               [33m<[39m[33mdiv[39m style[33m=[39m{{position[33m:[39m[32m'fixed'[39m[33m,[39minset[33m:[39m[35m0[39m[33m,[39mdisplay[33m:[39m[32m'flex'[39m[33m,[39malignItems[33m:[39m[32m'center'[39m[33m,[39mjustifyContent[33m:[39m[32m'center'[39m[33m,[39mbackground[33m:[39m[32m'rgba(0,0,0,0.5)'[39m}}[33m>[39m[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:61:14
+TS2304: Cannot find name 'showCreateModal'.
+  [0m [90m 59 |[39m               [33m<[39m[33mbutton[39m className[33m=[39m[32m"btn"[39m onClick[33m=[39m{()[33m=>[39msetShowCreateModal([36mtrue[39m)}[33m>[39m[33mStart[39m [33mNew[39m [33mAdventure[39m[33m<[39m[33m/[39m[33mbutton[39m[33m>[39m
+   [90m 60 |[39m             [33m<[39m[33m/[39m[33mdiv[39m[33m>[39m
+  [31m[1m>[22m[39m[90m 61 |[39m             {showCreateModal [33m&&[39m (
+   [90m    |[39m              [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 62 |[39m               [33m<[39m[33mdiv[39m style[33m=[39m{{position[33m:[39m[32m'fixed'[39m[33m,[39minset[33m:[39m[35m0[39m[33m,[39mdisplay[33m:[39m[32m'flex'[39m[33m,[39malignItems[33m:[39m[32m'center'[39m[33m,[39mjustifyContent[33m:[39m[32m'center'[39m[33m,[39mbackground[33m:[39m[32m'rgba(0,0,0,0.5)'[39m}}[33m>[39m
+   [90m 63 |[39m                 [33m<[39m[33mdiv[39m style[33m=[39m{{background[33m:[39m[32m'#0b0b0b'[39m[33m,[39mpadding[33m:[39m[35m16[39m[33m,[39mborderRadius[33m:[39m[35m8[39m[33m,[39mwidth[33m:[39m[35m420[39m}}[33m>[39m
+   [90m 64 |[39m                   [33m<[39m[33mh3[39m style[33m=[39m{{marginTop[33m:[39m[35m0[39m}}[33m>[39m[33mCreate[39m [33mSession[39m[33m<[39m[33m/[39m[33mh3[39m[33m>[39m[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:65:78
+TS2304: Cannot find name 'newSessionName'.
+  [0m [90m 63 |[39m                 [33m<[39m[33mdiv[39m style[33m=[39m{{background[33m:[39m[32m'#0b0b0b'[39m[33m,[39mpadding[33m:[39m[35m16[39m[33m,[39mborderRadius[33m:[39m[35m8[39m[33m,[39mwidth[33m:[39m[35m420[39m}}[33m>[39m
+   [90m 64 |[39m                   [33m<[39m[33mh3[39m style[33m=[39m{{marginTop[33m:[39m[35m0[39m}}[33m>[39m[33mCreate[39m [33mSession[39m[33m<[39m[33m/[39m[33mh3[39m[33m>[39m
+  [31m[1m>[22m[39m[90m 65 |[39m                   [33m<[39m[33minput[39m className[33m=[39m[32m"input"[39m placeholder[33m=[39m[32m"Session name"[39m value[33m=[39m{newSessionName} onChange[33m=[39m{e[33m=>[39msetNewSessionName(e[33m.[39mtarget[33m.[39mvalue)} [33m/[39m[33m>[39m
+   [90m    |[39m                                                                              [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 66 |[39m                   [33m<[39m[33mdiv[39m style[33m=[39m{{display[33m:[39m[32m'flex'[39m[33m,[39mgap[33m:[39m[35m8[39m[33m,[39mmarginTop[33m:[39m[35m12[39m}}[33m>[39m
+   [90m 67 |[39m                     [33m<[39m[33mbutton[39m className[33m=[39m[32m"btn"[39m onClick[33m=[39m{[36masync[39m ()[33m=>[39m{
+   [90m 68 |[39m                       [36mif[39m([33m![39mnewSessionName[33m.[39mtrim()) [36mreturn[39m alert([32m'Enter a name'[39m)[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:65:107
+TS2304: Cannot find name 'setNewSessionName'.
+  [0m [90m 63 |[39m                 [33m<[39m[33mdiv[39m style[33m=[39m{{background[33m:[39m[32m'#0b0b0b'[39m[33m,[39mpadding[33m:[39m[35m16[39m[33m,[39mborderRadius[33m:[39m[35m8[39m[33m,[39mwidth[33m:[39m[35m420[39m}}[33m>[39m
+   [90m 64 |[39m                   [33m<[39m[33mh3[39m style[33m=[39m{{marginTop[33m:[39m[35m0[39m}}[33m>[39m[33mCreate[39m [33mSession[39m[33m<[39m[33m/[39m[33mh3[39m[33m>[39m
+  [31m[1m>[22m[39m[90m 65 |[39m                   [33m<[39m[33minput[39m className[33m=[39m[32m"input"[39m placeholder[33m=[39m[32m"Session name"[39m value[33m=[39m{newSessionName} onChange[33m=[39m{e[33m=>[39msetNewSessionName(e[33m.[39mtarget[33m.[39mvalue)} [33m/[39m[33m>[39m
+   [90m    |[39m                                                                                                           [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 66 |[39m                   [33m<[39m[33mdiv[39m style[33m=[39m{{display[33m:[39m[32m'flex'[39m[33m,[39mgap[33m:[39m[35m8[39m[33m,[39mmarginTop[33m:[39m[35m12[39m}}[33m>[39m
+   [90m 67 |[39m                     [33m<[39m[33mbutton[39m className[33m=[39m[32m"btn"[39m onClick[33m=[39m{[36masync[39m ()[33m=>[39m{
+   [90m 68 |[39m                       [36mif[39m([33m![39mnewSessionName[33m.[39mtrim()) [36mreturn[39m alert([32m'Enter a name'[39m)[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:68:27
+TS2304: Cannot find name 'newSessionName'.
+  [0m [90m 66 |[39m                   [33m<[39m[33mdiv[39m style[33m=[39m{{display[33m:[39m[32m'flex'[39m[33m,[39mgap[33m:[39m[35m8[39m[33m,[39mmarginTop[33m:[39m[35m12[39m}}[33m>[39m
+   [90m 67 |[39m                     [33m<[39m[33mbutton[39m className[33m=[39m[32m"btn"[39m onClick[33m=[39m{[36masync[39m ()[33m=>[39m{
+  [31m[1m>[22m[39m[90m 68 |[39m                       [36mif[39m([33m![39mnewSessionName[33m.[39mtrim()) [36mreturn[39m alert([32m'Enter a name'[39m)
+   [90m    |[39m                           [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 69 |[39m                       [36mtry[39m{
+   [90m 70 |[39m                         [36mconst[39m body [33m=[39m {name[33m:[39m newSessionName[33m.[39mtrim()[33m,[39m owner[33m:[39m profile[33m?[39m[33m.[39memail}
+   [90m 71 |[39m                         [36mconst[39m res [33m=[39m [36mawait[39m fetch([33mAPI[39m [33m+[39m [32m'/sessions'[39m[33m,[39m {method[33m:[39m[32m'POST'[39m[33m,[39mheaders[33m:[39m{[32m'Content-Type'[39m[33m:[39m[32m'application/json'[39m}[33m,[39mbody[33m:[39m [33mJSON[39m[33m.[39mstringify(body)})[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:70:45
+TS2304: Cannot find name 'newSessionName'.
+  [0m [90m 68 |[39m                       [36mif[39m([33m![39mnewSessionName[33m.[39mtrim()) [36mreturn[39m alert([32m'Enter a name'[39m)
+   [90m 69 |[39m                       [36mtry[39m{
+  [31m[1m>[22m[39m[90m 70 |[39m                         [36mconst[39m body [33m=[39m {name[33m:[39m newSessionName[33m.[39mtrim()[33m,[39m owner[33m:[39m profile[33m?[39m[33m.[39memail}
+   [90m    |[39m                                             [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 71 |[39m                         [36mconst[39m res [33m=[39m [36mawait[39m fetch([33mAPI[39m [33m+[39m [32m'/sessions'[39m[33m,[39m {method[33m:[39m[32m'POST'[39m[33m,[39mheaders[33m:[39m{[32m'Content-Type'[39m[33m:[39m[32m'application/json'[39m}[33m,[39mbody[33m:[39m [33mJSON[39m[33m.[39mstringify(body)})
+   [90m 72 |[39m                         [36mif[39m(res[33m.[39mok){
+   [90m 73 |[39m                           [36mconst[39m data [33m=[39m [36mawait[39m res[33m.[39mjson()[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:76:27
+TS2304: Cannot find name 'setShowCreateModal'.
+  [0m [90m 74 |[39m                           setActiveSession(data[33m.[39mid)
+   [90m 75 |[39m                           setInGameplay([36mtrue[39m)
+  [31m[1m>[22m[39m[90m 76 |[39m                           setShowCreateModal([36mfalse[39m)
+   [90m    |[39m                           [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 77 |[39m                           setNewSessionName([32m''[39m)
+   [90m 78 |[39m                           [36mawait[39m fetchSessions()
+   [90m 79 |[39m                         } [36melse[39m {[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:77:27
+TS2304: Cannot find name 'setNewSessionName'.
+  [0m [90m 75 |[39m                           setInGameplay([36mtrue[39m)
+   [90m 76 |[39m                           setShowCreateModal([36mfalse[39m)
+  [31m[1m>[22m[39m[90m 77 |[39m                           setNewSessionName([32m''[39m)
+   [90m    |[39m                           [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 78 |[39m                           [36mawait[39m fetchSessions()
+   [90m 79 |[39m                         } [36melse[39m {
+   [90m 80 |[39m                           [36mconst[39m e [33m=[39m [36mawait[39m res[33m.[39mjson()[33m;[39m alert(e[33m.[39mdetail [33m||[39m [32m'Failed to create session'[39m)[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:84:60
+TS2304: Cannot find name 'setShowCreateModal'.
+  [0m [90m 82 |[39m                       }[36mcatch[39m(e){ alert([32m'Network error creating session'[39m) }
+   [90m 83 |[39m                     }}[33m>[39m[33mCreate[39m[33m<[39m[33m/[39m[33mbutton[39m[33m>[39m
+  [31m[1m>[22m[39m[90m 84 |[39m                     [33m<[39m[33mbutton[39m className[33m=[39m[32m"btn"[39m onClick[33m=[39m{()[33m=>[39m{ setShowCreateModal([36mfalse[39m)[33m;[39m setNewSessionName([32m''[39m) }}[33m>[39m[33mCancel[39m[33m<[39m[33m/[39m[33mbutton[39m[33m>[39m
+   [90m    |[39m                                                            [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 85 |[39m                   [33m<[39m[33m/[39m[33mdiv[39m[33m>[39m
+   [90m 86 |[39m                 [33m<[39m[33m/[39m[33mdiv[39m[33m>[39m
+   [90m 87 |[39m               [33m<[39m[33m/[39m[33mdiv[39m[33m>[39m[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:84:87
+TS2304: Cannot find name 'setNewSessionName'.
+  [0m [90m 82 |[39m                       }[36mcatch[39m(e){ alert([32m'Network error creating session'[39m) }
+   [90m 83 |[39m                     }}[33m>[39m[33mCreate[39m[33m<[39m[33m/[39m[33mbutton[39m[33m>[39m
+  [31m[1m>[22m[39m[90m 84 |[39m                     [33m<[39m[33mbutton[39m className[33m=[39m[32m"btn"[39m onClick[33m=[39m{()[33m=>[39m{ setShowCreateModal([36mfalse[39m)[33m;[39m setNewSessionName([32m''[39m) }}[33m>[39m[33mCancel[39m[33m<[39m[33m/[39m[33mbutton[39m[33m>[39m
+   [90m    |[39m                                                                                       [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 85 |[39m                   [33m<[39m[33m/[39m[33mdiv[39m[33m>[39m
+   [90m 86 |[39m                 [33m<[39m[33m/[39m[33mdiv[39m[33m>[39m
+   [90m 87 |[39m               [33m<[39m[33m/[39m[33mdiv[39m[33m>[39m[0m
+
+ERROR in src/components/SessionSettings.tsx:91:59
+TS7006: Parameter 'prev' implicitly has an 'any' type.
+  [0m [90m 89 |[39m                     [36mconst[39m res [33m=[39m [36mawait[39m fetch([33mAPI[39m [33m+[39m [32m`/sessions/${sessionId}/invite`[39m[33m,[39m{method[33m:[39m[32m'POST'[39m[33m,[39mheaders[33m:[39m{[32m'Content-Type'[39m[33m:[39m[32m'application/json'[39m}[33m,[39mbody[33m:[39m [33mJSON[39m[33m.[39mstringify({email[33m:[39m inviteEmail})})
+   [90m 90 |[39m                     [36mif[39m(res[33m.[39mok){
+  [31m[1m>[22m[39m[90m 91 |[39m                       [36mconst[39m d [33m=[39m [36mawait[39m res[33m.[39mjson()[33m;[39m setMeta(prev[33m=>[39m ({[33m...[39m(prev[33m||[39m{})[33m,[39m invites[33m:[39m d[33m.[39minvites}))
+   [90m    |[39m                                                           [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 92 |[39m                       setInviteEmail([32m''[39m)
+   [90m 93 |[39m                     } [36melse[39m { alert([32m'Invite failed'[39m) }
+   [90m 94 |[39m                   }[36mcatch[39m(e){ alert([32m'Network error'[39m) }[0m
+
+ERROR in src/components/SessionSettings.tsx:91:59
+TS7006: Parameter 'prev' implicitly has an 'any' type.
+  [0m [90m 89 |[39m                     [36mconst[39m res [33m=[39m [36mawait[39m fetch([33mAPI[39m [33m+[39m [32m`/sessions/${sessionId}/invite`[39m[33m,[39m{method[33m:[39m[32m'POST'[39m[33m,[39mheaders[33m:[39m{[32m'Content-Type'[39m[33m:[39m[32m'application/json'[39m}[33m,[39mbody[33m:[39m [33mJSON[39m[33m.[39mstringify({email[33m:[39m inviteEmail})})
+   [90m 90 |[39m                     [36mif[39m(res[33m.[39mok){
+  [31m[1m>[22m[39m[90m 91 |[39m                       [36mconst[39m d [33m=[39m [36mawait[39m res[33m.[39mjson()[33m;[39m setMeta(prev[33m=>[39m ({[33m...[39m(prev[33m||[39m{})[33m,[39m invites[33m:[39m d[33m.[39minvites}))
+   [90m    |[39m                                                           [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 92 |[39m                       setInviteEmail([32m''[39m)
+   [90m 93 |[39m                     } [36melse[39m { alert([32m'Invite failed'[39m) }
+   [90m 94 |[39m                   }[36mcatch[39m(e){ alert([32m'Network error'[39m) }[0m
+
+ERROR in src/components/SessionSettings.tsx:100:59
+TS7006: Parameter 'prev' implicitly has an 'any' type.
+  [0m [90m  98 |[39m                     [36mconst[39m res [33m=[39m [36mawait[39m fetch([33mAPI[39m [33m+[39m [32m`/sessions/${sessionId}/invite`[39m[33m,[39m{method[33m:[39m[32m'POST'[39m[33m,[39mheaders[33m:[39m{[32m'Content-Type'[39m[33m:[39m[32m'application/json'[39m}[33m,[39mbody[33m:[39m [33mJSON[39m[33m.[39mstringify({email[33m:[39m inviteEmail})})
+   [90m  99 |[39m                     [36mif[39m(res[33m.[39mok){
+  [31m[1m>[22m[39m[90m 100 |[39m                       [36mconst[39m d [33m=[39m [36mawait[39m res[33m.[39mjson()[33m;[39m setMeta(prev[33m=>[39m ({[33m...[39m(prev[33m||[39m{})[33m,[39m invites[33m:[39m d[33m.[39minvites}))
+   [90m     |[39m                                                           [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 101 |[39m                       setInviteEmail([32m''[39m)
+   [90m 102 |[39m                     } [36melse[39m { alert([32m'Invite failed'[39m) }
+   [90m 103 |[39m                   }[36mcatch[39m(e){ alert([32m'Network error'[39m) }[0m
+
+ERROR in src/components/SessionSettings.tsx:100:59
+TS7006: Parameter 'prev' implicitly has an 'any' type.
+  [0m [90m  98 |[39m                     [36mconst[39m res [33m=[39m [36mawait[39m fetch([33mAPI[39m [33m+[39m [32m`/sessions/${sessionId}/invite`[39m[33m,[39m{method[33m:[39m[32m'POST'[39m[33m,[39mheaders[33m:[39m{[32m'Content-Type'[39m[33m:[39m[32m'application/json'[39m}[33m,[39mbody[33m:[39m [33mJSON[39m[33m.[39mstringify({email[33m:[39m inviteEmail})})
+   [90m  99 |[39m                     [36mif[39m(res[33m.[39mok){
+  [31m[1m>[22m[39m[90m 100 |[39m                       [36mconst[39m d [33m=[39m [36mawait[39m res[33m.[39mjson()[33m;[39m setMeta(prev[33m=>[39m ({[33m...[39m(prev[33m||[39m{})[33m,[39m invites[33m:[39m d[33m.[39minvites}))
+   [90m     |[39m                                                           [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 101 |[39m                       setInviteEmail([32m''[39m)
+   [90m 102 |[39m                     } [36melse[39m { alert([32m'Invite failed'[39m) }
+   [90m 103 |[39m                   }[36mcatch[39m(e){ alert([32m'Network error'[39m) }[0m
+
+ERROR in src/components/SessionSettings.tsx:100:59
+TS7006: Parameter 'prev' implicitly has an 'any' type.
+  [0m [90m  98 |[39m                     [36mconst[39m res [33m=[39m [36mawait[39m fetch([33mAPI[39m [33m+[39m [32m`/sessions/${sessionId}/invite`[39m[33m,[39m{method[33m:[39m[32m'POST'[39m[33m,[39mheaders[33m:[39m{[32m'Content-Type'[39m[33m:[39m[32m'application/json'[39m}[33m,[39mbody[33m:[39m [33mJSON[39m[33m.[39mstringify({email[33m:[39m inviteEmail})})
+   [90m  99 |[39m                     [36mif[39m(res[33m.[39mok){
+  [31m[1m>[22m[39m[90m 100 |[39m                       [36mconst[39m d [33m=[39m [36mawait[39m res[33m.[39mjson()[33m;[39m setMeta(prev[33m=>[39m ({[33m...[39m(prev[33m||[39m{})[33m,[39m invites[33m:[39m d[33m.[39minvites}))
+   [90m     |[39m                                                           [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 101 |[39m                       setInviteEmail([32m''[39m)
+   [90m 102 |[39m                     } [36melse[39m { alert([32m'Invite failed'[39m) }
+   [90m 103 |[39m                   }[36mcatch[39m(e){ alert([32m'Network error'[39m) }[0m
+
+ERROR in src/components/SessionSettings.tsx:100:59
+TS7006: Parameter 'prev' implicitly has an 'any' type.
+  [0m [90m  98 |[39m                     [36mconst[39m res [33m=[39m [36mawait[39m fetch([33mAPI[39m [33m+[39m [32m`/sessions/${sessionId}/invite`[39m[33m,[39m{method[33m:[39m[32m'POST'[39m[33m,[39mheaders[33m:[39m{[32m'Content-Type'[39m[33m:[39m[32m'application/json'[39m}[33m,[39mbody[33m:[39m [33mJSON[39m[33m.[39mstringify({email[33m:[39m inviteEmail})})
+   [90m  99 |[39m                     [36mif[39m(res[33m.[39mok){
+  [31m[1m>[22m[39m[90m 100 |[39m                       [36mconst[39m d [33m=[39m [36mawait[39m res[33m.[39mjson()[33m;[39m setMeta(prev[33m=>[39m ({[33m...[39m(prev[33m||[39m{})[33m,[39m invites[33m:[39m d[33m.[39minvites}))
+   [90m     |[39m                                                           [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 101 |[39m                       setInviteEmail([32m''[39m)
+   [90m 102 |[39m                     } [36melse[39m { alert([32m'Invite failed'[39m) }
+   [90m 103 |[39m                   }[36mcatch[39m(e){ alert([32m'Network error'[39m) }[0m
+
+ERROR in src/components/SessionSettings.tsx:100:59
+TS7006: Parameter 'prev' implicitly has an 'any' type.
+  [0m [90m  98 |[39m                     [36mconst[39m res [33m=[39m [36mawait[39m fetch([33mAPI[39m [33m+[39m [32m`/sessions/${sessionId}/invite`[39m[33m,[39m{method[33m:[39m[32m'POST'[39m[33m,[39mheaders[33m:[39m{[32m'Content-Type'[39m[33m:[39m[32m'application/json'[39m}[33m,[39mbody[33m:[39m [33mJSON[39m[33m.[39mstringify({email[33m:[39m inviteEmail})})
+   [90m  99 |[39m                     [36mif[39m(res[33m.[39mok){
+  [31m[1m>[22m[39m[90m 100 |[39m                       [36mconst[39m d [33m=[39m [36mawait[39m res[33m.[39mjson()[33m;[39m setMeta(prev[33m=>[39m ({[33m...[39m(prev[33m||[39m{})[33m,[39m invites[33m:[39m d[33m.[39minvites}))
+   [90m     |[39m                                                           [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 101 |[39m                       setInviteEmail([32m''[39m)
+   [90m 102 |[39m                     } [36melse[39m { alert([32m'Invite failed'[39m) }
+   [90m 103 |[39m                   }[36mcatch[39m(e){ alert([32m'Network error'[39m) }[0m
+
+ERROR in src/components/SessionSettings.tsx:109:59
+TS7006: Parameter 'prev' implicitly has an 'any' type.
+  [0m [90m 107 |[39m                     [36mconst[39m res [33m=[39m [36mawait[39m fetch([33mAPI[39m [33m+[39m [32m`/sessions/${sessionId}/invite`[39m[33m,[39m{method[33m:[39m[32m'POST'[39m[33m,[39mheaders[33m:[39m{[32m'Content-Type'[39m[33m:[39m[32m'application/json'[39m}[33m,[39mbody[33m:[39m [33mJSON[39m[33m.[39mstringify({email[33m:[39m inviteEmail})})
+   [90m 108 |[39m                     [36mif[39m(res[33m.[39mok){
+  [31m[1m>[22m[39m[90m 109 |[39m                       [36mconst[39m d [33m=[39m [36mawait[39m res[33m.[39mjson()[33m;[39m setMeta(prev[33m=>[39m ({[33m...[39m(prev[33m||[39m{})[33m,[39m invites[33m:[39m d[33m.[39minvites}))
+   [90m     |[39m                                                           [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 110 |[39m                       setInviteEmail([32m''[39m)
+   [90m 111 |[39m                     } [36melse[39m { alert([32m'Invite failed'[39m) }
+   [90m 112 |[39m                   }[36mcatch[39m(e){ alert([32m'Network error'[39m) }[0m
+
+ERROR in src/components/SessionSettings.tsx:112:59
+TS7006: Parameter 'prev' implicitly has an 'any' type.
+  [0m [90m 110 |[39m                     [36mconst[39m res [33m=[39m [36mawait[39m fetch([33mAPI[39m [33m+[39m [32m`/sessions/${sessionId}/invite`[39m[33m,[39m{method[33m:[39m[32m'POST'[39m[33m,[39mheaders[33m,[39mbody[33m:[39m [33mJSON[39m[33m.[39mstringify({email[33m:[39m inviteEmail})})
+   [90m 111 |[39m                     [36mif[39m(res[33m.[39mok){
+  [31m[1m>[22m[39m[90m 112 |[39m                       [36mconst[39m d [33m=[39m [36mawait[39m res[33m.[39mjson()[33m;[39m setMeta(prev[33m=>[39m ({[33m...[39m(prev[33m||[39m{})[33m,[39m invites[33m:[39m d[33m.[39minvites}))
+   [90m     |[39m                                                           [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 113 |[39m                       setInviteEmail([32m''[39m)
+   [90m 114 |[39m                     } [36melse[39m { alert([32m'Invite failed'[39m) }
+   [90m 115 |[39m                   }[36mcatch[39m(e){ alert([32m'Network error'[39m) }[0m
+
+ERROR in src/components/SessionSettings.tsx:112:59
+TS7006: Parameter 'prev' implicitly has an 'any' type.
+  [0m [90m 110 |[39m                     [36mconst[39m res [33m=[39m [36mawait[39m fetch([33mAPI[39m [33m+[39m [32m`/sessions/${sessionId}/invite`[39m[33m,[39m{method[33m:[39m[32m'POST'[39m[33m,[39mheaders[33m,[39mbody[33m:[39m [33mJSON[39m[33m.[39mstringify({email[33m:[39m inviteEmail})})
+   [90m 111 |[39m                     [36mif[39m(res[33m.[39mok){
+  [31m[1m>[22m[39m[90m 112 |[39m                       [36mconst[39m d [33m=[39m [36mawait[39m res[33m.[39mjson()[33m;[39m setMeta(prev[33m=>[39m ({[33m...[39m(prev[33m||[39m{})[33m,[39m invites[33m:[39m d[33m.[39minvites}))
+   [90m     |[39m                                                           [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 113 |[39m                       setInviteEmail([32m''[39m)
+   [90m 114 |[39m                     } [36melse[39m { alert([32m'Invite failed'[39m) }
+   [90m 115 |[39m                   }[36mcatch[39m(e){ alert([32m'Network error'[39m) }[0m
+
+ERROR in src/components/SessionSettings.tsx:112:59
+TS7006: Parameter 'prev' implicitly has an 'any' type.
+  [0m [90m 110 |[39m                     [36mconst[39m res [33m=[39m [36mawait[39m fetch([33mAPI[39m [33m+[39m [32m`/sessions/${sessionId}/invite`[39m[33m,[39m{method[33m:[39m[32m'POST'[39m[33m,[39mheaders[33m,[39mbody[33m:[39m [33mJSON[39m[33m.[39mstringify({email[33m:[39m inviteEmail})})
+   [90m 111 |[39m                     [36mif[39m(res[33m.[39mok){
+  [31m[1m>[22m[39m[90m 112 |[39m                       [36mconst[39m d [33m=[39m [36mawait[39m res[33m.[39mjson()[33m;[39m setMeta(prev[33m=>[39m ({[33m...[39m(prev[33m||[39m{})[33m,[39m invites[33m:[39m d[33m.[39minvites}))
+   [90m     |[39m                                                           [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 113 |[39m                       setInviteEmail([32m''[39m)
+   [90m 114 |[39m                     } [36melse[39m { alert([32m'Invite failed'[39m) }
+   [90m 115 |[39m                   }[36mcatch[39m(e){ alert([32m'Network error'[39m) }[0m
+
+ERROR in src/components/SessionSettings.tsx:112:59
+TS7006: Parameter 'prev' implicitly has an 'any' type.
+  [0m [90m 110 |[39m                     [36mconst[39m res [33m=[39m [36mawait[39m fetch([33mAPI[39m [33m+[39m [32m`/sessions/${sessionId}/invite`[39m[33m,[39m{method[33m:[39m[32m'POST'[39m[33m,[39mheaders[33m,[39mbody[33m:[39m [33mJSON[39m[33m.[39mstringify({email[33m:[39m inviteEmail})})
+   [90m 111 |[39m                     [36mif[39m(res[33m.[39mok){
+  [31m[1m>[22m[39m[90m 112 |[39m                       [36mconst[39m d [33m=[39m [36mawait[39m res[33m.[39mjson()[33m;[39m setMeta(prev[33m=>[39m ({[33m...[39m(prev[33m||[39m{})[33m,[39m invites[33m:[39m d[33m.[39minvites}))
+   [90m     |[39m                                                           [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 113 |[39m                       setInviteEmail([32m''[39m)
+   [90m 114 |[39m                     } [36melse[39m { alert([32m'Invite failed'[39m) }
+   [90m 115 |[39m                   }[36mcatch[39m(e){ alert([32m'Network error'[39m) }[0m
+
+ERROR in src/components/SessionSettings.tsx:112:59
+TS7006: Parameter 'prev' implicitly has an 'any' type.
+  [0m [90m 110 |[39m                     [36mconst[39m res [33m=[39m [36mawait[39m fetch([33mAPI[39m [33m+[39m [32m`/sessions/${sessionId}/invite`[39m[33m,[39m{method[33m:[39m[32m'POST'[39m[33m,[39mheaders[33m,[39mbody[33m:[39m [33mJSON[39m[33m.[39mstringify({email[33m:[39m inviteEmail})})
+   [90m 111 |[39m                     [36mif[39m(res[33m.[39mok){
+  [31m[1m>[22m[39m[90m 112 |[39m                       [36mconst[39m d [33m=[39m [36mawait[39m res[33m.[39mjson()[33m;[39m setMeta(prev[33m=>[39m ({[33m...[39m(prev[33m||[39m{})[33m,[39m invites[33m:[39m d[33m.[39minvites}))
+   [90m     |[39m                                                           [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 113 |[39m                       setInviteEmail([32m''[39m)
+   [90m 114 |[39m                     } [36melse[39m { alert([32m'Invite failed'[39m) }
+   [90m 115 |[39m                   }[36mcatch[39m(e){ alert([32m'Network error'[39m) }[0m
+
+ERROR in src/components/SessionSettings.tsx:112:59
+TS7006: Parameter 'prev' implicitly has an 'any' type.
+  [0m [90m 110 |[39m                     [36mconst[39m res [33m=[39m [36mawait[39m fetch([33mAPI[39m [33m+[39m [32m`/sessions/${sessionId}/invite`[39m[33m,[39m{method[33m:[39m[32m'POST'[39m[33m,[39mheaders[33m,[39mbody[33m:[39m [33mJSON[39m[33m.[39mstringify({email[33m:[39m inviteEmail})})
+   [90m 111 |[39m                     [36mif[39m(res[33m.[39mok){
+  [31m[1m>[22m[39m[90m 112 |[39m                       [36mconst[39m d [33m=[39m [36mawait[39m res[33m.[39mjson()[33m;[39m setMeta(prev[33m=>[39m ({[33m...[39m(prev[33m||[39m{})[33m,[39m invites[33m:[39m d[33m.[39minvites}))
+   [90m     |[39m                                                           [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 113 |[39m                       setInviteEmail([32m''[39m)
+   [90m 114 |[39m                     } [36melse[39m { alert([32m'Invite failed'[39m) }
+   [90m 115 |[39m                   }[36mcatch[39m(e){ alert([32m'Network error'[39m) }[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:78:51
+TS2304: Cannot find name 'API'.
+  [0m [90m 76 |[39m                           [36mif[39m(token) headers[[32m'Authorization'[39m] [33m=[39m [32m`Bearer ${token}`[39m
+   [90m 77 |[39m                           [36mconst[39m body [33m=[39m {name[33m:[39m newSessionName[33m.[39mtrim()}
+  [31m[1m>[22m[39m[90m 78 |[39m                           [36mconst[39m res [33m=[39m [36mawait[39m fetch([33mAPI[39m [33m+[39m [32m'/sessions'[39m[33m,[39m {method[33m:[39m[32m'POST'[39m[33m,[39mheaders[33m,[39mbody[33m:[39m [33mJSON[39m[33m.[39mstringify(body)})
+   [90m    |[39m                                                   [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 79 |[39m                         [36mif[39m(res[33m.[39mok){
+   [90m 80 |[39m                           [36mconst[39m data [33m=[39m [36mawait[39m res[33m.[39mjson()
+   [90m 81 |[39m                           setActiveSession(data[33m.[39mid)[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:78:51
+TS2304: Cannot find name 'API'.
+  [0m [90m 76 |[39m                           [36mif[39m(token) headers[[32m'Authorization'[39m] [33m=[39m [32m`Bearer ${token}`[39m
+   [90m 77 |[39m                           [36mconst[39m body [33m=[39m {name[33m:[39m newSessionName[33m.[39mtrim()}
+  [31m[1m>[22m[39m[90m 78 |[39m                           [36mconst[39m res [33m=[39m [36mawait[39m fetch([33mAPI[39m [33m+[39m [32m'/sessions'[39m[33m,[39m {method[33m:[39m[32m'POST'[39m[33m,[39mheaders[33m,[39mbody[33m:[39m [33mJSON[39m[33m.[39mstringify(body)})
+   [90m    |[39m                                                   [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 79 |[39m                         [36mif[39m(res[33m.[39mok){
+   [90m 80 |[39m                           [36mconst[39m data [33m=[39m [36mawait[39m res[33m.[39mjson()
+   [90m 81 |[39m                           setActiveSession(data[33m.[39mid)[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:78:51
+TS2304: Cannot find name 'API'.
+  [0m [90m 76 |[39m                           [36mif[39m(token) headers[[32m'Authorization'[39m] [33m=[39m [32m`Bearer ${token}`[39m
+   [90m 77 |[39m                           [36mconst[39m body [33m=[39m {name[33m:[39m newSessionName[33m.[39mtrim()}
+  [31m[1m>[22m[39m[90m 78 |[39m                           [36mconst[39m res [33m=[39m [36mawait[39m fetch([33mAPI[39m [33m+[39m [32m'/sessions'[39m[33m,[39m {method[33m:[39m[32m'POST'[39m[33m,[39mheaders[33m,[39mbody[33m:[39m [33mJSON[39m[33m.[39mstringify(body)})
+   [90m    |[39m                                                   [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 79 |[39m                         [36mif[39m(res[33m.[39mok){
+   [90m 80 |[39m                           [36mconst[39m data [33m=[39m [36mawait[39m res[33m.[39mjson()
+   [90m 81 |[39m                           setActiveSession(data[33m.[39mid)[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:57:30
+TS2304: Cannot find name 'inGameplay'.
+  [0m [90m 55 |[39m       [33m<[39m[33m/[39m[33maside[39m[33m>[39m
+   [90m 56 |[39m       [33m<[39m[33mmain[39m className[33m=[39m[32m"dashboard-main"[39m[33m>[39m
+  [31m[1m>[22m[39m[90m 57 |[39m         {view [33m===[39m [32m'home'[39m [33m&&[39m [33m![39minGameplay [33m&&[39m (
+   [90m    |[39m                              [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 58 |[39m           [33m<[39m[33msection[39m[33m>[39m
+   [90m 59 |[39m             [33m<[39m[33mh2[39m[33m>[39m[33mWelcome[39m[33m,[39m {profile[33m?[39m[33m.[39mname}[33m<[39m[33m/[39m[33mh2[39m[33m>[39m
+   [90m 60 |[39m             [33m<[39m[33mp[39m[33m>[39m[33mPick[39m an option [36mfrom[39m the left to [36mget[39m started[33m.[39m[33m<[39m[33m/[39m[33mp[39m[33m>[39m[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:81:27
+TS2304: Cannot find name 'setInGameplay'.
+  [0m [90m 79 |[39m                           [36mconst[39m data [33m=[39m [36mawait[39m res[33m.[39mjson()
+   [90m 80 |[39m                           setActiveSession(data[33m.[39mid)
+  [31m[1m>[22m[39m[90m 81 |[39m                           setInGameplay([36mtrue[39m)
+   [90m    |[39m                           [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 82 |[39m                           setShowCreateModal([36mfalse[39m)
+   [90m 83 |[39m                           setNewSessionName([32m''[39m)
+   [90m 84 |[39m                           [36mawait[39m fetchSessions()[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:98:10
+TS2304: Cannot find name 'inGameplay'.
+  [0m [90m  96 |[39m         )}
+   [90m  97 |[39m
+  [31m[1m>[22m[39m[90m  98 |[39m         {inGameplay [33m&&[39m (
+   [90m     |[39m          [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m  99 |[39m           [33m<[39m[33msection[39m style[33m=[39m{{height[33m:[39m[32m'100%'[39m}}[33m>[39m 
+   [90m 100 |[39m             [33m<[39m[33mGameplayLayout[39m sessionId[33m=[39m{activeSession} [33m/[39m[33m>[39m
+   [90m 101 |[39m           [33m<[39m[33m/[39m[33msection[39m[33m>[39m[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:127:84
+TS2304: Cannot find name 'setInGameplay'.
+  [0m [90m 125 |[39m                 {sessions[33m.[39mmap(s[33m=>[39m (
+   [90m 126 |[39m                   [33m<[39m[33mli[39m key[33m=[39m{s[33m.[39mid} style[33m=[39m{{marginBottom[33m:[39m[35m8[39m[33m,[39mdisplay[33m:[39m[32m'flex'[39m[33m,[39mgap[33m:[39m[35m8[39m[33m,[39malignItems[33m:[39m[32m'center'[39m}}[33m>[39m
+  [31m[1m>[22m[39m[90m 127 |[39m                     [33m<[39m[33mbutton[39m className[33m=[39m[32m"btn"[39m onClick[33m=[39m{()[33m=>[39m{ setActiveSession(s[33m.[39mid)[33m;[39m setInGameplay([36mtrue[39m)[33m;[39m }}[33m>[39m{s[33m.[39mname}[33m<[39m[33m/[39m[33mbutton[39m[33m>[39m
+   [90m     |[39m                                                                                    [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 128 |[39m                     [33m<[39m[33mbutton[39m className[33m=[39m[32m"btn"[39m aria[33m-[39mlabel[33m=[39m[32m"Session options"[39m onClick[33m=[39m{()[33m=>[39msetSettingsSession(s[33m.[39mid)}[33m>[39m[33m...[39m[33m<[39m[33m/[39m[33mbutton[39m[33m>[39m
+   [90m 129 |[39m                   [33m<[39m[33m/[39m[33mli[39m[33m>[39m
+   [90m 130 |[39m                 ))}[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:58:30
+TS2304: Cannot find name 'inGameplay'.
+  [0m [90m 56 |[39m       [33m<[39m[33m/[39m[33maside[39m[33m>[39m
+   [90m 57 |[39m       [33m<[39m[33mmain[39m className[33m=[39m[32m"dashboard-main"[39m[33m>[39m
+  [31m[1m>[22m[39m[90m 58 |[39m         {view [33m===[39m [32m'home'[39m [33m&&[39m [33m![39minGameplay [33m&&[39m (
+   [90m    |[39m                              [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 59 |[39m           [33m<[39m[33msection[39m[33m>[39m
+   [90m 60 |[39m             [33m<[39m[33mh2[39m[33m>[39m[33mWelcome[39m[33m,[39m {profile[33m?[39m[33m.[39mname}[33m<[39m[33m/[39m[33mh2[39m[33m>[39m
+   [90m 61 |[39m             [33m<[39m[33mp[39m[33m>[39m[33mPick[39m an option [36mfrom[39m the left to [36mget[39m started[33m.[39m[33m<[39m[33m/[39m[33mp[39m[33m>[39m[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:82:27
+TS2304: Cannot find name 'setInGameplay'.
+  [0m [90m 80 |[39m                           [36mconst[39m data [33m=[39m [36mawait[39m res[33m.[39mjson()
+   [90m 81 |[39m                           setActiveSession(data[33m.[39mid)
+  [31m[1m>[22m[39m[90m 82 |[39m                           setInGameplay([36mtrue[39m)
+   [90m    |[39m                           [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 83 |[39m                           setShowCreateModal([36mfalse[39m)
+   [90m 84 |[39m                           setNewSessionName([32m''[39m)
+   [90m 85 |[39m                           [36mawait[39m fetchSessions()[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:99:10
+TS2304: Cannot find name 'inGameplay'.
+  [0m [90m  97 |[39m         )}
+   [90m  98 |[39m
+  [31m[1m>[22m[39m[90m  99 |[39m         {inGameplay [33m&&[39m (
+   [90m     |[39m          [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 100 |[39m           [33m<[39m[33msection[39m style[33m=[39m{{height[33m:[39m[32m'100%'[39m}}[33m>[39m 
+   [90m 101 |[39m             [33m<[39m[33mGameplayLayout[39m sessionId[33m=[39m{activeSession} [33m/[39m[33m>[39m
+   [90m 102 |[39m           [33m<[39m[33m/[39m[33msection[39m[33m>[39m[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:128:84
+TS2304: Cannot find name 'setInGameplay'.
+  [0m [90m 126 |[39m                 {sessions[33m.[39mmap(s[33m=>[39m (
+   [90m 127 |[39m                   [33m<[39m[33mli[39m key[33m=[39m{s[33m.[39mid} style[33m=[39m{{marginBottom[33m:[39m[35m8[39m[33m,[39mdisplay[33m:[39m[32m'flex'[39m[33m,[39mgap[33m:[39m[35m8[39m[33m,[39malignItems[33m:[39m[32m'center'[39m}}[33m>[39m
+  [31m[1m>[22m[39m[90m 128 |[39m                     [33m<[39m[33mbutton[39m className[33m=[39m[32m"btn"[39m onClick[33m=[39m{()[33m=>[39m{ setActiveSession(s[33m.[39mid)[33m;[39m setInGameplay([36mtrue[39m)[33m;[39m }}[33m>[39m{s[33m.[39mname}[33m<[39m[33m/[39m[33mbutton[39m[33m>[39m
+   [90m     |[39m                                                                                    [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 129 |[39m                     [33m<[39m[33mbutton[39m className[33m=[39m[32m"btn"[39m aria[33m-[39mlabel[33m=[39m[32m"Session options"[39m onClick[33m=[39m{()[33m=>[39msetSettingsSession(s[33m.[39mid)}[33m>[39m[33m...[39m[33m<[39m[33m/[39m[33mbutton[39m[33m>[39m
+   [90m 130 |[39m                   [33m<[39m[33m/[39m[33mli[39m[33m>[39m
+   [90m 131 |[39m                 ))}[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:72:30
+TS2304: Cannot find name 'inGameplay'.
+  [0m [90m 70 |[39m           [33m<[39m[33m/[39m[33msection[39m[33m>[39m
+   [90m 71 |[39m         )}
+  [31m[1m>[22m[39m[90m 72 |[39m         {view [33m===[39m [32m'home'[39m [33m&&[39m [33m![39minGameplay [33m&&[39m (
+   [90m    |[39m                              [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 73 |[39m           [33m<[39m[33msection[39m[33m>[39m
+   [90m 74 |[39m             [33m<[39m[33mh2[39m[33m>[39m[33mWelcome[39m[33m,[39m {profile[33m?[39m[33m.[39mname}[33m<[39m[33m/[39m[33mh2[39m[33m>[39m
+   [90m 75 |[39m             [33m<[39m[33mp[39m[33m>[39m[33mPick[39m an option [36mfrom[39m the left to [36mget[39m started[33m.[39m[33m<[39m[33m/[39m[33mp[39m[33m>[39m[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:96:27
+TS2304: Cannot find name 'setInGameplay'.
+  [0m [90m 94 |[39m                           [36mconst[39m data [33m=[39m [36mawait[39m res[33m.[39mjson()
+   [90m 95 |[39m                           setActiveSession(data[33m.[39mid)
+  [31m[1m>[22m[39m[90m 96 |[39m                           setInGameplay([36mtrue[39m)
+   [90m    |[39m                           [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 97 |[39m                           setShowCreateModal([36mfalse[39m)
+   [90m 98 |[39m                           setNewSessionName([32m''[39m)
+   [90m 99 |[39m                           [36mawait[39m fetchSessions()[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:113:10
+TS2304: Cannot find name 'inGameplay'.
+  [0m [90m 111 |[39m         )}
+   [90m 112 |[39m
+  [31m[1m>[22m[39m[90m 113 |[39m         {inGameplay [33m&&[39m (
+   [90m     |[39m          [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 114 |[39m           [33m<[39m[33msection[39m style[33m=[39m{{height[33m:[39m[32m'100%'[39m}}[33m>[39m 
+   [90m 115 |[39m             [33m<[39m[33mGameplayLayout[39m sessionId[33m=[39m{activeSession} [33m/[39m[33m>[39m
+   [90m 116 |[39m           [33m<[39m[33m/[39m[33msection[39m[33m>[39m[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:142:84
+TS2304: Cannot find name 'setInGameplay'.
+  [0m [90m 140 |[39m                 {sessions[33m.[39mmap(s[33m=>[39m (
+   [90m 141 |[39m                   [33m<[39m[33mli[39m key[33m=[39m{s[33m.[39mid} style[33m=[39m{{marginBottom[33m:[39m[35m8[39m[33m,[39mdisplay[33m:[39m[32m'flex'[39m[33m,[39mgap[33m:[39m[35m8[39m[33m,[39malignItems[33m:[39m[32m'center'[39m}}[33m>[39m
+  [31m[1m>[22m[39m[90m 142 |[39m                     [33m<[39m[33mbutton[39m className[33m=[39m[32m"btn"[39m onClick[33m=[39m{()[33m=>[39m{ setActiveSession(s[33m.[39mid)[33m;[39m setInGameplay([36mtrue[39m)[33m;[39m }}[33m>[39m{s[33m.[39mname}[33m<[39m[33m/[39m[33mbutton[39m[33m>[39m
+   [90m     |[39m                                                                                    [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 143 |[39m                     [33m<[39m[33mbutton[39m className[33m=[39m[32m"btn"[39m aria[33m-[39mlabel[33m=[39m[32m"Session options"[39m onClick[33m=[39m{()[33m=>[39msetSettingsSession(s[33m.[39mid)}[33m>[39m[33m...[39m[33m<[39m[33m/[39m[33mbutton[39m[33m>[39m
+   [90m 144 |[39m                   [33m<[39m[33m/[39m[33mli[39m[33m>[39m
+   [90m 145 |[39m                 ))}[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:96:27
+TS2304: Cannot find name 'setInGameplay'.
+  [0m [90m 94 |[39m                           [36mconst[39m data [33m=[39m [36mawait[39m res[33m.[39mjson()
+   [90m 95 |[39m                           setActiveSession(data[33m.[39mid)
+  [31m[1m>[22m[39m[90m 96 |[39m                           setInGameplay([36mtrue[39m)
+   [90m    |[39m                           [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 97 |[39m                           setShowCreateModal([36mfalse[39m)
+   [90m 98 |[39m                           setNewSessionName([32m''[39m)
+   [90m 99 |[39m                           [36mawait[39m fetchSessions()[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:113:10
+TS2304: Cannot find name 'inGameplay'.
+  [0m [90m 111 |[39m         )}
+   [90m 112 |[39m
+  [31m[1m>[22m[39m[90m 113 |[39m         {inGameplay [33m&&[39m (
+   [90m     |[39m          [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 114 |[39m           [33m<[39m[33msection[39m style[33m=[39m{{height[33m:[39m[32m'100%'[39m}}[33m>[39m 
+   [90m 115 |[39m             [33m<[39m[33mGameplayLayout[39m sessionId[33m=[39m{activeSession} [33m/[39m[33m>[39m
+   [90m 116 |[39m           [33m<[39m[33m/[39m[33msection[39m[33m>[39m[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:142:84
+TS2304: Cannot find name 'setInGameplay'.
+  [0m [90m 140 |[39m                 {sessions[33m.[39mmap(s[33m=>[39m (
+   [90m 141 |[39m                   [33m<[39m[33mli[39m key[33m=[39m{s[33m.[39mid} style[33m=[39m{{marginBottom[33m:[39m[35m8[39m[33m,[39mdisplay[33m:[39m[32m'flex'[39m[33m,[39mgap[33m:[39m[35m8[39m[33m,[39malignItems[33m:[39m[32m'center'[39m}}[33m>[39m
+  [31m[1m>[22m[39m[90m 142 |[39m                     [33m<[39m[33mbutton[39m className[33m=[39m[32m"btn"[39m onClick[33m=[39m{()[33m=>[39m{ setActiveSession(s[33m.[39mid)[33m;[39m setInGameplay([36mtrue[39m)[33m;[39m }}[33m>[39m{s[33m.[39mname}[33m<[39m[33m/[39m[33mbutton[39m[33m>[39m
+   [90m     |[39m                                                                                    [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 143 |[39m                     [33m<[39m[33mbutton[39m className[33m=[39m[32m"btn"[39m aria[33m-[39mlabel[33m=[39m[32m"Session options"[39m onClick[33m=[39m{()[33m=>[39msetSettingsSession(s[33m.[39mid)}[33m>[39m[33m...[39m[33m<[39m[33m/[39m[33mbutton[39m[33m>[39m
+   [90m 144 |[39m                   [33m<[39m[33m/[39m[33mli[39m[33m>[39m
+   [90m 145 |[39m                 ))}[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:82:10
+TS2304: Cannot find name 'inGameplay'.
+  [0m [90m 80 |[39m         )}
+   [90m 81 |[39m
+  [31m[1m>[22m[39m[90m 82 |[39m         {inGameplay [33m&&[39m (
+   [90m    |[39m          [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 83 |[39m           [33m<[39m[33msection[39m style[33m=[39m{{height[33m:[39m[32m'100%'[39m}}[33m>[39m 
+   [90m 84 |[39m             [33m<[39m[33mGameplayLayout[39m sessionId[33m=[39m{activeSession} [33m/[39m[33m>[39m
+   [90m 85 |[39m           [33m<[39m[33m/[39m[33msection[39m[33m>[39m[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:111:84
+TS2304: Cannot find name 'setInGameplay'.
+  [0m [90m 109 |[39m                 {sessions[33m.[39mmap(s[33m=>[39m (
+   [90m 110 |[39m                   [33m<[39m[33mli[39m key[33m=[39m{s[33m.[39mid} style[33m=[39m{{marginBottom[33m:[39m[35m8[39m[33m,[39mdisplay[33m:[39m[32m'flex'[39m[33m,[39mgap[33m:[39m[35m8[39m[33m,[39malignItems[33m:[39m[32m'center'[39m}}[33m>[39m
+  [31m[1m>[22m[39m[90m 111 |[39m                     [33m<[39m[33mbutton[39m className[33m=[39m[32m"btn"[39m onClick[33m=[39m{()[33m=>[39m{ setActiveSession(s[33m.[39mid)[33m;[39m setInGameplay([36mtrue[39m)[33m;[39m }}[33m>[39m{s[33m.[39mname}[33m<[39m[33m/[39m[33mbutton[39m[33m>[39m
+   [90m     |[39m                                                                                    [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 112 |[39m                     [33m<[39m[33mbutton[39m className[33m=[39m[32m"btn"[39m aria[33m-[39mlabel[33m=[39m[32m"Session options"[39m onClick[33m=[39m{()[33m=>[39msetSettingsSession(s[33m.[39mid)}[33m>[39m[33m...[39m[33m<[39m[33m/[39m[33mbutton[39m[33m>[39m
+   [90m 113 |[39m                   [33m<[39m[33m/[39m[33mli[39m[33m>[39m
+   [90m 114 |[39m                 ))}[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:105:84
+TS2304: Cannot find name 'setInGameplay'.
+  [0m [90m 103 |[39m                 {sessions[33m.[39mmap(s[33m=>[39m (
+   [90m 104 |[39m                   [33m<[39m[33mli[39m key[33m=[39m{s[33m.[39mid} style[33m=[39m{{marginBottom[33m:[39m[35m8[39m[33m,[39mdisplay[33m:[39m[32m'flex'[39m[33m,[39mgap[33m:[39m[35m8[39m[33m,[39malignItems[33m:[39m[32m'center'[39m}}[33m>[39m
+  [31m[1m>[22m[39m[90m 105 |[39m                     [33m<[39m[33mbutton[39m className[33m=[39m[32m"btn"[39m onClick[33m=[39m{()[33m=>[39m{ setActiveSession(s[33m.[39mid)[33m;[39m setInGameplay([36mtrue[39m)[33m;[39m }}[33m>[39m{s[33m.[39mname}[33m<[39m[33m/[39m[33mbutton[39m[33m>[39m
+   [90m     |[39m                                                                                    [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 106 |[39m                     [33m<[39m[33mbutton[39m className[33m=[39m[32m"btn"[39m aria[33m-[39mlabel[33m=[39m[32m"Session options"[39m onClick[33m=[39m{()[33m=>[39msetSettingsSession(s[33m.[39mid)}[33m>[39m[33m...[39m[33m<[39m[33m/[39m[33mbutton[39m[33m>[39m
+   [90m 107 |[39m                   [33m<[39m[33m/[39m[33mli[39m[33m>[39m
+   [90m 108 |[39m                 ))}[0m
+
+ERROR in src/components/LoggedInDashboard.tsx:105:84
+TS2304: Cannot find name 'setInGameplay'.
+  [0m [90m 103 |[39m                 {sessions[33m.[39mmap(s[33m=>[39m (
+   [90m 104 |[39m                   [33m<[39m[33mli[39m key[33m=[39m{s[33m.[39mid} style[33m=[39m{{marginBottom[33m:[39m[35m8[39m[33m,[39mdisplay[33m:[39m[32m'flex'[39m[33m,[39mgap[33m:[39m[35m8[39m[33m,[39malignItems[33m:[39m[32m'center'[39m}}[33m>[39m
+  [31m[1m>[22m[39m[90m 105 |[39m                     [33m<[39m[33mbutton[39m className[33m=[39m[32m"btn"[39m onClick[33m=[39m{()[33m=>[39m{ setActiveSession(s[33m.[39mid)[33m;[39m setInGameplay([36mtrue[39m)[33m;[39m }}[33m>[39m{s[33m.[39mname}[33m<[39m[33m/[39m[33mbutton[39m[33m>[39m
+   [90m     |[39m                                                                                    [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 106 |[39m                     [33m<[39m[33mbutton[39m className[33m=[39m[32m"btn"[39m aria[33m-[39mlabel[33m=[39m[32m"Session options"[39m onClick[33m=[39m{()[33m=>[39msetSettingsSession(s[33m.[39mid)}[33m>[39m[33m...[39m[33m<[39m[33m/[39m[33mbutton[39m[33m>[39m
+   [90m 107 |[39m                   [33m<[39m[33m/[39m[33mli[39m[33m>[39m
+   [90m 108 |[39m                 ))}[0m
+
+ERROR in src/agents/LoginSignupAgent.tsx:142:28
+TS2304: Cannot find name 'emailValue'.
+  [0m [90m 140 |[39m       [36mconst[39m detailStr [33m=[39m formatDetail(errorDetail)[33m;[39m
+   [90m 141 |[39m       [36mif[39m (detailStr [33m===[39m [32m'Email not verified'[39m) {
+  [31m[1m>[22m[39m[90m 142 |[39m         setUnverifiedEmail(emailValue)[33m;[39m
+   [90m     |[39m                            [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+   [90m 143 |[39m         setError([32m'Email not verified - please enter the verification token sent to your email.'[39m)[33m;[39m
+   [90m 144 |[39m       } [36melse[39m {
+   [90m 145 |[39m         setError(detailStr [33m||[39m [32m'Invalid credentials or user not found.'[39m)[33m;[39m[0m
+

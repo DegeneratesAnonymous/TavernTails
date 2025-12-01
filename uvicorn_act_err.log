@@ -1,0 +1,10 @@
+INFO:     Started server process [56296]
+INFO:     Uvicorn running on http://127.0.0.1:8002 (Press CTRL+C to quit)
+INFO:solottrpg:--> POST http://127.0.0.1:8002/player/signup
+INFO:solottrpg:<-- 200 POST http://127.0.0.1:8002/player/signup
+INFO:solottrpg:--> POST http://127.0.0.1:8002/player/verify-email
+INFO:solottrpg:<-- 200 POST http://127.0.0.1:8002/player/verify-email
+INFO:solottrpg:--> POST http://127.0.0.1:8002/player/login
+INFO:solottrpg:<-- 200 POST http://127.0.0.1:8002/player/login
+INFO:solottrpg:--> POST http://localhost:8002/player/login
+INFO:solottrpg:<-- 401 POST http://localhost:8002/player/login

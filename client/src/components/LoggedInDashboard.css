@@ -1,0 +1,165 @@
+.dashboard-root {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+  padding: 0;
+  gap: 0;
+  box-sizing: border-box;
+}
+
+.dashboard-sidebar {
+  width: 208px;
+  background: rgba(10, 10, 12, 0.88);
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 28px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--text);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+}
+
+.dashboard-brand {
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  text-transform: uppercase;
+  text-align: center;
+  margin-bottom: 4px;
+}
+
+.dashboard-user {
+  font-size: 13px;
+  opacity: 0.8;
+  text-align: center;
+}
+
+.dashboard-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.nav-btn {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  border: none;
+  padding: 8px 10px;
+  border-radius: 6px;
+  text-align: left;
+  cursor: pointer;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  transition: background 120ms ease;
+}
+
+.nav-btn.active {
+  background: rgba(255, 255, 255, 0.14);
+  font-weight: 600;
+}
+
+.nav-btn:disabled,
+.nav-btn[aria-disabled='true'] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  display: flex;
+  justify-content: center;
+}
+
+.btn-logout {
+  background: var(--error);
+  color: var(--text);
+  border: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  width: 100%;
+}
+
+.dashboard-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: transparent;
+  padding: 0;
+}
+
+.dashboard-panel {
+  padding: 32px;
+  margin: 32px;
+  background: rgba(5, 5, 5, 0.75);
+  border-radius: var(--radius);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.dashboard-panel h2 {
+  margin-top: 0;
+}
+
+.gameplay-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin: 32px;
+  border-radius: var(--radius);
+  background: rgba(0, 0, 0, 0.45);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.gameplay-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.gameplay-toolbar-title {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.session-label {
+  font-size: 12px;
+  opacity: 0.6;
+  margin-top: 4px;
+}
+
+.gameplay-content {
+  flex: 1;
+  min-height: 0;
+}
+
+.gameplay-content > * {
+  height: 100%;
+}
+
+@media (max-width: 900px) {
+  .dashboard-root {
+    flex-direction: column;
+  }
+  .dashboard-sidebar {
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 16px;
+  }
+  .dashboard-main {
+    margin-top: 0;
+  }
+  .dashboard-panel,
+  .gameplay-panel {
+    margin: 16px;
+  }
+}
