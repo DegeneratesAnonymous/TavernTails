@@ -5,7 +5,7 @@ from pathlib import Path
 import uuid
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ..auth import get_current_user
 from .. import db
@@ -58,7 +58,7 @@ def create_session_folder(name: str, owner_email: str, invites=None):
     meta = {
         'id': sid,
         'name': name,
-        'created_at': datetime.utcnow().isoformat(),
+        'created_at': datetime.now(timezone.utc).isoformat(),
         'owner': owner_email,
         'invites': _normalize_invites(invites or []),
         'members': [

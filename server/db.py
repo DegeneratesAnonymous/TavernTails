@@ -4,7 +4,7 @@ from typing import Optional, Dict, Any, List
 from sqlalchemy import Column, func
 from sqlalchemy.types import JSON
 from passlib.context import CryptContext
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Use a pure-Python scheme for test reliability (avoids native bcrypt issues in test venvs)
 # In production you may prefer bcrypt/argon2 and install the corresponding packages.
@@ -60,7 +60,7 @@ def create_db_and_tables():
 def create_campaign(owner_id: int, name: str, description: Optional[str] = None) -> Campaign:
     import uuid
     cid = uuid.uuid4().hex[:8]
-    camp = Campaign(id=cid, owner_id=owner_id, name=name.strip(), description=description or '', created_at=datetime.utcnow().isoformat())
+    camp = Campaign(id=cid, owner_id=owner_id, name=name.strip(), description=description or '', created_at=datetime.now(timezone.utc).isoformat())
     with Session(engine) as session:
         session.add(camp)
         session.commit()
@@ -88,7 +88,7 @@ class ChatMessage(SQLModel, table=True):
     sender_name: Optional[str] = None
     role: str = Field(default="player")
     message: str
-    created_at: datetime = Field(default_factory=lambda: datetime.utcnow())
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     metadata_json: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
 
 
@@ -97,7 +97,7 @@ class FriendRequest(SQLModel, table=True):
     from_user_id: int = Field(foreign_key="user.id")
     to_user_id: int = Field(foreign_key="user.id")
     status: str = Field(default="pending")
-    created_at: datetime = Field(default_factory=lambda: datetime.utcnow())
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 def _profile_with_identity(user: User) -> Dict[str, Any]:
@@ -159,7 +159,7 @@ def add_session_to_campaign(campaign_id: str, owner_id: int, session_id: str) ->
 
 
 def create_roll(campaign_id: Optional[str], expression: str, rolls: List[int], mod: int, total: int, by: Optional[str]) -> Roll:
-    rec = Roll(campaign_id=campaign_id, expression=expression, rolls=rolls, mod=mod, total=total, by=by, created_at=datetime.utcnow().isoformat())
+    rec = Roll(campaign_id=campaign_id, expression=expression, rolls=rolls, mod=mod, total=total, by=by, created_at=datetime.now(timezone.utc).isoformat())
     with Session(engine) as session:
         session.add(rec)
         session.commit()
