@@ -1,30 +1,77 @@
-import React, {useState} from 'react'
+import React from 'react'
 
-export default function SiteMenu(){
-  const [collapsed, setCollapsed] = useState(false)
-  const items = [
-    {key:'map', label:'Map'},
-    {key:'inventory', label:'Inventory'},
-    {key:'journal', label:'Journal'},
-    {key:'settings', label:'Settings'},
-  ]
+type MenuItem = {
+  key: string
+  label: string
+  description?: string
+}
+
+type MenuSection = {
+  title: string
+  items: MenuItem[]
+}
+
+type Props = {
+  onNavigate?: (key: string) => void
+  onClose?: () => void
+}
+
+const sections: MenuSection[] = [
+  {
+    title: 'Campaign',
+    items: [
+      {key: 'campaigns', label: 'Campaigns', description: 'Load adventures & manage settings'},
+      {key: 'adventure', label: 'Adventure Settings', description: 'Tone, pacing, safety tools'},
+    ],
+  },
+  {
+    title: 'Characters',
+    items: [
+      {key: 'characters', label: 'Characters', description: 'View, edit, and create heroes'},
+    ],
+  },
+  {
+    title: 'Tools',
+    items: [
+      {key: 'map', label: 'Maps', description: 'Battle maps, world overviews'},
+      {key: 'inventory', label: 'Inventory', description: 'Loot, gear, consumables'},
+      {key: 'journal', label: 'Journal', description: 'Session notes & quests'},
+    ],
+  },
+]
+
+export default function SiteMenu({onNavigate, onClose}: Props){
+  const handleSelect = (key: string) => {
+    onNavigate?.(key)
+    onClose?.()
+  }
 
   return (
-    <div className={"site-menu" + (collapsed? ' collapsed':'' )}>
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
-        {!collapsed && <div style={{fontWeight:700}}>Menu</div>}
-        <button onClick={()=>setCollapsed(v=>!v)} aria-label="Toggle menu">{collapsed? '▶':'◀'}</button>
-      </div>
-      <ul style={{listStyle:'none',padding:0,margin:0}}>
-        {items.map(i=> (
-          <li key={i.key} style={{marginBottom:8}}>
-            <button style={{display:'flex',alignItems:'center',gap:8}}>
-              <span style={{width:28,height:28,background:'#222',borderRadius:6,display:'inline-block'}} />
-              {!collapsed && <span>{i.label}</span>}
-            </button>
-          </li>
-        ))}
-      </ul>
+    <div className="site-menu-panel">
+      <header className="site-menu-header">
+        <div>
+          <div className="site-menu-title">Command Drawer</div>
+          <div className="site-menu-subtitle">Jump to characters, campaigns, or tools</div>
+        </div>
+        <button className="site-menu-close" onClick={onClose} aria-label="Close menu">
+          ✕
+        </button>
+      </header>
+      {sections.map(section => (
+        <section key={section.title} className="site-menu-section">
+          <div className="site-menu-section-title">{section.title}</div>
+          <ul className="site-menu-list">
+            {section.items.map(item => (
+              <li key={item.key}>
+                <button className="site-menu-item" onClick={() => handleSelect(item.key)}>
+                  <span className="site-menu-item-label">{item.label}</span>
+                  {item.description && <span className="site-menu-item-description">{item.description}</span>}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
     </div>
   )
 }
