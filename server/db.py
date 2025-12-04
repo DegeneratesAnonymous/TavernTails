@@ -80,6 +80,37 @@ def list_campaigns_for_owner(owner_id: int) -> List[Campaign]:
         return list(session.exec(stmt).all())
 
 
+class ChatMessage(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: Optional[str] = Field(default=None, index=True)
+    campaign_id: Optional[str] = Field(default=None, index=True)
+    sender_id: Optional[int] = Field(default=None, foreign_key="user.id")
+    sender_name: Optional[str] = None
+    role: str = Field(default="player")
+    message: str
+    created_at: datetime = Field(default_factory=lambda: datetime.utcnow())
+    metadata_json: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+
+
+class FriendRequest(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    from_user_id: int = Field(foreign_key="user.id")
+    to_user_id: int = Field(foreign_key="user.id")
+    status: str = Field(default="pending")
+    created_at: datetime = Field(default_factory=lambda: datetime.utcnow())
+
+
+def _profile_with_identity(user: User) -> Dict[str, Any]:
+    data = dict(user.profile or {})
+    if user.email:
+        data.setdefault("email", user.email)
+    if user.username:
+        data.setdefault("username", user.username)
+    if "name" not in data and user.username:
+        data["name"] = user.username
+    return data
+
+
 def update_campaign(campaign_id: str, owner_id: int, updates: Dict[str, Any]) -> Optional[Campaign]:
     with Session(engine) as session:
         stmt = select(Campaign).where(Campaign.id == campaign_id, Campaign.owner_id == owner_id)
@@ -140,6 +171,121 @@ def list_rolls_for_campaign(campaign_id: str) -> List[Roll]:
     with Session(engine) as session:
         stmt = select(Roll).where(Roll.campaign_id == campaign_id)
         return list(session.exec(stmt).all())
+
+
+def log_chat_message(
+    message: str,
+    *,
+    session_id: Optional[str] = None,
+    campaign_id: Optional[str] = None,
+    sender_id: Optional[int] = None,
+    sender_name: Optional[str] = None,
+    role: str = "player",
+    metadata: Optional[Dict[str, Any]] = None,
+) -> ChatMessage:
+    record = ChatMessage(
+        session_id=session_id,
+        campaign_id=campaign_id,
+        sender_id=sender_id,
+        sender_name=sender_name,
+        role=role,
+        message=message,
+        metadata_json=metadata or {},
+    )
+    with Session(engine) as session:
+        session.add(record)
+        session.commit()
+        session.refresh(record)
+        return record
+
+
+def list_chat_messages(
+    *, session_id: Optional[str] = None, campaign_id: Optional[str] = None, limit: int = 100
+) -> List[ChatMessage]:
+    with Session(engine) as session:
+        stmt = select(ChatMessage)
+        if session_id:
+            stmt = stmt.where(ChatMessage.session_id == session_id)
+        if campaign_id:
+            stmt = stmt.where(ChatMessage.campaign_id == campaign_id)
+        stmt = stmt.order_by(ChatMessage.created_at.desc()).limit(limit)
+        return list(reversed(list(session.exec(stmt).all())))
+
+def send_friend_request(from_identifier: str, to_identifier: str) -> FriendRequest:
+    from_user = get_user_by_identifier(from_identifier)
+    to_user = get_user_by_identifier(to_identifier)
+    if not from_user or not to_user:
+        raise ValueError("User not found")
+    if from_user.id == to_user.id:
+        raise ValueError("Cannot friend yourself")
+    with Session(engine) as session:
+        # prevent duplicate pending or accepted
+        stmt = select(FriendRequest).where(
+            FriendRequest.from_user_id == from_user.id,
+            FriendRequest.to_user_id == to_user.id,
+        )
+        existing = session.exec(stmt).first()
+        if existing and existing.status in ("pending", "accepted"):
+            raise ValueError("Request already exists")
+        req = FriendRequest(from_user_id=from_user.id, to_user_id=to_user.id, status="pending")
+        session.add(req)
+        session.commit()
+        session.refresh(req)
+        return req
+
+
+def list_friends_and_requests(identifier: str):
+    user = get_user_by_identifier(identifier)
+    if not user:
+        return {"friends": [], "pending": []}
+    with Session(engine) as session:
+        # accepted friendships where user is either from or to
+        stmt = select(FriendRequest).where(
+            ((FriendRequest.from_user_id == user.id) | (FriendRequest.to_user_id == user.id)),
+            FriendRequest.status == "accepted",
+        )
+        accepted = list(session.exec(stmt).all())
+        friend_ids = set()
+        for fr in accepted:
+            friend_ids.add(fr.to_user_id if fr.from_user_id == user.id else fr.from_user_id)
+        friends = []
+        if friend_ids:
+            stmt = select(User).where(User.id.in_(list(friend_ids)))
+            friends = [_profile_with_identity(u) for u in session.exec(stmt).all()]
+
+        # incoming pending requests
+        stmt = select(FriendRequest).where(FriendRequest.to_user_id == user.id, FriendRequest.status == "pending")
+        pending = []
+        pending_rows = session.exec(stmt).all()
+        if pending_rows:
+            from_ids = [r.from_user_id for r in pending_rows]
+            user_map = {
+                u.id: _profile_with_identity(u)
+                for u in session.exec(select(User).where(User.id.in_(from_ids))).all()
+            }
+            for r in pending_rows:
+                pending.append({"from_id": r.from_user_id, "from_profile": user_map.get(r.from_user_id, {})})
+        return {"friends": friends, "pending": pending}
+
+
+def accept_friend_request(to_identifier: str, from_identifier: str) -> bool:
+    to_user = get_user_by_identifier(to_identifier)
+    from_user = get_user_by_identifier(from_identifier)
+    if not to_user or not from_user:
+        return False
+    with Session(engine) as session:
+        stmt = select(FriendRequest).where(
+            FriendRequest.from_user_id == from_user.id,
+            FriendRequest.to_user_id == to_user.id,
+        )
+        req = session.exec(stmt).first()
+        if not req or req.status != "pending":
+            return False
+        req.status = "accepted"
+        session.add(req)
+        session.commit()
+        session.refresh(req)
+        return True
 
 
 def hash_password(password: str) -> str:
