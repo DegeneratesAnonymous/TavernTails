@@ -120,6 +120,46 @@
   color: rgba(255,255,255,0.6);
   font-size: 0.85rem;
 }
+.session-banner{
+  padding: 16px 24px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  background: rgba(24,24,24,0.6);
+}
+.session-banner-title{
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+.session-banner-subtitle{
+  font-size: 0.9rem;
+  color: rgba(255,255,255,0.7);
+}
+.suggestions-bar{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  background: rgba(12,12,12,0.65);
+}
+.suggestions-label{
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.8rem;
+  color: rgba(255,255,255,0.65);
+}
+.suggestions-list{
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.suggestion-pill{
+  border-radius: 999px;
+  padding: 6px 14px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+  color: inherit;
+  font-weight: 500;
+}
 /* Scene area for image and narration overlay */
 .scene-area {
   flex: 1 1 60%;
