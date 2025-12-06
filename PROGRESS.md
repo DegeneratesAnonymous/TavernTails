@@ -33,6 +33,9 @@ _Last updated: 2025-12-05 by GitHub Copilot_
 10. **Adventure Loader Guard + Upload Smoke Test (Dec 5)**
    - Hardened `client/src/components/NarrativeView.tsx` so `choices` defaults to an empty array, preventing `Cannot read properties of undefined (reading 'map')` when campaign files omit options.
    - Added `server/tools/smoke_upload.py` to automate session creation + `/documents/{session}/upload` verification against a running dev stack; handy for quick health checks during handoffs.
+11. **Scene Cue Roll Triggers (Dec 6)**
+   - `GameplayLayout` now stores structured `SceneCue` objects with dice recommendations from `/scene/analyze` broadcasts and passes them into `CharacterPanel`.
+   - Each cue renders a contextual “Roll” button that calls `/rolls` with session context, closes the loop between scene analysis hints and logged dice results.
 
 ## Immediate Next Steps (suggested order)
 1. **Documents UI polish** – add upload retries/cancel flows, inline thumbnail previews, and clearer failure messaging for presigned uploads.
@@ -64,6 +67,7 @@ _Last updated: 2025-12-05 by GitHub Copilot_
 | 2025-12-05 | `venv\Scripts\python.exe -m pytest server/tests -q` |
 | 2025-12-05 | `npm run build` (client) |
 | 2025-12-05 | `$env:PYTHONPATH='C:\\Users\\colem\\OneDrive\\solottrpg'; venv\Scripts\python.exe server/tools/smoke_upload.py` |
+| 2025-12-06 | `npm run build` (client) |
 
 ## How To Resume
 1. **Activate env:** `& .\venv\Scripts\Activate.ps1` at repo root.
