@@ -1,8 +1,27 @@
-import React, {useRef, useState} from 'react'
+import React, {useMemo, useRef, useState} from 'react'
+import CharacterIconStrip, {CharacterSnapshot} from './CharacterIconStrip'
+import './CharacterPanel.css'
 
 type SectionKey = 'inventory' | 'spells' | 'skills'
 
-export default function CharacterPanel(){
+export type CharacterSummary = CharacterSnapshot & {
+  id: string
+  name: string
+  level: number
+  hp: { current: number; max: number; temp?: number }
+  ac: number
+  spellSave: number
+  inventory: string[]
+  spells: string[]
+}
+
+type Props = {
+  roster: CharacterSummary[]
+  selectedId?: string | null
+  onSelect?: (id: string) => void
+}
+
+export default function CharacterPanel({roster, selectedId, onSelect}: Props){
   const [expanded, setExpanded] = useState<SectionKey|null>(null)
   const containerRef = useRef<HTMLDivElement|null>(null)
 
@@ -16,53 +35,79 @@ export default function CharacterPanel(){
     },120)
   }
 
+  const selected = useMemo(() => {
+    if(!roster.length) return undefined
+    if(!selectedId) return roster[0]
+    return roster.find(r => r.id === selectedId) ?? roster[0]
+  }, [roster, selectedId])
+
+  if(!roster.length){
+    return (
+      <div className="character-panel-root">
+        <h3 style={{marginTop:0}}>Characters</h3>
+        <div>No characters yet.</div>
+        <div style={{marginTop:8}}>
+          <button style={{width:'100%'}}>Add Character</button>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="character-panel" style={{height:'100%',display:'flex',flexDirection:'column'}}>
+    <div className="character-panel-root">
       <h3 style={{marginTop:0}}>Characters</h3>
+      <CharacterIconStrip character={selected} />
       <div style={{flex:1,overflowY:'auto'}} ref={containerRef}>
-        <div style={{padding:8,borderRadius:6,background:'#0f0f0f',marginBottom:8}}>
-          <strong>Aria the Ranger</strong>
-          <div>HP: 12/12 • Level 2</div>
+        <div className="character-roster">
+          {roster.map(entry => (
+            <div key={entry.id} className={`character-card ${entry.id === selected?.id ? 'active' : ''}`}>
+              <button onClick={() => onSelect?.(entry.id)}>
+                <div className="character-name">{entry.name}</div>
+                <div className="character-meta">HP {entry.hp.current}/{entry.hp.max} • Level {entry.level}</div>
+              </button>
+            </div>
+          ))}
         </div>
 
-        <div style={{padding:8,borderRadius:6,background:'#0f0f0f',marginBottom:8}}>
-          <strong>Torin the Fighter</strong>
-          <div>HP: 18/18 • Level 3</div>
-        </div>
-
-        <div style={{marginTop:6}}>
-          <div id="section-inventory" style={{marginBottom:6}}>
-            <button style={{width:'100%'}} onClick={()=>toggle('inventory')}>Inventory</button>
+        <div className="character-sections">
+          <div id="section-inventory" className="character-section">
+            <button onClick={()=>toggle('inventory')}>Inventory</button>
             {expanded==='inventory' && (
-              <div style={{marginTop:8,padding:8,background:'#0b0b0b',borderRadius:6}}>
+              <div className="character-section-list">
                 <ul style={{margin:0,paddingLeft:16}}>
-                  <li>Rope</li>
-                  <li>Lantern</li>
-                  <li>Rations</li>
+                  {selected?.inventory.map(item => (
+                    <li key={item}>{item}</li>
+                  ))}
                 </ul>
               </div>
             )}
           </div>
 
-          <div id="section-spells" style={{marginBottom:6}}>
-            <button style={{width:'100%'}} onClick={()=>toggle('spells')}>Spells</button>
+          <div id="section-spells" className="character-section">
+            <button onClick={()=>toggle('spells')}>Spells</button>
             {expanded==='spells' && (
-              <div style={{marginTop:8,padding:8,background:'#0b0b0b',borderRadius:6}}>
-                <ul style={{margin:0,paddingLeft:16}}>
-                  <li>Magic Missile</li>
-                  <li>Heal</li>
-                </ul>
+              <div className="character-section-list">
+                {selected?.spells.length ? (
+                  <ul style={{margin:0,paddingLeft:16}}>
+                    {selected.spells.map(spell => (
+                      <li key={spell}>{spell}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div>No spells prepared</div>
+                )}
               </div>
             )}
           </div>
 
-          <div id="section-skills" style={{marginBottom:6}}>
-            <button style={{width:'100%'}} onClick={()=>toggle('skills')}>Skills</button>
+          <div id="section-skills" className="character-section">
+            <button onClick={()=>toggle('skills')}>Skills</button>
             {expanded==='skills' && (
-              <div style={{marginTop:8,padding:8,background:'#0b0b0b',borderRadius:6}}>
+              <div className="character-section-list">
                 <ul style={{margin:0,paddingLeft:16}}>
-                  <li>Perception +4</li>
-                  <li>Stealth +3</li>
+                  {selected?.skills.map(skill => (
+                    <li key={skill.name}>{skill.name} {skill.mod >= 0 ? '+' : ''}{skill.mod}</li>
+                  ))}
                 </ul>
               </div>
             )}

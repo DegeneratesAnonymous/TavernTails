@@ -1,0 +1,77 @@
+# TavernTAIls Progress Tracker
+_Last updated: 2025-12-05 by GitHub Copilot_
+
+## Where Things Stand
+- **Sprint Focus:** Finish Sprint 1 deliverables (chat upgrades, turn queue, agent stubs, documentation).
+- **Runtime:** `start-app.ps1` launches uvicorn (127.0.0.1:8000) + CRA dev server (localhost:3000).
+- **Realtime:** `/ws/sessions/{sessionId}?token=<JWT>` now streams suggestions, turn updates, chat messages, and roll results.
+- **UI State:** `GameplayLayout` renders drawer/banner/suggestions/player status + new turn tracker; `Chat` has invite/export/tools plus live feed + notes recap command.
+
+## Completed Recently
+1. **Suggestion + Turn Queue Stream (Dec 3-4)**
+   - Added `server/realtime.py` broadcaster, `/suggestions` endpoint, `/turns` API, websocket router, and React polling/WS consumers.
+2. **Chat Live Feed & Notes (Dec 4)**
+   - `/chat` POST now broadcasts; `/rolls` emits events when `session_id` is present.
+   - `Chat.tsx` listens on the session socket, dedupes entries, requests turn-based notes via `/notes/log`, and includes roll/system messages.
+3. **Sprint-1 UI Items**
+   - Command drawer, rotating banner, suggestion rail, player capsule, and turn tracker all implemented per Plan §18.
+4. **Session Documents + DB Guard (Dec 4)**
+   - Introduced `server/agents/documents.py` with list/create/delete endpoints backed by the new `DocumentStore` abstraction plus coverage in `server/tests/test_documents.py`.
+   - Hardened `server/main.py` startup so DB seeding occurs even when tests swap the SQLModel engine, ensuring dev-logins succeed consistently.
+5. **Beyond20 Socket Flow (Dec 4)**
+   - Normalized `/integrations/beyond20/roll` payloads so remote totals + dice are preserved, persisted, and broadcast as `rolls.result` + `beyond20.roll` websocket events; covered by `server/tests/test_rolls.py`.
+   - `GameplayLayout` now surfaces a transient Beyond20 pill + waiting indicator, while `Chat` labels websocket rolls with mentions and dispatches waiting hints.
+6. **Mention-driven Waiting Indicator (Dec 4)**
+   - `Chat.tsx` forwards mention metadata from websocket payloads and emits `session:waiting` events; `GameplayLayout` applies timed overrides so mention pings don’t clobber the turn tracker.
+7. **Session Docs UI (Dec 4)**
+   - Added `/documents/{session}/{doc}` detail endpoint plus storage read helpers; frontend sidebar now includes a `DocumentsPanel` for listing, previewing, creating, and deleting shared notes.
+8. **Scene & NPC Agent Streams (Dec 4)**
+   - `/scene/analyze` and `/npc/manage` accept `session_id` and broadcast `scene.cues` / `npc.profile` Ws events; `Chat` tools now capture context and prompt for NPC data, while `CharacterPanel` surfaces live cues.
+9. **S3-backed Document Uploads (Dec 5)**
+   - `TAVERNTAILS_STORAGE_MODE=s3` now swaps in `S3DocumentStore`, `/documents/{session}/presign` + `/register` enable direct browser uploads, and `/documents/{session}/upload` remains available for local/dev mode.
+   - Moto-based regression coverage in `server/tests/test_presign_register.py` keeps CI green without hitting AWS while `server/tests/test_uploads.py` continues to exercise the filesystem path.
+10. **Adventure Loader Guard + Upload Smoke Test (Dec 5)**
+   - Hardened `client/src/components/NarrativeView.tsx` so `choices` defaults to an empty array, preventing `Cannot read properties of undefined (reading 'map')` when campaign files omit options.
+   - Added `server/tools/smoke_upload.py` to automate session creation + `/documents/{session}/upload` verification against a running dev stack; handy for quick health checks during handoffs.
+
+## Immediate Next Steps (suggested order)
+1. **Documents UI polish** – add upload retries/cancel flows, inline thumbnail previews, and clearer failure messaging for presigned uploads.
+2. **Scene/NPC automation follow-through** – connect cues to real dice triggers + NPC tracking data persisted per session.
+3. **CI coverage expansion** – extend GitHub Actions to lint/type-check the React app and pin/test boto3+moto compatibility for presign coverage.
+4. **LLM Agent Hardening** – capture structured prompts/results in storage ahead of multiplayer testing.
+
+## S3 & Direct Upload Configuration
+1. **Prereqs:** Keep `boto3`/`moto` from `server/requirements.txt` installed and provision an S3 bucket with `Put/Get/Delete` rights.
+2. **Env vars:**
+   - `TAVERNTAILS_STORAGE_MODE=s3`
+   - `TAVERNTAILS_S3_BUCKET=<bucket>`
+   - Optional `TAVERNTAILS_S3_PREFIX=env/dev` for namespacing.
+3. **AWS credentials:** Export `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optionally `AWS_REGION`, or use a configured profile.
+4. **Server restart:** Bounce uvicorn so `server.storage.documents.get_document_store()` rebuilds and log output confirms S3 mode.
+5. **Frontend flow:** `DocumentsPanel` first calls `/documents/{session}/presign`; on success it posts directly to S3 then hits `/register`. Failures or local mode fall back to `/documents/{session}/upload`.
+6. **Smoke tests:** `venv\Scripts\python.exe -m pytest server/tests/test_uploads.py server/tests/test_presign_register.py -q` covers both storage paths without touching AWS.
+
+## Validation Log
+| Date (UTC) | Command |
+| --- | --- |
+| 2025-12-04 | `$env:PYTHONDONTWRITEBYTECODE=1; venv\Scripts\python.exe -m pytest server/tests/test_chat.py server/tests/test_agents.py server/tests/test_turns.py -q` |
+| 2025-12-04 | `$env:PYTHONDONTWRITEBYTECODE=1; venv\Scripts\python.exe -m pytest server/tests/test_chat.py -q` (spot-check) |
+| 2025-12-04 | `npm run build` (client) |
+| 2025-12-04 | `$env:PYTHONDONTWRITEBYTECODE=1; venv\Scripts\python.exe -m pytest server/tests` |
+| 2025-12-04 | `$env:PYTHONDONTWRITEBYTECODE=1; venv\Scripts\python.exe -m pytest server/tests` (post Beyond20 & mentions) |
+| 2025-12-04 | `$env:PYTHONDONTWRITEBYTECODE=1; venv\Scripts\python.exe -m pytest server/tests` (docs UI + scene/NPC streams) |
+| 2025-12-04 | `npm run build` (client) |
+| 2025-12-05 | `venv\Scripts\python.exe -m pytest server/tests -q` |
+| 2025-12-05 | `npm run build` (client) |
+| 2025-12-05 | `$env:PYTHONPATH='C:\\Users\\colem\\OneDrive\\solottrpg'; venv\Scripts\python.exe server/tools/smoke_upload.py` |
+
+## How To Resume
+1. **Activate env:** `& .\venv\Scripts\Activate.ps1` at repo root.
+2. **Start stack:** `./start-app.ps1` (writes logs to `logs/` & `client/npm-*.log`).
+3. **Connect client:** Visit `http://localhost:3000`, log in with `test@example.com / secret` (dev user ensured at startup).
+4. **Join session:** Create or open a session, then connect UI panels:
+   - Suggestions refresh automatically (and via websocket).
+   - Turn tracker updates through `/turns` endpoints or future UI controls.
+   - Chat reflects invites, notes recap (`!notes`), dice rolls, and websocket-fed updates.
+5. **Pick up next Sprint task:** Start with the “Immediate Next Steps” list above.
+6. **Run tests:** From repo root run `venv\Scripts\python.exe -m pytest server/tests` (PowerShell inherits the venv path), especially if `pytest` isn’t on PATH.

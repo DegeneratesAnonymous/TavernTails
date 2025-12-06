@@ -22,7 +22,15 @@ export default function NarrativeView({sessionId}: Props){
     const seedUrl = sessionId ? buildApiUrl(`/sessions/${sessionId}/file/story.json`) : buildApiUrl('/content/campaigns/seed')
     fetch(seedUrl, { headers })
       .then(r=>r.ok? r.json() : Promise.reject('no'))
-      .then((data:Scene)=>{ if(mounted) setScene(data) })
+      .then((data:Scene)=>{
+        if(mounted){
+          const normalized: Scene = {
+            ...data,
+            choices: Array.isArray(data?.choices) ? data.choices : []
+          }
+          setScene(normalized)
+        }
+      })
       .catch(()=>{
         setScene({
           id:'seed',
@@ -56,14 +64,14 @@ export default function NarrativeView({sessionId}: Props){
 
   return (
     <div className="narrative-view" style={{padding:12,height:'100%',boxSizing:'border-box',display:'flex',flexDirection:'column'}}>
-      <div className="scene-image-area" style={{position:'relative',height:'56%',background:'#111',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
+      <div className="scene-image-area" style={{position:'relative',height:'48%',background:'#111',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
         {scene.image ? (
           <img src={scene.image} alt="scene" style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:8,filter:'brightness(0.85)'}}/>
         ) : (
           <div style={{color:'#888',width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center'}}>Scene image</div>
         )}
-        <div className="narration-overlay" style={{position:'absolute',top:0,left:0,width:'100%',height:'100%',display:'flex',flexDirection:'column',justifyContent:'center',alignItems:'center',pointerEvents:'none'}}>
-          <div style={{background:'rgba(24,24,24,0.65)',color:'#fff',padding:'24px 32px',borderRadius:'12px',maxWidth:'80%',textAlign:'center',fontSize:'1.25rem',boxShadow:'0 2px 16px #0008'}}>
+        <div className="narration-overlay">
+          <div className="narration-card">
             <h2 style={{margin:'0 0 12px 0',fontWeight:700}}>{scene.title}</h2>
             <p style={{margin:0}}>{scene.text}</p>
           </div>
@@ -71,9 +79,12 @@ export default function NarrativeView({sessionId}: Props){
       </div>
       <div style={{marginTop:12,flex:1,overflow:'auto'}}>
         <div style={{marginTop:8}}>
-          {scene.choices.map(c=> (
-            <button key={c.id} style={{marginRight:8}} onClick={()=>choose(c.id)}>{c.label}</button>
+          {(scene.choices && scene.choices.length ? scene.choices : []).map(c=> (
+            <button key={c.id} className="narrative-choice-btn" onClick={()=>choose(c.id)}>{c.label}</button>
           ))}
+          {(!scene.choices || scene.choices.length === 0) && (
+            <div style={{fontSize:12,color:'#888'}}>No choices available yet.</div>
+          )}
         </div>
       </div>
     </div>

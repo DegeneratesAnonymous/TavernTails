@@ -160,6 +160,30 @@
   color: inherit;
   font-weight: 500;
 }
+.player-status{
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  background: rgba(5,5,5,0.6);
+}
+.player-status-name{
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.player-status-grid{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+}
+.player-status-label{
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.55);
+}
+.player-status-value{
+  font-size: 1rem;
+  font-weight: 600;
+}
 /* Scene area for image and narration overlay */
 .scene-area {
   flex: 1 1 60%;
