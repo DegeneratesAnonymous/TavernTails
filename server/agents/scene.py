@@ -1,40 +1,58 @@
-# Scene Analysis Agent
-# Detects needed dice rolls and prompts players
+"""Scene agent: classifies actions and recommends rolls."""
+
+from fastapi import APIRouter
+from pydantic import BaseModel, Field
+from typing import List, Optional
+
+from ..realtime import broadcaster
+
+router = APIRouter(tags=["scene"])
 
 
-"""
-Scene Analysis Agent
-Detects needed dice rolls, enforces rules, and prompts for player actions.
-"""
+class SceneAnalysisRequest(BaseModel):
+    scene: str = Field(..., description="Scene description")
+    actions: List[str] = Field(default_factory=list, description="Player actions")
+    session_id: Optional[str] = Field(default=None, description="Active session to broadcast cues toward")
 
-from fastapi import APIRouter, Body
-from typing import List
 
-router = APIRouter()
+class RollRecommendation(BaseModel):
+    type: str
+    skill: str
+    reason: str
 
-@router.post("/scene/analyze")
-def analyze_scene(
-    scene: str = Body(..., description="Scene description"),
-    actions: List[str] = Body([], description="List of player actions")
-):
-    """
-    Analyze the scene and player actions to detect needed dice rolls and prompts.
-    """
-    dice_rolls = []
-    prompts = []
-    # Example logic: check for uncertainty and classify actions
-    for action in actions:
-        if any(word in action.lower() for word in ["persuade", "convince", "deceive"]):
-            dice_rolls.append({"type": "d20", "skill": "Persuasion", "reason": "Social interaction"})
-            prompts.append(f"Please roll a d20 for your Persuasion check.")
-        elif any(word in action.lower() for word in ["attack", "strike", "shoot"]):
-            dice_rolls.append({"type": "d20", "skill": "Attack", "reason": "Combat action"})
-            prompts.append(f"Please roll a d20 for your Attack roll.")
-        elif any(word in action.lower() for word in ["search", "investigate", "perceive"]):
-            dice_rolls.append({"type": "d20", "skill": "Perception", "reason": "Exploration"})
-            prompts.append(f"Please roll a d20 for your Perception check.")
-    # Always check for needed rolls after player actions
-    return {
-        "dice_rolls": dice_rolls,
-        "prompts": prompts
-    }
+
+class SceneAnalysisResponse(BaseModel):
+    dice_rolls: List[RollRecommendation]
+    prompts: List[str]
+
+
+KEYWORDS = {
+    "Persuasion": ["persuade", "convince", "deceive", "charm"],
+    "Attack": ["attack", "strike", "shoot", "swing"],
+    "Perception": ["search", "investigate", "perceive", "scan"],
+}
+
+
+@router.post("/scene/analyze", response_model=SceneAnalysisResponse)
+async def analyze_scene(payload: SceneAnalysisRequest) -> SceneAnalysisResponse:
+    dice_rolls: List[RollRecommendation] = []
+    prompts: List[str] = []
+
+    for action in payload.actions:
+        lowered = action.lower()
+        for skill, tokens in KEYWORDS.items():
+            if any(token in lowered for token in tokens):
+                dice_rolls.append(RollRecommendation(type="d20", skill=skill, reason=f"{skill} triggered by action"))
+                prompts.append(f"Roll a d20 for {skill}: '{action}'.")
+                break
+    response = SceneAnalysisResponse(dice_rolls=dice_rolls, prompts=prompts)
+    if payload.session_id:
+        await broadcaster.broadcast_json(payload.session_id, {
+            "type": "scene.cues",
+            "session_id": payload.session_id,
+            "scene": payload.scene,
+            "actions": payload.actions,
+            "dice_rolls": [rec.model_dump() for rec in dice_rolls],
+            "prompts": prompts,
+        })
+    return response

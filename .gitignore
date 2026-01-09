@@ -10,3 +10,22 @@ client/build/
 logs/
 /.vscode/
 TaverTailsssh
+
+# Local runtime/test artifacts
+*.log
+client/npm-err.log
+client/npm-out.log
+uvicorn_*_out.log
+uvicorn_*_err.log
+
+# Local session data (generated at runtime/tests)
+server/sessions/
+
+# Stray local docs/screenshots
+*.pdf
+*.docx
+/Abilities.png
+/Features.png
+/Inventory.png
+/Journal.png
+/Skills.png

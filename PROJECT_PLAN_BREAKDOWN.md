@@ -1,175 +1,166 @@
-**TavernTAIls — Work Package Breakdown**
+# TavernTAIls – Enhanced Technical and Product Plan
 
-Purpose: Break the high-level `PROJECT_PLAN.md` into actionable work packages that can be assigned to individuals or small teams. Each package lists scope, deliverables, API/DB touchpoints, acceptance criteria, rough estimate, dependencies, and risks.
+_Last updated: 2025-12-01 – Maintainers: TavernTAIls Core Team_
 
-How to use this file:
-- Assign owners to packages and move the package to your sprint board.
-- Use the acceptance criteria to verify completion.
-- Update estimates and dependencies as work progresses.
+Supersedes `PROJECT_PLAN.md` (v2025-11-30) and `PROJECT_PLAN_BREAKDOWN.md` (v2025-11-25).
 
-Work packages
-----------------
-
-1) Core Platform — Auth, Users, Friends, and Accounts
-- Scope:
-  - Implement robust JWT auth, refresh tokens (optional), user profiles, and friend relationships.
-  - User settings (email, display name, DnD Beyond token storage opt-in).
-- Deliverables:
-  - DB: `users`, `friends` tables and migrations.
-  - Endpoints: `POST /player/signup`, `POST /player/login`, `GET /player/me`, `POST /player/friends`, `GET /player/friends`.
-  - Tests: unit tests for signup/login, integration tests for friend invites/acceptance.
-- Acceptance:
-  - Sign up, email verification (dev-mode token), login, and friend add/accept flows pass e2e.
-  - Proper role checks for host vs player.
-- Est: 3–5 days
- - Dependencies: DB migrations, `server/auth.py` updates.
- - Risks: OAuth integration complexity for DnD Beyond.
-
-2) Campaigns & Sessions (Campaign CRUD + membership)
-- Scope:
-  - Campaign creation, list, update, archive.
-  - Session management within a campaign: create session, save/load documents, invite flow with required level, membership enforcement.
-- Deliverables:
-  - DB: `campaigns`, `sessions`, `invites`, `documents` metadata.
-  - Endpoints: `POST /campaigns`, `GET /campaigns`, `POST /campaigns/{id}/invite`, `WS /campaigns/{id}/ws`.
-  - UI: Campaigns menu, session creation modal (choose flavor/core/hidden docs), invite UI that allows requiring character level.
-- Acceptance:
-  - Host creates campaign and session, invites player specifying minimum level, invited player accepts by selecting a character.
-  - Membership checks enforce session file access and hidden document visibility.
-- Est: 1–2 weeks
- - Dependencies: Core Platform, Character service, Session Documents storage.
- - Risks: Access control bugs exposing hidden docs.
-
-3) Character Service & Import Pipeline
-- Scope:
-  - Character CRUD for user-scoped characters, import from DnD Beyond (short-term: user-export; long-term: token-based sync), PDF parsing (PyMuPDF + heuristics).
-- Deliverables:
-  - DB: `characters` table (owner_id, name, level, attributes JSON, skills, spells, items JSON).
-  - Endpoints: `POST /characters` (create/import), `GET /characters` (user), `PUT /characters/{id}`.
-  - Tools: `server/tools/character_import.py` prototype and unit tests for parsing heuristics.
-- Acceptance:
-  - User can create character manually and import a sample DnD Beyond export or PDF; data maps to fields and appears in UI.
-  - Character changes reflected via API within expected sync window (if DnD Beyond token sync enabled).
-- Est: 1–3 weeks (PDF heuristics increase effort)
- - Dependencies: Core Platform (user auth), Campaigns/Invites.
- - Risks: PDF parsing accuracy; legal/ToS concerns around DnD Beyond scraping.
-
-4) Dice Engine (PencilPusher) & Beyond20 Ingest
-- Scope:
-  - Implement deterministic dice roll engine with modifiers and a roll history.
-  - Endpoint for ingestion of Beyond20 roll events: `/integrations/beyond20/roll`.
-- Deliverables:
-  - Endpoint: `POST /rolls` (local), `POST /integrations/beyond20/roll` (external), `GET /rolls/{session}`.
-  - Backend resolver that maps Beyond20 payload to player & session and calls the same resolve path.
-  - Frontend roll UI & integration with player menu shortcuts.
-- Acceptance:
-  - Rolls performed in-app (with modifier application) and Beyond20 POSTs map to the same result pipeline.
-  - Roll history flushes to session log and can be replayed.
-- Est: 3–5 days
- - Dependencies: Character Service (modifiers), Campaign Sessions, WebSocket updates.
- - Risks: Browser->server forwarding pattern for Beyond20; users must configure bridge; CORS issues.
-
-5) Agents: Narrative, Writer, Narrator, Scene, Scribe, NPC Manager, Storyboard
-- Scope:
-  - Create modular agent interfaces and minimal implementations (stubs) for each agent to iterate on behavior.
-  - Define I/O contracts and example JSON payloads.
-- Deliverables:
-  - `server/agents/{name}.py` routers for each agent exposing REST hooks.
-  - Worker pattern for long-running LLM calls (job queue + results persistence).
-  - GM Agent that composes outputs and validates them.
-- Acceptance:
-  - Agents can be invoked with a state snapshot and return structured output (narration, roll_request, scene_update).
-  - GM Agent receives agent outputs, validates and publishes through WebSocket to clients.
-- Est: 2–4 weeks for solid MVP stubs and orchestration
- - Dependencies: Worker queue, LLM keys, persistence.
- - Risks: Cost of LLM calls; unpredictability in outputs requiring safety/validation.
-
-6) Session Documents (Core / Flavor / Hidden)
-- Scope:
-  - Document upload/download UI, tagging (core/flavor/hidden), permissions enforcement, versioning for Core docs.
-- Deliverables:
-  - Storage layout: `/data/campaigns/{id}/documents/` with metadata in DB.
-  - Endpoints: `POST /campaigns/{id}/documents`, `GET /campaigns/{id}/documents`, `GET /documents/{id}`.
-  - DM Helper UI to view hidden docs and perform admin actions.
-- Acceptance:
-  - Uploads stored and retrievable; hidden docs are not visible to non-hosts via API or UI.
-  - Document version and uploader metadata are present and retrievable.
-- Est: 1–2 weeks
- - Dependencies: Campaigns & Sessions, Auth
- - Risks: Large file storage, migrations to S3 later.
-
-7) Chat, Turn Queue & Notifications
-- Scope:
-  - Persistent chat per session with message history, player menu, and optional email/push notifications.
-  - Implement asynchronous play features: turn queue, notifications (email/poke), mention/poke.
-- Deliverables:
-  - DB: `messages` table, `notifications` queue table.
-  - Endpoints: `POST /campaigns/{id}/messages`, `GET /campaigns/{id}/messages`, WebSocket channel.
-  - Notification worker to send emails or store push notifications.
-- Acceptance:
-  - Chat persists, shows order, and sends a notification when a player is pinged.
-  - Turn queue indicates whose turn it is and allows passing.
-- Est: 1–2 weeks
- - Dependencies: WebSocket infra, email provider or local SMTP dev config.
- - Risks: Spam/abuse; need rate-limiting.
-
-8) Image Agent & Illustration Styles
-- Scope:
-  - Image generation adapter layer with style presets (8-bit, cartoon, pencil, classic). Provide safe defaults and caching.
-- Deliverables:
-  - Adapter pattern with `ImageProvider` interface, local caching, style presets endpoint `POST /images/generate`.
-  - UI to request images and attach to session documents.
-- Acceptance:
-  - Player can request an image with a style and receive an image URL after generation.
-  - Generation events are queued and non-blocking to the main request thread.
-- Est: 1–2 weeks for adapter + queue; extra time for provider tuning.
- - Dependencies: LLM or image provider keys, worker queue.
- - Risks: Costs and content policy safety.
-
-9) PDF Import & Character Parsing (prototype)
-- Scope:
-  - Extract text via `PyMuPDF` or `pdfminer.six` and map fields into `characters` schema using heuristics.
-- Deliverables:
-  - `server/tools/pdf_import.py` with tests and sample PDFs.
-  - UI flow for uploading a PDF and mapping parsed fields.
-- Acceptance:
-  - Example PDFs map correctly to name, level, ability scores, and simple equipment lists.
-- Est: 1–3 weeks (depends on PDF variety)
- - Dependencies: Character service, storage
- - Risks: Poor accuracy; may require ML-based extraction later.
-
-10) Testing, CI, and E2E
-- Scope:
-  - Unit tests, integration tests, and E2E tests with Playwright/Cypress. GitHub Actions pipeline to run tests and build.
-- Deliverables:
-  - Test coverage for backend routers and critical frontend flows.
-  - GitHub Actions workflows to run tests on PRs and deploy preview builds.
-- Acceptance:
-  - CI runs on PRs and fails on regressions; smoke E2E exists for signup→login→create campaign→invite.
-- Est: 1–2 weeks to establish baseline pipeline
- - Dependencies: Test fixtures, seeded DB, dev infra for Playwright.
- - Risks: E2E flakiness; maintain tests as product evolves.
-
-Appendix: Example API & DB mappings (short)
-- DB tables (minimum): `users`, `friends`, `campaigns`, `sessions`, `documents`, `characters`, `messages`, `invites`, `rolls`, `agent_events`.
-- Example endpoints (grouped):
-  - Auth: `POST /player/signup`, `POST /player/login`, `GET /player/me`
-  - Campaigns: `POST /campaigns`, `GET /campaigns`, `POST /campaigns/{id}/invite`
-  - Characters: `POST /characters`, `GET /characters`, `PUT /characters/{id}`
-  - Rolls: `POST /rolls`, `POST /integrations/beyond20/roll`
-  - Documents: `POST /campaigns/{id}/documents`, `GET /campaigns/{id}/documents`
-
-Owner assignment template
-- For each package, set:
-  - Owner: (name)
-  - Sprint target: (dates)
-  - Acceptance criteria: (copy from package)
-  - Blockers: (list)
-
-Next steps
-- Review packages and assign owners/estimates.
-- Create GitHub issues per package with the acceptance text copied into the issue body.
-- Begin work on `Core Platform` and `Campaigns & Sessions` in the next sprint.
+## Document Map
+- **Sections 1–8**: Product vision, personas, UX flows, and system architecture.
+- **Sections 9–12**: Security, operations, and quality strategy.
+- **Sections 13–17**: Delivery plan, risks, KPIs, and next steps.
 
 ---
-This document is actionable and intended to be used alongside `PROJECT_PLAN.md`. Update as work is subdivided further.
+
+## 1. Executive Summary
+TavernTAIls is an AI-assisted solo/co-op tabletop RPG companion that assembles a “Session AI” of cooperating agents (Narrative, Scene, NPC, Notes, Storyboard, Image) to run persistent campaigns. The MVP targets deterministic multiplayer-friendly tooling: authenticated players spin up campaigns, curate session documents, invite friends, and rely on lightweight agent stubs while infrastructure, observability, and documentation keep the project contributor-friendly. This plan defines the scope, architecture, delivery phases, and acceptance criteria for the next 3–4 months.
+
+## 2. Product Vision and Pillars
+1. **Agent-Oriented Gameplay** – Specialized agents with clear I/O contracts; a GM Orchestrator enforces tone, rules, and safety.
+2. **Session-Centric UX** – Campaigns retain characters, documents, chat, rolls, and images so any device can resume play.
+3. **Player Identity & Characters** – Accounts, invites, friend graph, and character import/sync from PDFs or DnD Beyond.
+4. **Reliability & Automation** – Scriptable dev setup, CI, telemetry, and playthrough validation keep agents from regressing.
+
+### Target Personas
+- **Solo Adventurer** – Single player who wants guided journaling + AI narration.
+- **Async Party** – 2–4 friends playing across time zones who need reliable persistence.
+- **GM-Builder** – Hosts customizing prompts, documents, and NPCs who need robust control surfaces.
+
+## 3. Experience Map
+| Flow | Description | Agent Touchpoints | Acceptance Signal |
+| --- | --- | --- | --- |
+| Onboarding | Signup → email verify → login | Player Agent, Auth | JWT issued, `/player/me` returns profile |
+| Campaign Setup | Create campaign, upload documents, seed NPCs | Narrative, Storyboard, Notes | Campaign dashboard lists artifacts |
+| Invite & Join | Host invites friend (min level) → player selects character | Player Agent, Scene Agent | Invite status transitions Pending → Accepted |
+| Session Play | Chat, narration stream, dice rolls, NPC management | Narrative, Scene, NPC, PencilPusher | WebSocket updates render within 200 ms |
+| Session Archive | Notes recap, hidden docs updated, session snapshot stored | Notes, Storyboard | Session timeline shows recap + attachments |
+
+## 4. System Architecture Overview
+```
+[React SPA] --API/WS--> [FastAPI gateway]
+				|--> [Agent routers (narrative/scene/npc/...)]
+				|--> [Service layer: campaigns, characters, invites]
+				|--> [Persistence: SQLModel(DB), sessions/FS, object store]
+				'--> [Task queue / worker (future LLM + image jobs)]
+```
+- **Frontend**: CRA + TypeScript, centralized `apiFetch`, agent-centric components, responsive CSS, WebSocket client.
+- **Backend**: FastAPI + SQLModel, modular routers per agent/service, JWT auth, Alembic migrations, uvicorn.
+- **Persistence**: SQLite (dev) → PostgreSQL (prod); session docs stored in filesystem for MVP with upgrade path to S3-compatible stores.
+- **Realtime**: WebSockets per campaign/session, Redis pub/sub planned for horizontal scale; fall back to SSE/polling.
+- **Background Work**: Dedicated queue for long-running LLM/image operations; results posted via agent events table.
+
+## 5. Agent Responsibility Matrix
+| Agent | Purpose | Key Inputs | Outputs | Frontend Surface |
+| --- | --- | --- | --- | --- |
+| GM Orchestrator | Validate and publish agent outputs | Narrative drafts, scene deltas | Player-facing narration/events | Session viewport |
+| Narrative | Scene descriptions, dialogue | Storyboard beats, player actions | Narration JSON | Narrative stream panel |
+| Scene Analysis | Detect rolls/rules triggers | Current scene snapshot, character stats | Roll requests, rule reminders | Dice prompt + alerts |
+| NPC/Enemy Manager | Track stat blocks, initiative | Campaign NPC DB, encounters | NPC actions/state changes | NPC drawer + combat tracker |
+| Storyboard | Graph of quests, unresolved hooks | Campaign history, Notes embeddings | Next-beat recommendations | GM helper timeline |
+| Notes (Scribe) | Session summaries, loot, XP | Chat log, roll outcomes | Markdown recap, !notes command | Notes pane |
+| Image | Prompt-to-image generation | Scene description, style preset | Image URL + metadata | Gallery + inline cards |
+| Player Agent | Accounts, characters, invites | Auth payloads, PDF imports | JWTs, character manifests | Auth screens + character list |
+
+Agents communicate via REST endpoints today; future iterations add async job dispatch plus WebSocket push notifications.
+
+## 6. Domain Models and Storage
+| Entity | Storage | Notes |
+| --- | --- | --- |
+| User, Friend, SessionMembership | SQLModel tables (`users`, `friends`, `memberships`) | Handles auth, invites, and host roles |
+| Campaign, Session | SQLModel + Alembic | Sessions reference campaign, track state payload + folder path |
+| Documents (Core/Flavor/Hidden) | Metadata in DB, files in `server/sessions/{campaign}` | Hidden docs only visible to hosts via RBAC |
+| Characters | SQLModel with JSON attributes | Imports from manual form, PDF parser, or DnD Beyond token |
+| Rolls & Events | `rolls`, `agent_events` tables | Powers audit trail + websocket replay |
+| Images | Metadata table + object store path | Cache by campaign + style |
+
+Document Taxonomy:
+- **Core** – Canonical assets (character sheets, world map) with version history.
+- **Flavor** – Optional references (random tables, mood boards) re-usable across campaigns.
+- **Hidden** – Host-only prep (story beats, NPC secrets) accessible via DM Helper with audit logs.
+
+## 7. Feature Capability Matrix
+| Capability | MVP Scope | Phase 1 Enhancements | Dependencies |
+| --- | --- | --- | --- |
+| Auth & Accounts | Signup/login, email verify, JWT sessions | Refresh tokens, SSO | Email provider, DB |
+| Campaigns & Sessions | CRUD, session folder creation, membership | Archive, branching story graph | Auth, Documents |
+| Invites & Friends | Friend list, invite by email/user, min level | Presence indicators, notifications | Auth, Characters |
+| Characters | Manual create/import, attach to invites | PDF parser, Beyond20/DnD Beyond sync | Storage, Parser tools |
+| Dice & Rolls | Local roller, log, Beyond20 ingest endpoint | Rule automation, effect templates | Characters, Scene agent |
+| Chat & Turn Queue | Text chat, !notes, manual turn tracking | Mentions, notifications, automated queue | WebSockets, Notifications |
+| Documents | Upload + tagging, hidden view, version metadata | S3 switch, collaborative editing | Storage adapter |
+| Images | Provider abstraction, cached gallery | Style marketplace, per-character portraits | GPU/LLM budget |
+
+## 8. Integration Strategy
+- **Beyond20**: `/integrations/beyond20/roll` accepts payloads; optional local bridge for browser events.
+- **DnD Beyond**: Phase 1 manual export parser; Phase 2 OAuth token polling with etag caching.
+- **PDF Import**: `PyMuPDF`/`pdfminer.six` to extract structured JSON with heuristics + ML fallback.
+- **External Storage**: Abstraction layer for S3-compatible backends; environment toggle for dev FS vs prod bucket.
+
+## 9. Security, Privacy, and Compliance
+- JWT access tokens; refresh tokens optional but recommended before multi-device release.
+- RBAC roles: `player`, `host`, `admin`. Hidden docs, campaign settings, and agent overrides require host role.
+- PII: email + optional OAuth tokens stored encrypted at rest. Secrets managed via `.env` + secret manager in prod.
+- Rate limiting + abuse controls on agent endpoints; guardrails on LLM prompts to avoid policy violations.
+- Audit trails: `agent_events`, `document_access` tables log sensitive reads/writes.
+
+## 10. Operational Playbook
+- **Dev Environment**: `start-app.ps1` spins backend + frontend, kills stray processes, streams logs to `logs/`.
+- **Environments**: `local` (SQLite + filesystem), `staging` (Postgres + S3 mock + feature flags), `prod` (managed Postgres + S3 + CDN).
+- **Observability**: Structured logging (JSON), request IDs, tracing hooks ready for OpenTelemetry, metrics via Prometheus-compatible endpoints.
+- **Deployments**: GitHub Actions → Docker images (backend) + static build (frontend). Blue/green or rolling deploy once k8s/compose ready.
+
+## 11. Quality Strategy
+- **Unit Tests**: Backend pytest for routers/services; frontend Vitest/Jest for hooks + components.
+- **Integration Tests**: FastAPI `TestClient` playthrough covering signup → verify → login → create campaign → invite.
+- **E2E**: Playwright smoke (desktop + mobile viewport) for login + campaign creation + chat message.
+- **Static Analysis**: mypy (backend), ESLint + TypeScript strict mode (frontend), Ruff/Black optional.
+- **CI Pipeline**: Lint → unit tests → integration tests → frontend build → artifact upload. Blocking on `main`.
+
+## 12. Delivery Work Packages & Roadmap
+| # | Package | Scope Snapshot | Est. | Status |
+| --- | --- | --- | --- | --- |
+| 1 | Core Platform (Auth/Friends) | JWT auth, email verify, friend graph, `/player/*` endpoints | 3–5 days | MVP ✅ (refresh tokens pending) |
+| 2 | Campaigns & Sessions | Campaign CRUD, membership, hidden docs, invites, WS skeleton | 1–2 weeks | In progress |
+| 3 | Character Service & Imports | CRUD, Beyond20 ingest, PDF parser scaffolding | 1–3 weeks | Next |
+| 4 | Dice Engine + Beyond20 | Deterministic roller, ingestion endpoint, UI log | 3–5 days | Planned |
+| 5 | Agent Orchestration | Narrative/Scene/NPC/Notes/Image stubs + GM orchestrator | 2–4 weeks | Planned |
+| 6 | Session Documents | Uploads, tagging, permissions, versioning | 1–2 weeks | Planned |
+| 7 | Chat & Turn Queue | Persistent chat, mentions, notifications | 1–2 weeks | Planned |
+| 8 | Image Agent | Adapter + caching + UI | 1–2 weeks | Phase 2 |
+| 9 | Testing & CI | Lint/test/build pipeline, smoke E2E | 1–2 weeks | Started (pytest ✅) |
+
+## 13. Release Phasing & Acceptance
+- **MVP Gate**: Auth + campaign CRUD + session documents + chat + dice stub + `start-app.ps1` working on Windows + doc updates. Acceptance: run scripted playthrough without manual DB edits.
+- **Phase 1 Gate**: Invites with character assignment, Beyond20 ingest, responsive session UI, PDF import prototype, background worker for LLMs.
+- **Phase 2 Gate**: DnD Beyond token sync, semantic search, DM Helper enhancements, production-grade image agent.
+
+## 14. Risks and Mitigations
+| Risk | Impact | Likelihood | Mitigation |
+| --- | --- | --- | --- |
+| AI cost overruns | Limits frequency of agent calls | Medium | Cache prompts, support local models, add usage quotas |
+| Hidden doc leaks | Player trust loss | Medium | Strict RBAC, audited endpoints, automated tests for permissions |
+| Parsing accuracy (PDF/DnD Beyond) | Frustrating character imports | High | Provide manual override UI, capture parsing telemetry, iterate heuristics |
+| WebSocket scaling | Dropped events for async parties | Medium | Adopt Redis pub/sub, add reconnection/backfill logic |
+| Key/secrets hygiene (SSH, API keys) | Security breach | Medium | Enforce `.gitignore`, rotate keys, document secure storage |
+
+## 15. Success Metrics & Telemetry
+- **Activation**: % of signups completing first campaign creation within 24h (target 60%).
+- **Retention**: Weekly Active Sessions / Weekly Created Sessions ≥ 0.7 once invites ship.
+- **Automation**: ≥ 80% of narration events auto-generated by Narrative + GM agents without manual edits.
+- **Reliability**: P99 WebSocket round-trip under 400 ms, backend error rate < 1%.
+- **Quality**: CI pass rate ≥ 95%, test coverage trending upward (backend ≥ 70%, frontend ≥ 60%).
+
+## 16. Open Questions
+1. Timeline for migration from filesystem session docs to managed object store?
+2. Preferred AI/image provider and associated budget caps per month?
+3. Do we require offline-capable clients (service workers + local caches) for mobile play?
+4. What governance is needed for user-generated content (reporting, moderation)?
+
+## 17. Next Actions
+1. Generate Alembic migration for campaign/session schema changes (`metadata_json`).
+2. Implement CI workflow (Python + Node matrix) and smoke tests.
+3. Flesh out agent stubs with contract tests and example payloads.
+4. Finalize document storage abstraction and S3 toggle.
+5. Schedule key rotations and document secret management SOP.
+
+---
+_This enhanced plan is the single source of truth for TavernTAIls planning, architecture, and delivery tracking. Update the “Last updated” stamp whenever material changes are made._

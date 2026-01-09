@@ -13,6 +13,28 @@ from ..auth import create_access_token, get_current_user
 router = APIRouter()
 
 
+@router.post("/player/friends")
+def player_send_friend_request(identifier: str = Body(..., embed=True), current_user=Depends(get_current_user)):
+    try:
+        req = db.send_friend_request(current_user.email or current_user.username, identifier)
+        return {"sent": True, "request_id": req.id}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/player/friends")
+def player_list_friends(current_user=Depends(get_current_user)):
+    return db.list_friends_and_requests(current_user.email or current_user.username)
+
+
+@router.post("/player/friends/accept")
+def player_accept_friend(from_identifier: str = Body(..., embed=True), current_user=Depends(get_current_user)):
+    ok = db.accept_friend_request(current_user.email or current_user.username, from_identifier)
+    if not ok:
+        raise HTTPException(status_code=400, detail="No pending request or user not found")
+    return {"accepted": True}
+
+
 @router.post("/player/signup")
 def player_signup(
     email: str = Body(...),

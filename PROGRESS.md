@@ -1,11 +1,15 @@
 # TavernTAIls Progress Tracker
-_Last updated: 2025-12-05 by GitHub Copilot_
+_Last updated: 2026-01-08 by GitHub Copilot_
 
 ## Where Things Stand
 - **Sprint Focus:** Finish Sprint 1 deliverables (chat upgrades, turn queue, agent stubs, documentation).
 - **Runtime:** `start-app.ps1` launches uvicorn (127.0.0.1:8000) + CRA dev server (localhost:3000).
 - **Realtime:** `/ws/sessions/{sessionId}?token=<JWT>` now streams suggestions, turn updates, chat messages, and roll results.
 - **UI State:** `GameplayLayout` renders drawer/banner/suggestions/player status + new turn tracker; `Chat` has invite/export/tools plus live feed + notes recap command.
+
+## 2026-01 Status Note
+- Planning docs drifted a bit: `MVP_DELIVERY_CHECKLIST.md` has been updated to reflect the current codebase; treat `PROJECT_PLAN.md` as canonical and keep this file as the implementation log.
+- The biggest remaining “make it real” items are character CRUD/imports and a clearer campaign→session→play flow (plus host/hidden-doc RBAC if that is truly MVP).
 
 ## Completed Recently
 1. **Suggestion + Turn Queue Stream (Dec 3-4)**
@@ -36,6 +40,11 @@ _Last updated: 2025-12-05 by GitHub Copilot_
 11. **Scene Cue Roll Triggers (Dec 6)**
    - `GameplayLayout` now stores structured `SceneCue` objects with dice recommendations from `/scene/analyze` broadcasts and passes them into `CharacterPanel`.
    - Each cue renders a contextual “Roll” button that calls `/rolls` with session context, closes the loop between scene analysis hints and logged dice results.
+12. **NPC Persistence (Dec 6)**
+   - `server/agents/npc.py` now persists NPC profiles into the session folder (`sessions/<session_id>/npcs.json`) when `/npc/manage` is called with a `session_id`. The endpoint still broadcasts a `npc.profile` event.
+13. **Secret Management SOP (Dec 8)**
+   - Added `docs/SECRET_MANAGEMENT.md` detailing secret inventory, rotation cadence, and runbooks for JWT, AWS, DB, and provider tokens.
+   - README now links to the SOP so new contributors know how to handle `.env` files, GitHub secrets, and calendar reminders.
 
 ## Immediate Next Steps (suggested order)
 1. **Documents UI polish** – add upload retries/cancel flows, inline thumbnail previews, and clearer failure messaging for presigned uploads.

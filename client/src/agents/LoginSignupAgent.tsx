@@ -78,7 +78,12 @@ const LoginSignupAgent: React.FC = () => {
     if (data.access_token) {
       localStorage.setItem('access_token', data.access_token);
     }
-    setProfile(data.profile || data);
+    const resolvedProfile = data.profile || data
+    const email = resolvedProfile?.email
+    const username = resolvedProfile?.username
+    if (email) localStorage.setItem('user_email', String(email))
+    if (username) localStorage.setItem('user_username', String(username))
+    setProfile(resolvedProfile);
     setError('');
     if (!options?.preserveVerification) {
       setUnverifiedEmail('');
@@ -231,6 +236,8 @@ const LoginSignupAgent: React.FC = () => {
 
   const handleLogout = () => {
     localStorage.removeItem('access_token');
+    localStorage.removeItem('user_email')
+    localStorage.removeItem('user_username')
     setProfile(null);
     setLoginEmail('');
     setLoginPassword('');

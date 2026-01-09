@@ -1,33 +1,24 @@
-# Notes Agent
-# Logs session notes and provides recaps
+"""Notes agent provides quick recaps."""
+
+from fastapi import APIRouter
+from pydantic import BaseModel, Field
+from typing import List
+
+router = APIRouter(tags=["notes"])
 
 
-"""
-Notes Agent
-Logs session notes, recaps, and provides notes on request.
-"""
+class NotesRequest(BaseModel):
+    session_id: str
+    notes: List[str] = Field(default_factory=list)
 
-from fastapi import APIRouter, Body
-from typing import List, Dict, Any
 
-router = APIRouter()
+class NotesResponse(BaseModel):
+    session_id: str
+    notes_logged: int
+    recap: str
 
-@router.post("/notes/log")
-def log_note(
-    location: str = Body(..., description="Location of event"),
-    npcs: List[str] = Body([], description="NPCs involved"),
-    items: List[str] = Body([], description="Items, lore, or quests"),
-    objectives: List[str] = Body([], description="Objectives and unresolved threads"),
-    rolls: List[str] = Body([], description="Key rolls and outcomes")
-):
-    """
-    Log a session note and provide recap on request.
-    """
-    note = {
-        "location": location,
-        "npcs": npcs,
-        "items": items,
-        "objectives": objectives,
-        "rolls": rolls
-    }
-    return {"notes": [note]}
+
+@router.post("/notes/log", response_model=NotesResponse)
+def log_notes(payload: NotesRequest) -> NotesResponse:
+    recap = payload.notes[-1] if payload.notes else "No notes captured."
+    return NotesResponse(session_id=payload.session_id, notes_logged=len(payload.notes), recap=recap)

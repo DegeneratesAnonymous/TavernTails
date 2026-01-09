@@ -28,6 +28,13 @@ export const buildApiUrl = (path: string) => {
   return `${API_BASE}${path}`
 }
 
+export const buildWsUrl = (path: string) => {
+  const normalized = path.startsWith('/') ? path : `/${path}`
+  const url = new URL(API_BASE)
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${url.origin}${normalized}`
+}
+
 export async function apiFetch(path: string, opts: RequestInit = {}) {
   const headers: any = (opts.headers && typeof opts.headers === 'object') ? {...opts.headers} : {}
   // Default JSON content type when body is present

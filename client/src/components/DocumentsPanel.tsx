@@ -43,6 +43,9 @@ export default function DocumentsPanel({sessionId}: Props){
   const [error, setError] = useState<string | null>(null)
   const [name, setName] = useState('Session Note')
   const [content, setContent] = useState('')
+  const [category, setCategory] = useState<'core' | 'flavor'>('core')
+  const [visibility, setVisibility] = useState<'shared' | 'hidden'>('shared')
+  const [isHost, setIsHost] = useState(false)
   const [uploads, setUploads] = useState<UploadEntry[]>([])
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const uploadControllers = useRef<Record<string, () => void>>({})
@@ -114,8 +117,41 @@ export default function DocumentsPanel({sessionId}: Props){
 
   useEffect(()=>{
     if(!sessionId){
+      setIsHost(false)
+      setCategory('core')
+      setVisibility('shared')
+      return
+    }
+    let canceled = false
+    ;(async ()=>{
+      try{
+        const res = await apiFetch(`/sessions/${sessionId}/meta`)
+        if(!res.ok) throw new Error('meta fetch failed')
+        const meta = await res.json()
+        const owner = (meta?.owner || '').toString().trim().toLowerCase()
+        const email = (window.localStorage.getItem('user_email') || '').trim().toLowerCase()
+        const username = (window.localStorage.getItem('user_username') || '').trim().toLowerCase()
+        const identifier = email || username
+        const host = Boolean(identifier && owner && identifier === owner)
+        if(!canceled){
+          setIsHost(host)
+          if(!host){
+            setVisibility(prev => prev === 'hidden' ? 'shared' : prev)
+          }
+        }
+      }catch(e){
+        if(!canceled) setIsHost(false)
+      }
+    })()
+    return ()=>{ canceled = true }
+  },[sessionId, visibility])
+
+  useEffect(()=>{
+    if(!sessionId){
       setName('Session Note')
       setContent('')
+      setCategory('core')
+      setVisibility('shared')
     }
   },[sessionId])
 
@@ -165,7 +201,7 @@ export default function DocumentsPanel({sessionId}: Props){
         })
         clearCancel(entry.id)
         const key = presign.fields?.key || presign.fields?.Key || presign.key || `${sessionId}/docs/${entry.name}`
-        const registerRes = await apiFetch(`/documents/${sessionId}/register`, { method: 'POST', body: JSON.stringify({ filename: key, name: entry.name, size: entry.size }) })
+        const registerRes = await apiFetch(`/documents/${sessionId}/register`, { method: 'POST', body: JSON.stringify({ filename: key, name: entry.name, size: entry.size, category, visibility: isHost ? visibility : 'shared' }) })
         const registerBody = await registerRes.json().catch(() => null)
         if(!registerRes.ok){
           throw new Error(registerBody?.detail || 'Register failed')
@@ -188,6 +224,8 @@ export default function DocumentsPanel({sessionId}: Props){
       const form = new FormData()
       form.append('file', entry.file)
       form.append('name', entry.name)
+      form.append('category', category)
+      form.append('visibility', isHost ? visibility : 'shared')
       const controller = new AbortController()
       registerCancel(entry.id, () => controller.abort())
       const res = await fetch(buildApiUrl(`/documents/${sessionId}/upload`), {
@@ -233,7 +271,7 @@ export default function DocumentsPanel({sessionId}: Props){
       updateUpload(entry.id, prev => ({...prev, status:'error', error: msg}))
       setError(msg)
     }
-  },[sessionId, updateUpload, loadDocuments, loadDetail, registerCancel, clearCancel])
+  },[sessionId, updateUpload, loadDocuments, loadDetail, registerCancel, clearCancel, category, visibility, isHost])
 
   const cancelUpload = useCallback((id: string) => {
     const cancel = uploadControllers.current[id]
@@ -264,7 +302,7 @@ export default function DocumentsPanel({sessionId}: Props){
     try{
       const res = await apiFetch(`/documents/${sessionId}`, {
         method: 'POST',
-        body: JSON.stringify({ name: name.trim(), content })
+        body: JSON.stringify({ name: name.trim(), content, category, visibility: isHost ? visibility : 'shared' })
       })
       if(!res.ok){
         const detail = await res.json().catch(()=>null)
@@ -273,6 +311,8 @@ export default function DocumentsPanel({sessionId}: Props){
       const saved = await res.json()
       setName('Session Note')
       setContent('')
+      setCategory('core')
+      setVisibility('shared')
       await loadDocuments()
       await loadDetail(saved.id)
     }catch(err:any){
@@ -337,7 +377,10 @@ export default function DocumentsPanel({sessionId}: Props){
         {sortedDocs.map(doc => (
           <div key={doc.id} style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6}}>
             <button type="button" style={{flex:1, textAlign:'left'}} onClick={()=>loadDetail(doc.id)} disabled={!hasSession}>
-              <div style={{fontSize:13}}>{doc.name}</div>
+              <div style={{fontSize:13}}>
+                {doc.name}
+                {isHost && doc.visibility === 'hidden' && <span style={{fontSize:11,color:'#c9a6ff', marginLeft:6}}>(Hidden)</span>}
+              </div>
               <div style={{fontSize:11,color:'#888'}}>{new Date(doc.created_at).toLocaleString()} · {doc.size < 1024 ? `${doc.size} B` : `${(doc.size/1024).toFixed(1)} KB`}</div>
             </button>
             <button type="button" style={{marginLeft:8}} onClick={()=>handleDelete(doc.id)} disabled={!hasSession}>✕</button>
@@ -370,6 +413,19 @@ export default function DocumentsPanel({sessionId}: Props){
 
       <form onSubmit={handleCreate} style={{marginTop:12, display:'flex', flexDirection:'column', gap:8}}>
         <input value={name} onChange={e=>setName(e.target.value)} placeholder="Document name" disabled={!hasSession || formBusy} style={{padding:6, borderRadius:6, border:'1px solid #333', background:'#0b0b0b', color:'#f8f8f8'}} />
+        <div style={{display:'flex', gap:8, alignItems:'center', flexWrap:'wrap'}}>
+          <label style={{fontSize:12,color:'#888'}}>Category</label>
+          <select value={category} onChange={e=>setCategory(e.target.value as any)} disabled={!hasSession || formBusy} style={{padding:6, borderRadius:6, border:'1px solid #333', background:'#0b0b0b', color:'#f8f8f8'}}>
+            <option value="core">Core</option>
+            <option value="flavor">Flavor</option>
+          </select>
+          <label style={{fontSize:12,color:'#888'}}>Visibility</label>
+          <select value={isHost ? visibility : 'shared'} onChange={e=>setVisibility(e.target.value as any)} disabled={!hasSession || formBusy || !isHost} style={{padding:6, borderRadius:6, border:'1px solid #333', background:'#0b0b0b', color:'#f8f8f8', opacity: isHost ? 1 : 0.6}}>
+            <option value="shared">Shared</option>
+            <option value="hidden">Hidden (host only)</option>
+          </select>
+          {!isHost && hasSession && <span style={{fontSize:12,color:'#666'}}>Hidden docs require host.</span>}
+        </div>
         <textarea value={content} onChange={e=>setContent(e.target.value)} placeholder="Content" rows={4} disabled={!hasSession || formBusy} style={{padding:6, borderRadius:6, border:'1px solid #333', background:'#0b0b0b', color:'#f8f8f8'}} />
         <button type="submit" disabled={!hasSession || formBusy} style={{padding:'6px 10px'}}>
           {formBusy ? 'Saving…' : 'Save Document'}

@@ -1,29 +1,31 @@
-# Storyboard Agent
-# Tracks campaign progress and branching paths
+"""Storyboard agent: track beats and hooks."""
+
+from fastapi import APIRouter
+from pydantic import BaseModel, Field
+from typing import List
+
+router = APIRouter(tags=["storyboard"])
 
 
-"""
-Storyboard Agent
-Tracks campaign progress, scenes, branching paths, and unresolved threads.
-"""
+class StoryboardRequest(BaseModel):
+    scene: str
+    choices: List[str] = Field(default_factory=list)
+    unresolved: List[str] = Field(default_factory=list)
+    completed: List[str] = Field(default_factory=list)
 
-from fastapi import APIRouter, Body
-from typing import List, Dict, Any
 
-router = APIRouter()
+class StoryboardResponse(BaseModel):
+    storyboard: dict
+    next_focus: str
 
-@router.post("/storyboard/update")
-def update_storyboard(
-    scene: str = Body(..., description="Current scene description"),
-    choices: List[str] = Body([], description="Branching choices available"),
-    unresolved: List[str] = Body([], description="Unresolved threads or objectives")
-):
-    """
-    Update campaign storyboard with scene, choices, and unresolved threads.
-    """
+
+@router.post("/storyboard/update", response_model=StoryboardResponse)
+def update_storyboard(payload: StoryboardRequest) -> StoryboardResponse:
+    next_focus = payload.unresolved[0] if payload.unresolved else "Introduce a fresh complication."
     storyboard = {
-        "scene": scene,
-        "choices": choices,
-        "unresolved": unresolved
+        "scene": payload.scene,
+        "choices": payload.choices,
+        "unresolved": payload.unresolved,
+        "completed": payload.completed,
     }
-    return {"storyboard": storyboard}
+    return StoryboardResponse(storyboard=storyboard, next_focus=next_focus)

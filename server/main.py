@@ -21,21 +21,41 @@ except Exception:
     _db = None
 
 
+_db_initialized = False
+_db_engine_signature = None
+
+
+def _init_db_if_needed():
+    global _db_initialized, _db_engine_signature
+    if _db is None:
+        logger.warning('DB module missing; skipping initialization')
+        return
+    engine_sig = id(_db.engine)
+    if _db_engine_signature != engine_sig:
+        _db_initialized = False
+        _db_engine_signature = engine_sig
+    if _db_initialized:
+        return
+    try:
+        logger.info('Initializing database...')
+        _db.create_db_and_tables()
+        if os.environ.get('TAVERNTAILS_SEED_DEV_USER', '1') == '1':
+            _db.ensure_dev_user()
+            logger.info('Dev user ensured (test@example.com / secret)')
+        logger.info('Database ready')
+        _db_initialized = True
+    except Exception:
+        logger.exception('Database initialization failed')
+
+
+# Ensure the database is ready for modules/tests that instantiate the app without running lifespan.
+_init_db_if_needed()
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     logger.info("Application startup: pid=%s ts=%s", os.getpid(), datetime.now(timezone.utc).isoformat())
-    if _db is not None:
-        try:
-            logger.info('Initializing database...')
-            _db.create_db_and_tables()
-            if os.environ.get('TAVERNTAILS_SEED_DEV_USER', '1') == '1':
-                _db.ensure_dev_user()
-                logger.info('Dev user ensured (test@example.com / secret)')
-            logger.info('Database ready')
-        except Exception:
-            logger.exception('Database initialization failed')
-    else:
-        logger.warning('DB module missing; skipping initialization')
+    _init_db_if_needed()
     try:
         yield
     finally:
@@ -47,6 +67,7 @@ app = FastAPI(lifespan=lifespan)
 
 @app.middleware("http")
 async def log_requests(request, call_next):
+    _init_db_if_needed()
     logger.info(f"--> {request.method} {request.url}")
     response = await call_next(request)
     logger.info(f"<-- {response.status_code} {request.method} {request.url}")
@@ -70,6 +91,8 @@ app.add_middleware(
 
 
 app.include_router(player_router)
+from .agents.narrative import router as narrative_router
+app.include_router(narrative_router)
 from .agents.content import router as content_router
 app.include_router(content_router)
 from .agents.sessions import router as sessions_router
@@ -88,6 +111,18 @@ from .agents.notes import router as notes_router
 app.include_router(notes_router)
 from .agents.image import router as image_router
 app.include_router(image_router)
+from .agents.suggestions import router as suggestions_router
+app.include_router(suggestions_router)
+from .agents import ws as ws_router
+app.include_router(ws_router.router)
+from .agents.turns import router as turns_router
+app.include_router(turns_router)
+from .agents.documents import router as documents_router
+app.include_router(documents_router)
+from .agents.scene import router as scene_router
+app.include_router(scene_router)
+from .agents.npc import router as npc_router
+app.include_router(npc_router)
 
 # Serve static build (if present) so the app is reachable at the backend port.
 build_dir = Path(__file__).resolve().parents[1] / 'client' / 'build'

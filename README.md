@@ -93,6 +93,11 @@ The command prints the port status so you can free it before starting the dev se
 - Individual VS Code tasks exist for "Start Backend (uvicorn dev)" and "Start Frontend (npm start)" if you prefer separate terminals; see `.vscode/tasks.json`.
 - Logs land in `logs/backend-*.log` for the API and `client/npm-*.log` for the React dev server so you can tail failures quickly.
 
+## Security & Secret Management
+- All sensitive environment variables (JWT secret, DB URLs, AWS credentials, AI provider tokens, etc.) follow the rotation playbooks documented in `docs/SECRET_MANAGEMENT.md`.
+- Never commit `.env` files or plaintext secrets. Use your password manager or the deployment platform’s secret store when sharing credentials.
+- GitHub Actions secrets must be set via the repository settings UI; workflows should only reference secret names.
+
 ## MVP Tracking
 - The current MVP acceptance criteria (Project Plan §13) are broken down in `MVP_DELIVERY_CHECKLIST.md`; each row links requirements to concrete code/artifacts.
 - Update both the Project Plan and the checklist whenever scope shifts so contributors can align on what "MVP complete" means before Phase 1 work begins.

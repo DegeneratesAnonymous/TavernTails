@@ -1,23 +1,29 @@
-# Image Generation Agent
-# Creates scene images using AI
+"""Image agent stub for scene art."""
+
+from fastapi import APIRouter
+from pydantic import BaseModel
+
+router = APIRouter(tags=["image"])
 
 
-"""
-Image Generation Agent
-Creates scene images using AI for immersion.
-"""
+class ImageRequest(BaseModel):
+    prompt: str
+    style: str = "realistic"
 
-from fastapi import APIRouter, Body
 
-router = APIRouter()
+class ImageResponse(BaseModel):
+    prompt: str
+    style: str
+    image_url: str
+    guidance: str
 
-@router.post("/image/generate")
-def generate_image(
-    scene: str = Body(..., description="Scene description for image generation")
-):
-    """
-    Generate an image for the scene using AI (placeholder logic).
-    """
-    # TODO: Integrate with AI image generation API
-    image_url = f"https://placeholder.image/{scene.replace(' ', '_')}.png"
-    return {"image_url": image_url}
+
+@router.post("/image/generate", response_model=ImageResponse)
+def generate_image(payload: ImageRequest) -> ImageResponse:
+    guidance = "Use this as a placeholder until the art service is wired."
+    return ImageResponse(
+        prompt=payload.prompt,
+        style=payload.style,
+        image_url=f"https://placeholder.image/{payload.prompt.replace(' ', '_')}.png",
+        guidance=guidance,
+    )

@@ -17,6 +17,18 @@
     "typescript": "^4.9.5",
     "web-vitals": "^2.1.4"
   },
+  "devDependencies": {
+    "yaml": "^2.8.2"
+  },
+  "overrides": {
+    "@svgr/plugin-svgo": "^6.5.1",
+    "@svgr/webpack": "^6.5.1",
+    "css-select": "^4.3.0",
+    "nth-check": "^2.0.1",
+    "postcss": "^8.4.39",
+    "svgo": "^2.8.0",
+    "webpack-dev-server": "^4.15.2"
+  },
   "scripts": {
     "start": "node scripts/prestart-check.js && react-scripts start",
     "build": "react-scripts build",

@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Body, HTTPException, Depends
 from pydantic import BaseModel
-from typing import Dict, Any
+from typing import Dict, Any, List
+import json
 import re
 import random
 
 from ..auth import get_current_user
+from ..realtime import broadcaster
 
 router = APIRouter(tags=["rolls"])
 
@@ -12,6 +14,7 @@ router = APIRouter(tags=["rolls"])
 class RollRequest(BaseModel):
     expression: str
     reason: str | None = None
+    session_id: str | None = None
 
 
 def _parse_roll(expr: str) -> Dict[str, Any]:
@@ -29,8 +32,66 @@ def _roll(n: int, sides: int) -> list[int]:
     return [random.randint(1, sides) for _ in range(n)]
 
 
+def _coerce_roll_values(raw: Any) -> List[int]:
+    if raw is None:
+        return []
+    payload = raw
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except Exception:
+            payload = [payload]
+    if not isinstance(payload, list):
+        payload = [payload]
+    values: List[int] = []
+    for entry in payload:
+        candidate = entry
+        if isinstance(entry, dict):
+            candidate = entry.get('value') or entry.get('result') or entry.get('total') or entry.get('die')
+        try:
+            values.append(int(candidate))
+        except (TypeError, ValueError):
+            continue
+    return values
+
+
+def _normalize_beyond20_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    expr = (payload.get('expression') or payload.get('label') or payload.get('name') or '').strip()
+    rolls = _coerce_roll_values(payload.get('rolls') or payload.get('dice') or payload.get('results'))
+    try:
+        mod = int(payload.get('modifier') if payload.get('modifier') is not None else payload.get('mod') or 0)
+    except (TypeError, ValueError):
+        mod = 0
+    total = payload.get('total')
+    try:
+        total = int(total) if total is not None else None
+    except (TypeError, ValueError):
+        total = None
+    if total is None and rolls:
+        total = sum(rolls) + mod
+    if total is None and expr:
+        try:
+            parsed = _parse_roll(expr)
+            rolls = _roll(parsed['n'], parsed['sides'])
+            mod = parsed['mod']
+            total = sum(rolls) + mod
+        except ValueError:
+            total = 0
+    by = payload.get('player') or payload.get('character') or payload.get('by') or 'Beyond20'
+    reason = payload.get('reason') or payload.get('label') or payload.get('title')
+    return {
+        'expression': expr,
+        'rolls': rolls,
+        'mod': mod,
+        'total': int(total or 0),
+        'by': by,
+        'reason': reason,
+        'source': 'beyond20',
+    }
+
+
 @router.post('/rolls')
-def do_roll(req: RollRequest, current_user=Depends(get_current_user)):
+async def do_roll(req: RollRequest, current_user=Depends(get_current_user)):
     try:
         parsed = _parse_roll(req.expression)
     except ValueError as e:
@@ -53,35 +114,45 @@ def do_roll(req: RollRequest, current_user=Depends(get_current_user)):
     except Exception:
         # non-fatal on persistence failure
         pass
+    if req.session_id:
+        await broadcaster.broadcast_json(req.session_id, {
+            'type': 'rolls.result',
+            'session_id': req.session_id,
+            'result': result,
+        })
     return {'result': result}
 
 
 @router.post('/integrations/beyond20/roll')
-def ingest_beyond20(payload: Dict[str, Any] = Body(...)):
-    # Minimal bridge: accept a payload with 'expression' or 'total' and 'player' fields
-    expr = payload.get('expression')
-    if expr:
-        # forward to local parser and persist
-        try:
-            parsed = _parse_roll(expr)
-            rolls = _roll(parsed['n'], parsed['sides'])
-            total = sum(rolls) + parsed['mod']
-            from .. import db
-            by = payload.get('player') or payload.get('by')
-            try:
-                db.create_roll(campaign_id=payload.get('campaign_id'), expression=expr, rolls=rolls, mod=parsed['mod'], total=total, by=by)
-            except Exception:
-                pass
-            return {'result': {'expression': expr, 'rolls': rolls, 'mod': parsed['mod'], 'total': total, 'ingested': True}}
-        except ValueError:
-            return {'result': {'ingested': False, 'reason': 'invalid expression'}}
-    # if total is supplied, accept it as-is
-    if 'total' in payload:
-        from .. import db
-        by = payload.get('player') or payload.get('by')
-        try:
-            db.create_roll(campaign_id=payload.get('campaign_id'), expression=payload.get('expression') or '', rolls=[], mod=0, total=int(payload.get('total') or 0), by=by)
-        except Exception:
-            pass
-        return {'result': {'total': payload.get('total'), 'ingested': True}}
-    return {'result': {'ingested': False, 'reason': 'no usable fields'}}
+async def ingest_beyond20(payload: Dict[str, Any] = Body(...)):
+    session_id = payload.get('session_id')
+    result = _normalize_beyond20_payload(payload)
+    from .. import db
+    try:
+        db.create_roll(
+            campaign_id=payload.get('campaign_id'),
+            expression=result['expression'],
+            rolls=result['rolls'],
+            mod=result['mod'],
+            total=result['total'],
+            by=result['by'],
+        )
+    except Exception:
+        pass
+    envelope = {
+        'type': 'rolls.result',
+        'session_id': session_id,
+        'result': result,
+        'source': 'beyond20',
+    }
+    if session_id:
+        await broadcaster.broadcast_json(session_id, envelope)
+        await broadcaster.broadcast_json(session_id, {
+            'type': 'beyond20.roll',
+            'session_id': session_id,
+            'expression': result['expression'],
+            'total': result['total'],
+            'by': result['by'],
+            'reason': result.get('reason') or payload.get('reason'),
+        })
+    return {'result': result}

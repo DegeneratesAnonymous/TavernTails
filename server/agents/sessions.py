@@ -158,8 +158,65 @@ def get_meta(session_id: str, current_user=Depends(get_current_user)):
         data['invites'] = _normalize_invites(data.get('invites'))
         data['members'] = data.get('members', []) or []
         return data
+    except HTTPException:
+        raise
     except Exception:
         raise HTTPException(status_code=500, detail='Failed to read meta')
+
+
+class SetCharacterRequest(BaseModel):
+    character_id: int | None = None
+
+
+@router.post('/{session_id}/character')
+def set_character_for_session(session_id: str, req: SetCharacterRequest, current_user=Depends(get_current_user)):
+    folder = BASE / session_id
+    if not folder.exists():
+        raise HTTPException(status_code=404, detail='Session not found')
+    meta_path = folder / 'meta.json'
+    if not meta_path.exists():
+        raise HTTPException(status_code=404, detail='Meta not found')
+
+    try:
+        data = json.loads(meta_path.read_text())
+    except Exception:
+        raise HTTPException(status_code=500, detail='Failed to read meta')
+
+    identifier = _identifier_for_user(current_user)
+    if not _user_is_member(data, identifier):
+        raise HTTPException(status_code=403, detail='Not a member of this session')
+
+    character_name = None
+    if req.character_id is not None:
+        character = db.get_character_for_owner(req.character_id, getattr(current_user, 'id', None))
+        if not character:
+            raise HTTPException(status_code=404, detail='Character not found')
+        character_name = character.name
+
+    members = data.get('members', []) or []
+    owner_normalized = _normalize_email(data.get('owner'))
+    role = 'owner' if identifier == owner_normalized else 'member'
+
+    found = False
+    for member in members:
+        if _normalize_email(member.get('email')) == identifier:
+            member['character_id'] = req.character_id
+            member['character_name'] = character_name
+            member.setdefault('role', role)
+            found = True
+            break
+
+    if not found:
+        members.append({
+            'email': identifier,
+            'character_id': req.character_id,
+            'character_name': character_name,
+            'role': role,
+        })
+
+    data['members'] = members
+    meta_path.write_text(json.dumps(data))
+    return {'ok': True, 'session_id': session_id, 'character_id': req.character_id, 'character_name': character_name}
 
 
 @router.delete('/{session_id}/file/{filename}')
