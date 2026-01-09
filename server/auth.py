@@ -3,8 +3,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import JWTError, jwt
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+import jwt
+from jwt.exceptions import InvalidTokenError
 
 from . import db
 
@@ -29,7 +30,7 @@ def decode_access_token(token: str) -> Optional[dict]:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return payload
-    except JWTError:
+    except InvalidTokenError:
         return None
 
 

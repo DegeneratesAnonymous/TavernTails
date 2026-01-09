@@ -1,10 +1,11 @@
 import os
-from sqlmodel import SQLModel, Field, create_engine, Session, select
-from typing import Optional, Dict, Any, List
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
+from passlib.context import CryptContext
 from sqlalchemy import Column, func
 from sqlalchemy.types import JSON
-from passlib.context import CryptContext
-from datetime import datetime, timezone
+from sqlmodel import Field, Session, SQLModel, create_engine, select
 
 # Use a pure-Python scheme for test reliability (avoids native bcrypt issues in test venvs)
 # In production you may prefer bcrypt/argon2 and install the corresponding packages.

@@ -8,13 +8,13 @@ MVP requirements:
 
 from __future__ import annotations
 
+import json
 from dataclasses import asdict
 from datetime import datetime, timezone
-import json
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -95,8 +95,8 @@ def _load_session_meta(session_id: str) -> dict:
         raise HTTPException(status_code=404, detail="Session not found")
     try:
         return json.loads(meta_file.read_text())
-    except Exception:
-        raise HTTPException(status_code=500, detail="Failed to read session meta")
+    except Exception as err:
+        raise HTTPException(status_code=500, detail="Failed to read session meta") from err
 
 
 def _is_host(meta: dict, identifier: str) -> bool:
@@ -273,9 +273,9 @@ async def presign_upload(session_id: str, payload: PresignRequest, current_user=
             resp = store.generate_presigned_post(session_id=session_id, filename=payload.filename, content_type=payload.content_type)
             _audit(session_id, identifier, action="documents.presign", ok=True)
             return PresignResponse(url=resp['url'], fields=resp.get('fields', {}))
-        except Exception:
+        except Exception as err:
             _audit(session_id, identifier, action="documents.presign", ok=False)
-            raise HTTPException(status_code=500, detail='Failed to generate presigned upload')
+            raise HTTPException(status_code=500, detail='Failed to generate presigned upload') from err
     raise HTTPException(status_code=501, detail='Presign not supported for current storage')
 
 
@@ -291,7 +291,7 @@ async def register_document(session_id: str, payload: RegisterRequest, current_u
             saved = store.register_existing_object(session_id=session_id, filename=payload.filename, name=payload.name, size=payload.size, category=category, visibility=visibility)
             _audit(session_id, identifier, action="documents.register", ok=True, doc_id=saved.id, visibility=visibility)
             return DocumentResponse(**asdict(saved))
-        except Exception:
+        except Exception as err:
             _audit(session_id, identifier, action="documents.register", ok=False)
-            raise HTTPException(status_code=500, detail='Failed to register uploaded file')
+            raise HTTPException(status_code=500, detail='Failed to register uploaded file') from err
     raise HTTPException(status_code=501, detail='Register not supported for current storage')

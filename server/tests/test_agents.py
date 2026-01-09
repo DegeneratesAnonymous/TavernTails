@@ -1,9 +1,10 @@
 """Contract tests for lightweight agent stubs."""
 
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 
 import server.main as main
+
 from . import agent_payloads as payloads
 
 

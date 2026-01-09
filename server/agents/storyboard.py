@@ -1,8 +1,9 @@
 """Storyboard agent: track beats and hooks."""
 
+from typing import List
+
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
-from typing import List
 
 router = APIRouter(tags=["storyboard"])
 

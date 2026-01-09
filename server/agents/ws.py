@@ -1,8 +1,9 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 from typing import Optional
 
-from ..auth import decode_access_token
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
+
 from .. import db
+from ..auth import decode_access_token
 from ..realtime import broadcaster
 
 router = APIRouter()

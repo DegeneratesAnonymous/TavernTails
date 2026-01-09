@@ -1,6 +1,8 @@
-from fastapi.testclient import TestClient
-import server.main as m
 import time
+
+from fastapi.testclient import TestClient
+
+import server.main as m
 
 c = TestClient(m.app)
 email = f"tc{time.time()}@example.com"

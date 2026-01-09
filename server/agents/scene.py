@@ -1,8 +1,9 @@
 """Scene agent: classifies actions and recommends rolls."""
 
+from typing import List, Optional
+
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
-from typing import List, Optional
 
 from ..realtime import broadcaster
 
