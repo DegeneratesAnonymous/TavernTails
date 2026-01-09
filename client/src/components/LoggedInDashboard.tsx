@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import '../LoggedIn.css';
 import './LoggedInDashboard.css';
 import Beyond20Agent from '../agents/Beyond20Agent';
@@ -30,7 +30,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [newCharacterClass, setNewCharacterClass] = useState('')
 
   const activeCampaign = campaigns.find(c => String(c.id) === String(activeCampaignId)) || null
-  const activeCampaignSessions: Array<{id: string}> = (activeCampaign?.sessions || [])
+  const activeCampaignSessions: Array<{id: string}> = useMemo(() => (activeCampaign?.sessions || []), [activeCampaign])
 
   async function fetchCampaigns(){
     try{
@@ -60,7 +60,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   useEffect(()=>{
     fetchCampaigns()
     fetchCharacters()
-  },[profile])
+  },[profile, fetchCampaigns, fetchCharacters])
 
   useEffect(()=>{
     if(!activeCampaignId) return
@@ -168,7 +168,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                   ))}
                 </select>
 
-                <select className="input" value={activeSession || ''} onChange={e => { const v = e.target.value || null; setActiveSession(v); }} disabled={!activeCampaignId || activeCampaignSessions.length===0} aria-disabled={!activeCampaignId || activeCampaignSessions.length===0}>
+                <select className="input" value={activeSession || ''} onChange={e => { const v = e.target.value || null; setActiveSession(v); }} disabled={!activeCampaignId || activeCampaignSessions.length === 0} aria-disabled={!activeCampaignId || activeCampaignSessions.length === 0}>
                   <option value="">Select session…</option>
                   {activeCampaignSessions.map(s => {
                     const sid = String(s.id)
