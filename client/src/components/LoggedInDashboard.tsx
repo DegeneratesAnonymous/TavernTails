@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import '../LoggedIn.css';
 import './LoggedInDashboard.css';
 import Beyond20Agent from '../agents/Beyond20Agent';
@@ -32,7 +32,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const activeCampaign = campaigns.find(c => String(c.id) === String(activeCampaignId)) || null
   const activeCampaignSessions: Array<{id: string}> = useMemo(() => (activeCampaign?.sessions || []), [activeCampaign])
 
-  async function fetchCampaigns(){
+  const fetchCampaigns = useCallback(async () => {
     try{
       const res = await apiFetch('/campaigns')
       if(res.ok){
@@ -44,9 +44,9 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
         }
       }
     }catch(e){/*ignore*/}
-  }
+  }, [activeCampaignId])
 
-  async function fetchCharacters(){
+  const fetchCharacters = useCallback(async () => {
     try{
       const res = await apiFetch('/characters')
       if(res.ok){
@@ -55,7 +55,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
         setCharacters(rows)
       }
     }catch(e){/*ignore*/}
-  }
+  }, [])
 
   useEffect(()=>{
     fetchCampaigns()
@@ -168,7 +168,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                   ))}
                 </select>
 
-                <select className="input" value={activeSession || ''} onChange={e => { const v = e.target.value || null; setActiveSession(v); }} disabled={!activeCampaignId || activeCampaignSessions.length === 0} aria-disabled={!activeCampaignId || activeCampaignSessions.length === 0}>
+                <select className="input" value={activeSession || ''} onChange={e => { const v = e.target.value || null; setActiveSession(v); }} disabled={!activeCampaignId || activeCampaignSessions.length===0} aria-disabled={!activeCampaignId || activeCampaignSessions.length===0}>
                   <option value="">Select session…</option>
                   {activeCampaignSessions.map(s => {
                     const sid = String(s.id)
