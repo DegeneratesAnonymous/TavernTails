@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import '../LoggedIn.css';
 import './LoggedInDashboard.css';
 import Beyond20Agent from '../agents/Beyond20Agent';
@@ -30,9 +30,11 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [newCharacterClass, setNewCharacterClass] = useState('')
 
   const activeCampaign = campaigns.find(c => String(c.id) === String(activeCampaignId)) || null
-  const activeCampaignSessions: Array<{id: string}> = (activeCampaign?.sessions || [])
+  const activeCampaignSessions: Array<{id: string}> = useMemo(() => {
+    return (activeCampaign?.sessions || [])
+  }, [activeCampaign])
 
-  async function fetchCampaigns(){
+  const fetchCampaigns = useCallback(async function fetchCampaigns(){
     try{
       const res = await apiFetch('/campaigns')
       if(res.ok){
@@ -44,7 +46,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
         }
       }
     }catch(e){/*ignore*/}
-  }
+  }, [activeCampaignId])
 
   async function fetchCharacters(){
     try{
@@ -60,7 +62,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   useEffect(()=>{
     fetchCampaigns()
     fetchCharacters()
-  },[profile])
+  },[profile, fetchCampaigns])
 
   useEffect(()=>{
     if(!activeCampaignId) return
