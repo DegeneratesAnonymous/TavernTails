@@ -1,11 +1,12 @@
 """Suggestion surface fed by recent chat context."""
 
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
 from typing import List, Optional
 
-from ..auth import get_current_user
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
+
 from .. import db
+from ..auth import get_current_user
 from ..realtime import broadcaster
 
 router = APIRouter(prefix="/suggestions", tags=["suggestions"])

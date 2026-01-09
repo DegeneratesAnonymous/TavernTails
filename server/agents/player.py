@@ -4,8 +4,9 @@ Minimal, single implementation of the player router. Supports signup, login
 and profile updates. Login returns a dev JWT in `access_token`.
 """
 
-from fastapi import APIRouter, Body, HTTPException, Query, Depends
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from .. import db
 from ..auth import create_access_token, get_current_user
@@ -116,7 +117,9 @@ def player_profile(
 
 @router.post("/player/dndbeyond")
 def import_dndbeyond_character(text: Optional[str] = Body(None), url: Optional[str] = Body(None), export: Optional[Dict[str, Any]] = Body(None)):
-    import re, httpx
+    import re
+
+    import httpx
 
     if text:
         m = re.search(r"Name[:\\s]+(.+)", text, re.I)

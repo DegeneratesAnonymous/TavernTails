@@ -1,3 +1,3 @@
 """Storage backends for TavernTAIls."""
 
-from .documents import get_document_store, DocumentMeta, DocumentStore  # noqa: F401
+from .documents import DocumentMeta, DocumentStore, get_document_store  # noqa: F401

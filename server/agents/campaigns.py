@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 from typing import List, Optional
 
-from ..auth import get_current_user
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+
 from .. import db
+from ..auth import get_current_user
 from . import sessions as sessions_agent
 
 router = APIRouter(prefix="/campaigns", tags=["campaigns"])

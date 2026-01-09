@@ -1,10 +1,11 @@
+import re
+from typing import List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from typing import Optional, List
-import re
 
-from ..auth import get_current_user
 from .. import db
+from ..auth import get_current_user
 from ..realtime import broadcaster
 
 router = APIRouter(prefix="/chat", tags=["chat"])

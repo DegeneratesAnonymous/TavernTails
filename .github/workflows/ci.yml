@@ -36,7 +36,7 @@ jobs:
       - name: Type check with mypy
         if: matrix.python-version == '3.11'
         run: |
-          mypy server/ --ignore-missing-imports --check-untyped-defs
+          mypy server/ --ignore-missing-imports --check-untyped-defs --exclude 'server/agents/archive'
 
       - name: Run backend tests
         run: |

@@ -1,7 +1,8 @@
 """Automated backend playthrough for signup -> verify -> login -> create session -> invite."""
-from fastapi.testclient import TestClient
-import time
 import json
+import time
+
+from fastapi.testclient import TestClient
 
 from server.main import app
 

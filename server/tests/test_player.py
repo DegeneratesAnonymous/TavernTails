@@ -1,9 +1,10 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlmodel import create_engine
 from sqlalchemy.pool import StaticPool
-import server.db as db
+from sqlmodel import create_engine
+
 import server.agents.player_clean as player
+import server.db as db
 
 
 def setup_module(module):

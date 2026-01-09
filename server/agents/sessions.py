@@ -1,14 +1,14 @@
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
-from typing import List
-from pathlib import Path
-import uuid
 import json
-import os
+import uuid
 from datetime import datetime, timezone
+from pathlib import Path
+from typing import List
 
-from ..auth import get_current_user
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+
 from .. import db
+from ..auth import get_current_user
 
 router = APIRouter(prefix="/sessions")
 

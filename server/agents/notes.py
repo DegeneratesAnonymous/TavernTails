@@ -1,8 +1,9 @@
 """Notes agent provides quick recaps."""
 
+from typing import List
+
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
-from typing import List
 
 router = APIRouter(tags=["notes"])
 

@@ -1,7 +1,21 @@
 # Ruff configuration for TavernTAIls backend
 # See: https://docs.astral.sh/ruff/configuration/
 
+# Line length
+line-length = 120
+
 # Exclude common directories
+exclude = [
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "*.egg-info",
+    ".pytest_cache",
+    "alembic/versions",
+    "server/agents/archive",
+]
+
 [lint]
 select = [
     "E",   # pycodestyle errors
@@ -21,27 +35,13 @@ ignore = [
 fixable = ["ALL"]
 unfixable = []
 
-# Exclude directories
-exclude = [
-    ".git",
-    ".venv",
-    "venv",
-    "__pycache__",
-    "*.egg-info",
-    ".pytest_cache",
-    "alembic/versions",
-]
-
 [lint.per-file-ignores]
 "__init__.py" = ["F401"]  # Allow unused imports in __init__.py
 "server/tests/*" = ["F401", "F811"]  # Allow test-specific patterns
 
 [format]
-# Use single quotes for strings
+# Use double quotes for strings
 quote-style = "double"
 
 # Indent with spaces
 indent-style = "space"
-
-# Line length
-line-length = 120
