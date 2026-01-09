@@ -27,7 +27,7 @@ def upgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
 
-    if not _column_exists(inspector, "campaign", "metadata_json"):
+    if _table_exists(inspector, "campaign") and not _column_exists(inspector, "campaign", "metadata_json"):
         with op.batch_alter_table("campaign") as batch_op:
             batch_op.add_column(sa.Column("metadata_json", sa.JSON(), nullable=True))
 
@@ -57,6 +57,6 @@ def downgrade() -> None:
         op.drop_index("ix_chatmessage_campaign_id", table_name="chatmessage")
         op.drop_table("chatmessage")
 
-    if _column_exists(inspector, "campaign", "metadata_json"):
+    if _table_exists(inspector, "campaign") and _column_exists(inspector, "campaign", "metadata_json"):
         with op.batch_alter_table("campaign") as batch_op:
             batch_op.drop_column("metadata_json")
