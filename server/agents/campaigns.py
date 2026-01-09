@@ -87,7 +87,7 @@ def create_session_from_campaign(campaign_id: str, current_user=Depends(get_curr
         db.add_session_to_campaign(campaign_id, c.owner_id, sid)
         return {'session_id': sid, 'meta': meta}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.put('/{campaign_id}')
