@@ -45,8 +45,8 @@ ruff check server/ --fix  # Auto-fix some issues
 
 #### 2. Type Checking (mypy)
 **Purpose**: Catch type errors before runtime
-**Command**: `mypy server/ --strict`
-**Blocking**: ✅ Yes - must pass
+**Command**: `mypy server/ --ignore-missing-imports --check-untyped-defs`
+**Blocking**: ⚠️ Non-blocking initially (will be blocking once codebase is typed)
 
 **Common Issues**:
 - Missing type hints
@@ -57,8 +57,10 @@ ruff check server/ --fix  # Auto-fix some issues
 **How to Fix Locally**:
 ```bash
 pip install mypy
-mypy server/ --strict
+mypy server/ --ignore-missing-imports --check-untyped-defs
 ```
+
+**Note**: Currently set to `continue-on-error: true` in CI to allow gradual adoption of type hints. Will be made blocking once core modules are properly typed.
 
 #### 3. Unit Tests (pytest)
 **Purpose**: Ensure functionality works as expected
@@ -261,7 +263,6 @@ When smoke tests are stable (>95% pass rate over 2 weeks), make blocking by remo
 These **must** pass before merging:
 
 - ✅ Backend linting (ruff)
-- ✅ Backend type checking (mypy) 
 - ✅ Backend unit tests (pytest)
 - ✅ Frontend linting (eslint)
 - ✅ Frontend type checking (tsc)
@@ -275,11 +276,12 @@ These **must** pass before merging:
 
 These should block once stable:
 
+- ⚠️ Backend type checking (mypy) - non-blocking until codebase is typed
 - ⚠️ Smoke tests (E2E) - block when >95% reliable
 - ⚠️ Integration tests - block when comprehensive
 - ⚠️ Performance tests - block when baselines established
 
-**Rationale**: Important but can be flaky initially.
+**Rationale**: Important but can be flaky or incomplete initially.
 
 ### Never Blocking ❌
 

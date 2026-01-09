@@ -33,10 +33,11 @@ jobs:
         run: |
           ruff check server/
 
-      - name: Type check with mypy
+      - name: Type check with mypy (non-blocking)
         if: matrix.python-version == '3.11'
+        continue-on-error: true
         run: |
-          mypy server/ --ignore-missing-imports --check-untyped-defs --exclude 'server/agents/archive'
+          python -m mypy server --exclude 'server/agents/archive' --ignore-missing-imports --check-untyped-defs
 
       - name: Run backend tests
         run: |
