@@ -94,6 +94,7 @@ jobs:
       - name: Apply migrations
         env:
           TAVERNTAILS_DATABASE_URL: sqlite:///./taverntails_ci.db
+        working-directory: server
         run: |
           python -m alembic upgrade head
 
