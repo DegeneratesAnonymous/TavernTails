@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Body, HTTPException, Depends
-from pydantic import BaseModel
-from typing import Dict, Any, List
 import json
-import re
 import random
+import re
+from typing import Any, Dict, List
+
+from fastapi import APIRouter, Body, Depends, HTTPException
+from pydantic import BaseModel
 
 from ..auth import get_current_user
 from ..realtime import broadcaster

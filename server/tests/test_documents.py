@@ -10,7 +10,7 @@ def test_local_store_round_trip(tmp_path):
     assert len(listed) == 1
     assert listed[0].name == "Guide"
     assert listed[0].filename.endswith('.txt')
-    assert listed[0].size == len("Hello DM".encode("utf-8"))
+    assert listed[0].size == len(b"Hello DM")
     meta, content = store.read_document("sess1", created.id)
     assert meta.id == created.id
     assert content == "Hello DM"

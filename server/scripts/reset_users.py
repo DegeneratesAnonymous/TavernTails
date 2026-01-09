@@ -3,6 +3,7 @@
 Usage: python -m server.scripts.reset_users
 """
 from sqlmodel import Session, select
+
 from server import db
 
 

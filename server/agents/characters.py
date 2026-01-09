@@ -1,9 +1,10 @@
+from typing import Any, Dict, Optional
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any
 
-from ..auth import get_current_user
 from .. import db
+from ..auth import get_current_user
 
 router = APIRouter(prefix="/characters", tags=["characters"])
 

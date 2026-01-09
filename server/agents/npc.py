@@ -1,13 +1,13 @@
 """NPC agent: summarises motivations + initiative."""
 
+import json
+from typing import Any, Dict, List, Optional
+
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
-from typing import Dict, List, Any, Optional
 
-from ..realtime import broadcaster
 from ..agents import sessions as session_module
-import json
-from pathlib import Path
+from ..realtime import broadcaster
 
 router = APIRouter(tags=["npc"])
 

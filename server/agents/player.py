@@ -1,11 +1,12 @@
-﻿"""Player agent (DB-backed).
+"""Player agent (DB-backed).
 
 Minimal, single implementation of the player router. Supports signup, login
 and profile updates. Login returns a dev JWT in `access_token`.
 """
 
-from fastapi import APIRouter, Body, HTTPException, Query, Depends
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from .. import db
 from ..auth import create_access_token, get_current_user
@@ -19,7 +20,7 @@ def player_send_friend_request(identifier: str = Body(..., embed=True), current_
         req = db.send_friend_request(current_user.email or current_user.username, identifier)
         return {"sent": True, "request_id": req.id}
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.get("/player/friends")
@@ -116,7 +117,9 @@ def player_profile(
 
 @router.post("/player/dndbeyond")
 def import_dndbeyond_character(text: Optional[str] = Body(None), url: Optional[str] = Body(None), export: Optional[Dict[str, Any]] = Body(None)):
-    import re, httpx
+    import re
+
+    import httpx
 
     if text:
         m = re.search(r"Name[:\\s]+(.+)", text, re.I)
@@ -133,7 +136,7 @@ def import_dndbeyond_character(text: Optional[str] = Body(None), url: Optional[s
             name = m.group(1).strip() if m else None
             return {"dndbeyond_character": {"imported": bool(name), "character": {"name": name}}}
         except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Failed to fetch URL: {e}")
+            raise HTTPException(status_code=400, detail=f"Failed to fetch URL: {e}") from e
     return {"dndbeyond_character": {"imported": False, "character": {}}}
 
 

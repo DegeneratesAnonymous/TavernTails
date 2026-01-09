@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Dict, Set
-from fastapi import WebSocket
 import asyncio
 import json
+from typing import Dict, Set
+
+from fastapi import WebSocket
 
 
 class SessionBroadcaster:

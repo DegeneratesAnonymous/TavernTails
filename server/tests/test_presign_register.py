@@ -21,8 +21,8 @@ def reset_storage_env():
     yield
     for key in ("TAVERNTAILS_STORAGE_MODE", "TAVERNTAILS_S3_BUCKET", "TAVERNTAILS_S3_PREFIX"):
         os.environ.pop(key, None)
-    import server.storage.documents as docs
     import server.agents.documents as doc_router
+    import server.storage.documents as docs
 
     docs._store = None
     # reset router store back to default local store for subsequent tests
@@ -40,6 +40,7 @@ def test_presign_and_register_roundtrip():
     os.environ['TAVERNTAILS_S3_BUCKET'] = bucket
     # re-import store factory and reset cached store so env vars take effect
     import importlib
+
     import server.storage.documents as docs
     docs._store = None
     store = docs.get_document_store()

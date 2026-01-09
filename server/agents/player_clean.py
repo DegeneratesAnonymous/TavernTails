@@ -2,14 +2,13 @@
 Clean Player Agent used for tests while `player.py` is being repaired.
 """
 
-from fastapi import APIRouter, Body, HTTPException, Query
-from typing import Dict, Any, Optional, List
 import re
-import httpx
 import uuid
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter, Body, HTTPException, Query
 
 from .. import db
-
 
 router = APIRouter()
 
