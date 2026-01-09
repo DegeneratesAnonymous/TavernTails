@@ -97,6 +97,9 @@ The command prints the port status so you can free it before starting the dev se
 - All sensitive environment variables (JWT secret, DB URLs, AWS credentials, AI provider tokens, etc.) follow the rotation playbooks documented in `docs/SECRET_MANAGEMENT.md`.
 - Never commit `.env` files or plaintext secrets. Use your password manager or the deployment platform’s secret store when sharing credentials.
 - GitHub Actions secrets must be set via the repository settings UI; workflows should only reference secret names.
+- **Agent Security**: See `docs/AGENT_GUARDRAILS.md` for a comprehensive security checklist covering RBAC, rate limiting, content moderation, audit logging, and more.
+- **Agent Setup & PM Oversight**: See `docs/AGENTS_SETUP.md` for PM responsibilities, weekly audit reviews, and agent configuration.
+- **AI Configuration**: See `docs/LLM_IMAGE_CONFIG.md` for LLM/image provider setup, content moderation, and caching best practices.
 
 ## MVP Tracking
 - The current MVP acceptance criteria (Project Plan §13) are broken down in `MVP_DELIVERY_CHECKLIST.md`; each row links requirements to concrete code/artifacts.
