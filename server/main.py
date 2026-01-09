@@ -74,6 +74,82 @@ async def log_requests(request, call_next):
     return response
 
 
+# ===================================
+# PLACEHOLDER: RATE LIMITING MIDDLEWARE
+# ===================================
+# TODO: Implement rate limiting middleware when TAVERNTAILS_RATE_LIMIT_ENABLED=true
+# This will enforce per-user and per-endpoint request limits to prevent abuse.
+#
+# Implementation notes:
+# 1. Check TAVERNTAILS_RATE_LIMIT_ENABLED environment variable
+# 2. Track requests per user (from JWT token) in memory or Redis
+# 3. Return 429 Too Many Requests when limits exceeded
+# 4. Use sliding window or token bucket algorithm
+# 5. Support per-endpoint limits from TAVERNTAILS_RATE_LIMIT_PER_ENDPOINT
+#
+# Example structure:
+# @app.middleware("http")
+# async def rate_limit_middleware(request, call_next):
+#     if os.getenv("TAVERNTAILS_RATE_LIMIT_ENABLED") != "true":
+#         return await call_next(request)
+#     
+#     user_id = get_user_from_request(request)  # Extract from JWT
+#     endpoint = request.url.path
+#     
+#     if is_rate_limited(user_id, endpoint):
+#         return JSONResponse(
+#             status_code=429,
+#             content={"detail": "Rate limit exceeded. Try again later."}
+#         )
+#     
+#     response = await call_next(request)
+#     record_request(user_id, endpoint)
+#     return response
+#
+# See docs/AGENT_GUARDRAILS.md Section 6 for full specification.
+
+
+# ===================================
+# PLACEHOLDER: AUDIT LOGGING MIDDLEWARE
+# ===================================
+# TODO: Implement audit logging middleware when TAVERNTAILS_ENABLE_AUDIT_LOGGING=true
+# This will log all agent actions to the agent_events table for PM review.
+#
+# Implementation notes:
+# 1. Check TAVERNTAILS_ENABLE_AUDIT_LOGGING environment variable
+# 2. Log all requests to agent endpoints (/narrative, /image, /chat, etc.)
+# 3. Store: timestamp, user_id, agent, action, resource_id, result, details
+# 4. Use agent_events table (already exists in schema)
+# 5. Log after response to include status code and timing
+# 6. Include request/response bodies for sensitive operations (hidden docs, role changes)
+#
+# Example structure:
+# @app.middleware("http")
+# async def audit_logging_middleware(request, call_next):
+#     if os.getenv("TAVERNTAILS_ENABLE_AUDIT_LOGGING") != "true":
+#         return await call_next(request)
+#     
+#     start_time = datetime.now(timezone.utc)
+#     user_id = get_user_from_request(request)  # Extract from JWT or "anonymous"
+#     
+#     response = await call_next(request)
+#     
+#     # Log to agent_events table if this is an agent endpoint
+#     if should_audit(request.url.path):
+#         await log_agent_event(
+#             user_id=user_id,
+#             agent=extract_agent_name(request.url.path),
+#             action=request.method,
+#             resource_id=extract_resource_id(request),
+#             result="success" if response.status_code < 400 else "failure",
+#             duration_ms=(datetime.now(timezone.utc) - start_time).total_seconds() * 1000
+#         )
+#     
+#     return response
+#
+# See docs/AGENTS_SETUP.md Section 2.4 for weekly audit review process.
+
+
 from fastapi.responses import JSONResponse
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
