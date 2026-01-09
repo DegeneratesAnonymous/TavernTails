@@ -119,7 +119,7 @@ async def log_requests(request, call_next):
 # 1. Check TAVERNTAILS_ENABLE_AUDIT_LOGGING environment variable
 # 2. Log all requests to agent endpoints (/narrative, /image, /chat, etc.)
 # 3. Store: timestamp, user_id, agent, action, resource_id, result, details
-# 4. Use agent_events table (already exists in schema)
+# 4. Create agent_events table in server/db.py (similar to ChatMessage, Roll tables)
 # 5. Log after response to include status code and timing
 # 6. Include request/response bodies for sensitive operations (hidden docs, role changes)
 #

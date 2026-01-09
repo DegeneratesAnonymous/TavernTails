@@ -240,14 +240,14 @@ Record all significant agent actions for security review, debugging, and complia
 ### Required fields
 ```python
 class AgentEvent(SQLModel, table=True):
-    id: int = Field(primary_key=True)
-    timestamp: datetime
-    user_id: str
+    id: Optional[int] = Field(default=None, primary_key=True)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    user_id: Optional[str] = None
     agent: str          # e.g., "narrative", "image"
     action: str         # e.g., "generate", "access_hidden_doc"
-    resource_id: str    # Campaign/session/document ID
+    resource_id: Optional[str] = None    # Campaign/session/document ID
     result: str         # "success", "failure", "blocked"
-    details: str        # Additional context (JSON)
+    details: Optional[str] = None        # Additional context (JSON)
 ```
 
 ### Testing
