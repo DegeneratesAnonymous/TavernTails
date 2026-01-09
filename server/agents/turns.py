@@ -71,7 +71,7 @@ def _ensure_member(session_id: str, user) -> None:
     try:
         meta = json.loads(meta_path.read_text())
     except Exception:
-        raise HTTPException(status_code=500, detail='Failed to read session meta')
+        raise HTTPException(status_code=500, detail='Failed to read session meta') from None
     identifier = session_module._identifier_for_user(user)
     if not session_module._user_is_member(meta, identifier):
         raise HTTPException(status_code=403, detail='Not authorized for this session')
