@@ -15,7 +15,49 @@ This project is a web application for solo tabletop RPG play, featuring an AI Ga
 
 ## Getting Started
 
-### Frontend
+![CI](https://github.com/DegeneratesAnonymous/TavernTails/actions/workflows/ci.yml/badge.svg)
+
+### Quick Start (Recommended)
+
+**One command to start both backend and frontend:**
+
+```bash
+# Windows (PowerShell)
+.\start-app.ps1
+
+# macOS/Linux (Bash)
+./start-app.sh
+```
+
+This will start both the backend API server and the frontend development server. Press Enter (Windows) or Ctrl+C (macOS/Linux) to stop both services.
+
+**First time setup:**
+```bash
+# Set up backend
+python -m venv venv
+# Windows:
+.\venv\Scripts\Activate.ps1
+# macOS/Linux:
+source venv/bin/activate
+pip install -r server/requirements.txt
+
+# Set up frontend
+cd client
+npm install
+cd ..
+
+# Copy environment files
+# Windows:
+copy server\.env.example server\.env
+# macOS/Linux:
+cp server/.env.example server/.env
+```
+
+**📚 For detailed setup instructions, troubleshooting, and development workflows, see [docs/LOCAL_DEV.md](docs/LOCAL_DEV.md)**
+
+### Alternative: Manual Start
+
+#### Frontend
 ```sh
 cd client
 npm start
@@ -27,7 +69,7 @@ The start script now runs a lightweight port guard to prevent hangs when another
 2. Run `npm run check-port` to confirm the port is free before retrying `npm start`.
 3. You can temporarily override the guard via `set SKIP_PORT_GUARD=1` (cmd) or `$env:SKIP_PORT_GUARD='1'` (PowerShell), but freeing the port is preferred.
 
-### Backend
+#### Backend
 ```sh
 cd server
 python -m venv venv
@@ -38,8 +80,6 @@ uvicorn main:app --reload
 
 **Notes for local development**
 - The backend will automatically create a verified development user by default on startup: `test@example.com` / `secret`. You can override these with environment variables:
-
-![CI](https://github.com/DegeneratesAnonymous/TavernTails/actions/workflows/ci.yml/badge.svg)
  	- `TAVERNTAILS_SEED_DEV_USER=0` to disable seeding.
  	- `TAVERNTAILS_DEV_EMAIL`, `TAVERNTAILS_DEV_PASSWORD`, `TAVERNTAILS_DEV_USERNAME` to customize the seeded account.
 - When running the React dev server it may pick an alternate port (e.g. 3001/3002). The frontend detects `localhost` and maps requests to the backend on port `8000` by default so you shouldn't need to set `REACT_APP_API_URL`. To explicitly configure the API, set `REACT_APP_API_URL` to your backend URL before starting the frontend.
