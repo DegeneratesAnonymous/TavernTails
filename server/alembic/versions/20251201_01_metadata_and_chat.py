@@ -1,7 +1,7 @@
 """Add campaign metadata JSON and chat message table
 
 Revision ID: 20251201_01
-Revises: 
+Revises:
 Create Date: 2025-12-01 12:00:00.000000
 """
 

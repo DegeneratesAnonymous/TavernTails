@@ -1,6 +1,5 @@
 """Suggestion surface fed by recent chat context."""
 
-from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
@@ -48,12 +47,12 @@ THEME_SUGGESTIONS = {
 
 
 class SuggestionResponse(BaseModel):
-    session_id: Optional[str]
+    session_id: str | None
     source: str
-    suggestions: List[str]
+    suggestions: list[str]
 
 
-def _infer_theme(messages: List[db.ChatMessage]) -> str:
+def _infer_theme(messages: list[db.ChatMessage]) -> str:
     window = " ".join((msg.message or "").lower() for msg in messages[-5:])
     for theme, keywords in THEME_KEYWORDS.items():
         if any(token in window for token in keywords):
@@ -61,7 +60,7 @@ def _infer_theme(messages: List[db.ChatMessage]) -> str:
     return "default"
 
 
-def _dedupe(items: List[str]) -> List[str]:
+def _dedupe(items: list[str]) -> list[str]:
     seen = {}
     for item in items:
         cleaned = (item or "").strip()
@@ -75,12 +74,12 @@ def _dedupe(items: List[str]) -> List[str]:
 
 @router.get("", response_model=SuggestionResponse)
 async def get_suggestions(
-    session_id: Optional[str] = Query(None, description="Session to derive context from"),
+    session_id: str | None = Query(None, description="Session to derive context from"),
     limit: int = Query(4, ge=1, le=8, description="Number of suggestions to return"),
     current_user=Depends(get_current_user),
 ) -> SuggestionResponse:
     source = "default"
-    pool: List[str] = list(DEFAULT_SUGGESTIONS)
+    pool: list[str] = list(DEFAULT_SUGGESTIONS)
     if session_id:
         rows = db.list_chat_messages(session_id=session_id, limit=25)
         if rows:

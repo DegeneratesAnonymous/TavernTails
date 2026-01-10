@@ -29,6 +29,7 @@ select = [
 ]
 ignore = [
     "E501",  # line too long (handled by formatter)
+    "B008",  # FastAPI uses function calls in defaults (Depends, Body, etc.)
 ]
 
 # Allow autofix for all enabled rules

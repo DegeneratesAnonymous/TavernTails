@@ -2,7 +2,6 @@ import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -105,7 +104,7 @@ def create_session(req: CreateSessionRequest, current_user=Depends(get_current_u
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-@router.get('', response_model=List[dict])
+@router.get('', response_model=list[dict])
 def list_sessions(current_user=Depends(get_current_user)):
     out = []
     identifier = _identifier_for_user(current_user)

@@ -1,19 +1,19 @@
 import json
 from pathlib import Path
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from ..auth import get_current_user
+
 
 class AdvanceRequest(BaseModel):
-    sceneId: Optional[str] = None
-    choiceId: Optional[str] = None
-    sessionId: Optional[str] = None
+    scene_id: str | None = None
+    choice_id: str | None = None
+    session_id: str | None = None
 
 router = APIRouter(prefix="/content")
 SESSIONS_DIR = Path(__file__).resolve().parents[1] / 'sessions'
-from ..auth import get_current_user
 
 
 @router.get('/campaigns/seed')
@@ -34,11 +34,11 @@ def get_seed_campaign():
 @router.post('/advance')
 def advance_scene(req: AdvanceRequest, current_user=Depends(get_current_user)):
     # Very small state machine for choices to demonstrate interaction
-    choiceId = req.choiceId
-    if choiceId == 'search':
+    choice_id = req.choice_id
+    if choice_id == 'search':
         res = {"narration":"You rummage through the sacks and find a small silver key.", "nextScene": None}
-        if req.sessionId:
-            folder = SESSIONS_DIR / req.sessionId
+        if req.session_id:
+            folder = SESSIONS_DIR / req.session_id
             if folder.exists():
                 meta = folder / 'meta.json'
                 if meta.exists():
@@ -60,10 +60,10 @@ def advance_scene(req: AdvanceRequest, current_user=Depends(get_current_user)):
                     cur = [cur, {'type':'narration','text':res['narration']}]
                 story.write_text(json.dumps(cur))
         return res
-    if choiceId == 'listen':
+    if choice_id == 'listen':
         res = {"narration":"You press your ear to the door and hear muffled voices on the other side.", "nextScene": None}
-        if req.sessionId:
-            folder = SESSIONS_DIR / req.sessionId
+        if req.session_id:
+            folder = SESSIONS_DIR / req.session_id
             if folder.exists():
                 story = folder / 'story.json'
                 try:
@@ -77,8 +77,8 @@ def advance_scene(req: AdvanceRequest, current_user=Depends(get_current_user)):
                 story.write_text(json.dumps(cur))
         return res
     res = {"narration":"Nothing notable happens.", "nextScene": None}
-    if req.sessionId:
-        folder = SESSIONS_DIR / req.sessionId
+    if req.session_id:
+        folder = SESSIONS_DIR / req.session_id
         if folder.exists():
             story = folder / 'story.json'
             try:

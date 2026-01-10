@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -9,7 +9,7 @@ from ..auth import get_current_user
 router = APIRouter(prefix="/characters", tags=["characters"])
 
 
-def _serialize(character: db.Character) -> Dict[str, Any]:
+def _serialize(character: db.Character) -> dict[str, Any]:
     return {
         "id": character.id,
         "name": character.name,
@@ -22,15 +22,15 @@ def _serialize(character: db.Character) -> Dict[str, Any]:
 class CharacterCreate(BaseModel):
     name: str
     level: int = Field(default=1, ge=1, le=20)
-    class_name: Optional[str] = None
-    sheet: Optional[Dict[str, Any]] = None
+    class_name: str | None = None
+    sheet: dict[str, Any] | None = None
 
 
 class CharacterUpdate(BaseModel):
-    name: Optional[str] = None
-    level: Optional[int] = Field(default=None, ge=1, le=20)
-    class_name: Optional[str] = None
-    sheet: Optional[Dict[str, Any]] = None
+    name: str | None = None
+    level: int | None = Field(default=None, ge=1, le=20)
+    class_name: str | None = None
+    sheet: dict[str, Any] | None = None
 
 
 @router.get("", summary="List characters for current user")

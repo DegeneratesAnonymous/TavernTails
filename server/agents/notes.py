@@ -1,6 +1,5 @@
 """Notes agent provides quick recaps."""
 
-from typing import List
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -10,7 +9,7 @@ router = APIRouter(tags=["notes"])
 
 class NotesRequest(BaseModel):
     session_id: str
-    notes: List[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
 
 
 class NotesResponse(BaseModel):

@@ -1,4 +1,3 @@
-from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -12,15 +11,15 @@ router = APIRouter(prefix="/campaigns", tags=["campaigns"])
 
 class CampaignCreate(BaseModel):
     name: str
-    description: Optional[str] = ""
-    invites: Optional[List[str]] = None
-    create_session: Optional[bool] = True
+    description: str | None = ""
+    invites: list[str] | None = None
+    create_session: bool | None = True
 
 
 class CampaignUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    archived: Optional[bool] = None
+    name: str | None = None
+    description: str | None = None
+    archived: bool | None = None
 
 
 @router.post('', status_code=201)

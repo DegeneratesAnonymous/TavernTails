@@ -4,7 +4,7 @@ Minimal, single implementation of the player router. Supports signup, login
 and profile updates. Login returns a dev JWT in `access_token`.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
@@ -40,9 +40,9 @@ def player_accept_friend(from_identifier: str = Body(..., embed=True), current_u
 def player_signup(
     email: str = Body(...),
     password: str = Body(...),
-    name: Optional[str] = Body(None),
-    age: Optional[int] = Body(None),
-    character: Optional[Dict[str, Any]] = Body(None),
+    name: str | None = Body(None),
+    age: int | None = Body(None),
+    character: dict[str, Any] | None = Body(None),
 ):
     email = email.strip().lower()
     if not email:
@@ -60,7 +60,7 @@ def player_signup(
 
 
 @router.post("/player/login")
-def player_login(email: Optional[str] = Body(None), name: Optional[str] = Body(None), password: str = Body(...)):
+def player_login(email: str | None = Body(None), name: str | None = Body(None), password: str = Body(...)):
     identifier = (email or name or "").strip()
     if not identifier:
         raise HTTPException(status_code=400, detail="Email or username required")
@@ -95,14 +95,14 @@ def resend_verification(email: str = Body(...)):
 @router.post("/player/profile")
 def player_profile(
     identifier: str = Body(...),
-    name: Optional[str] = Body(None),
-    character: Optional[Dict[str, Any]] = Body(None),
-    preferences: Optional[Dict[str, Any]] = Body(None),
+    name: str | None = Body(None),
+    character: dict[str, Any] | None = Body(None),
+    preferences: dict[str, Any] | None = Body(None),
 ):
     user = db.get_user_by_identifier(identifier.strip())
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    updates: Dict[str, Any] = {}
+    updates: dict[str, Any] = {}
     if name is not None:
         updates["name"] = name
     if character is not None:
@@ -116,7 +116,7 @@ def player_profile(
 
 
 @router.post("/player/dndbeyond")
-def import_dndbeyond_character(text: Optional[str] = Body(None), url: Optional[str] = Body(None), export: Optional[Dict[str, Any]] = Body(None)):
+def import_dndbeyond_character(text: str | None = Body(None), url: str | None = Body(None), export: dict[str, Any] | None = Body(None)):
     import re
 
     import httpx
@@ -149,10 +149,10 @@ def get_beyond20_domains(identifier: str = Query(...)):
 
 
 @router.post("/player/beyond20")
-def set_beyond20_domains(identifier: str = Body(...), domains_text: Optional[str] = Body(None), domains_list: Optional[List[str]] = Body(None)):
-    def _parse_domains_text(text: str) -> List[str]:
-        lines = [l.strip() for l in text.splitlines() if l.strip()]
-        valid: List[str] = []
+def set_beyond20_domains(identifier: str = Body(...), domains_text: str | None = Body(None), domains_list: list[str] | None = Body(None)):
+    def _parse_domains_text(text: str) -> list[str]:
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        valid: list[str] = []
         for ln in lines:
             if not ln.startswith("http://") and not ln.startswith("https://"):
                 raise ValueError(f"Domain must start with http:// or https://: {ln}")

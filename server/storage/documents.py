@@ -8,7 +8,6 @@ import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
 
 
 @dataclass
@@ -24,16 +23,16 @@ class DocumentMeta:
 
 
 class DocumentStore:
-    def list_documents(self, session_id: str) -> List[DocumentMeta]:
+    def list_documents(self, session_id: str) -> list[DocumentMeta]:
         raise NotImplementedError
 
-    def save_document(self, *, session_id: str, name: str, content: bytes | str, filename: Optional[str] = None, category: str = "core", visibility: str = "shared") -> DocumentMeta:
+    def save_document(self, *, session_id: str, name: str, content: bytes | str, filename: str | None = None, category: str = "core", visibility: str = "shared") -> DocumentMeta:
         raise NotImplementedError
 
     def delete_document(self, session_id: str, doc_id: str) -> bool:
         raise NotImplementedError
 
-    def read_document(self, session_id: str, doc_id: str) -> Optional[tuple[DocumentMeta, str]]:
+    def read_document(self, session_id: str, doc_id: str) -> tuple[DocumentMeta, str] | None:
         raise NotImplementedError
 
     def generate_presigned_post(self, session_id: str, filename: str, content_type: str | None = None, expires_in: int = 3600) -> dict:
@@ -56,21 +55,21 @@ class LocalDocumentStore(DocumentStore):
     def _meta_file(self, session_id: str) -> Path:
         return self._session_dir(session_id) / "meta.json"
 
-    def _load_meta(self, session_id: str) -> List[DocumentMeta]:
+    def _load_meta(self, session_id: str) -> list[DocumentMeta]:
         meta_path = self._meta_file(session_id)
         if not meta_path.exists():
             return []
         data = json.loads(meta_path.read_text())
         return [DocumentMeta(**entry) for entry in data]
 
-    def _write_meta(self, session_id: str, entries: List[DocumentMeta]) -> None:
+    def _write_meta(self, session_id: str, entries: list[DocumentMeta]) -> None:
         meta_path = self._meta_file(session_id)
         meta_path.write_text(json.dumps([asdict(entry) for entry in entries], indent=2))
 
-    def list_documents(self, session_id: str) -> List[DocumentMeta]:
+    def list_documents(self, session_id: str) -> list[DocumentMeta]:
         return self._load_meta(session_id)
 
-    def save_document(self, *, session_id: str, name: str, content: bytes | str, filename: Optional[str] = None, category: str = "core", visibility: str = "shared") -> DocumentMeta:
+    def save_document(self, *, session_id: str, name: str, content: bytes | str, filename: str | None = None, category: str = "core", visibility: str = "shared") -> DocumentMeta:
         doc_id = uuid.uuid4().hex[:8]
         folder = self._session_dir(session_id)
         # If client provided a filename, preserve its extension
@@ -121,7 +120,7 @@ class LocalDocumentStore(DocumentStore):
     def delete_document(self, session_id: str, doc_id: str) -> bool:
         folder = self._session_dir(session_id)
         meta = self._load_meta(session_id)
-        remaining: List[DocumentMeta] = []
+        remaining: list[DocumentMeta] = []
         deleted = False
         for entry in meta:
             if entry.id == doc_id:
@@ -136,7 +135,7 @@ class LocalDocumentStore(DocumentStore):
             self._write_meta(session_id, remaining)
         return deleted
 
-    def read_document(self, session_id: str, doc_id: str) -> Optional[tuple[DocumentMeta, str]]:
+    def read_document(self, session_id: str, doc_id: str) -> tuple[DocumentMeta, str] | None:
         folder = self._session_dir(session_id)
         for entry in self._load_meta(session_id):
             if entry.id == doc_id:
@@ -245,7 +244,7 @@ class S3DocumentStore(DocumentStore):
             pass
         return meta
 
-    def list_documents(self, session_id: str) -> List[DocumentMeta]:
+    def list_documents(self, session_id: str) -> list[DocumentMeta]:
         key = self._meta_key(session_id)
         try:
             resp = self.s3.get_object(Bucket=self.bucket, Key=key)
@@ -255,7 +254,7 @@ class S3DocumentStore(DocumentStore):
         except Exception:
             return []
 
-    def save_document(self, *, session_id: str, name: str, content: bytes | str, filename: Optional[str] = None, category: str = "core", visibility: str = "shared") -> DocumentMeta:
+    def save_document(self, *, session_id: str, name: str, content: bytes | str, filename: str | None = None, category: str = "core", visibility: str = "shared") -> DocumentMeta:
         doc_id = uuid.uuid4().hex[:8]
         if filename:
             ext = Path(filename).suffix or '.dat'
@@ -294,7 +293,7 @@ class S3DocumentStore(DocumentStore):
             self.s3.put_object(Bucket=self.bucket, Key=meta_key, Body=json.dumps([asdict(m) for m in remaining], indent=2).encode('utf-8'))
         return deleted
 
-    def read_document(self, session_id: str, doc_id: str) -> Optional[tuple[DocumentMeta, str]]:
+    def read_document(self, session_id: str, doc_id: str) -> tuple[DocumentMeta, str] | None:
         metas = self.list_documents(session_id)
         for m in metas:
             if m.id == doc_id:
@@ -313,20 +312,20 @@ class S3DocumentStore(DocumentStore):
 
 
 class NullDocumentStore(DocumentStore):
-    def list_documents(self, session_id: str) -> List[DocumentMeta]:  # pragma: no cover - placeholder
+    def list_documents(self, session_id: str) -> list[DocumentMeta]:  # pragma: no cover - placeholder
         return []
 
-    def save_document(self, *, session_id: str, name: str, content: bytes | str, filename: Optional[str] = None, category: str = "core", visibility: str = "shared") -> DocumentMeta:  # pragma: no cover - placeholder
+    def save_document(self, *, session_id: str, name: str, content: bytes | str, filename: str | None = None, category: str = "core", visibility: str = "shared") -> DocumentMeta:  # pragma: no cover - placeholder
         raise NotImplementedError("S3 storage not configured")
 
     def delete_document(self, session_id: str, doc_id: str) -> bool:  # pragma: no cover - placeholder
         raise NotImplementedError("S3 storage not configured")
 
-    def read_document(self, session_id: str, doc_id: str) -> Optional[tuple[DocumentMeta, str]]:  # pragma: no cover - placeholder
+    def read_document(self, session_id: str, doc_id: str) -> tuple[DocumentMeta, str] | None:  # pragma: no cover - placeholder
         raise NotImplementedError("S3 storage not configured")
 
 
-_store: Optional[DocumentStore] = None
+_store: DocumentStore | None = None
 
 
 def get_document_store() -> DocumentStore:
