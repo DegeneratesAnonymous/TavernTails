@@ -96,7 +96,7 @@ async def do_roll(req: RollRequest, current_user=Depends(get_current_user)):
     try:
         parsed = _parse_roll(req.expression)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     rolls = _roll(parsed['n'], parsed['sides'])
     total = sum(rolls) + parsed['mod']
     result = {
