@@ -1,5 +1,5 @@
 # TavernTAIls Progress Tracker
-_Last updated: 2026-01-08 by GitHub Copilot_
+_Last updated: 2026-01-11 by GitHub Copilot_
 
 ## Where Things Stand
 - **Sprint Focus:** Finish Sprint 1 deliverables (chat upgrades, turn queue, agent stubs, documentation).
@@ -12,6 +12,10 @@ _Last updated: 2026-01-08 by GitHub Copilot_
 - The biggest remaining “make it real” items are character CRUD/imports and a clearer campaign→session→play flow (hidden-doc RBAC + access auditing is implemented).
 
 ## Completed Recently
+0. **WP#3 Characters E2E Slice + Local CI Runner (Jan 11)**
+   - Gameplay toolbar now supports creating a character and auto-assigning it to the active session member.
+   - Added `./ci.ps1` Windows-safe runner to execute backend + frontend CI-equivalent checks reliably in paths containing `&`.
+   - Added `/characters` API ownership/isolation coverage in `server/tests/test_characters_api.py`.
 1. **Suggestion + Turn Queue Stream (Dec 3-4)**
    - Added `server/realtime.py` broadcaster, `/suggestions` endpoint, `/turns` API, websocket router, and React polling/WS consumers.
 2. **Chat Live Feed & Notes (Dec 4)**
