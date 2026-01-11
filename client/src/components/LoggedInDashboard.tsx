@@ -6,6 +6,7 @@ import GameplayLayout from './GameplayLayout'
 import SessionSettings from './SessionSettings'
 import { buildApiUrl, apiFetch } from '../api'
 import CampaignsMenu from './CampaignsMenu'
+import { CharacterSummary } from './CharacterPanel'
 
 type Props = {
   profile: any;
@@ -37,6 +38,66 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const activeCampaignSessions: Array<{id: string}> = useMemo(() => {
     return (activeCampaign?.sessions || [])
   }, [activeCampaign])
+
+  const characterRoster: CharacterSummary[] = useMemo(() => {
+    const toNum = (value: any): number | null => {
+      const parsed = typeof value === 'number' ? value : Number(value)
+      return Number.isFinite(parsed) ? parsed : null
+    }
+
+    const toStringArray = (value: any): string[] => {
+      if(Array.isArray(value)) return value.map(v => String(v))
+      return []
+    }
+
+    const toSkillArray = (value: any): { name: string; mod: number }[] => {
+      if(!Array.isArray(value)) return []
+      return value
+        .map((raw: any) => {
+          if(typeof raw === 'string') return { name: raw, mod: 0 }
+          const name = String(raw?.name ?? '').trim()
+          const mod = toNum(raw?.mod) ?? 0
+          if(!name) return null
+          return { name, mod }
+        })
+        .filter(Boolean) as any
+    }
+
+    return characters.map((c: any) => {
+      const sheet = (c?.sheet && typeof c.sheet === 'object') ? c.sheet : {}
+      const hpCurrent = toNum(sheet?.hp?.current ?? sheet?.hp_current) ?? 10
+      const hpMax = toNum(sheet?.hp?.max ?? sheet?.hp_max) ?? Math.max(hpCurrent, 10)
+      const hpTemp = toNum(sheet?.hp?.temp ?? sheet?.hp_temp) ?? 0
+      const ac = toNum(sheet?.ac) ?? 10
+      const spellSave = toNum(sheet?.spell_save ?? sheet?.spellSave ?? sheet?.spell_save_dc ?? sheet?.spellSaveDc) ?? 10
+      const stats = (sheet?.stats && typeof sheet.stats === 'object') ? sheet.stats : {}
+
+      const inventory = toStringArray(sheet?.inventory)
+      const spells = toStringArray(sheet?.spells)
+      const features = toStringArray(sheet?.features)
+      const skills = toSkillArray(sheet?.skills)
+
+      return {
+        id: String(c?.id ?? ''),
+        name: String(c?.name ?? 'Unnamed'),
+        level: toNum(c?.level) ?? 1,
+        hp: { current: hpCurrent, max: hpMax, temp: hpTemp || undefined },
+        ac,
+        spellSave,
+        stats: {
+          str: toNum(stats?.str) ?? 10,
+          dex: toNum(stats?.dex) ?? 10,
+          wis: toNum(stats?.wis) ?? 10,
+        },
+        features,
+        inventoryCount: typeof sheet?.inventoryCount === 'number' ? sheet.inventoryCount : inventory.length,
+        journalEntries: typeof sheet?.journalEntries === 'number' ? sheet.journalEntries : 0,
+        skills,
+        inventory,
+        spells,
+      }
+    }).filter((c: any) => Boolean(c?.id))
+  }, [characters])
 
   const fetchCampaigns = useCallback(async () => {
     try{
@@ -203,7 +264,17 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
               </div>
             </div>
             <div className="gameplay-content">
-              <GameplayLayout sessionId={activeSession} />
+              <GameplayLayout
+                sessionId={activeSession}
+                roster={characterRoster}
+                selectedCharId={activeCharacterId === null ? null : String(activeCharacterId)}
+                onSelectCharId={async (idStr) => {
+                  const parsed = Number(idStr)
+                  if(!Number.isFinite(parsed)) return
+                  setActiveCharacterId(parsed)
+                  await setSessionCharacter(parsed)
+                }}
+              />
             </div>
           </section>
         )}

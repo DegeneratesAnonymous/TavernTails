@@ -9,6 +9,9 @@ import PlayerStatusBar from './PlayerStatusBar'
 import { apiFetch, buildWsUrl } from '../api'
 type Props = {
   sessionId?: string | null
+  roster?: CharacterSummary[]
+  selectedCharId?: string | null
+  onSelectCharId?: (id: string) => void
 }
 
 type Banner = {
@@ -23,50 +26,10 @@ const defaultSuggestions = [
   'Ready an action or spell',
 ]
 
-const demoRoster: CharacterSummary[] = [
-  {
-    id: 'aria',
-    name: 'Aria the Ranger',
-    level: 3,
-    hp: { current: 18, max: 18, temp: 3 },
-    ac: 15,
-    spellSave: 14,
-    stats: { str: 12, dex: 16, wis: 14 },
-    features: ["Hunter's Quarry", 'Primeval Awareness', 'Favored Foe'],
-    inventoryCount: 9,
-    journalEntries: 5,
-    skills: [
-      { name: 'Perception', mod: 5 },
-      { name: 'Stealth', mod: 4 },
-    ],
-    inventory: ['Rope', 'Lantern', 'Travel Cloak', 'Healing Potion'],
-    spells: ['Hunter\'s Mark', 'Cure Wounds'],
-  },
-  {
-    id: 'torin',
-    name: 'Torin the Fighter',
-    level: 4,
-    hp: { current: 32, max: 32 },
-    ac: 18,
-    spellSave: 0,
-    stats: { str: 17, dex: 13, wis: 11 },
-    features: ['Second Wind', 'Action Surge'],
-    inventoryCount: 6,
-    journalEntries: 3,
-    skills: [
-      { name: 'Athletics', mod: 7 },
-      { name: 'Intimidation', mod: 4 },
-    ],
-    inventory: ['Greatsword', 'Shield', 'Traveler\'s Clothes'],
-    spells: [],
-  },
-]
-
-export default function GameplayLayout({sessionId}: Props){
+export default function GameplayLayout({sessionId, roster = [], selectedCharId = null, onSelectCharId}: Props){
   const [drawerOpen, setDrawerOpen] = useState(false)
   const openDrawer = () => setDrawerOpen(true)
   const closeDrawer = () => setDrawerOpen(false)
-  const [selectedCharId, setSelectedCharId] = useState<string | null>(demoRoster[0]?.id ?? null)
   const [campaignTitle, setCampaignTitle] = useState('Current Campaign')
   const [waitingOverride, setWaitingOverride] = useState<{player: string, expiresAt: number} | null>(null)
   const [suggestions, setSuggestions] = useState<string[]>([])
@@ -338,12 +301,12 @@ export default function GameplayLayout({sessionId}: Props){
   const activeBanner = banners[bannerIndex % (banners.length || 1)]
   const visibleSuggestions = suggestions.length ? suggestions : defaultSuggestions
   const selectedCharacter = useMemo(() => {
-    if(!demoRoster.length) return undefined
-    if(!selectedCharId) return demoRoster[0]
-    return demoRoster.find(c => c.id === selectedCharId) ?? demoRoster[0]
-  }, [selectedCharId])
+    if(!roster.length) return undefined
+    if(!selectedCharId) return roster[0]
+    return roster.find(c => c.id === selectedCharId) ?? roster[0]
+  }, [roster, selectedCharId])
 
-  const playerStats = selectedCharacter ?? demoRoster[0]
+  const playerStats = selectedCharacter
 
   return (
     <div className="gameplay-root" style={{height:'100%', minHeight:0, display:'flex', background:'#18181a'}}>
@@ -402,9 +365,9 @@ export default function GameplayLayout({sessionId}: Props){
           <section className="chat-area" aria-label="Chat" style={{flex:'1 1 70%',borderTop:'1px solid #222',padding:'12px'}}><Chat sessionId={sessionId || undefined}/></section>
           <aside className="chars-area" aria-label="Character Management" style={{width:'320px',borderLeft:'1px solid #222',padding:'12px', overflowY:'auto'}}>
             <CharacterPanel
-              roster={demoRoster}
-              selectedId={playerStats?.id}
-              onSelect={setSelectedCharId}
+              roster={roster}
+              selectedId={selectedCharId}
+              onSelect={onSelectCharId}
               sceneCues={sceneCues}
               npcSpotlight={npcSpotlight}
               onCueRoll={triggerCueRoll}
