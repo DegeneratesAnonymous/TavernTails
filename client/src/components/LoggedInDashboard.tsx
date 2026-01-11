@@ -28,6 +28,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [newCharacterName, setNewCharacterName] = useState('')
   const [newCharacterLevel, setNewCharacterLevel] = useState<number>(1)
   const [newCharacterClass, setNewCharacterClass] = useState('')
+  const [characterCreateOrigin, setCharacterCreateOrigin] = useState<'gameplay' | 'nav'>('nav')
 
   const activeCampaign = useMemo(() => {
     return campaigns.find(c => String(c.id) === String(activeCampaignId)) || null
@@ -144,7 +145,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
           <button className={`nav-btn ${view==='gameplay'?'active':''}`} onClick={() => setView('gameplay')}>Gameplay</button>
           <button className={`nav-btn ${view==='home'?'active':''}`} onClick={() => setView('home')}>Home</button>
           <button className={`nav-btn ${view==='view-characters'?'active':''}`} onClick={() => setView('view-characters')}>View Characters</button>
-          <button className={`nav-btn ${view==='create-character'?'active':''}`} onClick={() => setView('create-character')}>Create Character</button>
+          <button className={`nav-btn ${view==='create-character'?'active':''}`} onClick={() => { setCharacterCreateOrigin('nav'); setView('create-character') }}>Create Character</button>
           <button className={`nav-btn ${view==='campaigns'?'active':''}`} onClick={() => setView('campaigns')}>Campaigns</button>
           <button className={`nav-btn ${view==='campaign-settings'?'active':''}`} onClick={() => setView('campaign-settings')}>Campaign Settings</button>
           <button className={`nav-btn ${view==='account'?'active':''}`} onClick={() => setView('account')}>Your Account</button>
@@ -193,6 +194,10 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                     <option key={c.id} value={String(c.id)}>{c.name}{c.class_name ? ` (${c.class_name})` : ''}</option>
                   ))}
                 </select>
+
+                <button className="btn" onClick={() => { setCharacterCreateOrigin('gameplay'); setView('create-character') }}>
+                  New Character
+                </button>
 
                 <button className="btn" onClick={() => setShowCreateModal(true)}>New Campaign</button>
               </div>
@@ -255,17 +260,29 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                   if(newCharacterClass.trim()) payload.class_name = newCharacterClass.trim()
                   const res = await apiFetch('/characters', { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(payload) })
                   if(res.ok){
+                    const data = await res.json().catch(()=>({}))
+                    const createdId = typeof data?.character?.id === 'number' ? data.character.id : null
                     setNewCharacterName('')
                     setNewCharacterClass('')
                     setNewCharacterLevel(1)
                     await fetchCharacters()
-                    setView('view-characters')
+                    if(activeSession && createdId !== null && characterCreateOrigin === 'gameplay'){
+                      setActiveCharacterId(createdId)
+                      await setSessionCharacter(createdId)
+                      setView('gameplay')
+                    } else {
+                      if(createdId !== null) setActiveCharacterId(createdId)
+                      setView('view-characters')
+                    }
                   } else {
                     const err = await res.json().catch(()=>({}))
                     alert(err?.detail || 'Failed to create character')
                   }
                 }}>Create</button>
-                <button className="btn" onClick={()=>{ setView('view-characters') }}>Cancel</button>
+                <button className="btn" onClick={()=>{
+                  if(characterCreateOrigin === 'gameplay') setView('gameplay')
+                  else setView('view-characters')
+                }}>Cancel</button>
               </div>
             </div>
           </section>

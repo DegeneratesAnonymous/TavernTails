@@ -17,7 +17,10 @@ Get-Process -Name node -ErrorAction SilentlyContinue | ForEach-Object { Stop-Pro
 if(-not (Test-Path -Path .\logs)) { New-Item -ItemType Directory -Path .\logs | Out-Null }
 
 Write-Host "Starting backend (uvicorn) on port $BackendPort..."
-$VenvPython = Join-Path -Path $PSScriptRoot -ChildPath 'venv\Scripts\python.exe'
+$VenvPython = Join-Path -Path $PSScriptRoot -ChildPath '.venv\Scripts\python.exe'
+if(-not (Test-Path $VenvPython)){
+    $VenvPython = Join-Path -Path $PSScriptRoot -ChildPath 'venv\Scripts\python.exe'
+}
 if(Test-Path $VenvPython) {
     Start-Process -FilePath $VenvPython -ArgumentList '-m','uvicorn','server.main:app','--host','127.0.0.1','--port',$BackendPort,'--reload' -NoNewWindow -RedirectStandardOutput '.\logs\backend-out.log' -RedirectStandardError '.\logs\backend-err.log'
     Write-Host "Backend started; logs -> .\logs\\backend-out.log"
@@ -30,8 +33,13 @@ $clientDir = Join-Path -Path $PSScriptRoot -ChildPath 'client'
 if(Test-Path $clientDir) {
     $outLog = Join-Path $clientDir 'npm-out.log'
     $errLog = Join-Path $clientDir 'npm-err.log'
-    Start-Process -FilePath 'cmd.exe' -ArgumentList '/c','npm','start' -WorkingDirectory $clientDir -NoNewWindow -RedirectStandardOutput $outLog -RedirectStandardError $errLog
-    Write-Host "Frontend started; logs -> $outLog"
+    $reactScripts = Join-Path $clientDir 'node_modules\react-scripts\bin\react-scripts.js'
+    if(Test-Path $reactScripts) {
+        Start-Process -FilePath 'node.exe' -ArgumentList $reactScripts,'start' -WorkingDirectory $clientDir -NoNewWindow -RedirectStandardOutput $outLog -RedirectStandardError $errLog
+        Write-Host "Frontend started; logs -> $outLog"
+    } else {
+        Write-Warning "react-scripts not found at $reactScripts. Run 'npm ci' in client/ first, then rerun start-app.ps1"
+    }
 } else {
     Write-Warning "client directory not found at $clientDir. Start frontend manually in client/"
 }
