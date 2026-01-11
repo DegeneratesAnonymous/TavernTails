@@ -10,6 +10,20 @@ from . import sessions as sessions_agent
 router = APIRouter(prefix="/campaigns", tags=["campaigns"])
 
 
+def _require_user_id(current_user) -> int:
+    owner_id = getattr(current_user, 'id', None)
+    if not isinstance(owner_id, int):
+        raise HTTPException(status_code=401, detail='Invalid authentication credentials')
+    return owner_id
+
+
+def _require_user_identifier(current_user) -> str:
+    identifier = getattr(current_user, 'email', None) or getattr(current_user, 'username', None)
+    if not isinstance(identifier, str) or not identifier.strip():
+        raise HTTPException(status_code=401, detail='Invalid authentication credentials')
+    return identifier
+
+
 class CampaignCreate(BaseModel):
     name: str
     description: Optional[str] = ""
@@ -25,15 +39,18 @@ class CampaignUpdate(BaseModel):
 
 @router.post('', status_code=201)
 def create_campaign(req: CampaignCreate, current_user=Depends(get_current_user)):
-    owner_id = getattr(current_user, 'id', None)
+    owner_id = _require_user_id(current_user)
     camp = db.create_campaign(owner_id=owner_id, name=req.name, description=req.description)
+    campaign_id = camp.id
+    if campaign_id is None:
+        raise HTTPException(status_code=500, detail='Failed to create campaign')
     # Optionally create an initial linked session and persist that link to campaign.metadata
     created_session = None
     try:
-        owner_email = getattr(current_user, 'email', None) or getattr(current_user, 'username', None)
+        owner_email = _require_user_identifier(current_user)
         if req.create_session:
             sid, meta = sessions_agent.create_session_folder(req.name, owner_email, invites=req.invites)
-            db.add_session_to_campaign(camp.id, owner_id, sid)
+            db.add_session_to_campaign(campaign_id, owner_id, sid)
             created_session = sid
     except Exception:
         # non-fatal: campaign created but session creation failed
@@ -49,7 +66,7 @@ def create_campaign(req: CampaignCreate, current_user=Depends(get_current_user))
 
 @router.get('', summary='List campaigns visible to current user')
 def list_campaigns(current_user=Depends(get_current_user)):
-    owner_id = getattr(current_user, 'id', None)
+    owner_id = _require_user_id(current_user)
     rows = db.list_campaigns_for_owner(owner_id)
     campaigns = []
     for r in rows:
@@ -65,7 +82,7 @@ def get_campaign(campaign_id: str, current_user=Depends(get_current_user)):
     c = db.get_campaign_by_id(campaign_id)
     if not c:
         raise HTTPException(status_code=404, detail='Campaign not found')
-    if c.owner_id != getattr(current_user, 'id', None):
+    if c.owner_id != _require_user_id(current_user):
         raise HTTPException(status_code=403, detail='Forbidden')
     out = c.dict()
     sessions_list = (c.metadata_json or {}).get('sessions', [])
@@ -78,9 +95,9 @@ def create_session_from_campaign(campaign_id: str, current_user=Depends(get_curr
     c = db.get_campaign_by_id(campaign_id)
     if not c:
         raise HTTPException(status_code=404, detail='Campaign not found')
-    if c.owner_id != getattr(current_user, 'id', None):
+    if c.owner_id != _require_user_id(current_user):
         raise HTTPException(status_code=403, detail='Forbidden')
-    owner_email = getattr(current_user, 'email', None) or getattr(current_user, 'username', None)
+    owner_email = _require_user_identifier(current_user)
     invites = (c.metadata_json or {}).get('invites', [])
     try:
         sid, meta = sessions_agent.create_session_folder(c.name, owner_email, invites=invites)
@@ -92,7 +109,7 @@ def create_session_from_campaign(campaign_id: str, current_user=Depends(get_curr
 
 @router.put('/{campaign_id}')
 def update_campaign(campaign_id: str, req: CampaignUpdate, current_user=Depends(get_current_user)):
-    owner_id = getattr(current_user, 'id', None)
+    owner_id = _require_user_id(current_user)
     updates = req.dict(exclude_unset=True)
     c = db.update_campaign(campaign_id, owner_id, updates)
     if not c:
@@ -102,7 +119,7 @@ def update_campaign(campaign_id: str, req: CampaignUpdate, current_user=Depends(
 
 @router.delete('/{campaign_id}')
 def delete_campaign(campaign_id: str, current_user=Depends(get_current_user)):
-    owner_id = getattr(current_user, 'id', None)
+    owner_id = _require_user_id(current_user)
     ok = db.delete_campaign(campaign_id, owner_id)
     if not ok:
         raise HTTPException(status_code=404, detail='Campaign not found or forbidden')

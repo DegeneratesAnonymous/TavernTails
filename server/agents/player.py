@@ -50,11 +50,13 @@ def player_signup(
     username = name.strip() if isinstance(name, str) else None
     if db.get_user_by_identifier(email):
         raise HTTPException(status_code=409, detail="User exists")
-    profile = {"name": username or email.split("@")[0], "email": email, "preferences": {}}
+    profile: Dict[str, Any] = {"name": username or email.split("@")[0], "email": email, "preferences": {}}
     if character:
         profile["character"] = character
     if age is not None:
-        profile.setdefault("preferences", {})["age"] = age
+        prefs = profile.setdefault("preferences", {})
+        if isinstance(prefs, dict):
+            prefs["age"] = age
     user = db.create_user(email=email, password=password, username=username, profile=profile)
     return {"profile": user.profile, "verification_token": user.verification_token}
 
@@ -69,7 +71,7 @@ def player_login(email: Optional[str] = Body(None), name: Optional[str] = Body(N
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not user.verified:
         raise HTTPException(status_code=403, detail="Email not verified")
-    subject = user.email or user.username
+    subject = user.email or user.username or identifier
     token = create_access_token(subject)
     return {"profile": user.profile, "access_token": token, "token_type": "bearer"}
 
@@ -151,7 +153,7 @@ def get_beyond20_domains(identifier: str = Query(...)):
 @router.post("/player/beyond20")
 def set_beyond20_domains(identifier: str = Body(...), domains_text: Optional[str] = Body(None), domains_list: Optional[List[str]] = Body(None)):
     def _parse_domains_text(text: str) -> List[str]:
-        lines = [l.strip() for l in text.splitlines() if l.strip()]
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
         valid: List[str] = []
         for ln in lines:
             if not ln.startswith("http://") and not ln.startswith("https://"):

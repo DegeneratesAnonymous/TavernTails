@@ -1,9 +1,9 @@
 import os
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from passlib.context import CryptContext
-from sqlalchemy import Column, func
+from sqlalchemy import Column, desc, func
 from sqlalchemy.types import JSON
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
@@ -209,7 +209,7 @@ def list_chat_messages(
             stmt = stmt.where(ChatMessage.session_id == session_id)
         if campaign_id:
             stmt = stmt.where(ChatMessage.campaign_id == campaign_id)
-        stmt = stmt.order_by(ChatMessage.created_at.desc()).limit(limit)
+        stmt = stmt.order_by(desc(cast(Any, ChatMessage.created_at))).limit(limit)
         return list(reversed(list(session.exec(stmt).all())))
 
 def send_friend_request(from_identifier: str, to_identifier: str) -> FriendRequest:
@@ -239,30 +239,34 @@ def list_friends_and_requests(identifier: str):
     user = get_user_by_identifier(identifier)
     if not user:
         return {"friends": [], "pending": []}
+    user_id = user.id
+    if user_id is None:
+        return {"friends": [], "pending": []}
     with Session(engine) as session:
         # accepted friendships where user is either from or to
-        stmt = select(FriendRequest).where(
-            ((FriendRequest.from_user_id == user.id) | (FriendRequest.to_user_id == user.id)),
+        stmt_fr = select(FriendRequest).where(
+            ((FriendRequest.from_user_id == user_id) | (FriendRequest.to_user_id == user_id)),
             FriendRequest.status == "accepted",
         )
-        accepted = list(session.exec(stmt).all())
-        friend_ids = set()
+        accepted = list(session.exec(stmt_fr).all())
+        friend_ids: set[int] = set()
         for fr in accepted:
-            friend_ids.add(fr.to_user_id if fr.from_user_id == user.id else fr.from_user_id)
+            friend_ids.add(fr.to_user_id if fr.from_user_id == user_id else fr.from_user_id)
         friends = []
         if friend_ids:
-            stmt = select(User).where(User.id.in_(list(friend_ids)))
-            friends = [_profile_with_identity(u) for u in session.exec(stmt).all()]
+            stmt_users = select(User).where(cast(Any, User.id).in_(list(friend_ids)))
+            friends = [_profile_with_identity(u) for u in session.exec(stmt_users).all()]
 
         # incoming pending requests
-        stmt = select(FriendRequest).where(FriendRequest.to_user_id == user.id, FriendRequest.status == "pending")
+        stmt_pending = select(FriendRequest).where(FriendRequest.to_user_id == user_id, FriendRequest.status == "pending")
         pending = []
-        pending_rows = session.exec(stmt).all()
+        pending_rows = session.exec(stmt_pending).all()
         if pending_rows:
             from_ids = [r.from_user_id for r in pending_rows]
             user_map = {
                 u.id: _profile_with_identity(u)
-                for u in session.exec(select(User).where(User.id.in_(from_ids))).all()
+                for u in session.exec(select(User).where(cast(Any, User.id).in_(from_ids))).all()
+                if u.id is not None
             }
             for r in pending_rows:
                 pending.append({"from_id": r.from_user_id, "from_profile": user_map.get(r.from_user_id, {})})
@@ -346,7 +350,7 @@ def create_user(email: str, password: str, username: Optional[str] = None, profi
 
 def ensure_dev_user():
     """Create a default dev user if missing so local logins always work."""
-    email = _normalize_email(os.environ.get('TAVERNTAILS_DEV_EMAIL', 'test@example.com'))
+    email = _normalize_email(os.environ.get('TAVERNTAILS_DEV_EMAIL', 'test@example.com')) or 'test@example.com'
     password = os.environ.get('TAVERNTAILS_DEV_PASSWORD', 'secret')
     username = _normalize_username(os.environ.get('TAVERNTAILS_DEV_USERNAME', 'tester'))
     with Session(engine) as session:
@@ -436,6 +440,8 @@ def update_profile(email_or_name: str, profile_updates: Dict[str, Any]) -> Optio
     with Session(engine) as session:
         stmt = select(User).where(User.id == user.id)
         dbu = session.exec(stmt).first()
+        if not dbu:
+            return None
         dbu.profile.update(profile_updates)
         session.add(dbu)
         session.commit()
@@ -517,6 +523,8 @@ def set_beyond20_domains_for(identifier: str, domains: List[str]) -> Optional[Li
     with Session(engine) as session:
         stmt = select(User).where(User.id == user.id)
         dbu = session.exec(stmt).first()
+        if not dbu:
+            return None
         # Copy the profile to ensure SQLAlchemy/JSON type detects the change
         new_profile = dict(dbu.profile or {})
         prefs = new_profile.setdefault('preferences', {})

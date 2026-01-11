@@ -41,11 +41,11 @@ class SessionBroadcaster:
                 stale.append(socket)
         if stale:
             async with self._lock:
-                peers = self._connections.get(session_id)
-                if peers:
+                current_peers = self._connections.get(session_id)
+                if current_peers:
                     for socket in stale:
-                        peers.discard(socket)
-                    if not peers:
+                        current_peers.discard(socket)
+                    if not current_peers:
                         self._connections.pop(session_id, None)
 
 

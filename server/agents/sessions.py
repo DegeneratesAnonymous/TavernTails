@@ -21,7 +21,7 @@ def _identifier_for_user(user) -> str:
     return value.lower()
 
 
-def _normalize_email(value: str) -> str:
+def _normalize_email(value: str | None) -> str:
     return (value or '').strip().lower()
 
 
@@ -92,7 +92,7 @@ def _user_is_member(meta: dict, identifier: str) -> bool:
 
 class CreateSessionRequest(BaseModel):
     name: str
-    owner: str = None
+    owner: str | None = None
 
 
 @router.post('', status_code=201)
@@ -102,7 +102,7 @@ def create_session(req: CreateSessionRequest, current_user=Depends(get_current_u
         sid, meta = create_session_folder(req.name, owner_email, invites=[])
         return {'id': sid, 'name': req.name, 'owner': owner_email}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get('', response_model=List[dict])
@@ -160,8 +160,8 @@ def get_meta(session_id: str, current_user=Depends(get_current_user)):
         return data
     except HTTPException:
         raise
-    except Exception:
-        raise HTTPException(status_code=500, detail='Failed to read meta')
+    except Exception as err:
+        raise HTTPException(status_code=500, detail='Failed to read meta') from err
 
 
 class SetCharacterRequest(BaseModel):
@@ -179,16 +179,20 @@ def set_character_for_session(session_id: str, req: SetCharacterRequest, current
 
     try:
         data = json.loads(meta_path.read_text())
-    except Exception:
-        raise HTTPException(status_code=500, detail='Failed to read meta')
+    except Exception as err:
+        raise HTTPException(status_code=500, detail='Failed to read meta') from err
 
     identifier = _identifier_for_user(current_user)
     if not _user_is_member(data, identifier):
         raise HTTPException(status_code=403, detail='Not a member of this session')
 
+    owner_id = getattr(current_user, 'id', None)
+    if not isinstance(owner_id, int):
+        raise HTTPException(status_code=401, detail='Invalid authentication credentials')
+
     character_name = None
     if req.character_id is not None:
-        character = db.get_character_for_owner(req.character_id, getattr(current_user, 'id', None))
+        character = db.get_character_for_owner(req.character_id, owner_id)
         if not character:
             raise HTTPException(status_code=404, detail='Character not found')
         character_name = character.name
@@ -239,8 +243,8 @@ def delete_file(session_id: str, filename: str, current_user=Depends(get_current
         return {'ok': True}
     except HTTPException:
         raise
-    except Exception:
-        raise HTTPException(status_code=500, detail='Failed to delete file')
+    except Exception as err:
+        raise HTTPException(status_code=500, detail='Failed to delete file') from err
 
 
 @router.get('/{session_id}/file/{filename}')

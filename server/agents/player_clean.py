@@ -14,7 +14,7 @@ router = APIRouter()
 
 
 def _parse_domains_text(text: str) -> List[str]:
-    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
     valid = []
     for ln in lines:
         if not re.match(r'^https?://', ln):

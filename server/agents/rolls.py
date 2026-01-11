@@ -60,7 +60,8 @@ def _normalize_beyond20_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     expr = (payload.get('expression') or payload.get('label') or payload.get('name') or '').strip()
     rolls = _coerce_roll_values(payload.get('rolls') or payload.get('dice') or payload.get('results'))
     try:
-        mod = int(payload.get('modifier') if payload.get('modifier') is not None else payload.get('mod') or 0)
+        raw_mod = payload.get('modifier') if payload.get('modifier') is not None else payload.get('mod')
+        mod = int(raw_mod) if raw_mod is not None else 0
     except (TypeError, ValueError):
         mod = 0
     total = payload.get('total')
@@ -96,7 +97,7 @@ async def do_roll(req: RollRequest, current_user=Depends(get_current_user)):
     try:
         parsed = _parse_roll(req.expression)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     rolls = _roll(parsed['n'], parsed['sides'])
     total = sum(rolls) + parsed['mod']
     result = {

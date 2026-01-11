@@ -1,10 +1,10 @@
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Optional
 
+import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-import jwt
 from jwt.exceptions import InvalidTokenError
 
 from . import db
@@ -17,7 +17,7 @@ security = HTTPBearer()
 
 
 def create_access_token(subject: str, expires_delta: Optional[timedelta] = None) -> str:
-    to_encode = {"sub": subject}
+    to_encode: dict[str, Any] = {"sub": subject}
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
@@ -39,7 +39,10 @@ def get_current_user(creds: HTTPAuthorizationCredentials = Depends(security)):
     payload = decode_access_token(token)
     if not payload or 'sub' not in payload:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid authentication credentials')
-    identifier = payload.get('sub')
+    identifier_any = payload.get('sub')
+    if not isinstance(identifier_any, str) or not identifier_any.strip():
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid authentication credentials')
+    identifier = identifier_any
     user = db.get_user_by_identifier(identifier)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='User not found')

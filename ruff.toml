@@ -13,6 +13,7 @@ exclude = [
     "*.egg-info",
     ".pytest_cache",
     "alembic/versions",
+    "server/alembic/versions",
     "server/agents/archive",
 ]
 
@@ -29,6 +30,10 @@ select = [
 ]
 ignore = [
     "E501",  # line too long (handled by formatter)
+    "B008",  # FastAPI's Depends(...) in parameters is intentional
+    "UP006", # Allow typing.List/Dict for now; avoid mass refactors
+    "UP007", # Allow Optional[...] etc. for now
+    "UP035", # Allow legacy typing imports for now
 ]
 
 # Allow autofix for all enabled rules

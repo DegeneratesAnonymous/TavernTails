@@ -9,7 +9,7 @@ _Last updated: 2026-01-08 by GitHub Copilot_
 
 ## 2026-01 Status Note
 - Planning docs drifted a bit: `MVP_DELIVERY_CHECKLIST.md` has been updated to reflect the current codebase; treat `PROJECT_PLAN.md` as canonical and keep this file as the implementation log.
-- The biggest remaining “make it real” items are character CRUD/imports and a clearer campaign→session→play flow (plus host/hidden-doc RBAC if that is truly MVP).
+- The biggest remaining “make it real” items are character CRUD/imports and a clearer campaign→session→play flow (hidden-doc RBAC + access auditing is implemented).
 
 ## Completed Recently
 1. **Suggestion + Turn Queue Stream (Dec 3-4)**

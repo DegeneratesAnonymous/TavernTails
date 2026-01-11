@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import '../LoggedIn.css';
 import './LoggedInDashboard.css';
 import Beyond20Agent from '../agents/Beyond20Agent';
@@ -29,24 +29,29 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [newCharacterLevel, setNewCharacterLevel] = useState<number>(1)
   const [newCharacterClass, setNewCharacterClass] = useState('')
 
-  const activeCampaign = campaigns.find(c => String(c.id) === String(activeCampaignId)) || null
-  const activeCampaignSessions: Array<{id: string}> = (activeCampaign?.sessions || [])
+  const activeCampaign = useMemo(() => {
+    return campaigns.find(c => String(c.id) === String(activeCampaignId)) || null
+  }, [activeCampaignId, campaigns])
 
-  async function fetchCampaigns(){
+  const activeCampaignSessions: Array<{id: string}> = useMemo(() => {
+    return (activeCampaign?.sessions || [])
+  }, [activeCampaign])
+
+  const fetchCampaigns = useCallback(async () => {
     try{
       const res = await apiFetch('/campaigns')
       if(res.ok){
         const data = await res.json()
         const rows = Array.isArray(data?.campaigns) ? data.campaigns : []
         setCampaigns(rows)
-        if(!activeCampaignId && rows.length > 0){
-          setActiveCampaignId(String(rows[0].id))
+        if(rows.length > 0){
+          setActiveCampaignId(prev => prev || String(rows[0].id))
         }
       }
     }catch(e){/*ignore*/}
-  }
+  }, [])
 
-  async function fetchCharacters(){
+  const fetchCharacters = useCallback(async () => {
     try{
       const res = await apiFetch('/characters')
       if(res.ok){
@@ -55,12 +60,12 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
         setCharacters(rows)
       }
     }catch(e){/*ignore*/}
-  }
+  }, [])
 
   useEffect(()=>{
     fetchCampaigns()
     fetchCharacters()
-  },[profile])
+  },[fetchCampaigns, fetchCharacters, profile])
 
   useEffect(()=>{
     if(!activeCampaignId) return

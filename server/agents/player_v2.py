@@ -16,7 +16,7 @@ router = APIRouter()
 
 
 def _parse_domains_text(text: str) -> List[str]:
-    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
     valid = []
     for ln in lines:
         if not re.match(r'^https?://', ln):
@@ -100,7 +100,7 @@ def import_dndbeyond_character(text: Optional[str] = Body(None), url: Optional[s
             name = m.group(1).strip() if m else None
             return {"dndbeyond_character": {"imported": bool(name), "character": {"name": name}}}
         except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Failed to fetch URL: {e}")
+            raise HTTPException(status_code=400, detail=f"Failed to fetch URL: {e}") from e
     return {"dndbeyond_character": {"imported": False, "character": {}}}
 
 
