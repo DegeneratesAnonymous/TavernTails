@@ -72,6 +72,31 @@ def test_import_character_from_file():
     assert data["character"]["sheet"]["import"]["source"] == "file"
 
 
+def test_import_character_from_pdf_upload_best_effort():
+    client = _client()
+    email = "import-owner-pdf@example.com"
+    _ensure_user(email)
+    token = create_access_token(email)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+
+    # We intentionally upload bytes that are NOT a real PDF.
+    # The endpoint should still behave safely (best-effort) and create a character,
+    # because it falls back to decoding bytes as text if PDF parsing fails.
+    payload = b"Minsc\nLevel 3\nRanger\n"
+    res = client.post(
+        "/characters/import/pdf?source=pdf",
+        headers=auth_headers,
+        files={"file": ("character.pdf", io.BytesIO(payload), "application/pdf")},
+    )
+    assert res.status_code == 201, res.text
+    data = res.json()
+    assert data["character"]["name"] == "Minsc"
+    assert data["character"]["level"] == 3
+    assert data["character"]["class_name"] == "Ranger"
+    assert data["character"]["sheet"]["import"]["source"] == "pdf"
+    assert "raw_text" in data["character"]["sheet"]
+
+
 def test_import_character_from_nested_classes_shape():
     client = _client()
     email = "import-owner-ddb@example.com"

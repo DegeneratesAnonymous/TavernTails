@@ -20,7 +20,7 @@ export default function ImportCharacterView({
   onDone,
   onGoToGameplay,
 }: Props) {
-  const [mode, setMode] = useState<'ddb-link' | 'paste' | 'file'>('paste')
+  const [mode, setMode] = useState<'ddb-link' | 'paste' | 'file' | 'pdf'>('paste')
   const [rawJson, setRawJson] = useState('')
   const [ddbUrl, setDdbUrl] = useState('')
   const [file, setFile] = useState<File | null>(null)
@@ -79,6 +79,9 @@ export default function ImportCharacterView({
               </button>
               <button type="button" aria-pressed={mode === 'file'} onClick={() => setMode('file')} disabled={busy}>
                 Upload JSON
+              </button>
+              <button type="button" aria-pressed={mode === 'pdf'} onClick={() => setMode('pdf')} disabled={busy}>
+                Upload PDF
               </button>
               <button type="button" aria-pressed={mode === 'ddb-link'} onClick={() => setMode('ddb-link')} disabled={busy}>
                 DDB link
@@ -219,6 +222,66 @@ export default function ImportCharacterView({
                 }}
               >
                 Upload & Import
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {mode === 'pdf' ? (
+          <div className="stack" style={{ gap: 10 }}>
+            <div className="muted">2) Upload PDF character sheet</div>
+            <div className="inline-alert">
+              We only parse files you upload. No D&amp;D Beyond scraping. PDF parsing is best-effort; we always keep extracted text for future improvements.
+            </div>
+            <div className="row-wrap" style={{ alignItems: 'center' }}>
+              <input
+                className="input"
+                type="file"
+                accept="application/pdf,.pdf"
+                onChange={(e) => {
+                  const f = e.target.files && e.target.files[0] ? e.target.files[0] : null
+                  setFile(f)
+                }}
+                disabled={busy}
+                style={{ maxWidth: 420 }}
+              />
+              <button
+                className="btn"
+                disabled={busy}
+                onClick={async () => {
+                  if (!file) {
+                    showMessage('error', 'Choose a PDF file.')
+                    return
+                  }
+                  setBusy(true)
+                  setMessage(null)
+                  try {
+                    const form = new FormData()
+                    form.append('file', file)
+                    const qs = new URLSearchParams()
+                    qs.set('source', 'pdf')
+                    if (ddbUrl.trim()) qs.set('ddb_url', ddbUrl.trim())
+                    const res = await apiFetch(`/characters/import/pdf?${qs.toString()}`, {
+                      method: 'POST',
+                      body: form,
+                      headers: {}
+                    })
+                    if (res.ok) {
+                      const data = await res.json().catch(() => ({}))
+                      const createdId = typeof data?.character?.id === 'number' ? data.character.id : null
+                      await handleCreated(createdId)
+                    } else {
+                      const err = await res.json().catch(() => ({}))
+                      showMessage('error', err?.detail || 'Failed to import character')
+                    }
+                  } catch (e) {
+                    showMessage('error', 'Network error')
+                  } finally {
+                    setBusy(false)
+                  }
+                }}
+              >
+                Upload &amp; Import
               </button>
             </div>
           </div>
