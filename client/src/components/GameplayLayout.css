@@ -12,13 +12,14 @@
   top: 0;
   left: 0;
   height: 100%;
-  width: var(--drawer-width, 320px);
+  width: min(var(--drawer-width, 320px), 45vw);
   background: rgba(12,12,14,0.96);
   border-right: 1px solid rgba(255,255,255,0.05);
   box-shadow: 0 18px 60px rgba(0,0,0,0.4);
   transform: translateX(-100%);
   transition: transform 160ms ease-out;
   z-index: 5;
+  box-sizing: border-box;
 }
 .site-panel.open{
   transform: translateX(0);
@@ -89,9 +90,11 @@
   flex: 1;
   min-height: 0;
   display: flex;
+  align-items: stretch;
   gap: 14px;
   padding: 10px 12px 12px 12px;
   box-sizing: border-box;
+  min-width: 0;
 }
 
 .home-screen{
@@ -102,8 +105,9 @@
 }
 
 .session-panel{
-  width: min(420px, 38vw);
-  min-width: 320px;
+  width: clamp(260px, 32vw, 420px);
+  max-width: 45%;
+  min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -112,6 +116,7 @@
   border: 1px solid rgba(255, 255, 255, 0.07);
   box-shadow: 0 16px 60px rgba(0,0,0,0.35);
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 .session-panel-tabs{
@@ -143,6 +148,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 /* Short viewports: prioritize the scene area. */
@@ -198,6 +204,7 @@
   }
   .session-panel{
     width: 100%;
+    max-width: 100%;
     min-width: 0;
     height: clamp(320px, 44vh, 520px);
   }
@@ -484,11 +491,13 @@
   }
 }
 .chars-area{
-  width: 320px;
+  width: clamp(240px, 26vw, 320px);
+  max-width: 45%;
   border-left: 1px solid rgba(255,255,255,0.04);
   padding: 12px;
   overflow-y: auto;
   min-height: 0;
+  box-sizing: border-box;
 }
 
 .turn-tracker{
@@ -549,6 +558,7 @@
 
   .chars-area{
     width: 100%;
+    max-width: 100%;
     border-left: none;
     border-top: 1px solid rgba(255,255,255,0.04);
     max-height: 52vh;
