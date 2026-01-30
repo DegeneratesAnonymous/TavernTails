@@ -70,3 +70,35 @@ def test_import_character_from_file():
     assert data["character"]["level"] == 2
     assert data["character"]["class_name"] == "Rogue"
     assert data["character"]["sheet"]["import"]["source"] == "file"
+
+
+def test_import_character_from_nested_classes_shape():
+    client = _client()
+    email = "import-owner-ddb@example.com"
+    _ensure_user(email)
+    token = create_access_token(email)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+
+    raw = {
+        "data": {
+            "name": "DDB Nested",
+            "classes": [
+                {"name": "Fighter", "level": 5},
+                {"name": "Wizard", "level": 1},
+            ],
+        }
+    }
+
+    res = client.post(
+        "/characters/import",
+        headers=auth_headers,
+        json={
+            "raw_json": __import__("json").dumps(raw),
+            "source": "paste",
+        },
+    )
+    assert res.status_code == 201, res.text
+    data = res.json()
+    assert data["character"]["name"] == "DDB Nested"
+    assert data["character"]["level"] == 6
+    assert data["character"]["class_name"] == "Fighter / Wizard"

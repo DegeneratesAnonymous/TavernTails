@@ -50,30 +50,72 @@ def _extract_character_fields(raw: Dict[str, Any]) -> tuple[Optional[str], Optio
 
     We intentionally keep this flexible because different exports have different shapes.
     """
-    # Common direct keys
-    name = _as_str(raw.get("name"))
-    level = _as_int(raw.get("level"))
-    class_name = _as_str(raw.get("class_name") or raw.get("class"))
+    def _class_name_from_classes_list(classes: Any) -> Optional[str]:
+        if not isinstance(classes, list) or not classes:
+            return None
+        names: list[str] = []
+        for item in classes:
+            if not isinstance(item, dict):
+                continue
+            cname = _as_str(item.get("name") or item.get("class") or item.get("class_name"))
+            if cname:
+                names.append(cname)
+        if not names:
+            return None
+        if len(names) == 1:
+            return names[0]
+        return " / ".join(names[:3])
 
-    # Nested shapes (common patterns)
-    if not name and isinstance(raw.get("character"), dict):
-        name = _as_str(raw["character"].get("name"))
-        level = level or _as_int(raw["character"].get("level"))
-        class_name = class_name or _as_str(raw["character"].get("class") or raw["character"].get("class_name"))
+    def _level_from_classes_list(classes: Any) -> Optional[int]:
+        if not isinstance(classes, list) or not classes:
+            return None
+        total = 0
+        found_any = False
+        for item in classes:
+            if not isinstance(item, dict):
+                continue
+            lvl = _as_int(item.get("level"))
+            if isinstance(lvl, int):
+                total += lvl
+                found_any = True
+        return total if found_any else None
 
-    # If the class is an object/list, try to pull a name
-    if class_name is None:
-        for candidate in (raw.get("class"), raw.get("classes"), raw.get("classInfo")):
-            if isinstance(candidate, dict):
-                class_name = _as_str(candidate.get("name"))
-                if class_name:
-                    break
-            if isinstance(candidate, list) and candidate:
-                first = candidate[0]
-                if isinstance(first, dict):
-                    class_name = _as_str(first.get("name"))
-                    if class_name:
-                        break
+    name: Optional[str] = None
+    level: Optional[int] = None
+    class_name: Optional[str] = None
+
+    # Search likely roots in order: top-level, then common nesting wrappers.
+    roots: list[Dict[str, Any]] = [raw]
+    for key in ("character", "data"):
+        nested = raw.get(key)
+        if isinstance(nested, dict):
+            roots.append(nested)
+
+    for root in roots:
+        name = name or _as_str(root.get("name"))
+        level = level or _as_int(root.get("level") or root.get("characterLevel"))
+        class_name = class_name or _as_str(root.get("class_name") or root.get("class"))
+
+        classes = root.get("classes")
+        if class_name is None:
+            class_name = _class_name_from_classes_list(classes)
+        if level is None:
+            level = _level_from_classes_list(classes)
+
+        # If the class is an object (common in some exports), try to pull its name.
+        if class_name is None:
+            cls_obj = root.get("class")
+            if isinstance(cls_obj, dict):
+                class_name = _as_str(cls_obj.get("name"))
+
+        # Alternative shapes.
+        if class_name is None:
+            class_info = root.get("classInfo")
+            if isinstance(class_info, dict):
+                class_name = _as_str(class_info.get("name"))
+
+        if name and level is not None:
+            break
 
     return name, level, class_name
 

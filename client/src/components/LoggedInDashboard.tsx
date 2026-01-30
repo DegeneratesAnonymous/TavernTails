@@ -477,6 +477,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             <button className={`nav-btn ${view==='gameplay'?'active':''}`} onClick={() => setView('gameplay')}>Play</button>
             <button className={`nav-btn ${view==='campaign-setup'?'active':''}`} onClick={() => setView('campaign-setup')}>Manage Campaigns</button>
             <button className={`nav-btn ${view==='view-characters'?'active':''}`} onClick={() => setView('view-characters')}>Manage Characters</button>
+            <button className={`nav-btn ${view==='import-character'?'active':''}`} onClick={() => setView('import-character')}>Import Character</button>
             <button className={`nav-btn ${view==='account'?'active':''}`} onClick={() => setView('account')}>Account</button>
           </nav>
           <div className="sidebar-footer">
