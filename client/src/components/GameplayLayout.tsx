@@ -1,17 +1,39 @@
 import React, {useEffect, useMemo, useState} from 'react'
 import './GameplayLayout.css'
-import SiteMenu from './SiteMenu'
 import NarrativeView from './NarrativeView'
 import Chat from './Chat'
 import CharacterPanel, {CharacterSummary, SceneCue} from './CharacterPanel'
 import DocumentsPanel from './DocumentsPanel'
 import PlayerStatusBar from './PlayerStatusBar'
+import JournalPanel from './JournalPanel'
 import { apiFetch, buildWsUrl } from '../api'
+import SiteMenu from './SiteMenu'
+import SiteNavMenu from './SiteNavMenu'
 type Props = {
   sessionId?: string | null
   roster?: CharacterSummary[]
   selectedCharId?: string | null
   onSelectCharId?: (id: string) => void
+  onNavigate?: (key: string) => void
+  onLogout?: () => void
+
+  currentUserEmail?: string | null
+  currentUsername?: string | null
+
+  activeCampaignId?: string | null
+  activeCampaign?: any | null
+  onCampaignUpdated?: () => Promise<void> | void
+  onStartCampaign?: () => Promise<void> | void
+  startCampaignBusy?: boolean
+
+  campaigns?: Array<any>
+  onSelectCampaign?: (id: string | null) => void | Promise<void>
+  onNewCampaign?: () => void
+  onQuickstart?: () => void
+
+  activeCharacterId?: number | null
+  onGoToCharacters?: () => void
+  onGoToImport?: () => void
 }
 
 type Banner = {
@@ -20,16 +42,46 @@ type Banner = {
   subtitle?: string
 }
 
-const defaultSuggestions = [
-  'Survey the immediate area',
-  'Address the NPC who spoke',
-  'Ready an action or spell',
-]
-
-export default function GameplayLayout({sessionId, roster = [], selectedCharId = null, onSelectCharId}: Props){
+export default function GameplayLayout({
+  sessionId,
+  roster = [],
+  selectedCharId = null,
+  onSelectCharId,
+  onNavigate,
+  onLogout,
+  currentUserEmail,
+  currentUsername,
+  activeCampaignId,
+  activeCampaign,
+  onCampaignUpdated,
+  onStartCampaign,
+  startCampaignBusy,
+  campaigns = [],
+  onSelectCampaign,
+  onNewCampaign,
+  onQuickstart,
+  activeCharacterId,
+  onGoToCharacters,
+  onGoToImport,
+}: Props){
   const [drawerOpen, setDrawerOpen] = useState(false)
   const openDrawer = () => setDrawerOpen(true)
   const closeDrawer = () => setDrawerOpen(false)
+
+  const [rightTab, setRightTab] = useState<'chat' | 'character' | 'journal'>('chat')
+  const [drawerView, setDrawerView] = useState<'site' | 'panels' | 'party' | 'documents'>('panels')
+  const [partySelectedId, setPartySelectedId] = useState<string | null>(null)
+  const [showInviteForm, setShowInviteForm] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteNote, setInviteNote] = useState('')
+  const [inviteBusy, setInviteBusy] = useState(false)
+  const [inviteMessage, setInviteMessage] = useState<string | null>(null)
+  const [inviteMatches, setInviteMatches] = useState<Array<{id?: number; username?: string | null; email?: string | null; name?: string | null}>>([])
+  const [inviteMatchBusy, setInviteMatchBusy] = useState(false)
+
+  const [partyData, setPartyData] = useState<any | null>(null)
+  const [partyError, setPartyError] = useState<string | null>(null)
+  const [sessionStarted, setSessionStarted] = useState(false)
   const [campaignTitle, setCampaignTitle] = useState('Current Campaign')
   const [waitingOverride, setWaitingOverride] = useState<{player: string, expiresAt: number} | null>(null)
   const [suggestions, setSuggestions] = useState<string[]>([])
@@ -165,6 +217,9 @@ export default function GameplayLayout({sessionId, roster = [], selectedCharId =
             return [{name, initiative_hint: data?.initiative_hint}, ...existing].slice(0, 4)
           })
         }
+        if(data?.type === 'narrative.scene' && data?.scene){
+          window.dispatchEvent(new CustomEvent('narrative:scene',{detail:{scene:data.scene}}))
+        }
       }catch(err){
         console.warn('WS parse error', err)
       }
@@ -176,6 +231,30 @@ export default function GameplayLayout({sessionId, roster = [], selectedCharId =
       ws.close()
     }
   },[sessionId])
+
+  useEffect(() => {
+    let canceled = false
+    async function loadStarted() {
+      if (!sessionId) {
+        setSessionStarted(false)
+        return
+      }
+      try {
+        const res = await apiFetch(`/sessions/${sessionId}/file/story.json`)
+        if (!res.ok) throw new Error('story missing')
+        const data = await res.json().catch(() => null)
+        const entries = Array.isArray(data) ? data : []
+        const hasNarration = entries.some((e: any) => e?.type === 'narration')
+        if (!canceled) setSessionStarted(Boolean(hasNarration))
+      } catch {
+        if (!canceled) setSessionStarted(false)
+      }
+    }
+    loadStarted()
+    return () => {
+      canceled = true
+    }
+  }, [sessionId])
 
   useEffect(()=>{
     const handler = (event: Event)=>{
@@ -299,7 +378,6 @@ export default function GameplayLayout({sessionId, roster = [], selectedCharId =
     return ()=>window.clearInterval(id)
   }, [banners.length])
   const activeBanner = banners[bannerIndex % (banners.length || 1)]
-  const visibleSuggestions = suggestions.length ? suggestions : defaultSuggestions
   const selectedCharacter = useMemo(() => {
     if(!roster.length) return undefined
     if(!selectedCharId) return roster[0]
@@ -308,73 +386,499 @@ export default function GameplayLayout({sessionId, roster = [], selectedCharId =
 
   const playerStats = selectedCharacter
 
+  const partyRoster = useMemo((): CharacterSummary[] => {
+    const members = Array.isArray(partyData?.members) ? partyData.members : []
+    const meEmail = (currentUserEmail || '').trim().toLowerCase()
+    const meUser = (currentUsername || '').trim().toLowerCase()
+
+    const toNum = (value: any): number | null => {
+      const parsed = typeof value === 'number' ? value : Number(value)
+      return Number.isFinite(parsed) ? parsed : null
+    }
+
+    const toStringArray = (value: any): string[] => {
+      if(Array.isArray(value)) return value.map(v => String(v))
+      return []
+    }
+
+    const toSkillArray = (value: any): { name: string; mod: number }[] => {
+      if(!Array.isArray(value)) return []
+      return value
+        .map((raw: any) => {
+          if(typeof raw === 'string') return { name: raw, mod: 0 }
+          const name = String(raw?.name ?? '').trim()
+          const mod = toNum(raw?.mod) ?? 0
+          if(!name) return null
+          return { name, mod }
+        })
+        .filter(Boolean) as any
+    }
+
+    return members
+      .filter((m: any) => {
+        const email = String(m?.email || '').toLowerCase()
+        const username = String(m?.username || '').toLowerCase()
+        if(meEmail && email && email === meEmail) return false
+        if(meUser && username && username === meUser) return false
+        return true
+      })
+      .map((m: any) => {
+        const ch = m?.character
+        if(!ch) return null
+        const sheet = (ch?.sheet && typeof ch.sheet === 'object') ? ch.sheet : {}
+        const hpCurrent = toNum(sheet?.hp?.current ?? sheet?.hp_current) ?? 10
+        const hpMax = toNum(sheet?.hp?.max ?? sheet?.hp_max) ?? Math.max(hpCurrent, 10)
+        const hpTemp = toNum(sheet?.hp?.temp ?? sheet?.hp_temp) ?? 0
+        const ac = toNum(sheet?.ac) ?? 10
+        const spellSave = toNum(sheet?.spell_save ?? sheet?.spellSave ?? sheet?.spell_save_dc ?? sheet?.spellSaveDc) ?? 10
+        const stats = (sheet?.stats && typeof sheet.stats === 'object') ? sheet.stats : {}
+        const inventory = toStringArray(sheet?.inventory)
+        const spells = toStringArray(sheet?.spells)
+        const features = toStringArray(sheet?.features)
+        const skills = toSkillArray(sheet?.skills)
+        const id = String(ch?.id ?? '')
+        if(!id) return null
+        return {
+          id,
+          name: String(ch?.name ?? m?.character_name ?? m?.name ?? 'Party member'),
+          level: toNum(ch?.level) ?? 1,
+          hp: { current: hpCurrent, max: hpMax, temp: hpTemp || undefined },
+          ac,
+          spellSave,
+          stats: {
+            str: toNum(stats?.str) ?? 10,
+            dex: toNum(stats?.dex) ?? 10,
+            wis: toNum(stats?.wis) ?? 10,
+          },
+          features,
+          inventoryCount: typeof sheet?.inventoryCount === 'number' ? sheet.inventoryCount : inventory.length,
+          journalEntries: typeof sheet?.journalEntries === 'number' ? sheet.journalEntries : 0,
+          skills,
+          inventory,
+          spells,
+        } as CharacterSummary
+      })
+      .filter(Boolean) as CharacterSummary[]
+  }, [partyData, currentUserEmail, currentUsername])
+
+  useEffect(() => {
+    // Keep the party selection valid as the remote party changes.
+    if(!partyRoster.length){
+      setPartySelectedId(null)
+      return
+    }
+    if(partySelectedId && partyRoster.some(c => String(c.id) === String(partySelectedId))) return
+    setPartySelectedId(String(partyRoster[0].id))
+  }, [partyRoster, partySelectedId])
+
+  useEffect(() => {
+    let canceled = false
+    async function loadParty(){
+      if(!sessionId){
+        setPartyData(null)
+        setPartyError(null)
+        return
+      }
+      try{
+        const res = await apiFetch(`/sessions/${sessionId}/party`)
+        if(!res.ok) throw new Error('party fetch failed')
+        const data = await res.json().catch(() => null)
+        if(!canceled) {
+          setPartyData(data)
+          setPartyError(null)
+        }
+      }catch(err: any){
+        if(!canceled) {
+          setPartyError(err?.message || 'Unable to load party')
+          setPartyData(null)
+        }
+      }
+    }
+    loadParty()
+    return () => { canceled = true }
+  }, [sessionId])
+
+  useEffect(() => {
+    // Refresh party data when the Party drawer is opened.
+    let canceled = false
+    async function refresh(){
+      if(!sessionId) return
+      if(!(drawerOpen && drawerView === 'party')) return
+      try{
+        const res = await apiFetch(`/sessions/${sessionId}/party`)
+        if(!res.ok) return
+        const data = await res.json().catch(() => null)
+        if(!canceled) {
+          setPartyData(data)
+          setPartyError(null)
+        }
+      }catch{
+        // ignore
+      }
+    }
+    refresh()
+    return () => { canceled = true }
+  }, [drawerOpen, drawerView, sessionId])
+
+  useEffect(() => {
+    // Username search for invite autocomplete
+    let canceled = false
+    const raw = inviteEmail.trim()
+    if(!raw || raw.includes('@') || raw.length < 2){
+      setInviteMatches([])
+      return
+    }
+    setInviteMatchBusy(true)
+    const id = window.setTimeout(async () => {
+      try{
+        const res = await apiFetch(`/users/search?q=${encodeURIComponent(raw)}&limit=8`)
+        if(!res.ok) throw new Error('search failed')
+        const data = await res.json().catch(() => null)
+        const results = Array.isArray(data?.results) ? data.results : []
+        if(!canceled) setInviteMatches(results)
+      }catch{
+        if(!canceled) setInviteMatches([])
+      }finally{
+        if(!canceled) setInviteMatchBusy(false)
+      }
+    }, 250)
+    return () => {
+      canceled = true
+      window.clearTimeout(id)
+    }
+  }, [inviteEmail])
+
+  async function handleInviteSubmit(){
+    if(!sessionId){
+      setInviteMessage('No active session to invite into.')
+      return
+    }
+    if(!inviteEmail.trim()){
+      setInviteMessage('Enter an email to invite.')
+      return
+    }
+    setInviteBusy(true)
+    setInviteMessage(null)
+    try{
+      const res = await apiFetch(`/sessions/${sessionId}/invite`,{
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: inviteEmail.trim(), note: inviteNote.trim() || undefined })
+      })
+      if(!res.ok){
+        const detail = await res.json().catch(() => null)
+        throw new Error(detail?.detail || 'Invite failed')
+      }
+      setInviteEmail('')
+      setInviteNote('')
+      setInviteMessage('Invite sent.')
+      setShowInviteForm(false)
+      try{
+        const res2 = await apiFetch(`/sessions/${sessionId}/party`)
+        if(res2.ok){
+          const data2 = await res2.json().catch(() => null)
+          setPartyData(data2)
+        }
+      }catch{
+        // ignore
+      }
+    }catch(err: any){
+      setInviteMessage(err?.message || 'Unable to send invite right now.')
+    }finally{
+      setInviteBusy(false)
+    }
+  }
+
+  const drawerWidth = (drawerView === 'party' || drawerView === 'documents') ? 520 : 320
+
   return (
-    <div className="gameplay-root" style={{height:'100%', minHeight:0, display:'flex', background:'#18181a'}}>
-      <button className="drawer-toggle" aria-label="Open command drawer" aria-expanded={drawerOpen} onClick={openDrawer}>
-        Menu
-      </button>
+    <div
+      className={`gameplay-root ${drawerOpen ? 'drawer-open' : ''}`}
+      style={{ ['--drawer-width' as any]: `${drawerWidth}px` }}
+    >
       <div className={`drawer-scrim ${drawerOpen ? 'visible' : ''}`} onClick={closeDrawer} aria-hidden={!drawerOpen} />
-      <aside className={`command-drawer ${drawerOpen ? 'open' : ''}`} aria-label="Command drawer">
-        <SiteMenu onClose={closeDrawer} />
-      </aside>
-      <main className="gameplay-main" style={{flex:1,display:'flex',flexDirection:'column'}}>
-        <section className="session-banner" aria-live="polite">
-          <div className="session-banner-title">{activeBanner?.title}</div>
-          {activeBanner?.subtitle && <div className="session-banner-subtitle">{activeBanner.subtitle}</div>}
-        </section>
-        <section className="scene-area" style={{flex:'1 1 60%',position:'relative',padding:'0 0 0 0'}}>
-          <NarrativeView sessionId={sessionId} />
-        </section>
-        <section className="suggestions-bar" aria-label="Agent suggestions">
-          <span className="suggestions-label">Suggestions</span>
-          <div className="suggestions-list">
-            {visibleSuggestions.map((text, idx)=>(
-              <button key={`${text}-${idx}`} className="suggestion-pill" type="button">
-                {text}
-              </button>
-            ))}
-            {remoteRoll && (
-              <div className="suggestion-pill" style={{background:'#122b34', border:'1px solid #1c7ea9'}}>
-                <strong>Beyond20:</strong>&nbsp;
-                {remoteRoll.by || 'Remote player'} &rarr; {remoteRoll.expression || 'roll'} = {remoteRoll.total ?? '—'}
+      <aside className={`site-panel ${drawerOpen ? 'open' : ''}`} aria-label="Site Panel">
+        {drawerView === 'party' ? (
+          <div className="site-menu-panel">
+            <header className="site-menu-header">
+              <div>
+                <div className="site-menu-title">Party</div>
+                <div className="site-menu-subtitle">Other party members (NPCs or invited players)</div>
               </div>
-            )}
+              <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  type="button"
+                  onClick={() => { setInviteMessage(null); setShowInviteForm(v => !v) }}
+                  disabled={!sessionId}
+                  title={!sessionId ? 'Start or select a session first' : undefined}
+                >
+                  Invite Player
+                </button>
+                <button className="site-menu-close" onClick={() => { setDrawerView('panels'); closeDrawer() }} aria-label="Close menu">
+                  ✕
+                </button>
+              </div>
+            </header>
+
+            {showInviteForm ? (
+              <div className="card card-pad" style={{display:'grid',gap:10}}>
+                <div style={{fontWeight:750}}>Invite a player</div>
+                <input
+                  className="input"
+                  placeholder="username or email"
+                  value={inviteEmail}
+                  onChange={(e)=>setInviteEmail(e.target.value)}
+                  disabled={inviteBusy}
+                />
+                {inviteMatchBusy ? (
+                  <div className="muted" style={{fontSize:12}}>Searching…</div>
+                ) : inviteMatches.length ? (
+                  <div className="card" style={{padding:10, display:'grid', gap:8}}>
+                    <div className="muted" style={{fontSize:12}}>Matches</div>
+                    {inviteMatches.map((m) => {
+                      const key = String(m?.id ?? m?.email ?? m?.username ?? Math.random())
+                      const label = m?.username ? `@${m.username}` : (m?.email || 'user')
+                      const sub = m?.name && m?.name !== m?.username ? String(m.name) : (m?.email || '')
+                      return (
+                        <button
+                          key={key}
+                          className="btn btn-secondary btn-sm"
+                          type="button"
+                          onClick={() => {
+                            setInviteEmail(m?.username || m?.email || '')
+                            setInviteMatches([])
+                          }}
+                          style={{textAlign:'left'}}
+                        >
+                          <div style={{fontWeight:700}}>{label}</div>
+                          {sub ? <div className="muted" style={{fontSize:12}}>{sub}</div> : null}
+                        </button>
+                      )
+                    })}
+                  </div>
+                ) : null}
+                <textarea
+                  className="input"
+                  placeholder="Optional note"
+                  rows={2}
+                  value={inviteNote}
+                  onChange={(e)=>setInviteNote(e.target.value)}
+                  disabled={inviteBusy}
+                />
+                {inviteMessage ? <div className="muted" style={{fontSize:12}}>{inviteMessage}</div> : null}
+                <div style={{display:'flex',justifyContent:'flex-end',gap:8}}>
+                  <button className="btn btn-quiet btn-sm" type="button" onClick={() => setShowInviteForm(false)} disabled={inviteBusy}>
+                    Cancel
+                  </button>
+                  <button className="btn btn-sm" type="button" onClick={handleInviteSubmit} disabled={inviteBusy}>
+                    {inviteBusy ? 'Sending…' : 'Send Invite'}
+                  </button>
+                </div>
+              </div>
+            ) : inviteMessage ? (
+              <div className="inline-alert" style={{marginBottom: 12}}>{inviteMessage}</div>
+            ) : null}
+
+            {partyError ? (
+              <div className="inline-alert inline-alert-error">{partyError}</div>
+            ) : null}
+
+            {Array.isArray(partyData?.invites) && partyData.invites.length ? (
+              <div className="character-panel-block" style={{marginTop: 0}}>
+                <div className="character-panel-block-title">Invited players</div>
+                <ul className="character-panel-npcs">
+                  {partyData.invites.map((inv: any) => (
+                    <li key={String(inv?.email)}>
+                      <strong>{inv?.username ? `@${inv.username}` : inv?.email}</strong>
+                      {inv?.note ? <span className="muted"> — {String(inv.note)}</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {Array.isArray(partyData?.npcs) && partyData.npcs.length ? (
+              <div className="character-panel-block" style={{marginTop: 0}}>
+                <div className="character-panel-block-title character-panel-block-title--npc">NPCs</div>
+                <ul className="character-panel-npcs">
+                  {partyData.npcs.map((npc: any) => (
+                    <li key={String(npc?.name || Math.random())}>
+                      <strong>{String(npc?.name || 'Unknown NPC')}</strong>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            <CharacterPanel
+              title="Other party members"
+              roster={partyRoster}
+              selectedId={partySelectedId}
+              onSelect={(id) => setPartySelectedId(id)}
+              showRoster={true}
+            />
           </div>
-        </section>
-        {turnState.order.length > 0 && (
-          <section className="turn-tracker" aria-label="Turn order" style={{display:'flex',alignItems:'center',gap:16,padding:'8px 16px',borderBottom:'1px solid #222'}}>
-            <div style={{fontWeight:600,fontSize:14}}>Current Turn:</div>
-            <div style={{fontSize:14}}>{turnState.active || '—'}</div>
-            <div style={{fontSize:12,color:'#888'}}>
-              Queue: {turnState.order.join(' → ')}
-            </div>
-          </section>
-        )}
-        {playerStats && (
-          <PlayerStatusBar
-            name={playerStats.name}
-            ac={playerStats.ac}
-            hp={{ current: playerStats.hp.current, max: playerStats.hp.max }}
-            tempHp={playerStats.hp.temp || 0}
-            deathSaves={{ success: 1, failure: 0 }}
-            exhaustion={0}
-            spellSaveDc={playerStats.spellSave || 10}
+        ) : drawerView === 'documents' ? (
+          <div className="site-menu-panel">
+            <header className="site-menu-header">
+              <div>
+                <div className="site-menu-title">Documents</div>
+                <div className="site-menu-subtitle">Reference notes and uploaded files</div>
+              </div>
+              <button className="site-menu-close" onClick={() => { setDrawerView('panels'); closeDrawer() }} aria-label="Close menu">
+                ✕
+              </button>
+            </header>
+            <DocumentsPanel sessionId={sessionId} />
+          </div>
+        ) : drawerView === 'site' ? (
+          <SiteNavMenu
+            onClose={() => {
+              closeDrawer()
+            }}
+            onNavigate={(key) => {
+              closeDrawer()
+              onNavigate?.(key)
+            }}
+          />
+        ) : (
+          <SiteMenu
+            onClose={() => {
+              setDrawerView('panels')
+              closeDrawer()
+            }}
+            onOpenCharacters={() => { setDrawerView('party'); openDrawer() }}
+            onOpenDocuments={() => { setDrawerView('documents'); openDrawer() }}
           />
         )}
-        <div className="bottom-row" style={{display:'flex',height:'40%',minHeight:'220px'}}>
-          <section className="chat-area" aria-label="Chat" style={{flex:'1 1 70%',borderTop:'1px solid #222',padding:'12px'}}><Chat sessionId={sessionId || undefined}/></section>
-          <aside className="chars-area" aria-label="Character Management" style={{width:'320px',borderLeft:'1px solid #222',padding:'12px', overflowY:'auto'}}>
-            <CharacterPanel
-              roster={roster}
-              selectedId={selectedCharId}
-              onSelect={onSelectCharId}
-              sceneCues={sceneCues}
-              npcSpotlight={npcSpotlight}
-              onCueRoll={triggerCueRoll}
-            />
-            <DocumentsPanel sessionId={sessionId} />
+      </aside>
+      <main className="gameplay-main">
+        <section className="session-banner" aria-live="polite">
+          <div className="session-banner-row">
+            <button
+              className="drawer-toggle-inline"
+              type="button"
+              aria-label="Open site navigation"
+              aria-expanded={drawerOpen}
+              onClick={() => {
+                setDrawerView('site')
+                openDrawer()
+              }}
+            >
+              Site
+            </button>
+
+            <button
+              className="drawer-toggle-inline"
+              type="button"
+              aria-label="Open gameplay panels"
+              aria-expanded={drawerOpen}
+              onClick={() => {
+                setDrawerView('panels')
+                openDrawer()
+              }}
+            >
+              Panels
+            </button>
+
+            <div style={{ minWidth: 0 }}>
+              <div className="session-banner-title">{activeCampaign?.name || activeBanner?.title}</div>
+              <div className="session-banner-subtitle">
+                {sessionStarted ? 'In play' : 'Not started yet'}
+              </div>
+            </div>
+          </div>
+        </section>
+        <section className="gameplay-body" aria-label="HomeScreen">
+          <div className="home-screen" aria-label="HomeScreen">
+            <section className="zork-screen" aria-label="Main view screen">
+              <div className="zork-screen-inner">
+                <section className="scene-area" aria-label="Scene view">
+                  <NarrativeView sessionId={sessionId} showChoicesInScene={true} />
+                </section>
+              </div>
+            </section>
+          </div>
+
+          <aside className="session-panel" aria-label="Session Panel">
+            <div className="session-panel-tabs" role="tablist" aria-label="Session Panel tabs">
+              <button
+                type="button"
+                role="tab"
+                className={rightTab === 'chat' ? 'session-panel-tab active' : 'session-panel-tab'}
+                aria-selected={rightTab === 'chat'}
+                onClick={() => setRightTab('chat')}
+              >
+                Chat
+              </button>
+              <button
+                type="button"
+                role="tab"
+                className={rightTab === 'character' ? 'session-panel-tab active' : 'session-panel-tab'}
+                aria-selected={rightTab === 'character'}
+                onClick={() => setRightTab('character')}
+              >
+                Character
+              </button>
+
+              <button
+                type="button"
+                role="tab"
+                className={rightTab === 'journal' ? 'session-panel-tab active' : 'session-panel-tab'}
+                aria-selected={rightTab === 'journal'}
+                onClick={() => setRightTab('journal')}
+              >
+                Journal
+              </button>
+            </div>
+
+            <div className="session-panel-body" role="tabpanel">
+              {rightTab === 'chat' ? (
+                <div className="chat-dock" aria-label="Chat">
+                  <Chat
+                    sessionId={sessionId || undefined}
+                    variant="dock"
+                  />
+                </div>
+              ) : null}
+
+              {rightTab === 'character' ? (
+                <div className="player-sheet" aria-label="Your character sheet">
+                  {playerStats ? (
+                    <div style={{ padding: 14, paddingBottom: 0 }}>
+                      <PlayerStatusBar
+                        name={playerStats.name}
+                        ac={playerStats.ac}
+                        hp={{ current: playerStats.hp.current, max: playerStats.hp.max }}
+                        tempHp={playerStats.hp.temp || 0}
+                        deathSaves={{ success: 1, failure: 0 }}
+                        exhaustion={0}
+                        spellSaveDc={playerStats.spellSave || 10}
+                      />
+                    </div>
+                  ) : null}
+
+                  <div className="player-sheet-inner">
+                    <CharacterPanel
+                      title="Your character"
+                      roster={playerStats ? [playerStats] : []}
+                      selectedId={playerStats ? String(playerStats.id) : null}
+                      showRoster={false}
+                      sceneCues={sceneCues}
+                      npcSpotlight={npcSpotlight}
+                      onCueRoll={triggerCueRoll}
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              {rightTab === 'journal' ? (
+                <JournalPanel sessionId={sessionId || null} />
+              ) : null}
+            </div>
           </aside>
-        </div>
+        </section>
       </main>
     </div>
   )

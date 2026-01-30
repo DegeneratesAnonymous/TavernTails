@@ -1,6 +1,6 @@
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel
 
 from .. import db
@@ -49,7 +49,7 @@ def create_campaign(req: CampaignCreate, current_user=Depends(get_current_user))
     try:
         owner_email = _require_user_identifier(current_user)
         if req.create_session:
-            sid, meta = sessions_agent.create_session_folder(req.name, owner_email, invites=req.invites)
+            sid, meta = sessions_agent.create_session_folder(req.name, owner_email, invites=req.invites, campaign_id=str(campaign_id))
             db.add_session_to_campaign(campaign_id, owner_id, sid)
             created_session = sid
     except Exception:
@@ -100,7 +100,7 @@ def create_session_from_campaign(campaign_id: str, current_user=Depends(get_curr
     owner_email = _require_user_identifier(current_user)
     invites = (c.metadata_json or {}).get('invites', [])
     try:
-        sid, meta = sessions_agent.create_session_folder(c.name, owner_email, invites=invites)
+        sid, meta = sessions_agent.create_session_folder(c.name, owner_email, invites=invites, campaign_id=str(campaign_id))
         db.add_session_to_campaign(campaign_id, c.owner_id, sid)
         return {'session_id': sid, 'meta': meta}
     except Exception as e:
@@ -124,3 +124,39 @@ def delete_campaign(campaign_id: str, current_user=Depends(get_current_user)):
     if not ok:
         raise HTTPException(status_code=404, detail='Campaign not found or forbidden')
     return {'ok': True}
+
+
+@router.get('/{campaign_id}/settings')
+def get_campaign_settings(campaign_id: str, current_user=Depends(get_current_user)):
+    owner_id = _require_user_id(current_user)
+    c = db.get_campaign_by_id(campaign_id)
+    if not c:
+        raise HTTPException(status_code=404, detail='Campaign not found')
+    if c.owner_id != owner_id:
+        raise HTTPException(status_code=403, detail='Forbidden')
+    settings = db.get_campaign_settings(campaign_id, owner_id)
+    if settings is None:
+        raise HTTPException(status_code=404, detail='Campaign not found or forbidden')
+    return {'settings': settings}
+
+
+@router.put('/{campaign_id}/settings')
+def put_campaign_settings(
+    campaign_id: str,
+    settings: Dict[str, Any] = Body(...),
+    current_user=Depends(get_current_user),
+):
+    owner_id = _require_user_id(current_user)
+    c = db.get_campaign_by_id(campaign_id)
+    if not c:
+        raise HTTPException(status_code=404, detail='Campaign not found')
+    if c.owner_id != owner_id:
+        raise HTTPException(status_code=403, detail='Forbidden')
+    if not isinstance(settings, dict):
+        raise HTTPException(status_code=400, detail='Settings must be an object')
+    updated = db.set_campaign_settings(campaign_id, owner_id, settings)
+    if not updated:
+        raise HTTPException(status_code=404, detail='Campaign not found or forbidden')
+    meta = updated.metadata_json or {}
+    out = meta.get('settings') if isinstance(meta, dict) else {}
+    return {'settings': out if isinstance(out, dict) else {}}

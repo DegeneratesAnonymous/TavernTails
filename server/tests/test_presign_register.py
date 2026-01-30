@@ -77,3 +77,7 @@ def test_presign_and_register_roundtrip():
     payload = detail.json()
     assert payload['filename'].endswith('.png')
     assert payload['content']
+
+    raw = client.get(f"/documents/{sid}/{saved['id']}/raw", headers=headers, follow_redirects=False)
+    assert raw.status_code in (302, 307)
+    assert raw.headers.get('location')

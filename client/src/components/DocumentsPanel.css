@@ -1,0 +1,274 @@
+.docsPanel{
+  margin-top:16px;
+  border-top:1px solid #222;
+  padding-top:12px;
+}
+
+.docsPanel__title{
+  margin-top:0;
+}
+
+.docsPanel__hint{
+  font-size:12px;
+  color:#aaa;
+}
+
+.docsPanel__error{
+  color:#ff9f9f;
+  font-size:12px;
+  margin-bottom:8px;
+}
+
+.docsPanel__list{
+  max-height:160px;
+  overflow-y:auto;
+  border:1px solid #222;
+  border-radius:8px;
+  padding:8px;
+  background:#0c0c0c;
+}
+
+.docsPanel__loading{
+  font-size:12px;
+  color:#888;
+}
+
+.docsPanel__docRow{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:8px;
+  margin-bottom:6px;
+}
+
+.docsPanel__docButton{
+  flex:1;
+  text-align:left;
+}
+
+.docsPanel__docName{
+  font-size:13px;
+}
+
+.docsPanel__tag{
+  font-size:11px;
+  color:#c9a6ff;
+  margin-left:6px;
+}
+
+.docsPanel__docMeta{
+  font-size:11px;
+  color:#888;
+}
+
+.docsPanel__deleteBtn{
+  width:34px;
+}
+
+.docsPanel__viewer{
+  margin-top:12px;
+}
+
+.docsPanel__viewerLabel{
+  font-size:12px;
+  color:#888;
+  margin-bottom:4px;
+}
+
+.docsPanel__viewerGrid{
+  display:flex;
+  gap:12px;
+  align-items:flex-start;
+}
+
+.docsPanel__viewerBody{
+  flex:1;
+  min-width:0;
+}
+
+.docsPanel__viewerCard{
+  border:1px solid #2c2c2c;
+  border-radius:8px;
+  padding:8px;
+  background:#0b0b0b;
+  max-height:160px;
+  overflow-y:auto;
+}
+
+.docsPanel__viewerTitle{
+  font-weight:600;
+  margin-bottom:4px;
+}
+
+.docsPanel__viewerPre{
+  white-space:pre-wrap;
+  font-family:inherit;
+  margin:0;
+}
+
+.docsPanel__viewerActions{
+  margin-top:8px;
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+
+.docsPanel__link{
+  color:#9cf;
+}
+
+.docsPanel__copyBtn{
+  background:none;
+  border:none;
+  color:#888;
+  padding:0;
+}
+
+.docsPanel__imagePreview{
+  width:160px;
+}
+
+.docsPanel__imagePreview img{
+  max-width:100%;
+  border-radius:8px;
+  border:1px solid #222;
+}
+
+.docsPanel__form{
+  margin-top:12px;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+.docsPanel__input,
+.docsPanel__select,
+.docsPanel__textarea{
+  padding:6px;
+  border-radius:8px;
+  border:1px solid #333;
+  background:#0b0b0b;
+  color:#f8f8f8;
+}
+
+.docsPanel__row{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+
+.docsPanel__label{
+  font-size:12px;
+  color:#888;
+}
+
+.docsPanel__note{
+  font-size:12px;
+  color:#666;
+}
+
+.docsPanel__saveBtn{
+  padding:6px 10px;
+}
+
+.docsPanel__uploads{
+  display:flex;
+  gap:8px;
+  align-items:flex-start;
+  flex-direction:column;
+}
+
+.docsPanel__uploadsTop{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  width:100%;
+  flex-wrap:wrap;
+}
+
+.docsPanel__uploadsHint{
+  font-size:12px;
+  color:#888;
+}
+
+.docsPanel__uploadsList{
+  width:100%;
+}
+
+.docsPanel__uploadRow{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-top:8px;
+  padding:8px;
+  border:1px solid #1a1a1a;
+  border-radius:8px;
+  background:#080808;
+}
+
+.docsPanel__uploadThumb{
+  width:48px;
+  height:48px;
+  object-fit:cover;
+  border-radius:8px;
+  border:1px solid #222;
+}
+
+.docsPanel__uploadBody{
+  flex:1;
+  min-width:0;
+}
+
+.docsPanel__uploadName{
+  font-size:12px;
+  font-weight:600;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.docsPanel__uploadMeta{
+  font-size:11px;
+  color:#888;
+}
+
+.docsPanel__bar{
+  height:8px;
+  background:#111;
+  border-radius:6px;
+  overflow:hidden;
+  margin-top:4px;
+}
+
+.docsPanel__barFill{
+  height:100%;
+  transition:width 0.2s ease;
+}
+
+.docsPanel__uploadErr{
+  font-size:11px;
+  color:#ff9f9f;
+  margin-top:4px;
+}
+
+.docsPanel__uploadActions{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+
+.docsPanel__tinyBtn{
+  font-size:11px;
+}
+
+@media (max-width: 720px){
+  .docsPanel__viewerGrid{
+    flex-direction:column;
+  }
+  .docsPanel__imagePreview{
+    width:100%;
+    max-width:240px;
+  }
+}

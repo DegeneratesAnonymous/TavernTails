@@ -72,3 +72,33 @@ def test_characters_create_list_delete_and_isolation():
     other_created_id = resp_other_create.json()["character"]["id"]
     resp_delete_other = client.delete(f"/characters/{other_created_id}", headers=owner_headers)
     assert resp_delete_other.status_code == 404, resp_delete_other.text
+
+
+def test_characters_get_requires_ownership():
+    client = _client()
+    owner = "chars-get-owner@example.com"
+    other = "chars-get-other@example.com"
+    _ensure_user(owner)
+    _ensure_user(other)
+
+    owner_token = create_access_token(owner)
+    other_token = create_access_token(other)
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    other_headers = {"Authorization": f"Bearer {other_token}"}
+
+    resp_create = client.post(
+        "/characters",
+        headers=owner_headers,
+        json={"name": "Owner Sheet", "level": 2, "class_name": "Wizard", "sheet": {"import": {"source": "test"}}},
+    )
+    assert resp_create.status_code == 201, resp_create.text
+    created_id = resp_create.json()["character"]["id"]
+
+    resp_get_owner = client.get(f"/characters/{created_id}", headers=owner_headers)
+    assert resp_get_owner.status_code == 200, resp_get_owner.text
+    body = resp_get_owner.json().get("character")
+    assert body and body.get("id") == created_id
+    assert body.get("name") == "Owner Sheet"
+
+    resp_get_other = client.get(f"/characters/{created_id}", headers=other_headers)
+    assert resp_get_other.status_code == 404, resp_get_other.text

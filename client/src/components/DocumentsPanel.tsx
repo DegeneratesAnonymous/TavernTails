@@ -1,5 +1,6 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import { apiFetch, buildApiUrl } from '../api'
+import './DocumentsPanel.css'
 
 type DocumentMeta = {
   id: string
@@ -52,6 +53,7 @@ export default function DocumentsPanel({sessionId}: Props){
 
   const hasSession = Boolean(sessionId)
   const hasActiveUploads = useMemo(() => uploads.some(u => u.status === 'uploading'), [uploads])
+  const canClearUploads = useMemo(() => uploads.some(u => u.status !== 'uploading'), [uploads])
 
   const updateUpload = useCallback((id: string, patch: Partial<UploadEntry> | ((prev: UploadEntry) => UploadEntry)) => {
     setUploads(list => list.map(item => {
@@ -83,7 +85,9 @@ export default function DocumentsPanel({sessionId}: Props){
       const res = await apiFetch(`/documents/${sessionId}`)
       if(!res.ok) throw new Error('Unable to load documents')
       const data = await res.json()
-      setDocs(Array.isArray(data) ? data : [])
+      const list: DocumentMeta[] = Array.isArray(data) ? data : []
+      // Hide AI-GM private docs from the player-facing UI.
+      setDocs(list.filter(d => !((d.visibility || '').toLowerCase() === 'hidden' && (d.category || '').toLowerCase() === 'gm')))
     }catch(err:any){
       setError(err?.message || 'Documents unavailable')
       setDocs([])
@@ -290,6 +294,27 @@ export default function DocumentsPanel({sessionId}: Props){
     }
   },[uploads, startUpload])
 
+  const dismissUpload = useCallback((id: string) => {
+    setUploads(list => {
+      const entry = list.find(u => u.id === id)
+      if(entry?.previewUrl){
+        try{ URL.revokeObjectURL(entry.previewUrl) }catch{}
+      }
+      return list.filter(u => u.id !== id)
+    })
+  },[])
+
+  const clearCompletedUploads = useCallback(() => {
+    setUploads(list => {
+      for(const entry of list){
+        if(entry.status !== 'uploading' && entry.previewUrl){
+          try{ URL.revokeObjectURL(entry.previewUrl) }catch{}
+        }
+      }
+      return list.filter(u => u.status === 'uploading')
+    })
+  },[])
+
   async function handleCreate(e: React.FormEvent){
     e.preventDefault()
     if(!sessionId) return
@@ -366,96 +391,122 @@ export default function DocumentsPanel({sessionId}: Props){
     return [...docs].sort((a,b)=> new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
   },[docs])
 
+  const selectedHasReadableText = useMemo(() => {
+    if(!selected) return false
+    if(!selected.content) return false
+    // If it looks like we fell back to hex for binary, treat as non-previewable.
+    return !/^[0-9a-f]{128,}$/i.test(selected.content.trim())
+  },[selected])
+
   return (
-    <div style={{marginTop:16, borderTop:'1px solid #222', paddingTop:12}}>
-      <h3 style={{marginTop:0}}>Session Docs</h3>
-      {!hasSession && <div style={{fontSize:12, color:'#aaa'}}>Open a session to create shared documents.</div>}
-      {error && <div style={{color:'#ff9f9f', fontSize:12, marginBottom:8}}>{error}</div>}
-      <div style={{maxHeight:140, overflowY:'auto', border:'1px solid #222', borderRadius:6, padding:8, background:'#0c0c0c'}}>
-        {loading && <div style={{fontSize:12,color:'#888'}}>Loading…</div>}
-        {!loading && !sortedDocs.length && <div style={{fontSize:12,color:'#888'}}>No documents yet.</div>}
+    <div className="docsPanel">
+      <h3 className="docsPanel__title">Session Docs</h3>
+      {!hasSession && <div className="docsPanel__hint">Open a session to create shared documents.</div>}
+      {error && <div className="docsPanel__error">{error}</div>}
+      <div className="docsPanel__list">
+        {loading && <div className="docsPanel__loading">Loading…</div>}
+        {!loading && !sortedDocs.length && <div className="docsPanel__loading">No documents yet.</div>}
         {sortedDocs.map(doc => (
-          <div key={doc.id} style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6}}>
-            <button type="button" style={{flex:1, textAlign:'left'}} onClick={()=>loadDetail(doc.id)} disabled={!hasSession}>
-              <div style={{fontSize:13}}>
+          <div key={doc.id} className="docsPanel__docRow">
+            <button type="button" className="docsPanel__docButton" onClick={()=>loadDetail(doc.id)} disabled={!hasSession}>
+              <div className="docsPanel__docName">
                 {doc.name}
-                {isHost && doc.visibility === 'hidden' && <span style={{fontSize:11,color:'#c9a6ff', marginLeft:6}}>(Hidden)</span>}
+                {isHost && doc.visibility === 'hidden' && <span className="docsPanel__tag">(Hidden)</span>}
               </div>
-              <div style={{fontSize:11,color:'#888'}}>{new Date(doc.created_at).toLocaleString()} · {doc.size < 1024 ? `${doc.size} B` : `${(doc.size/1024).toFixed(1)} KB`}</div>
+              <div className="docsPanel__docMeta">{new Date(doc.created_at).toLocaleString()} · {formatBytes(doc.size)} · {doc.category}</div>
             </button>
-            <button type="button" style={{marginLeft:8}} onClick={()=>handleDelete(doc.id)} disabled={!hasSession}>✕</button>
+            <button type="button" className="docsPanel__deleteBtn" onClick={()=>handleDelete(doc.id)} disabled={!hasSession} aria-label="Delete document">✕</button>
           </div>
         ))}
       </div>
 
       {selected && (
-        <div style={{marginTop:12}}>
-          <div style={{fontSize:12,color:'#888', marginBottom:4}}>Viewing</div>
-          <div style={{display:'flex', gap:12}}>
-            <div style={{flex:1}}>
-              <div style={{border:'1px solid #2c2c2c', borderRadius:6, padding:8, background:'#0b0b0b', maxHeight:120, overflowY:'auto'}}>
-                <div style={{fontWeight:600, marginBottom:4}}>{selected.name}</div>
-                <pre style={{whiteSpace:'pre-wrap', fontFamily:'inherit', margin:0}}>{selected.content || '—'}</pre>
+        <div className="docsPanel__viewer">
+          <div className="docsPanel__viewerLabel">Viewing</div>
+          <div className="docsPanel__viewerGrid">
+            <div className="docsPanel__viewerBody">
+              <div className="docsPanel__viewerCard">
+                <div className="docsPanel__viewerTitle">{selected.name}</div>
+                {selectedHasReadableText ? (
+                  <pre className="docsPanel__viewerPre">{selected.content}</pre>
+                ) : (
+                  <div className="docsPanel__hint">Preview unavailable for this file type. Use Download.</div>
+                )}
               </div>
-              <div style={{marginTop:8, display:'flex', gap:8}}>
-                <a href={buildApiUrl(`/documents/${sessionId}/${selected.id}/raw`)} target="_blank" rel="noreferrer" style={{color:'#9cf'}}>Download</a>
-                <button type="button" onClick={()=>{navigator.clipboard?.writeText(buildApiUrl(`/documents/${sessionId}/${selected.id}/raw`))}} style={{background:'none',border:'none',color:'#888'}}>Copy URL</button>
+              <div className="docsPanel__viewerActions">
+                <a href={buildApiUrl(`/documents/${sessionId}/${selected.id}/raw`)} target="_blank" rel="noreferrer" className="docsPanel__link">Download</a>
+                <button type="button" onClick={()=>{navigator.clipboard?.writeText(buildApiUrl(`/documents/${sessionId}/${selected.id}/raw`))}} className="docsPanel__copyBtn">Copy URL</button>
               </div>
             </div>
             {previewUrl && (
-              <div style={{width:160}}>
-                <img src={previewUrl} alt={selected.name} style={{maxWidth:'100%', borderRadius:6, border:'1px solid #222'}} />
+              <div className="docsPanel__imagePreview">
+                <img src={previewUrl} alt={selected.name} />
               </div>
             )}
           </div>
         </div>
       )}
 
-      <form onSubmit={handleCreate} style={{marginTop:12, display:'flex', flexDirection:'column', gap:8}}>
-        <input value={name} onChange={e=>setName(e.target.value)} placeholder="Document name" disabled={!hasSession || formBusy} style={{padding:6, borderRadius:6, border:'1px solid #333', background:'#0b0b0b', color:'#f8f8f8'}} />
-        <div style={{display:'flex', gap:8, alignItems:'center', flexWrap:'wrap'}}>
-          <label style={{fontSize:12,color:'#888'}}>Category</label>
-          <select value={category} onChange={e=>setCategory(e.target.value as any)} disabled={!hasSession || formBusy} style={{padding:6, borderRadius:6, border:'1px solid #333', background:'#0b0b0b', color:'#f8f8f8'}}>
+      <form onSubmit={handleCreate} className="docsPanel__form">
+        <input value={name} onChange={e=>setName(e.target.value)} placeholder="Document name" disabled={!hasSession || formBusy} className="docsPanel__input" />
+        <div className="docsPanel__row">
+          <label className="docsPanel__label">Category</label>
+          <select value={category} onChange={e=>setCategory(e.target.value as any)} disabled={!hasSession || formBusy} className="docsPanel__select">
             <option value="core">Core</option>
             <option value="flavor">Flavor</option>
           </select>
-          <label style={{fontSize:12,color:'#888'}}>Visibility</label>
-          <select value={isHost ? visibility : 'shared'} onChange={e=>setVisibility(e.target.value as any)} disabled={!hasSession || formBusy || !isHost} style={{padding:6, borderRadius:6, border:'1px solid #333', background:'#0b0b0b', color:'#f8f8f8', opacity: isHost ? 1 : 0.6}}>
+          <label className="docsPanel__label">Visibility</label>
+          <select value={isHost ? visibility : 'shared'} onChange={e=>setVisibility(e.target.value as any)} disabled={!hasSession || formBusy || !isHost} className="docsPanel__select" style={{opacity: isHost ? 1 : 0.6}}>
             <option value="shared">Shared</option>
             <option value="hidden">Hidden (host only)</option>
           </select>
-          {!isHost && hasSession && <span style={{fontSize:12,color:'#666'}}>Hidden docs require host.</span>}
+          {!isHost && hasSession && <span className="docsPanel__note">Hidden docs require host.</span>}
         </div>
-        <textarea value={content} onChange={e=>setContent(e.target.value)} placeholder="Content" rows={4} disabled={!hasSession || formBusy} style={{padding:6, borderRadius:6, border:'1px solid #333', background:'#0b0b0b', color:'#f8f8f8'}} />
-        <button type="submit" disabled={!hasSession || formBusy} style={{padding:'6px 10px'}}>
+        <textarea value={content} onChange={e=>setContent(e.target.value)} placeholder="Content" rows={4} disabled={!hasSession || formBusy} className="docsPanel__textarea" />
+        <button type="submit" disabled={!hasSession || formBusy} className="docsPanel__saveBtn">
           {formBusy ? 'Saving…' : 'Save Document'}
         </button>
-        <div style={{display:'flex', gap:8, alignItems:'center', flexDirection:'column'}}>
-          <input type="file" multiple onChange={handleUpload} disabled={!hasSession} />
-          {hasActiveUploads && <div style={{fontSize:12,color:'#888'}}>Uploading…</div>}
+        <div className="docsPanel__uploads">
+          <div className="docsPanel__uploadsTop">
+            <input type="file" multiple onChange={handleUpload} disabled={!hasSession} />
+            {hasActiveUploads && <div className="docsPanel__uploadsHint">Uploading…</div>}
+            {!hasActiveUploads && uploads.length > 0 && <div className="docsPanel__uploadsHint">Uploads</div>}
+            {canClearUploads && (
+              <button type="button" onClick={clearCompletedUploads} className="docsPanel__tinyBtn">Clear completed</button>
+            )}
+          </div>
           {uploads.length > 0 && (
-            <div style={{width:'100%'}}>
+            <div className="docsPanel__uploadsList">
               {uploads.map(u => (
-                <div key={u.id} style={{display:'flex', alignItems:'center', gap:10, marginTop:8, padding:8, border:'1px solid #1a1a1a', borderRadius:6, background:'#080808'}}>
+                <div key={u.id} className="docsPanel__uploadRow">
                   {u.previewUrl && (
-                    <img src={u.previewUrl} alt={u.name} style={{width:48, height:48, objectFit:'cover', borderRadius:6, border:'1px solid #222'}} />
+                    <img src={u.previewUrl} alt={u.name} className="docsPanel__uploadThumb" />
                   )}
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:12, fontWeight:600}}>{u.name}</div>
-                    <div style={{fontSize:11, color:'#888'}}>
+                  <div className="docsPanel__uploadBody">
+                    <div className="docsPanel__uploadName">{u.name}</div>
+                    <div className="docsPanel__uploadMeta">
                       {formatBytes(u.size)} · {u.status === 'uploading' ? `${u.progress}%` : u.status === 'done' ? 'Uploaded' : u.status === 'error' ? 'Error' : 'Canceled'}
                     </div>
-                    <div style={{height:8, background:'#111', borderRadius:4, overflow:'hidden', marginTop:4}}>
-                      <div style={{width:`${u.status==='done' ? 100 : u.progress}%`, height:'100%', transition:'width 0.2s ease', background: u.status==='error' ? '#c65b5b' : u.status==='done' ? '#3fcf8e' : '#39f'}} />
+                    <div className="docsPanel__bar">
+                      <div
+                        className="docsPanel__barFill"
+                        style={{
+                          width: `${u.status==='done' ? 100 : u.progress}%`,
+                          background: u.status==='error' ? '#c65b5b' : u.status==='done' ? '#3fcf8e' : '#39f'
+                        }}
+                      />
                     </div>
-                    {u.error && <div style={{fontSize:11, color:'#ff9f9f', marginTop:4}}>{u.error}</div>}
+                    {u.error && <div className="docsPanel__uploadErr">{u.error}</div>}
                   </div>
-                  <div style={{display:'flex', flexDirection:'column', gap:4}}>
+                  <div className="docsPanel__uploadActions">
                     {u.status === 'uploading' && (
-                      <button type="button" onClick={()=>cancelUpload(u.id)} style={{fontSize:11}}>Cancel</button>
+                      <button type="button" onClick={()=>cancelUpload(u.id)} className="docsPanel__tinyBtn">Cancel</button>
                     )}
                     {(u.status === 'error' || u.status === 'canceled') && (
-                      <button type="button" onClick={()=>retryUpload(u.id)} style={{fontSize:11}}>Retry</button>
+                      <button type="button" onClick={()=>retryUpload(u.id)} className="docsPanel__tinyBtn">Retry</button>
+                    )}
+                    {u.status !== 'uploading' && (
+                      <button type="button" onClick={()=>dismissUpload(u.id)} className="docsPanel__tinyBtn">Dismiss</button>
                     )}
                   </div>
                 </div>

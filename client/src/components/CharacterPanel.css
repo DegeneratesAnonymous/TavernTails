@@ -4,6 +4,16 @@
   flex-direction: column;
 }
 
+.character-panel-title{
+  margin: 0 0 8px 0;
+}
+
+.character-panel-scroll{
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
 .character-roster {
   display: flex;
   flex-direction: column;
@@ -58,6 +68,26 @@
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+.character-icon-card--button{
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+
+.character-icon-card--button:hover{
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.10);
+}
+
+.character-icon-card--button:active{
+  transform: translateY(0.5px);
+}
+
+.character-icon-card--active{
+  border-color: rgba(143, 224, 255, 0.28);
+  box-shadow: 0 0 0 1px rgba(143, 224, 255, 0.10) inset;
+}
+
 .character-icon-card img {
   width: 32px;
   height: 32px;
@@ -76,21 +106,242 @@
   font-weight: 600;
 }
 
-.character-sections {
+.character-section-ul{
+  margin: 0;
+  padding-left: 16px;
+}
+
+.character-panel-layout{
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
   margin-top: 12px;
 }
 
-.character-section {
-  margin-bottom: 8px;
+.character-panel-layout--drawer{
+  grid-template-columns: 280px 1fr;
 }
 
-.character-section button {
-  width: 100%;
+.character-panel-drawer{
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  overflow: hidden;
+  min-height: 120px;
 }
 
-.character-section-list {
+/* Compact mode: when this panel is used inside the bottom-right player sheet */
+.player-sheet .character-panel-title{
+  display: none;
+}
+
+.player-sheet .character-icon-strip{
+  grid-template-columns: none;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(120px, 1fr);
+  overflow-x: auto;
+  padding-bottom: 6px;
+  margin-bottom: 10px;
+  scroll-snap-type: x mandatory;
+}
+
+.player-sheet .character-icon-card--button{
+  scroll-snap-align: start;
+}
+
+.player-sheet .character-panel-layout{
+  position: relative;
   margin-top: 8px;
-  padding: 8px;
-  background: rgba(11, 11, 11, 0.85);
-  border-radius: 6px;
+}
+
+.player-sheet .character-panel-layout--drawer{
+  grid-template-columns: 1fr;
+}
+
+.player-sheet .character-panel-drawer{
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: min(300px, 92%);
+  z-index: 2;
+  box-shadow: 0 16px 60px rgba(0,0,0,0.55);
+  backdrop-filter: blur(8px);
+}
+
+.character-panel-drawer-header{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.character-panel-drawer-title{
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.character-panel-drawer-close{
+  border: none;
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.character-panel-drawer-close:hover{
+  background: rgba(255, 255, 255, 0.10);
+}
+
+.character-panel-drawer-body{
+  padding: 12px;
+  font-size: 0.92rem;
+}
+
+.character-panel-main{
+  min-width: 0;
+}
+
+.character-abilities{
+  display: grid;
+  gap: 8px;
+}
+
+.character-ability-row{
+  display: grid;
+  grid-template-columns: 54px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.character-ability-key{
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.70);
+}
+
+.character-ability-score{
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+.character-ability-mod{
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(143, 224, 255, 0.10);
+  border: 1px solid rgba(143, 224, 255, 0.22);
+  color: rgba(143, 224, 255, 0.95);
+}
+
+.character-section-list--skills{
+  margin-top: 6px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+}
+
+.character-section-ul--skills{
+  padding-left: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 6px;
+}
+
+.character-skill-item{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.character-skill-name{
+  font-weight: 650;
+  font-size: 0.92rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.character-skill-mod{
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(143, 224, 255, 0.12);
+  border: 1px solid rgba(143, 224, 255, 0.22);
+  color: rgba(143, 224, 255, 0.95);
+}
+
+.character-panel-block{
+  margin-top: 12px;
+}
+
+.character-panel-block-title{
+  font-size: 12px;
+  margin-bottom: 6px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.character-panel-block-title--scene{
+  color: #8fe0ff;
+}
+
+.character-panel-block-title--npc{
+  color: #ffcc6f;
+}
+
+.character-panel-cues{
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.character-panel-cue{
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(31,60,74,0.9);
+  background: rgba(11,22,28,0.85);
+}
+
+.character-panel-cue-prompt{
+  margin-bottom: 8px;
+  line-height: 1.35;
+}
+
+.character-panel-cue-muted{
+  font-size: 11px;
+  color: rgba(255,255,255,0.6);
+}
+
+.character-panel-error{
+  font-size: 12px;
+  color: rgba(255,159,159,0.95);
+  margin-top: 6px;
+}
+
+.character-panel-npcs{
+  margin: 0;
+  padding-left: 16px;
+  font-size: 12px;
 }

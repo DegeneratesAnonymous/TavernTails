@@ -1,0 +1,244 @@
+/* Shared UI primitives + small layout utilities */
+
+:root {
+  --tt-border: rgba(255,255,255,0.08);
+  --tt-border-strong: rgba(255,255,255,0.14);
+  --tt-surface-2: rgba(255,255,255,0.04);
+  --tt-focus: rgba(97, 218, 251, 0.35);
+}
+
+/* Layout utilities */
+
+.stack {
+  display: grid;
+  gap: 10px;
+}
+
+.stack-lg {
+  display: grid;
+  gap: 16px;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.row-wrap {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.muted {
+  color: var(--muted-text);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--tt-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+}
+
+.card-pad {
+  padding: 16px;
+}
+
+.section-title {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: 0.2px;
+}
+
+/* Page primitives */
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: 0.2px;
+}
+
+.page-subtitle {
+  color: var(--muted-text);
+  font-size: 13px;
+  line-height: 1.35;
+  max-width: 900px;
+}
+
+.page-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.empty-state {
+  border: 1px dashed var(--tt-border-strong);
+  background: rgba(255,255,255,0.03);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+
+.empty-state-title {
+  font-weight: 750;
+  margin-bottom: 4px;
+}
+
+.empty-state-desc {
+  color: var(--muted-text);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.empty-state-actions {
+  margin-top: 12px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Segmented control */
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--tt-border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(255,255,255,0.03);
+}
+
+.segmented > button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  padding: 10px 12px;
+  font-weight: 650;
+  cursor: pointer;
+  font-size: 13px;
+  border-right: 1px solid var(--tt-border);
+}
+
+.segmented > button:last-child {
+  border-right: none;
+}
+
+.segmented > button[aria-pressed='true'] {
+  background: rgba(255,255,255,0.12);
+}
+
+/* Form primitives */
+
+.input {
+  width: 100%;
+  min-height: 40px;
+  color: var(--text);
+  outline: none;
+  padding: 10px 12px;
+  background-color: var(--surface);
+  border-radius: 10px;
+  border: 1px solid var(--tt-border);
+  font-size: 15px;
+  box-sizing: border-box;
+}
+
+.input::placeholder {
+  color: rgba(255,255,255,0.55);
+}
+
+.input:focus {
+  border-color: var(--tt-border-strong);
+  box-shadow: 0 0 0 3px var(--tt-focus);
+}
+
+.input-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+/* Buttons */
+
+.btn {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--tt-border);
+  background: var(--accent);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: transform 120ms ease, background-color 120ms ease, border-color 120ms ease, opacity 120ms ease;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+  border-color: var(--tt-border-strong);
+}
+
+.btn:active {
+  transform: translateY(0);
+}
+
+.btn:disabled,
+.btn[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: transparent;
+  border-color: var(--tt-border);
+}
+
+.btn-secondary:hover {
+  background: var(--tt-surface-2);
+}
+
+.btn-quiet {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.10);
+}
+
+.btn-sm {
+  padding: 8px 12px;
+  font-size: 13px;
+  border-radius: 9px;
+}
+
+/* Alerts */
+
+.inline-alert {
+  border: 1px solid var(--tt-border);
+  background: rgba(255,255,255,0.04);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.inline-alert-error {
+  border-color: rgba(255, 107, 107, 0.35);
+  background: rgba(255, 107, 107, 0.10);
+}
+
+.code-block {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 10px 12px;
+  overflow-x: auto;
+}

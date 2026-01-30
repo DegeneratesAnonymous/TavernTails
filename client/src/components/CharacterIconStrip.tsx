@@ -3,15 +3,19 @@ import React from 'react'
 const ICON_BASE = `${process.env.PUBLIC_URL || ''}/icons`
 
 export type CharacterSnapshot = {
-  stats: { str: number; dex: number; wis: number }
-  features: string[]
-  inventoryCount: number
-  journalEntries: number
-  skills: { name: string; mod: number }[]
+  stats?: { str?: number; dex?: number; wis?: number }
+  features?: string[]
+  inventoryCount?: number
+  journalEntries?: number
+  skills?: { name: string; mod: number }[]
 }
+
+export type CharacterStripKey = 'abilities' | 'features' | 'inventory' | 'journal' | 'skills'
 
 type Props = {
   character?: CharacterSnapshot | null
+  activeKey?: CharacterStripKey | null
+  onSelect?: (key: CharacterStripKey) => void
 }
 
 const formatMod = (score: number) => {
@@ -19,54 +23,80 @@ const formatMod = (score: number) => {
   return mod >= 0 ? `+${mod}` : `${mod}`
 }
 
-export default function CharacterIconStrip({character}: Props){
+const toNumber = (value: any, fallback: number) => {
+  const parsed = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
+export default function CharacterIconStrip({ character, activeKey = null, onSelect }: Props){
   if(!character){
     return null
   }
 
+  const stats = character.stats || {}
+  const str = toNumber((stats as any).str, 10)
+  const dex = toNumber((stats as any).dex, 10)
+  const wis = toNumber((stats as any).wis, 10)
+  const features = Array.isArray(character.features) ? character.features : []
+  const skills = Array.isArray(character.skills) ? character.skills : []
+  const inventoryCount = typeof character.inventoryCount === 'number'
+    ? character.inventoryCount
+    : Array.isArray((character as any)?.inventory)
+      ? (character as any).inventory.length
+      : 0
+  const journalEntries = typeof character.journalEntries === 'number' ? character.journalEntries : 0
+
   const items = [
     {
-      key: 'abilities',
+      key: 'abilities' as const,
       icon: 'Abilities.png',
       label: 'Abilities',
-      value: `DEX ${formatMod(character.stats.dex)} / WIS ${formatMod(character.stats.wis)}`,
+      value: `DEX ${formatMod(dex)} / WIS ${formatMod(wis)}`,
     },
     {
-      key: 'features',
+      key: 'features' as const,
       icon: 'Features.png',
       label: 'Features',
-      value: `${character.features.length} readied`,
+      value: `${features.length} readied`,
     },
     {
-      key: 'inventory',
+      key: 'inventory' as const,
       icon: 'Inventory.png',
       label: 'Inventory',
-      value: `${character.inventoryCount} items`,
+      value: `${inventoryCount} items`,
     },
     {
-      key: 'journal',
+      key: 'journal' as const,
       icon: 'Journal.png',
       label: 'Journal',
-      value: `${character.journalEntries} entries`,
+      value: `${journalEntries} entries`,
     },
     {
-      key: 'skills',
+      key: 'skills' as const,
       icon: 'Skills.png',
       label: 'Skills',
-      value: character.skills.length ? `${character.skills[0].name} ${character.skills[0].mod >= 0 ? '+' : ''}${character.skills[0].mod}` : 'Set next',
+      value: skills.length
+        ? `${skills[0].name} ${skills[0].mod >= 0 ? '+' : ''}${skills[0].mod}`
+        : `STR ${formatMod(str)}`,
     },
   ]
 
   return (
     <div className="character-icon-strip" aria-label="Character quick info">
       {items.map(item => (
-        <div className="character-icon-card" key={item.key}>
+        <button
+          key={item.key}
+          type="button"
+          className={`character-icon-card character-icon-card--button ${item.key === activeKey ? 'character-icon-card--active' : ''}`}
+          onClick={() => onSelect?.(item.key)}
+          aria-pressed={item.key === activeKey}
+        >
           <img src={`${ICON_BASE}/${item.icon}`} alt={item.label} loading="lazy" />
           <div>
             <div className="character-icon-label">{item.label}</div>
             <div className="character-icon-value">{item.value}</div>
           </div>
-        </div>
+        </button>
       ))}
     </div>
   )

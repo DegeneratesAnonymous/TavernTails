@@ -1,8 +1,6 @@
 import React, {useMemo, useRef, useState} from 'react'
-import CharacterIconStrip, {CharacterSnapshot} from './CharacterIconStrip'
+import CharacterIconStrip, {CharacterSnapshot, CharacterStripKey} from './CharacterIconStrip'
 import './CharacterPanel.css'
-
-type SectionKey = 'inventory' | 'spells' | 'skills'
 
 export type SceneCue = {
   id: string
@@ -32,29 +30,46 @@ type Props = {
   sceneCues?: SceneCue[]
   npcSpotlight?: {name: string; initiative_hint?: string}[]
   onCueRoll?: (cue: SceneCue) => Promise<void>
+  title?: string
+  showRoster?: boolean
 }
 
-export default function CharacterPanel({roster, selectedId, onSelect, sceneCues = [], npcSpotlight = [], onCueRoll}: Props){
-  const [expanded, setExpanded] = useState<SectionKey|null>(null)
+export default function CharacterPanel({
+  roster,
+  selectedId,
+  onSelect,
+  sceneCues = [],
+  npcSpotlight = [],
+  onCueRoll,
+  title = 'Characters',
+  showRoster = true,
+}: Props){
+  const [drawerKey, setDrawerKey] = useState<CharacterStripKey | null>(null)
   const containerRef = useRef<HTMLDivElement|null>(null)
   const [rollingCueId, setRollingCueId] = useState<string | null>(null)
   const [cueError, setCueError] = useState<string | null>(null)
-
-  function toggle(key:SectionKey){
-    setExpanded(prev => prev===key? null : key)
-    // after open, ensure the panel scrolls so the expanded section is visible
-    setTimeout(()=>{
-      const el = document.getElementById('section-'+key)
-      if(el) el.scrollIntoView({behavior:'smooth',block:'nearest'})
-      if(containerRef.current) containerRef.current.scrollTop = containerRef.current.scrollHeight
-    },120)
-  }
 
   const selected = useMemo(() => {
     if(!roster.length) return undefined
     if(!selectedId) return roster[0]
     return roster.find(r => r.id === selectedId) ?? roster[0]
   }, [roster, selectedId])
+
+  const abilities = useMemo(() => {
+    const stats = selected?.stats
+    if(!stats) return []
+    const computeMod = (score: number) => Math.floor((score - 10) / 2)
+    const formatMod = (mod: number) => (mod >= 0 ? `+${mod}` : `${mod}`)
+    const str = typeof stats.str === 'number' ? stats.str : 10
+    const dex = typeof stats.dex === 'number' ? stats.dex : 10
+    const wis = typeof stats.wis === 'number' ? stats.wis : 10
+    const rows = [
+      { key: 'STR', score: str, mod: computeMod(str) },
+      { key: 'DEX', score: dex, mod: computeMod(dex) },
+      { key: 'WIS', score: wis, mod: computeMod(wis) },
+    ]
+    return rows.map(r => ({ ...r, modLabel: formatMod(r.mod) }))
+  }, [selected?.stats])
 
   async function handleCueRoll(cue: SceneCue){
     if(!onCueRoll || !cue.roll) return
@@ -72,10 +87,9 @@ export default function CharacterPanel({roster, selectedId, onSelect, sceneCues 
   if(!roster.length){
     return (
       <div className="character-panel-root">
-        <h3 style={{marginTop:0}}>Characters</h3>
-        <div>No characters yet.</div>
-        <div style={{marginTop:8}}>
-          <button style={{width:'100%'}}>Add Character</button>
+        <h3 className="character-panel-title">{title}</h3>
+        <div className="inline-alert">
+          No character selected yet. Create/select one from Manage Characters, then come back to Play.
         </div>
       </div>
     )
@@ -83,104 +97,155 @@ export default function CharacterPanel({roster, selectedId, onSelect, sceneCues 
 
   return (
     <div className="character-panel-root">
-      <h3 style={{marginTop:0}}>Characters</h3>
-      <CharacterIconStrip character={selected} />
-      <div style={{flex:1,overflowY:'auto'}} ref={containerRef}>
-        <div className="character-roster">
-          {roster.map(entry => (
-            <div key={entry.id} className={`character-card ${entry.id === selected?.id ? 'active' : ''}`}>
-              <button onClick={() => onSelect?.(entry.id)}>
-                <div className="character-name">{entry.name}</div>
-                <div className="character-meta">HP {entry.hp.current}/{entry.hp.max} • Level {entry.level}</div>
-              </button>
-            </div>
-          ))}
-        </div>
-
-        <div className="character-sections">
-          <div id="section-inventory" className="character-section">
-            <button onClick={()=>toggle('inventory')}>Inventory</button>
-            {expanded==='inventory' && (
-              <div className="character-section-list">
-                <ul style={{margin:0,paddingLeft:16}}>
-                  {selected?.inventory.map(item => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
+      <h3 className="character-panel-title">{title}</h3>
+      <CharacterIconStrip
+        character={selected}
+        activeKey={drawerKey}
+        onSelect={(key) => {
+          setDrawerKey(prev => (prev === key ? null : key))
+          // keep the drawer area visible when toggled
+          setTimeout(() => {
+            if(containerRef.current) containerRef.current.scrollTop = 0
+          }, 0)
+        }}
+      />
+      <div className="character-panel-scroll" ref={containerRef}>
+        <div className={`character-panel-layout ${drawerKey ? 'character-panel-layout--drawer' : ''}`}>
+          {drawerKey ? (
+            <aside className="character-panel-drawer" aria-label="Character details drawer">
+              <div className="character-panel-drawer-header">
+                <div className="character-panel-drawer-title">
+                  {drawerKey === 'abilities' ? 'Abilities' : null}
+                  {drawerKey === 'features' ? 'Features' : null}
+                  {drawerKey === 'inventory' ? 'Inventory' : null}
+                  {drawerKey === 'journal' ? 'Journal' : null}
+                  {drawerKey === 'skills' ? 'Skills' : null}
+                </div>
+                <button className="character-panel-drawer-close" type="button" onClick={() => setDrawerKey(null)} aria-label="Close drawer">
+                  ✕
+                </button>
               </div>
-            )}
-          </div>
 
-          <div id="section-spells" className="character-section">
-            <button onClick={()=>toggle('spells')}>Spells</button>
-            {expanded==='spells' && (
-              <div className="character-section-list">
-                {selected?.spells.length ? (
-                  <ul style={{margin:0,paddingLeft:16}}>
-                    {selected.spells.map(spell => (
-                      <li key={spell}>{spell}</li>
+              <div className="character-panel-drawer-body">
+                {drawerKey === 'abilities' ? (
+                  <div className="character-abilities">
+                    {abilities.map(row => (
+                      <div key={row.key} className="character-ability-row">
+                        <div className="character-ability-key">{row.key}</div>
+                        <div className="character-ability-score">{row.score}</div>
+                        <div className="character-ability-mod">{row.modLabel}</div>
+                      </div>
                     ))}
-                  </ul>
-                ) : (
-                  <div>No spells prepared</div>
-                )}
-              </div>
-            )}
-          </div>
+                    {!abilities.length ? <div className="muted">No ability scores available.</div> : null}
+                  </div>
+                ) : null}
 
-          <div id="section-skills" className="character-section">
-            <button onClick={()=>toggle('skills')}>Skills</button>
-            {expanded==='skills' && (
-              <div className="character-section-list">
-                <ul style={{margin:0,paddingLeft:16}}>
-                  {selected?.skills.map(skill => (
-                    <li key={skill.name}>{skill.name} {skill.mod >= 0 ? '+' : ''}{skill.mod}</li>
-                  ))}
-                </ul>
+                {drawerKey === 'features' ? (
+                  selected?.features?.length ? (
+                    <ul className="character-section-ul">
+                      {selected.features.map((feature) => (
+                        <li key={feature}>{feature}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="muted">No features listed.</div>
+                  )
+                ) : null}
+
+                {drawerKey === 'inventory' ? (
+                  selected?.inventory?.length ? (
+                    <ul className="character-section-ul">
+                      {selected.inventory.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="muted">No inventory items.</div>
+                  )
+                ) : null}
+
+                {drawerKey === 'journal' ? (
+                  <div>
+                    <div className="muted" style={{marginBottom: 8}}>
+                      {typeof selected?.journalEntries === 'number' ? `${selected.journalEntries} entries` : 'No journal data'}
+                    </div>
+                    <div className="muted">Journal entry contents aren’t wired up yet.</div>
+                  </div>
+                ) : null}
+
+                {drawerKey === 'skills' ? (
+                  <div className="character-section-list character-section-list--skills" style={{marginTop: 0}}>
+                    <ul className="character-section-ul character-section-ul--skills">
+                      {selected?.skills?.map(skill => (
+                        <li key={skill.name} className="character-skill-item">
+                          <span className="character-skill-name">{skill.name}</span>
+                          <span className="character-skill-mod">
+                            {skill.mod >= 0 ? '+' : ''}{skill.mod}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    {!selected?.skills?.length ? <div className="muted">No skills listed.</div> : null}
+                  </div>
+                ) : null}
               </div>
-            )}
+            </aside>
+          ) : null}
+
+          <div className="character-panel-main">
+            {showRoster ? (
+              <div className="character-roster">
+                {roster.map(entry => (
+                  <div key={entry.id} className={`character-card ${entry.id === selected?.id ? 'active' : ''}`}>
+                    <button onClick={() => onSelect?.(entry.id)}>
+                      <div className="character-name">{entry.name}</div>
+                      <div className="character-meta">HP {entry.hp.current}/{entry.hp.max} • Level {entry.level}</div>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         </div>
-      </div>
-      {sceneCues.length > 0 && (
-        <div style={{marginTop:12}}>
-          <div style={{fontSize:12, color:'#8fe0ff', marginBottom:4}}>Scene Cues</div>
-          <ul style={{margin:0, paddingLeft:16, fontSize:12, listStyle:'none'}}>
-            {sceneCues.map((cue)=>(
-              <li key={cue.id} style={{marginBottom:8, padding:8, borderRadius:6, border:'1px solid #1f3c4a', background:'#0b161c'}}>
-                <div style={{marginBottom:6}}>{cue.prompt}</div>
-                {cue.roll ? (
-                  <button
-                    type="button"
-                    onClick={()=>handleCueRoll(cue)}
-                    disabled={rollingCueId === cue.id}
-                    style={{fontSize:11, padding:'4px 8px'}}
-                  >
-                    {rollingCueId === cue.id ? 'Rolling…' : `Roll ${cue.roll.skill || cue.roll.type || 'd20'}`}
-                  </button>
-                ) : (
-                  <div style={{fontSize:11, color:'#999'}}>Awaiting clarification</div>
-                )}
-              </li>
-            ))}
-          </ul>
-          {cueError && <div style={{fontSize:11, color:'#ff9f9f', marginTop:4}}>{cueError}</div>}
-        </div>
-      )}
-      {npcSpotlight.length > 0 && (
-        <div style={{marginTop:12}}>
-          <div style={{fontSize:12, color:'#ffcc6f', marginBottom:4}}>NPC Spotlight</div>
-          <ul style={{margin:0, paddingLeft:16, fontSize:12}}>
-            {npcSpotlight.map(npc => (
-              <li key={npc.name}>
-                <strong>{npc.name}</strong>{npc.initiative_hint ? ` · ${npc.initiative_hint}` : ''}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      <div style={{marginTop:8}}>
-        <button style={{width:'100%'}}>Add Character</button>
+
+        {sceneCues.length > 0 && (
+          <div className="character-panel-block">
+            <div className="character-panel-block-title character-panel-block-title--scene">Scene Cues</div>
+            <ul className="character-panel-cues">
+              {sceneCues.map((cue)=>(
+                <li key={cue.id} className="character-panel-cue">
+                  <div className="character-panel-cue-prompt">{cue.prompt}</div>
+                  {cue.roll ? (
+                    <button
+                      className="btn btn-quiet btn-sm"
+                      type="button"
+                      onClick={()=>handleCueRoll(cue)}
+                      disabled={rollingCueId === cue.id}
+                    >
+                      {rollingCueId === cue.id ? 'Rolling…' : `Roll ${cue.roll.skill || cue.roll.type || 'd20'}`}
+                    </button>
+                  ) : (
+                    <div className="character-panel-cue-muted">Awaiting clarification</div>
+                  )}
+                </li>
+              ))}
+            </ul>
+            {cueError && <div className="character-panel-error">{cueError}</div>}
+          </div>
+        )}
+
+        {npcSpotlight.length > 0 && (
+          <div className="character-panel-block">
+            <div className="character-panel-block-title character-panel-block-title--npc">NPC Spotlight</div>
+            <ul className="character-panel-npcs">
+              {npcSpotlight.map(npc => (
+                <li key={npc.name}>
+                  <strong>{npc.name}</strong>{npc.initiative_hint ? ` · ${npc.initiative_hint}` : ''}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   )

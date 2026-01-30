@@ -178,3 +178,23 @@ def set_beyond20_domains(identifier: str = Body(...), domains_text: Optional[str
 @router.get("/player/me")
 def player_me(current_user=Depends(get_current_user)):
     return {"profile": current_user.profile}
+
+
+@router.get("/player/beyond20/relay-token")
+def get_beyond20_relay_token(current_user=Depends(get_current_user)):
+    if current_user.id is None:
+        raise HTTPException(status_code=400, detail="User missing id")
+    token = db.ensure_beyond20_relay_token_for_user_id(current_user.id)
+    if not token:
+        raise HTTPException(status_code=500, detail="Unable to create relay token")
+    return {"relay_token": token}
+
+
+@router.post("/player/beyond20/relay-token/rotate")
+def rotate_beyond20_relay_token(current_user=Depends(get_current_user)):
+    if current_user.id is None:
+        raise HTTPException(status_code=400, detail="User missing id")
+    token = db.rotate_beyond20_relay_token_for_user_id(current_user.id)
+    if not token:
+        raise HTTPException(status_code=500, detail="Unable to rotate relay token")
+    return {"relay_token": token}

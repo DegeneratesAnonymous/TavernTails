@@ -42,6 +42,9 @@ class DocumentStore:
     def register_existing_object(self, session_id: str, filename: str, name: str, size: int, category: str = "core", visibility: str = "shared") -> DocumentMeta:
         raise NotImplementedError
 
+    def generate_presigned_get_url(self, session_id: str, filename: str, expires_in: int = 3600) -> str:
+        raise NotImplementedError
+
 
 class LocalDocumentStore(DocumentStore):
     def __init__(self, base_dir: Path) -> None:
@@ -150,6 +153,9 @@ class LocalDocumentStore(DocumentStore):
                     content = target.read_bytes().hex()
                 return entry, content
         return None
+
+    def generate_presigned_get_url(self, session_id: str, filename: str, expires_in: int = 3600) -> str:
+        raise NotImplementedError
 
 
 class S3DocumentStore(DocumentStore):
@@ -310,6 +316,14 @@ class S3DocumentStore(DocumentStore):
                 except Exception:
                     return None
         return None
+
+    def generate_presigned_get_url(self, session_id: str, filename: str, expires_in: int = 3600) -> str:
+        key = self._object_key(session_id, filename)
+        return self.s3.generate_presigned_url(
+            ClientMethod='get_object',
+            Params={'Bucket': self.bucket, 'Key': key},
+            ExpiresIn=expires_in,
+        )
 
 
 class NullDocumentStore(DocumentStore):

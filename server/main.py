@@ -27,6 +27,7 @@ from .agents.sessions import router as sessions_router
 from .agents.storyboard import router as storyboard_router
 from .agents.suggestions import router as suggestions_router
 from .agents.turns import router as turns_router
+from .agents.users import router as users_router
 
 # Simple request logging to make activity visible in the console
 logger = logging.getLogger("taverntails")
@@ -101,14 +102,19 @@ async def global_exception_handler(request, exc):
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Or restrict to ["http://localhost:3000"]
-    allow_credentials=True,
+    # NOTE: When allow_credentials=True, browsers reject allow_origins=['*'].
+    # This API uses bearer tokens (Authorization header) rather than cookies,
+    # so we keep credentialed CORS disabled to allow simple local/dev setups
+    # and cross-origin userscripts (e.g., dndbeyond.com -> localhost).
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
 app.include_router(player_router)
+app.include_router(users_router)
 app.include_router(narrative_router)
 app.include_router(content_router)
 app.include_router(sessions_router)

@@ -254,11 +254,11 @@ const LoginSignupAgent: React.FC = () => {
     <div style={{ minHeight: '100vh' }}>
       {loading && <HamsterWheel />}
       {!profile ? (
-        <div className="container" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ width: '420px', maxWidth: '96%', padding: 20 }}>
+        <div className="container">
+          <div className="card card-pad" style={{ width: 420, maxWidth: '96%' }}>
             {!isSignup ? (
               <section>
-                <h2 style={{ color: 'white', marginBottom: 12 }}>Login</h2>
+                <h2 className="section-title">Login</h2>
                 <form onSubmit={e => { e.preventDefault(); handleLogin(); }} aria-busy={loading} aria-live="polite">
                   <label className="sr-only" htmlFor="loginEmail">Email</label>
                   <input id="loginEmail" className="input" type="email" placeholder="Email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} autoComplete="email" />
@@ -266,17 +266,17 @@ const LoginSignupAgent: React.FC = () => {
                   <label className="sr-only" htmlFor="loginPassword">Password</label>
                   <input id="loginPassword" className="input" type="password" placeholder="Password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} autoComplete="current-password" />
 
-                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                  <div className="row" style={{ marginTop: 12 }}>
                     <button className="btn" type="submit" disabled={loading} aria-disabled={loading}>
                       {loading ? 'Logging in...' : 'Login'}
                     </button>
-                    <button type="button" className="btn" onClick={() => setIsSignup(true)} style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.12)', color: 'white' }}>Sign up</button>
+                    <button type="button" className="btn btn-secondary" onClick={() => setIsSignup(true)}>Sign up</button>
                   </div>
-                  <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <button type="button" className="btn" onClick={handleDevLogin} disabled={loading} style={{ background: 'rgba(255,255,255,0.08)', boxShadow: 'none', fontSize: 13, padding: '8px 14px' }}>
+                  <div className="row-wrap" style={{ marginTop: 10 }}>
+                    <button type="button" className="btn btn-quiet btn-sm" onClick={handleDevLogin} disabled={loading}>
                       Use dev login
                     </button>
-                    <span style={{ fontSize: 12, opacity: 0.75 }}>test@example.com / secret</span>
+                    <span className="muted" style={{ fontSize: 12 }}>test@example.com / secret</span>
                   </div>
 
                   {error && <div className="error" role="alert">{error}</div>}
@@ -284,7 +284,7 @@ const LoginSignupAgent: React.FC = () => {
                     <div style={{ marginTop: 8 }}>
                       <label className="sr-only" htmlFor="verifyToken">Verification Token</label>
                       <input id="verifyToken" className="input" type="text" placeholder="Verification token" value={verificationToken} onChange={e => setVerificationToken(e.target.value)} />
-                      <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+                      <div className="row" style={{ marginTop: 8 }}>
                         <button className="btn" type="button" onClick={handleVerify}>Verify Email</button>
                         <button className="btn" type="button" onClick={handleResendVerification}>Resend</button>
                       </div>
@@ -294,15 +294,15 @@ const LoginSignupAgent: React.FC = () => {
               </section>
             ) : (
               <section>
-                <h2 style={{ color: 'white', marginBottom: 12 }}>Sign Up</h2>
+                <h2 className="section-title">Sign Up</h2>
                 <form onSubmit={e => { e.preventDefault(); handleSignup(); }}>
                   <input className="input" type="email" placeholder="Email" value={signupEmail} onChange={e => setSignupEmail(e.target.value)} />
                   <input className="input" type="text" placeholder="Display Name (optional)" value={signupName} onChange={e => setSignupName(e.target.value)} />
                   <input className="input" type="password" placeholder="Password" value={signupPassword} onChange={e => setSignupPassword(e.target.value)} />
                   <input className="input" type="number" placeholder="Your age (optional)" value={signupAge} onChange={e => setSignupAge(e.target.value)} />
-                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                  <div className="row" style={{ marginTop: 12 }}>
                     <button className="btn" type="submit">Sign Up</button>
-                    <button type="button" className="btn" onClick={() => setIsSignup(false)} style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.12)', color: 'white' }}>Back to Login</button>
+                    <button type="button" className="btn btn-secondary" onClick={() => setIsSignup(false)}>Back to Login</button>
                   </div>
                   {error && <div className="error" style={{ marginTop: 8 }}>{error}</div>}
                 </form>

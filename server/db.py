@@ -1,4 +1,5 @@
 import os
+import secrets
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, cast
 
@@ -75,6 +76,12 @@ def get_campaign_by_id(campaign_id: str) -> Optional[Campaign]:
         return session.exec(stmt).first()
 
 
+def get_character_by_id(character_id: int) -> Optional[Character]:
+    with Session(engine) as session:
+        stmt = select(Character).where(Character.id == character_id)
+        return session.exec(stmt).first()
+
+
 def list_campaigns_for_owner(owner_id: int) -> List[Campaign]:
     with Session(engine) as session:
         stmt = select(Campaign).where(Campaign.owner_id == owner_id)
@@ -124,6 +131,32 @@ def update_campaign(campaign_id: str, owner_id: int, updates: Dict[str, Any]) ->
             camp.description = updates['description']
         if 'archived' in updates:
             camp.archived = bool(updates['archived'])
+        session.add(camp)
+        session.commit()
+        session.refresh(camp)
+        return camp
+
+
+def get_campaign_settings(campaign_id: str, owner_id: int) -> Optional[Dict[str, Any]]:
+    with Session(engine) as session:
+        stmt = select(Campaign).where(Campaign.id == campaign_id, Campaign.owner_id == owner_id)
+        camp = session.exec(stmt).first()
+        if not camp:
+            return None
+        meta = dict(camp.metadata_json or {})
+        settings = meta.get("settings")
+        return dict(settings) if isinstance(settings, dict) else {}
+
+
+def set_campaign_settings(campaign_id: str, owner_id: int, settings: Dict[str, Any]) -> Optional[Campaign]:
+    with Session(engine) as session:
+        stmt = select(Campaign).where(Campaign.id == campaign_id, Campaign.owner_id == owner_id)
+        camp = session.exec(stmt).first()
+        if not camp:
+            return None
+        meta = dict(camp.metadata_json or {})
+        meta["settings"] = dict(settings)
+        camp.metadata_json = meta
         session.add(camp)
         session.commit()
         session.refresh(camp)
@@ -333,6 +366,25 @@ def get_user_by_identifier(identifier: str) -> Optional[User]:
         return session.exec(stmt).first()
 
 
+def search_users(query: str, *, limit: int = 10) -> List[User]:
+    q = (query or "").strip()
+    if not q:
+        return []
+    q_lower = q.lower()
+    like = f"%{q_lower}%"
+    with Session(engine) as session:
+        stmt = (
+            select(User)
+            .where(
+                (func.lower(User.username).like(like))
+                | (func.lower(User.email).like(like))
+            )
+            .order_by(User.username)
+            .limit(max(1, min(int(limit or 10), 25)))
+        )
+        return list(session.exec(stmt).all())
+
+
 def create_user(email: str, password: str, username: Optional[str] = None, profile: Optional[Dict[str, Any]] = None) -> User:
     clean_email = _normalize_email(email)
     if not clean_email:
@@ -470,12 +522,6 @@ def get_character_for_owner(character_id: int, owner_id: int) -> Optional[Charac
         return session.exec(stmt).first()
 
 
-def get_character_by_id(character_id: int) -> Optional[Character]:
-    with Session(engine) as session:
-        stmt = select(Character).where(Character.id == character_id)
-        return session.exec(stmt).first()
-
-
 def update_character(character_id: int, owner_id: int, updates: Dict[str, Any]) -> Optional[Character]:
     with Session(engine) as session:
         stmt = select(Character).where(Character.id == character_id, Character.owner_id == owner_id)
@@ -534,3 +580,60 @@ def set_beyond20_domains_for(identifier: str, domains: List[str]) -> Optional[Li
         session.commit()
         session.refresh(dbu)
         return domains
+
+
+def get_beyond20_relay_token_for_user_id(user_id: int) -> Optional[str]:
+    with Session(engine) as session:
+        stmt = select(User).where(User.id == user_id)
+        user = session.exec(stmt).first()
+        if not user:
+            return None
+        prefs = (user.profile or {}).get("preferences", {})
+        return (prefs.get("beyond20", {}) or {}).get("relay_token")
+
+
+def _set_beyond20_relay_token_for_user_id(user_id: int, token: str) -> Optional[str]:
+    with Session(engine) as session:
+        stmt = select(User).where(User.id == user_id)
+        user = session.exec(stmt).first()
+        if not user:
+            return None
+        new_profile = dict(user.profile or {})
+        prefs = new_profile.setdefault("preferences", {})
+        beyond20 = prefs.setdefault("beyond20", {})
+        beyond20["relay_token"] = token
+        user.profile = new_profile
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+        return token
+
+
+def ensure_beyond20_relay_token_for_user_id(user_id: int) -> Optional[str]:
+    existing = get_beyond20_relay_token_for_user_id(user_id)
+    if existing:
+        return existing
+    token = secrets.token_hex(24)
+    return _set_beyond20_relay_token_for_user_id(user_id, token)
+
+
+def rotate_beyond20_relay_token_for_user_id(user_id: int) -> Optional[str]:
+    token = secrets.token_hex(24)
+    return _set_beyond20_relay_token_for_user_id(user_id, token)
+
+
+def get_user_by_beyond20_relay_token(token: str) -> Optional[User]:
+    if not token:
+        return None
+    token = token.strip()
+    if not token:
+        return None
+    with Session(engine) as session:
+        stmt = select(User)
+        users = session.exec(stmt).all()
+        for user in users:
+            prefs = (user.profile or {}).get("preferences", {})
+            relay = (prefs.get("beyond20", {}) or {}).get("relay_token")
+            if relay == token:
+                return user
+        return None

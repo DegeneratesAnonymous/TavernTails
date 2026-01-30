@@ -1,5 +1,6 @@
-import React, {useEffect, useState} from 'react'
+import React, {useCallback, useEffect, useState} from 'react'
 import { buildApiUrl } from '../api'
+import './NarrativeView.css'
 
 type Scene = {
   id: string
@@ -9,41 +10,16 @@ type Scene = {
   choices: Array<{id:string,label:string}>
 }
 
-type Props = { sessionId?: string | null }
+type Props = {
+  sessionId?: string | null
+  showChoicesInScene?: boolean
+}
 
-export default function NarrativeView({sessionId}: Props){
+export default function NarrativeView({sessionId, showChoicesInScene = true}: Props){
   const [scene, setScene] = useState<Scene|null>(null)
+  const [choicesOpen, setChoicesOpen] = useState(false)
 
-  useEffect(()=>{
-    let mounted = true
-    const token = localStorage.getItem('access_token')
-    const headers: any = { 'Content-Type': 'application/json' }
-    if(token) headers['Authorization'] = `Bearer ${token}`
-    const seedUrl = sessionId ? buildApiUrl(`/sessions/${sessionId}/file/story.json`) : buildApiUrl('/content/campaigns/seed')
-    fetch(seedUrl, { headers })
-      .then(r=>r.ok? r.json() : Promise.reject('no'))
-      .then((data:Scene)=>{
-        if(mounted){
-          const normalized: Scene = {
-            ...data,
-            choices: Array.isArray(data?.choices) ? data.choices : []
-          }
-          setScene(normalized)
-        }
-      })
-      .catch(()=>{
-        setScene({
-          id:'seed',
-          title:'The Abandoned Mill',
-          image:'',
-          text:'The wind howls as you step into the mill. Broken gears and faded banners tell a story of a sudden evacuation...',
-          choices:[{id:'search',label:'Search the sacks'},{id:'listen',label:'Listen at the door'}]
-        })
-      })
-    return ()=>{ mounted=false }
-  },[sessionId])
-
-  async function choose(id:string){
+  const choose = useCallback(async (id: string) => {
     try{
       const token = localStorage.getItem('access_token')
       const headers: any = { 'Content-Type': 'application/json' }
@@ -58,33 +34,143 @@ export default function NarrativeView({sessionId}: Props){
     }catch(e){
       console.error('choice failed',e)
     }
-  }
+  }, [scene?.id, sessionId])
+
+  // Broadcast the current set of choices so other layout areas (like chat) can render them.
+  useEffect(() => {
+    if(!scene) return
+    setChoicesOpen(false)
+    window.dispatchEvent(new CustomEvent('narrative:choices', {
+      detail: {
+        sceneId: scene.id,
+        title: scene.title,
+        choices: Array.isArray(scene.choices) ? scene.choices : [],
+      }
+    }))
+  }, [scene])
+
+  useEffect(()=>{
+    let mounted = true
+    const token = localStorage.getItem('access_token')
+    const headers: any = { 'Content-Type': 'application/json' }
+    if(token) headers['Authorization'] = `Bearer ${token}`
+    const seedUrl = sessionId ? buildApiUrl(`/sessions/${sessionId}/file/scene.json`) : buildApiUrl('/content/campaigns/seed')
+    const load = async () => {
+      try{
+        const r = await fetch(seedUrl, { headers })
+        if(!r.ok) throw new Error('scene missing')
+        const data = await r.json()
+        if(!mounted) return
+        const normalized: Scene = {
+          ...data,
+          choices: Array.isArray(data?.choices) ? data.choices : []
+        }
+        setScene(normalized)
+      }catch{
+        if(sessionId){
+          try{
+            await fetch(buildApiUrl(`/sessions/${sessionId}/bootstrap`), { method:'POST', headers, body: JSON.stringify({}) })
+            const r2 = await fetch(seedUrl, { headers })
+            if(r2.ok){
+              const data2 = await r2.json()
+              if(mounted){
+                setScene({ ...data2, choices: Array.isArray(data2?.choices) ? data2.choices : [] })
+                return
+              }
+            }
+          }catch{/* ignore */}
+        }
+        if(mounted){
+          setScene({
+            id:'seed',
+            title:'The Abandoned Mill',
+            image:'',
+            text:'The wind howls as you step into the mill. Broken gears and faded banners tell a story of a sudden evacuation...',
+            choices:[{id:'search',label:'Search the sacks'},{id:'listen',label:'Listen at the door'}]
+          })
+        }
+      }
+    }
+    load()
+    return ()=>{ mounted=false }
+  },[sessionId])
+
+  useEffect(()=>{
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent).detail || {}
+      const next = detail.scene
+      if(next && typeof next === 'object'){
+        setScene({
+          ...(next as Scene),
+          choices: Array.isArray((next as any)?.choices) ? (next as any).choices : [],
+        })
+      }
+    }
+    // @ts-ignore
+    window.addEventListener('narrative:scene', handler)
+    return ()=>{
+      // @ts-ignore
+      window.removeEventListener('narrative:scene', handler)
+    }
+  },[])
+
+  // Allow external UI (like the chat dock) to trigger a scene choice.
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent).detail || {}
+      const choiceId = String(detail.choiceId || detail.id || '').trim()
+      if(!choiceId) return
+      choose(choiceId)
+    }
+    // @ts-ignore
+    window.addEventListener('narrative:choose', handler)
+    return () => {
+      // @ts-ignore
+      window.removeEventListener('narrative:choose', handler)
+    }
+  }, [choose])
 
   if(!scene) return <div style={{padding:12}}>Loading scene…</div>
 
+  const hasChoices = Array.isArray(scene.choices) && scene.choices.length > 0
+
   return (
-    <div className="narrative-view" style={{padding:12,height:'100%',boxSizing:'border-box',display:'flex',flexDirection:'column'}}>
-      <div className="scene-image-area" style={{position:'relative',height:'48%',background:'#111',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
+    <div className="narrative-view">
+      <div className="narrative-scene">
         {scene.image ? (
-          <img src={scene.image} alt="scene" style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:8,filter:'brightness(0.85)'}}/>
+          <img src={scene.image} alt="scene" />
         ) : (
-          <div style={{color:'#888',width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center'}}>Scene image</div>
+          <div className="narrative-image-placeholder">(No scene image yet)</div>
         )}
-        <div className="narration-overlay">
-          <div className="narration-card">
-            <h2 style={{margin:'0 0 12px 0',fontWeight:700}}>{scene.title}</h2>
-            <p style={{margin:0}}>{scene.text}</p>
+
+        <div className="narrative-overlay">
+          <div className="narrative-card">
+            <h2 className="narrative-title">{scene.title}</h2>
+            <p className="narrative-text">{scene.text}</p>
+
+            {showChoicesInScene && hasChoices ? (
+              <div className="narrative-choices-wrap">
+                <button
+                  type="button"
+                  className="narrative-choices-toggle"
+                  aria-expanded={choicesOpen}
+                  onClick={() => setChoicesOpen(v => !v)}
+                >
+                  {choicesOpen ? 'Hide choices' : `Show choices (${scene.choices.length})`}
+                </button>
+
+                {choicesOpen ? (
+                  <div className="narrative-choices">
+                    {scene.choices.map(c => (
+                      <button key={c.id} className="narrative-choice-btn" onClick={() => choose(c.id)}>
+                        {c.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
-        </div>
-      </div>
-      <div style={{marginTop:12,flex:1,overflow:'auto'}}>
-        <div style={{marginTop:8}}>
-          {(scene.choices && scene.choices.length ? scene.choices : []).map(c=> (
-            <button key={c.id} className="narrative-choice-btn" onClick={()=>choose(c.id)}>{c.label}</button>
-          ))}
-          {(!scene.choices || scene.choices.length === 0) && (
-            <div style={{fontSize:12,color:'#888'}}>No choices available yet.</div>
-          )}
         </div>
       </div>
     </div>
