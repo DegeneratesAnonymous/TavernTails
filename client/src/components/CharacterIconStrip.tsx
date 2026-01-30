@@ -15,6 +15,7 @@ type Props = {
   activeKey?: CharacterStripKey | null
   onSelect?: (key: CharacterStripKey) => void
   variant?: 'full' | 'tabs'
+  hiddenKeys?: CharacterStripKey[]
 }
 
 const formatMod = (score: number) => {
@@ -27,7 +28,7 @@ const toNumber = (value: any, fallback: number) => {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
-export default function CharacterIconStrip({ character, activeKey = null, onSelect, variant = 'full' }: Props){
+export default function CharacterIconStrip({ character, activeKey = null, onSelect, variant = 'full', hiddenKeys = [] }: Props){
   if(!character){
     return null
   }
@@ -83,15 +84,18 @@ export default function CharacterIconStrip({ character, activeKey = null, onSele
     },
   ]
 
+  const visibleItems = hiddenKeys.length ? items.filter(item => !hiddenKeys.includes(item.key)) : items
+
   return (
     <div className={variant === 'tabs' ? 'character-icon-strip character-icon-strip--tabs' : 'character-icon-strip'} aria-label="Character quick info">
-      {items.map(item => (
+      {visibleItems.map(item => (
         <button
           key={item.key}
           type="button"
           className={`character-icon-card character-icon-card--button ${item.key === activeKey ? 'character-icon-card--active' : ''}`}
           onClick={() => onSelect?.(item.key)}
           aria-pressed={item.key === activeKey}
+          title={item.label}
         >
           <div className="character-icon-badge" aria-hidden="true">{item.badge}</div>
           <div className="character-icon-text">

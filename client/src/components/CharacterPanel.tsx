@@ -314,6 +314,7 @@ export default function CharacterPanel({
           character={selected}
           activeKey={drawerKey}
           variant="tabs"
+          hiddenKeys={['abilities']}
           onSelect={(key) => {
             setDrawerKey(prev => (prev === key ? null : key))
             setTimeout(() => {
@@ -325,11 +326,17 @@ export default function CharacterPanel({
         <div className="character-panel-scroll" ref={containerRef}>
           <div className="character-sheet-abilities" aria-label="Ability scores">
             {abilities.map(row => (
-              <div key={row.key} className="character-ability-tile">
+              <button
+                key={row.key}
+                type="button"
+                className="character-ability-tile character-ability-tile--button"
+                onClick={() => setDrawerKey(prev => (prev === 'abilities' ? null : 'abilities'))}
+                aria-label={`View abilities details (${row.key})`}
+              >
                 <div className="character-ability-key">{row.key}</div>
                 <div className="character-ability-mod">{row.modLabel}</div>
                 <div className="character-ability-score">{row.score}</div>
-              </div>
+              </button>
             ))}
           </div>
 
