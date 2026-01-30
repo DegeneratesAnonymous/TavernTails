@@ -4,7 +4,6 @@ import NarrativeView from './NarrativeView'
 import Chat from './Chat'
 import CharacterPanel, {CharacterSummary, SceneCue} from './CharacterPanel'
 import DocumentsPanel from './DocumentsPanel'
-import PlayerStatusBar from './PlayerStatusBar'
 import JournalPanel from './JournalPanel'
 import { apiFetch, buildWsUrl } from '../api'
 import SiteMenu from './SiteMenu'
@@ -845,20 +844,6 @@ export default function GameplayLayout({
 
               {rightTab === 'character' ? (
                 <div className="player-sheet" aria-label="Your character sheet">
-                  {playerStats ? (
-                    <div style={{ padding: 14, paddingBottom: 0 }}>
-                      <PlayerStatusBar
-                        name={playerStats.name}
-                        ac={playerStats.ac}
-                        hp={{ current: playerStats.hp.current, max: playerStats.hp.max }}
-                        tempHp={playerStats.hp.temp || 0}
-                        deathSaves={{ success: 1, failure: 0 }}
-                        exhaustion={0}
-                        spellSaveDc={playerStats.spellSave || 10}
-                      />
-                    </div>
-                  ) : null}
-
                   <div className="player-sheet-inner">
                     <CharacterPanel
                       title="Your character"

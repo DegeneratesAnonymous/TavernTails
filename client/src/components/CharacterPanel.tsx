@@ -277,31 +277,38 @@ export default function CharacterPanel({
             <div className="character-sheet-name">{selected?.name}</div>
             <div className="character-sheet-subtitle muted">Level {selected?.level ?? 0}</div>
           </div>
-
-          <div className="character-sheet-vitals">
-            <div className="character-vital">
-              <div className="character-vital-label">HP</div>
-              <div className="character-vital-value">
-                {overview?.hpCurrent ?? 0}/{overview?.hpMax ?? 0}
-                {overview?.tempHp ? <span className="character-vital-muted"> +{overview.tempHp}</span> : null}
-              </div>
-            </div>
-            <div className="character-vital">
-              <div className="character-vital-label">AC</div>
-              <div className="character-vital-value">{overview?.ac ?? 0}</div>
-            </div>
-            <div className="character-vital">
-              <div className="character-vital-label">Spell DC</div>
-              <div className="character-vital-value">{overview?.spellSave ?? 0}</div>
-            </div>
-            <div className="character-vital">
-              <div className="character-vital-label">Init</div>
-              <div className="character-vital-value">
-                {(overview?.initMod ?? 0) >= 0 ? '+' : ''}{overview?.initMod ?? 0}
-              </div>
-            </div>
-          </div>
         </div>
+
+        {overview ? (
+          <section className="player-status" aria-label="Player stats" style={{padding: 10, borderRadius: 12, border: '1px solid rgba(255,255,255,0.06)', marginBottom: 10}}>
+            <div className="player-status-grid">
+              <div>
+                <div className="player-status-label">Armor Class</div>
+                <div className="player-status-value">{overview.ac}</div>
+              </div>
+              <div>
+                <div className="player-status-label">Hit Points</div>
+                <div className="player-status-value">{overview.hpCurrent} / {overview.hpMax}</div>
+              </div>
+              <div>
+                <div className="player-status-label">Temp HP</div>
+                <div className="player-status-value">{overview.tempHp}</div>
+              </div>
+              <div>
+                <div className="player-status-label">Initiative</div>
+                <div className="player-status-value">{overview.initMod >= 0 ? '+' : ''}{overview.initMod}</div>
+              </div>
+              <div>
+                <div className="player-status-label">Exhaustion</div>
+                <div className="player-status-value">0</div>
+              </div>
+              <div>
+                <div className="player-status-label">Spell Save DC</div>
+                <div className="player-status-value">{overview.spellSave}</div>
+              </div>
+            </div>
+          </section>
+        ) : null}
 
         <CharacterIconStrip
           character={selected}
