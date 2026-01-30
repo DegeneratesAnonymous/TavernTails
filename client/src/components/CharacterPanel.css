@@ -159,12 +159,87 @@
 }
 
 .player-sheet .character-panel-drawer{
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: min(300px, 92%);
-  z-index: 2;
-  box-shadow: 0 16px 60px rgba(0,0,0,0.55);
-  backdrop-filter: blur(8px);
+  position: static;
+  inset: auto;
+  width: 100%;
+  z-index: auto;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.character-overview{
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.character-overview-header{
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.character-overview-name{
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.character-overview-subtitle{
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.character-overview-grid{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.character-overview-card{
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  min-width: 0;
+}
+
+.character-overview-label{
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.65);
+  margin-bottom: 4px;
+}
+
+.character-overview-value{
+  font-size: 16px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.character-overview-muted{
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.70);
+}
+
+.character-overview-meta{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.character-overview-pill{
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(143, 224, 255, 0.10);
+  border: 1px solid rgba(143, 224, 255, 0.18);
+  color: rgba(143, 224, 255, 0.95);
 }
 
 .character-panel-drawer-header{

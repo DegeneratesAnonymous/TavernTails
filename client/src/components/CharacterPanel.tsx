@@ -71,6 +71,36 @@ export default function CharacterPanel({
     return rows.map(r => ({ ...r, modLabel: formatMod(r.mod) }))
   }, [selected?.stats])
 
+  const overview = useMemo(() => {
+    if(!selected) return null
+    const hpCurrent = typeof selected.hp?.current === 'number' ? selected.hp.current : 0
+    const hpMax = typeof selected.hp?.max === 'number' ? selected.hp.max : 0
+    const tempHp = typeof selected.hp?.temp === 'number' ? selected.hp.temp : 0
+    const ac = typeof selected.ac === 'number' ? selected.ac : 0
+    const level = typeof selected.level === 'number' ? selected.level : 0
+    const spellSave = typeof selected.spellSave === 'number' ? selected.spellSave : 0
+
+    const dexRow = abilities.find(r => r.key === 'DEX')
+    const initMod = dexRow ? dexRow.mod : 0
+
+    const inventoryCount = Array.isArray(selected.inventory) ? selected.inventory.length : 0
+    const featuresCount = Array.isArray(selected.features) ? selected.features.length : 0
+    const skillsCount = Array.isArray(selected.skills) ? selected.skills.length : 0
+
+    return {
+      hpCurrent,
+      hpMax,
+      tempHp,
+      ac,
+      level,
+      spellSave,
+      initMod,
+      inventoryCount,
+      featuresCount,
+      skillsCount,
+    }
+  }, [abilities, selected])
+
   async function handleCueRoll(cue: SceneCue){
     if(!onCueRoll || !cue.roll) return
     setCueError(null)
@@ -193,6 +223,55 @@ export default function CharacterPanel({
           ) : null}
 
           <div className="character-panel-main">
+            {!showRoster && !drawerKey && overview ? (
+              <div className="character-overview">
+                <div className="character-overview-header">
+                  <div>
+                    <div className="character-overview-name">{selected?.name}</div>
+                    <div className="character-overview-subtitle muted">Tap a button above for details</div>
+                  </div>
+                </div>
+
+                <div className="character-overview-grid">
+                  <div className="character-overview-card">
+                    <div className="character-overview-label">HP</div>
+                    <div className="character-overview-value">
+                      {overview.hpCurrent}/{overview.hpMax}
+                      {overview.tempHp ? <span className="character-overview-muted"> (+{overview.tempHp} temp)</span> : null}
+                    </div>
+                  </div>
+
+                  <div className="character-overview-card">
+                    <div className="character-overview-label">AC</div>
+                    <div className="character-overview-value">{overview.ac}</div>
+                  </div>
+
+                  <div className="character-overview-card">
+                    <div className="character-overview-label">Level</div>
+                    <div className="character-overview-value">{overview.level}</div>
+                  </div>
+
+                  <div className="character-overview-card">
+                    <div className="character-overview-label">Initiative</div>
+                    <div className="character-overview-value">
+                      {overview.initMod >= 0 ? '+' : ''}{overview.initMod}
+                    </div>
+                  </div>
+
+                  <div className="character-overview-card">
+                    <div className="character-overview-label">Spell Save DC</div>
+                    <div className="character-overview-value">{overview.spellSave}</div>
+                  </div>
+                </div>
+
+                <div className="character-overview-meta">
+                  <div className="character-overview-pill">Features: {overview.featuresCount}</div>
+                  <div className="character-overview-pill">Inventory: {overview.inventoryCount}</div>
+                  <div className="character-overview-pill">Skills: {overview.skillsCount}</div>
+                </div>
+              </div>
+            ) : null}
+
             {showRoster ? (
               <div className="character-roster">
                 {roster.map(entry => (
