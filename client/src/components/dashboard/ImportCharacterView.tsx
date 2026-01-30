@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 
 import { apiFetch } from '../../api'
 import PageHeader from '../ui/PageHeader'
@@ -10,6 +10,7 @@ type Props = {
   onSetActiveCharacterId: (characterId: number | null) => void
   onDone: () => void
   onGoToGameplay: () => void
+  initialMode?: 'ddb-link' | 'paste' | 'file' | 'pdf'
 }
 
 export default function ImportCharacterView({
@@ -19,8 +20,9 @@ export default function ImportCharacterView({
   onSetActiveCharacterId,
   onDone,
   onGoToGameplay,
+  initialMode,
 }: Props) {
-  const [mode, setMode] = useState<'ddb-link' | 'paste' | 'file' | 'pdf'>('paste')
+  const [mode, setMode] = useState<'ddb-link' | 'paste' | 'file' | 'pdf'>(initialMode || 'paste')
   const [rawJson, setRawJson] = useState('')
   const [ddbUrl, setDdbUrl] = useState('')
   const [file, setFile] = useState<File | null>(null)
@@ -31,6 +33,10 @@ export default function ImportCharacterView({
   const [message, setMessage] = useState<string | null>(null)
   const [messageKind, setMessageKind] = useState<'ok' | 'error'>('ok')
   const [autoAssignToSession, setAutoAssignToSession] = useState(true)
+
+  useEffect(() => {
+    if (initialMode) setMode(initialMode)
+  }, [initialMode])
 
   const showMessage = (kind: 'ok' | 'error', text: string) => {
     setMessageKind(kind)

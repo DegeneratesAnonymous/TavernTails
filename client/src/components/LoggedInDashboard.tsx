@@ -21,6 +21,7 @@ type Props = {
 
 const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [view, setView] = useState<string>('gameplay');
+  const [importInitialMode, setImportInitialMode] = useState<'ddb-link' | 'paste' | 'file' | 'pdf' | null>(null)
   const [campaigns, setCampaigns] = useState<Array<any>>([])
   const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null)
   const [sessionMetaById, setSessionMetaById] = useState<Record<string, any>>({})
@@ -478,7 +479,15 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             <button className={`nav-btn ${view==='gameplay'?'active':''}`} onClick={() => setView('gameplay')}>Play</button>
             <button className={`nav-btn ${view==='campaign-setup'?'active':''}`} onClick={() => setView('campaign-setup')}>Manage Campaigns</button>
             <button className={`nav-btn ${view==='view-characters'?'active':''}`} onClick={() => setView('view-characters')}>Manage Characters</button>
-            <button className={`nav-btn ${view==='import-character'?'active':''}`} onClick={() => setView('import-character')}>Import Character</button>
+            <button
+              className={`nav-btn ${view==='import-character'?'active':''}`}
+              onClick={() => {
+                setImportInitialMode(null)
+                setView('import-character')
+              }}
+            >
+              Import Character
+            </button>
             <button className={`nav-btn ${view==='account'?'active':''}`} onClick={() => setView('account')}>Account</button>
           </nav>
           <div className="sidebar-footer">
@@ -761,7 +770,10 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
               setCharacterCreateOrigin('nav')
               setView('create-character')
             }}
-            onGoToImportPdf={() => setView('import-character')}
+            onGoToImportPdf={() => {
+              setImportInitialMode('pdf')
+              setView('import-character')
+            }}
           />
         )}
 
@@ -771,8 +783,15 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             onRefreshCharacters={fetchCharacters}
             onAssignCharacterToSession={setSessionCharacter}
             onSetActiveCharacterId={setActiveCharacterId}
-            onGoToGameplay={() => setView('gameplay')}
-            onDone={() => setView('view-characters')}
+            initialMode={importInitialMode || undefined}
+            onGoToGameplay={() => {
+              setImportInitialMode(null)
+              setView('gameplay')
+            }}
+            onDone={() => {
+              setImportInitialMode(null)
+              setView('view-characters')
+            }}
           />
         )}
 
