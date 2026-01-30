@@ -136,7 +136,7 @@ export default function GameplayHeader({
         </select>
 
         <button className="btn" onClick={onNewCharacter}>
-          New Character
+          Creating a Character
         </button>
 
         <button className="btn" onClick={onNewCampaign}>

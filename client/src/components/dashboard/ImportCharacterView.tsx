@@ -87,7 +87,7 @@ export default function ImportCharacterView({
                 Upload JSON
               </button>
               <button type="button" aria-pressed={mode === 'pdf'} onClick={() => setMode('pdf')} disabled={busy}>
-                Upload PDF
+                Upload DDB PDF
               </button>
               <button type="button" aria-pressed={mode === 'ddb-link'} onClick={() => setMode('ddb-link')} disabled={busy}>
                 DDB link
@@ -235,9 +235,17 @@ export default function ImportCharacterView({
 
         {mode === 'pdf' ? (
           <div className="stack" style={{ gap: 10 }}>
-            <div className="muted">2) Upload PDF character sheet</div>
+            <div className="muted">2) Upload D&amp;D Beyond PDF character sheet</div>
             <div className="inline-alert">
               We only parse files you upload. No D&amp;D Beyond scraping. PDF parsing is best-effort; some DDB PDFs don’t contain extractable text. Use overrides if needed.
+            </div>
+
+            <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)' }}>
+              <div style={{ fontWeight: 750 }}>How to get the PDF from D&amp;D Beyond</div>
+              <div className="muted" style={{ fontSize: 13 }}>
+                On your D&amp;D Beyond character sheet, use the print/export option to download a PDF, then upload it here.
+                Fillable PDFs work great because we can read the field values directly.
+              </div>
             </div>
 
             <div className="row-wrap" style={{ gap: 10 }}>

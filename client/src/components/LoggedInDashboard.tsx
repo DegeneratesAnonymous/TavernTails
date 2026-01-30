@@ -6,6 +6,7 @@ import SessionSettings from './SessionSettings'
 import { apiFetch } from '../api'
 import { CharacterSummary } from './CharacterPanel'
 import ImportCharacterView from './dashboard/ImportCharacterView'
+import CreatingCharacterView from './dashboard/CreatingCharacterView'
 import Beyond20View from './dashboard/Beyond20View'
 import CampaignSetupView from './dashboard/CampaignSetupView'
 import CharacterSheetModal from './characters/CharacterSheetModal'
@@ -556,11 +557,10 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                     className="btn"
                     type="button"
                     onClick={() => {
-                      setCharacterCreateOrigin('nav')
-                      setView('create-character')
+                      setView('creating-character')
                     }}
                   >
-                    New Character
+                    Creating a Character
                   </button>
                 </>
               }
@@ -582,11 +582,10 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                       className="btn"
                       type="button"
                       onClick={() => {
-                        setCharacterCreateOrigin('nav')
-                        setView('create-character')
+                        setView('creating-character')
                       }}
                     >
-                      Create character
+                      Creating a character
                     </button>
                     <button className="btn btn-secondary" type="button" onClick={() => setView('import-character')}>
                       Import character
@@ -753,6 +752,17 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
               </div>
             </div>
           </section>
+        )}
+
+        {view === 'creating-character' && (
+          <CreatingCharacterView
+            onDone={() => setView('view-characters')}
+            onGoToQuickCreate={() => {
+              setCharacterCreateOrigin('nav')
+              setView('create-character')
+            }}
+            onGoToImportPdf={() => setView('import-character')}
+          />
         )}
 
         {view === 'import-character' && (
