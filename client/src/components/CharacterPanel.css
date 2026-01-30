@@ -6,6 +6,7 @@
 
 .character-panel-root--sheet{
   padding-top: 4px;
+  overflow-x: hidden;
 }
 
 .character-panel-title{
@@ -94,7 +95,7 @@
 
 .character-sheet-abilities{
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 10px;
 }
@@ -106,6 +107,53 @@
   grid-auto-columns: initial;
   overflow-x: hidden;
   scroll-snap-type: none;
+}
+
+/* Compact tab-strip presentation */
+.character-icon-strip--tabs .character-icon-card{
+  padding: 10px 8px;
+  gap: 8px;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.character-icon-strip--tabs .character-icon-text{
+  width: 100%;
+}
+
+.character-icon-badge{
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+  color: rgba(255,255,255,0.85);
+}
+
+.character-icon-card--active .character-icon-badge{
+  background: rgba(143, 224, 255, 0.14);
+  border-color: rgba(143, 224, 255, 0.22);
+  color: rgba(143, 224, 255, 0.95);
+}
+
+@media (min-width: 420px){
+  .character-panel-root--sheet .character-sheet-abilities{
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 380px){
+  .character-panel-root--sheet .character-sheet-grid{
+    grid-template-columns: 1fr;
+  }
+  .character-panel-root--sheet .character-sheet-preview-row{
+    grid-template-columns: 1fr;
+  }
 }
 
 .character-abilities--tiles{

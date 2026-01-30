@@ -1,7 +1,5 @@
 import React from 'react'
 
-const ICON_BASE = `${process.env.PUBLIC_URL || ''}/icons`
-
 export type CharacterSnapshot = {
   stats?: { str?: number; dex?: number; con?: number; int?: number; wis?: number; cha?: number }
   features?: string[]
@@ -16,6 +14,7 @@ type Props = {
   character?: CharacterSnapshot | null
   activeKey?: CharacterStripKey | null
   onSelect?: (key: CharacterStripKey) => void
+  variant?: 'full' | 'tabs'
 }
 
 const formatMod = (score: number) => {
@@ -28,7 +27,7 @@ const toNumber = (value: any, fallback: number) => {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
-export default function CharacterIconStrip({ character, activeKey = null, onSelect }: Props){
+export default function CharacterIconStrip({ character, activeKey = null, onSelect, variant = 'full' }: Props){
   if(!character){
     return null
   }
@@ -52,31 +51,31 @@ export default function CharacterIconStrip({ character, activeKey = null, onSele
   const items = [
     {
       key: 'abilities' as const,
-      icon: 'Abilities.png',
+      badge: 'A',
       label: 'Abilities',
       value: `STR ${formatMod(str)} · DEX ${formatMod(dex)} · CON ${formatMod(con)}`,
     },
     {
       key: 'features' as const,
-      icon: 'Features.png',
+      badge: 'F',
       label: 'Features',
       value: `${features.length} readied`,
     },
     {
       key: 'inventory' as const,
-      icon: 'Inventory.png',
+      badge: 'I',
       label: 'Inventory',
       value: `${inventoryCount} items`,
     },
     {
       key: 'journal' as const,
-      icon: 'Journal.png',
+      badge: 'J',
       label: 'Journal',
       value: `${journalEntries} entries`,
     },
     {
       key: 'skills' as const,
-      icon: 'Skills.png',
+      badge: 'S',
       label: 'Skills',
       value: skills.length
         ? `${skills[0].name} ${skills[0].mod >= 0 ? '+' : ''}${skills[0].mod}`
@@ -85,7 +84,7 @@ export default function CharacterIconStrip({ character, activeKey = null, onSele
   ]
 
   return (
-    <div className="character-icon-strip" aria-label="Character quick info">
+    <div className={variant === 'tabs' ? 'character-icon-strip character-icon-strip--tabs' : 'character-icon-strip'} aria-label="Character quick info">
       {items.map(item => (
         <button
           key={item.key}
@@ -94,10 +93,10 @@ export default function CharacterIconStrip({ character, activeKey = null, onSele
           onClick={() => onSelect?.(item.key)}
           aria-pressed={item.key === activeKey}
         >
-          <img src={`${ICON_BASE}/${item.icon}`} alt={item.label} loading="lazy" />
-          <div>
+          <div className="character-icon-badge" aria-hidden="true">{item.badge}</div>
+          <div className="character-icon-text">
             <div className="character-icon-label">{item.label}</div>
-            <div className="character-icon-value">{item.value}</div>
+            {variant === 'full' ? <div className="character-icon-value">{item.value}</div> : null}
           </div>
         </button>
       ))}

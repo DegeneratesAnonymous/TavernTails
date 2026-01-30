@@ -313,6 +313,7 @@ export default function CharacterPanel({
         <CharacterIconStrip
           character={selected}
           activeKey={drawerKey}
+          variant="tabs"
           onSelect={(key) => {
             setDrawerKey(prev => (prev === key ? null : key))
             setTimeout(() => {
