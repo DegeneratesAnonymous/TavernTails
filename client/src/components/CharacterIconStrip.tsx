@@ -3,7 +3,7 @@ import React from 'react'
 const ICON_BASE = `${process.env.PUBLIC_URL || ''}/icons`
 
 export type CharacterSnapshot = {
-  stats?: { str?: number; dex?: number; wis?: number }
+  stats?: { str?: number; dex?: number; con?: number; int?: number; wis?: number; cha?: number }
   features?: string[]
   inventoryCount?: number
   journalEntries?: number
@@ -36,7 +36,10 @@ export default function CharacterIconStrip({ character, activeKey = null, onSele
   const stats = character.stats || {}
   const str = toNumber((stats as any).str, 10)
   const dex = toNumber((stats as any).dex, 10)
+  const con = toNumber((stats as any).con, 10)
+  const int = toNumber((stats as any).int, 10)
   const wis = toNumber((stats as any).wis, 10)
+  const cha = toNumber((stats as any).cha, 10)
   const features = Array.isArray(character.features) ? character.features : []
   const skills = Array.isArray(character.skills) ? character.skills : []
   const inventoryCount = typeof character.inventoryCount === 'number'
@@ -51,7 +54,7 @@ export default function CharacterIconStrip({ character, activeKey = null, onSele
       key: 'abilities' as const,
       icon: 'Abilities.png',
       label: 'Abilities',
-      value: `DEX ${formatMod(dex)} / WIS ${formatMod(wis)}`,
+      value: `STR ${formatMod(str)} · DEX ${formatMod(dex)} · CON ${formatMod(con)}`,
     },
     {
       key: 'features' as const,
@@ -77,7 +80,7 @@ export default function CharacterIconStrip({ character, activeKey = null, onSele
       label: 'Skills',
       value: skills.length
         ? `${skills[0].name} ${skills[0].mod >= 0 ? '+' : ''}${skills[0].mod}`
-        : `STR ${formatMod(str)}`,
+        : `WIS ${formatMod(wis)} · CHA ${formatMod(cha)} · INT ${formatMod(int)}`,
     },
   ]
 

@@ -62,11 +62,17 @@ export default function CharacterPanel({
     const formatMod = (mod: number) => (mod >= 0 ? `+${mod}` : `${mod}`)
     const str = typeof stats.str === 'number' ? stats.str : 10
     const dex = typeof stats.dex === 'number' ? stats.dex : 10
+    const con = typeof (stats as any).con === 'number' ? (stats as any).con : 10
+    const int = typeof (stats as any).int === 'number' ? (stats as any).int : 10
     const wis = typeof stats.wis === 'number' ? stats.wis : 10
+    const cha = typeof (stats as any).cha === 'number' ? (stats as any).cha : 10
     const rows = [
       { key: 'STR', score: str, mod: computeMod(str) },
       { key: 'DEX', score: dex, mod: computeMod(dex) },
+      { key: 'CON', score: con, mod: computeMod(con) },
+      { key: 'INT', score: int, mod: computeMod(int) },
       { key: 'WIS', score: wis, mod: computeMod(wis) },
+      { key: 'CHA', score: cha, mod: computeMod(cha) },
     ]
     return rows.map(r => ({ ...r, modLabel: formatMod(r.mod) }))
   }, [selected?.stats])
@@ -101,6 +107,140 @@ export default function CharacterPanel({
     }
   }, [abilities, selected])
 
+  const drawerTitle = useMemo(() => {
+    if(drawerKey === 'abilities') return 'Abilities'
+    if(drawerKey === 'features') return 'Features'
+    if(drawerKey === 'inventory') return 'Inventory'
+    if(drawerKey === 'journal') return 'Journal'
+    if(drawerKey === 'skills') return 'Skills'
+    return 'Overview'
+  }, [drawerKey])
+
+  const drawerContent = useMemo(() => {
+    if(drawerKey === 'abilities'){
+      return (
+        <div className="character-abilities character-abilities--tiles">
+          {abilities.map(row => (
+            <div key={row.key} className="character-ability-tile">
+              <div className="character-ability-key">{row.key}</div>
+              <div className="character-ability-mod">{row.modLabel}</div>
+              <div className="character-ability-score">{row.score}</div>
+            </div>
+          ))}
+          {!abilities.length ? <div className="muted">No ability scores available.</div> : null}
+        </div>
+      )
+    }
+
+    if(drawerKey === 'features'){
+      return selected?.features?.length ? (
+        <ul className="character-section-ul">
+          {selected.features.map((feature) => (
+            <li key={feature}>{feature}</li>
+          ))}
+        </ul>
+      ) : (
+        <div className="muted">No features listed.</div>
+      )
+    }
+
+    if(drawerKey === 'inventory'){
+      return selected?.inventory?.length ? (
+        <ul className="character-section-ul">
+          {selected.inventory.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      ) : (
+        <div className="muted">No inventory items.</div>
+      )
+    }
+
+    if(drawerKey === 'journal'){
+      return (
+        <div>
+          <div className="muted" style={{marginBottom: 8}}>
+            {typeof selected?.journalEntries === 'number' ? `${selected.journalEntries} entries` : 'No journal data'}
+          </div>
+          <div className="muted">Journal entry contents aren’t wired up yet.</div>
+        </div>
+      )
+    }
+
+    if(drawerKey === 'skills'){
+      return (
+        <div className="character-section-list character-section-list--skills" style={{marginTop: 0}}>
+          <ul className="character-section-ul character-section-ul--skills">
+            {selected?.skills?.map(skill => (
+              <li key={skill.name} className="character-skill-item">
+                <span className="character-skill-name">{skill.name}</span>
+                <span className="character-skill-mod">
+                  {skill.mod >= 0 ? '+' : ''}{skill.mod}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {!selected?.skills?.length ? <div className="muted">No skills listed.</div> : null}
+        </div>
+      )
+    }
+
+    return null
+  }, [abilities, drawerKey, selected])
+
+  const previewContent = useMemo(() => {
+    if(!selected) return null
+    const features = Array.isArray(selected.features) ? selected.features : []
+    const inventory = Array.isArray(selected.inventory) ? selected.inventory : []
+    const skills = Array.isArray(selected.skills) ? selected.skills : []
+
+    const topFeatures = features.slice(0, 6)
+    const topInventory = inventory.slice(0, 6)
+    const topSkills = skills.slice(0, 12)
+
+    return (
+      <div className="character-sheet-preview">
+        <div className="character-sheet-preview-row">
+          <div className="character-sheet-preview-col">
+            <div className="character-sheet-subhead">Skills</div>
+            {topSkills.length ? (
+              <ul className="character-sheet-mini-list">
+                {topSkills.map(s => (
+                  <li key={s.name}>
+                    <span className="character-sheet-mini-name">{s.name}</span>
+                    <span className="character-sheet-mini-mod">{s.mod >= 0 ? '+' : ''}{s.mod}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="muted">No skills listed.</div>
+            )}
+          </div>
+
+          <div className="character-sheet-preview-col">
+            <div className="character-sheet-subhead">Features</div>
+            {topFeatures.length ? (
+              <ul className="character-sheet-mini-list">
+                {topFeatures.map(f => (<li key={f}>{f}</li>))}
+              </ul>
+            ) : (
+              <div className="muted">No features listed.</div>
+            )}
+
+            <div className="character-sheet-subhead" style={{marginTop: 12}}>Inventory</div>
+            {topInventory.length ? (
+              <ul className="character-sheet-mini-list">
+                {topInventory.map(i => (<li key={i}>{i}</li>))}
+              </ul>
+            ) : (
+              <div className="muted">No inventory items.</div>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }, [selected])
+
   async function handleCueRoll(cue: SceneCue){
     if(!onCueRoll || !cue.roll) return
     setCueError(null)
@@ -120,6 +260,156 @@ export default function CharacterPanel({
         <h3 className="character-panel-title">{title}</h3>
         <div className="inline-alert">
           No character selected yet. Create/select one from Manage Characters, then come back to Play.
+        </div>
+      </div>
+    )
+  }
+
+  // Player-sheet mode: BG3/D&D Beyond-inspired, space-efficient layout
+  if(!showRoster){
+    return (
+      <div className="character-panel-root character-panel-root--sheet">
+        <div className="character-sheet-header">
+          <div className="character-sheet-portrait" aria-hidden="true">
+            <div className="character-sheet-portrait-initial">{(selected?.name || '?').slice(0, 1).toUpperCase()}</div>
+          </div>
+          <div className="character-sheet-title">
+            <div className="character-sheet-name">{selected?.name}</div>
+            <div className="character-sheet-subtitle muted">Level {selected?.level ?? 0}</div>
+          </div>
+
+          <div className="character-sheet-vitals">
+            <div className="character-vital">
+              <div className="character-vital-label">HP</div>
+              <div className="character-vital-value">
+                {overview?.hpCurrent ?? 0}/{overview?.hpMax ?? 0}
+                {overview?.tempHp ? <span className="character-vital-muted"> +{overview.tempHp}</span> : null}
+              </div>
+            </div>
+            <div className="character-vital">
+              <div className="character-vital-label">AC</div>
+              <div className="character-vital-value">{overview?.ac ?? 0}</div>
+            </div>
+            <div className="character-vital">
+              <div className="character-vital-label">Spell DC</div>
+              <div className="character-vital-value">{overview?.spellSave ?? 0}</div>
+            </div>
+            <div className="character-vital">
+              <div className="character-vital-label">Init</div>
+              <div className="character-vital-value">
+                {(overview?.initMod ?? 0) >= 0 ? '+' : ''}{overview?.initMod ?? 0}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <CharacterIconStrip
+          character={selected}
+          activeKey={drawerKey}
+          onSelect={(key) => {
+            setDrawerKey(prev => (prev === key ? null : key))
+            setTimeout(() => {
+              if(containerRef.current) containerRef.current.scrollTop = 0
+            }, 0)
+          }}
+        />
+
+        <div className="character-panel-scroll" ref={containerRef}>
+          <div className="character-sheet-abilities" aria-label="Ability scores">
+            {abilities.map(row => (
+              <div key={row.key} className="character-ability-tile">
+                <div className="character-ability-key">{row.key}</div>
+                <div className="character-ability-mod">{row.modLabel}</div>
+                <div className="character-ability-score">{row.score}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="character-sheet-grid">
+            <div className="character-sheet-card" aria-label="Skills">
+              <div className="character-sheet-card-header">
+                <div className="character-sheet-card-title">Skills</div>
+                <button
+                  type="button"
+                  className={`character-sheet-card-action ${drawerKey === 'skills' ? 'active' : ''}`}
+                  onClick={() => setDrawerKey(prev => (prev === 'skills' ? null : 'skills'))}
+                >
+                  {drawerKey === 'skills' ? 'Hide' : 'Show all'}
+                </button>
+              </div>
+              {drawerKey === 'skills' ? drawerContent : (
+                <div className="character-sheet-mini-skills">
+                  <ul className="character-sheet-mini-list">
+                    {(selected?.skills || []).slice(0, 14).map(s => (
+                      <li key={s.name}>
+                        <span className="character-sheet-mini-name">{s.name}</span>
+                        <span className="character-sheet-mini-mod">{s.mod >= 0 ? '+' : ''}{s.mod}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {!selected?.skills?.length ? <div className="muted">No skills listed.</div> : null}
+                </div>
+              )}
+            </div>
+
+            <div className="character-sheet-card" aria-label="Character details">
+              <div className="character-sheet-card-header">
+                <div className="character-sheet-card-title">{drawerTitle}</div>
+                {drawerKey ? (
+                  <button
+                    type="button"
+                    className="character-panel-drawer-close"
+                    onClick={() => setDrawerKey(null)}
+                    aria-label="Close details"
+                  >
+                    ✕
+                  </button>
+                ) : null}
+              </div>
+              <div className="character-sheet-card-body">
+                {drawerKey ? drawerContent : previewContent}
+              </div>
+            </div>
+          </div>
+
+          {sceneCues.length > 0 && (
+            <div className="character-panel-block">
+              <div className="character-panel-block-title character-panel-block-title--scene">Scene Cues</div>
+              <ul className="character-panel-cues">
+                {sceneCues.map((cue)=>(
+                  <li key={cue.id} className="character-panel-cue">
+                    <div className="character-panel-cue-prompt">{cue.prompt}</div>
+                    {cue.roll ? (
+                      <button
+                        className="btn btn-quiet btn-sm"
+                        type="button"
+                        onClick={()=>handleCueRoll(cue)}
+                        disabled={rollingCueId === cue.id}
+                      >
+                        {rollingCueId === cue.id ? 'Rolling…' : `Roll ${cue.roll.skill || cue.roll.type || 'd20'}`}
+                      </button>
+                    ) : (
+                      <div className="character-panel-cue-muted">Awaiting clarification</div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              {cueError && <div className="character-panel-error">{cueError}</div>}
+            </div>
+          )}
+
+          {npcSpotlight.length > 0 && (
+            <div className="character-panel-block">
+              <div className="character-panel-block-title character-panel-block-title--npc">NPC Spotlight</div>
+              <ul className="character-panel-npcs">
+                {npcSpotlight.map(npc => (
+                  <li key={npc.name}>
+                    <strong>{npc.name}</strong>{npc.initiative_hint ? ` · ${npc.initiative_hint}` : ''}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       </div>
     )
@@ -145,11 +435,7 @@ export default function CharacterPanel({
             <aside className="character-panel-drawer" aria-label="Character details drawer">
               <div className="character-panel-drawer-header">
                 <div className="character-panel-drawer-title">
-                  {drawerKey === 'abilities' ? 'Abilities' : null}
-                  {drawerKey === 'features' ? 'Features' : null}
-                  {drawerKey === 'inventory' ? 'Inventory' : null}
-                  {drawerKey === 'journal' ? 'Journal' : null}
-                  {drawerKey === 'skills' ? 'Skills' : null}
+                  {drawerTitle}
                 </div>
                 <button className="character-panel-drawer-close" type="button" onClick={() => setDrawerKey(null)} aria-label="Close drawer">
                   ✕
@@ -157,67 +443,7 @@ export default function CharacterPanel({
               </div>
 
               <div className="character-panel-drawer-body">
-                {drawerKey === 'abilities' ? (
-                  <div className="character-abilities">
-                    {abilities.map(row => (
-                      <div key={row.key} className="character-ability-row">
-                        <div className="character-ability-key">{row.key}</div>
-                        <div className="character-ability-score">{row.score}</div>
-                        <div className="character-ability-mod">{row.modLabel}</div>
-                      </div>
-                    ))}
-                    {!abilities.length ? <div className="muted">No ability scores available.</div> : null}
-                  </div>
-                ) : null}
-
-                {drawerKey === 'features' ? (
-                  selected?.features?.length ? (
-                    <ul className="character-section-ul">
-                      {selected.features.map((feature) => (
-                        <li key={feature}>{feature}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <div className="muted">No features listed.</div>
-                  )
-                ) : null}
-
-                {drawerKey === 'inventory' ? (
-                  selected?.inventory?.length ? (
-                    <ul className="character-section-ul">
-                      {selected.inventory.map((item) => (
-                        <li key={item}>{item}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <div className="muted">No inventory items.</div>
-                  )
-                ) : null}
-
-                {drawerKey === 'journal' ? (
-                  <div>
-                    <div className="muted" style={{marginBottom: 8}}>
-                      {typeof selected?.journalEntries === 'number' ? `${selected.journalEntries} entries` : 'No journal data'}
-                    </div>
-                    <div className="muted">Journal entry contents aren’t wired up yet.</div>
-                  </div>
-                ) : null}
-
-                {drawerKey === 'skills' ? (
-                  <div className="character-section-list character-section-list--skills" style={{marginTop: 0}}>
-                    <ul className="character-section-ul character-section-ul--skills">
-                      {selected?.skills?.map(skill => (
-                        <li key={skill.name} className="character-skill-item">
-                          <span className="character-skill-name">{skill.name}</span>
-                          <span className="character-skill-mod">
-                            {skill.mod >= 0 ? '+' : ''}{skill.mod}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                    {!selected?.skills?.length ? <div className="muted">No skills listed.</div> : null}
-                  </div>
-                ) : null}
+                {drawerContent}
               </div>
             </aside>
           ) : null}
