@@ -5,7 +5,7 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from .. import db
@@ -18,15 +18,60 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _guess_character_name_from_filename(filename: Optional[str]) -> Optional[str]:
+    if not filename:
+        return None
+    base = filename.strip().rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+    if not base:
+        return None
+
+    base = re.sub(r"\.(pdf|json|txt)$", "", base, flags=re.IGNORECASE)
+    # Many exports include an ID suffix like spaceman_wil_91460971.pdf
+    base = re.sub(r"(?:[_-]?\d{4,})$", "", base)
+    base = base.replace("_", " ").replace("-", " ")
+    base = re.sub(r"\s+", " ", base).strip()
+    if not base:
+        return None
+
+    # Keep it simple/deterministic.
+    titled = base.title()
+    return titled.strip() or None
+
+
 def _extract_fields_from_text(text: str) -> tuple[Optional[str], Optional[int], Optional[str]]:
     cleaned = (text or "").replace("\r", "\n")
     lines = [ln.strip() for ln in cleaned.split("\n") if ln and ln.strip()]
 
     name: Optional[str] = None
-    for ln in lines[:12]:
-        if len(ln) >= 2 and len(ln) <= 80:
-            name = ln
-            break
+    # Avoid accidentally using template headings as the character name.
+    bad_name_fragments = (
+        "CHARACTER NAME",
+        "CLASS & LEVEL",
+        "CLASS AND LEVEL",
+        "PLAYER NAME",
+        "SPECIES",
+        "BACKGROUND",
+        "EXPERIENCE POINTS",
+        "FEATURES & TRAITS",
+        "ADDITIONAL FEATURES",
+        "EQUIPMENT",
+        "SPELLCASTING",
+        "TM &",
+        "ALL RIGHTS RESERVED",
+        "WIZARDS OF THE COAST",
+        "D&D BEYOND",
+    )
+    for ln in lines[:30]:
+        if len(ln) < 2 or len(ln) > 80:
+            continue
+        upper = ln.upper()
+        if any(frag in upper for frag in bad_name_fragments):
+            continue
+        # Needs at least one letter.
+        if not re.search(r"[A-Za-z]", ln):
+            continue
+        name = ln
+        break
 
     level: Optional[int] = None
     m = re.search(r"\bLevel\s*(\d{1,2})\b", cleaned, flags=re.IGNORECASE)
@@ -91,6 +136,126 @@ def _read_pdf_text(content: bytes) -> str:
         return content.decode("utf-8")
     except Exception:
         return content.decode("utf-8", errors="ignore")
+
+
+def _read_pdf_widget_values(content: bytes) -> Dict[str, str]:
+    """Extract PDF widget values (interactive form fields).
+
+    D&D Beyond PDF exports commonly store filled values as widget annotations on pages.
+    Many PDF text extractors won't include these values in `extract_text()` output.
+    """
+    try:
+        from pypdf import PdfReader
+    except Exception:
+        return {}
+
+    try:
+        reader = PdfReader(__import__("io").BytesIO(content))
+    except Exception:
+        return {}
+
+    fields: Dict[str, str] = {}
+
+    for page in reader.pages:
+        try:
+            annots = page.get("/Annots")
+        except Exception:
+            annots = None
+        if not annots:
+            continue
+
+        try:
+            annot_refs = list(annots)
+        except Exception:
+            continue
+
+        for ref in annot_refs:
+            try:
+                annot = ref.get_object()
+            except Exception:
+                continue
+            try:
+                subtype = str(annot.get("/Subtype") or "")
+            except Exception:
+                subtype = ""
+            if subtype != "/Widget":
+                continue
+
+            try:
+                key = _as_str(annot.get("/T"))
+                value = _as_str(annot.get("/V"))
+            except Exception:
+                continue
+            if not key or value is None:
+                continue
+            # Keep the first occurrence; DDB PDFs can repeat widgets across pages.
+            fields.setdefault(key, value)
+
+    return fields
+
+
+def _extract_fields_from_pdf_widgets(fields: Dict[str, str]) -> tuple[Optional[str], Optional[int], Optional[str]]:
+    if not fields:
+        return None, None, None
+
+    name = fields.get("CharacterName") or fields.get("CHARACTER NAME")
+
+    # Find a key that looks like it contains both Class and Level.
+    class_level_value: Optional[str] = None
+    for k, v in fields.items():
+        up = k.upper()
+        if "CLASS" in up and "LEVEL" in up and v.strip():
+            class_level_value = v
+            break
+
+    class_name: Optional[str] = None
+    level: Optional[int] = None
+
+    if class_level_value:
+        candidates = [
+            "Artificer",
+            "Barbarian",
+            "Bard",
+            "Cleric",
+            "Druid",
+            "Fighter",
+            "Monk",
+            "Paladin",
+            "Ranger",
+            "Rogue",
+            "Sorcerer",
+            "Warlock",
+            "Wizard",
+        ]
+
+        pairs = re.findall(r"\b([A-Za-z][A-Za-z ]{2,40}?)\s+(\d{1,2})\b", class_level_value)
+        found_classes: list[str] = []
+        total_level = 0
+        for cname_raw, lvl_raw in pairs:
+            cname = _as_str(cname_raw)
+            lvl = _as_int(lvl_raw)
+            if not cname or not isinstance(lvl, int):
+                continue
+            # Only accept known 5e class names to avoid picking up random labels.
+            if not any(cname.lower() == c.lower() for c in candidates):
+                continue
+            if cname not in found_classes:
+                found_classes.append(cname)
+            total_level += lvl
+
+        if found_classes:
+            class_name = " / ".join(found_classes[:3])
+        if total_level > 0:
+            level = total_level
+
+        if class_name is None:
+            # Last resort: if the value includes a known class name, capture it.
+            for cname in candidates:
+                if re.search(rf"\b{re.escape(cname)}\b", class_level_value, flags=re.IGNORECASE):
+                    class_name = cname
+                    break
+
+    return name, level, class_name
 
 
 def _as_str(value: Any) -> Optional[str]:
@@ -314,6 +479,9 @@ async def import_character_file(
 @router.post("/import/pdf", status_code=201, summary="Import a character from an uploaded PDF (best-effort)")
 async def import_character_pdf(
     file: UploadFile = File(...),
+    name: Optional[str] = Form(default=None),
+    level: Optional[int] = Form(default=None),
+    class_name: Optional[str] = Form(default=None),
     ddb_url: Optional[str] = None,
     source: Optional[str] = "pdf",
     current_user=Depends(get_current_user),
@@ -322,12 +490,31 @@ async def import_character_pdf(
     if not content:
         raise HTTPException(status_code=400, detail="Empty file")
 
-    text = _read_pdf_text(content)
-    name, level, class_name = _extract_fields_from_text(text)
-    if not name:
-        name = "Imported Character"
+    widget_values = _read_pdf_widget_values(content)
+    widget_name, widget_level, widget_class_name = _extract_fields_from_pdf_widgets(widget_values)
 
-    safe_level = level if isinstance(level, int) else 1
+    text = _read_pdf_text(content)
+    # Combine extracted page text + widget key/value lines for better downstream parsing.
+    widget_lines = "\n".join([f"{k}: {v}" for k, v in list(widget_values.items())[:600]])
+    combined_text = (text or "") + ("\n\n" + widget_lines if widget_lines else "")
+    extracted_name, extracted_level, extracted_class_name = _extract_fields_from_text(combined_text)
+
+    # Prefer widget-derived values over regex-from-text values.
+    if widget_name:
+        extracted_name = widget_name
+    if isinstance(widget_level, int):
+        extracted_level = widget_level
+    if widget_class_name:
+        extracted_class_name = widget_class_name
+
+    final_name = _as_str(name) or extracted_name or _guess_character_name_from_filename(getattr(file, "filename", None))
+    if not final_name:
+        final_name = "Imported Character"
+
+    final_level = level if isinstance(level, int) else extracted_level
+    final_class_name = _as_str(class_name) or extracted_class_name
+
+    safe_level = final_level if isinstance(final_level, int) else 1
     safe_level = max(1, min(20, safe_level))
 
     sheet: Dict[str, Any] = {
@@ -336,16 +523,31 @@ async def import_character_pdf(
             "imported_at": _now_iso(),
             "ddb_url": ddb_url,
             "filename": getattr(file, "filename", None),
+            "overrides": {
+                "name": _as_str(name),
+                "level": level if isinstance(level, int) else None,
+                "class_name": _as_str(class_name),
+            },
+            "extracted": {
+                "name": extracted_name,
+                "level": extracted_level,
+                "class_name": extracted_class_name,
+            },
+            "raw_text_len": len(text or ""),
+            "pdf_widgets": {
+                "count": len(widget_values),
+                "valued_sample": {k: widget_values[k] for k in list(widget_values.keys())[:30]},
+            },
         },
         # Store extracted text for future parsing improvements (avoid storing large binaries in DB).
-        "raw_text": (text or "")[:50000],
+        "raw_text": (combined_text or "")[:50000],
     }
 
     character = db.create_character(
         owner_id=current_user.id,
-        name=name,
+        name=final_name,
         level=safe_level,
-        class_name=class_name,
+        class_name=final_class_name,
         sheet=sheet,
     )
     return {"character": _serialize(character)}

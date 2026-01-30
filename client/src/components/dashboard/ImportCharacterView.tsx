@@ -24,6 +24,9 @@ export default function ImportCharacterView({
   const [rawJson, setRawJson] = useState('')
   const [ddbUrl, setDdbUrl] = useState('')
   const [file, setFile] = useState<File | null>(null)
+  const [pdfName, setPdfName] = useState('')
+  const [pdfLevel, setPdfLevel] = useState('')
+  const [pdfClassName, setPdfClassName] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [messageKind, setMessageKind] = useState<'ok' | 'error'>('ok')
@@ -37,6 +40,9 @@ export default function ImportCharacterView({
   const handleCreated = async (createdId: number | null) => {
     setRawJson('')
     setFile(null)
+    setPdfName('')
+    setPdfLevel('')
+    setPdfClassName('')
     await onRefreshCharacters()
 
     if (activeSessionId && createdId !== null && autoAssignToSession) {
@@ -231,8 +237,43 @@ export default function ImportCharacterView({
           <div className="stack" style={{ gap: 10 }}>
             <div className="muted">2) Upload PDF character sheet</div>
             <div className="inline-alert">
-              We only parse files you upload. No D&amp;D Beyond scraping. PDF parsing is best-effort; we always keep extracted text for future improvements.
+              We only parse files you upload. No D&amp;D Beyond scraping. PDF parsing is best-effort; some DDB PDFs don’t contain extractable text. Use overrides if needed.
             </div>
+
+            <div className="row-wrap" style={{ gap: 10 }}>
+              <div className="stack" style={{ gap: 6, minWidth: 240 }}>
+                <label className="muted">Override name (optional)</label>
+                <input
+                  className="input"
+                  placeholder="Spaceman Wil"
+                  value={pdfName}
+                  onChange={(e) => setPdfName(e.target.value)}
+                  disabled={busy}
+                />
+              </div>
+              <div className="stack" style={{ gap: 6, minWidth: 140 }}>
+                <label className="muted">Override level (optional)</label>
+                <input
+                  className="input"
+                  placeholder="3"
+                  inputMode="numeric"
+                  value={pdfLevel}
+                  onChange={(e) => setPdfLevel(e.target.value)}
+                  disabled={busy}
+                />
+              </div>
+              <div className="stack" style={{ gap: 6, minWidth: 220 }}>
+                <label className="muted">Override class (optional)</label>
+                <input
+                  className="input"
+                  placeholder="Ranger"
+                  value={pdfClassName}
+                  onChange={(e) => setPdfClassName(e.target.value)}
+                  disabled={busy}
+                />
+              </div>
+            </div>
+
             <div className="row-wrap" style={{ alignItems: 'center' }}>
               <input
                 className="input"
@@ -258,6 +299,9 @@ export default function ImportCharacterView({
                   try {
                     const form = new FormData()
                     form.append('file', file)
+                    if (pdfName.trim()) form.append('name', pdfName.trim())
+                    if (pdfClassName.trim()) form.append('class_name', pdfClassName.trim())
+                    if (pdfLevel.trim()) form.append('level', pdfLevel.trim())
                     const qs = new URLSearchParams()
                     qs.set('source', 'pdf')
                     if (ddbUrl.trim()) qs.set('ddb_url', ddbUrl.trim())
