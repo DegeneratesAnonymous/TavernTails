@@ -49,10 +49,31 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [sheetModalLoading, setSheetModalLoading] = useState(false)
   const [sheetModalError, setSheetModalError] = useState<string | null>(null)
 
+  const [npcModalOpen, setNpcModalOpen] = useState(false)
+  const [npcModalBusy, setNpcModalBusy] = useState(false)
+  const [npcModalError, setNpcModalError] = useState<string | null>(null)
+  const [npcModalItems, setNpcModalItems] = useState<Array<any>>([])
+  const [npcModalCharacter, setNpcModalCharacter] = useState<any | null>(null)
+  const [npcModalCampaignId, setNpcModalCampaignId] = useState<string | null>(null)
+  const [npcCampaignPickId, setNpcCampaignPickId] = useState<string | null>(null)
+  const [npcRememberCampaign, setNpcRememberCampaign] = useState(true)
+
+  const activeCharacterLabel = useMemo(() => {
+    if (activeCharacterId === null) return 'No character selected'
+    const match = characters.find((c) => Number(c?.id) === Number(activeCharacterId))
+    if (match?.name) return `Selected character: ${match.name}`
+    return `Selected character id: ${activeCharacterId}`
+  }, [activeCharacterId, characters])
+
 
   const activeCampaign = useMemo(() => {
     return campaigns.find(c => String(c.id) === String(activeCampaignId)) || null
   }, [activeCampaignId, campaigns])
+
+  const playerRunMode = useMemo(() => {
+    const settings = (activeCampaign as any)?.metadata_json?.settings
+    return Boolean(settings?.player_run_mode)
+  }, [activeCampaign])
 
   const activeCampaignSessions: Array<{id: string}> = useMemo(() => {
     return (activeCampaign?.sessions || [])
@@ -142,6 +163,130 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       }
     }catch(e){/*ignore*/}
   }, [])
+
+  const updateCharacterCampaignAssociation = useCallback(async (characterId: number, campaignId: string | null) => {
+    if (!characterId || !campaignId) return
+    try {
+      const existing = characters.find((c) => Number(c?.id) === Number(characterId)) || null
+      let sheet = (existing?.sheet && typeof existing.sheet === 'object') ? existing.sheet : null
+      if (!sheet) {
+        const res = await apiFetch(`/characters/${characterId}`)
+        if (res.ok) {
+          const data = await res.json().catch(() => ({} as any))
+          sheet = (data?.character?.sheet && typeof data.character.sheet === 'object') ? data.character.sheet : {}
+        } else {
+          sheet = {}
+        }
+      }
+      const assoc = (sheet && typeof sheet === 'object') ? (sheet as any).associations : null
+      const nextSheet = {
+        ...(sheet || {}),
+        associations: {
+          ...(assoc && typeof assoc === 'object' ? assoc : {}),
+          campaign_id: campaignId,
+        },
+      }
+      const res = await apiFetch(`/characters/${characterId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ sheet: nextSheet }),
+      })
+      if (res.ok) await fetchCharacters()
+    } catch {
+      // ignore; association is best-effort
+    }
+  }, [characters, fetchCharacters])
+
+  const assignCharacterToSession = useCallback(async (characterId: number | null) => {
+    await setSessionCharacter(characterId)
+    if (characterId !== null && activeCampaignId) {
+      await updateCharacterCampaignAssociation(characterId, activeCampaignId)
+    }
+  }, [activeCampaignId, setSessionCharacter, updateCharacterCampaignAssociation])
+
+  const loadNpcList = useCallback(async (campaignId: string, character: any, rememberAssociation: boolean) => {
+    setNpcModalBusy(true)
+    setNpcModalError(null)
+    try {
+      const campaign = campaigns.find((c) => String(c.id) === String(campaignId))
+      if (!campaign) {
+        setNpcModalError('Campaign not found.')
+        setNpcModalItems([])
+        return
+      }
+      const sessions = Array.isArray(campaign.sessions) ? campaign.sessions : []
+      if (!sessions.length) {
+        setNpcModalItems([])
+        setNpcModalCampaignId(String(campaignId))
+        return
+      }
+
+      const npcBuckets = await Promise.all(
+        sessions.map(async (s: any) => {
+          const sid = String(s?.id || '')
+          if (!sid) return []
+          try {
+            const res = await apiFetch(`/sessions/${sid}/party`)
+            if (!res.ok) return []
+            const data = await res.json().catch(() => null)
+            const npcs = Array.isArray(data?.npcs) ? data.npcs : []
+            return npcs.map((npc: any) => ({ ...npc, session_id: sid }))
+          } catch {
+            return []
+          }
+        })
+      )
+
+      const flat = npcBuckets.flat()
+      const deduped = new Map<string, any>()
+      for (const npc of flat) {
+        const name = String(npc?.name || '').trim()
+        if (!name) continue
+        if (!deduped.has(name)) {
+          deduped.set(name, npc)
+        }
+      }
+      const visible = Array.from(deduped.values()).map((npc) => ({
+        name: String(npc?.name || 'Unknown NPC'),
+        traits: npc?.traits || {},
+        motivations: Array.isArray(npc?.motivations) ? npc.motivations : [],
+        quirks: Array.isArray(npc?.quirks) ? npc.quirks : [],
+        session_id: npc?.session_id,
+      })).sort((a, b) => a.name.localeCompare(b.name))
+
+      setNpcModalItems(visible)
+      setNpcModalCampaignId(String(campaignId))
+
+      if (rememberAssociation && character?.id) {
+        await updateCharacterCampaignAssociation(Number(character.id), String(campaignId))
+      }
+    } catch (e: any) {
+      setNpcModalError(e?.message || 'Failed to load NPCs.')
+    } finally {
+      setNpcModalBusy(false)
+    }
+  }, [campaigns, updateCharacterCampaignAssociation])
+
+  const openNpcModalForCharacter = useCallback((character: any) => {
+    const sheet = (character?.sheet && typeof character.sheet === 'object') ? character.sheet : {}
+    const assocCampaignId = sheet?.associations?.campaign_id || sheet?.campaign_id || null
+    const defaultCampaignId = assocCampaignId || activeCampaignId || (campaigns[0]?.id ? String(campaigns[0].id) : null)
+    const shouldPrompt = Boolean(
+      (assocCampaignId && activeCampaignId && String(assocCampaignId) !== String(activeCampaignId)) ||
+      (!assocCampaignId && campaigns.length > 1)
+    )
+
+    setNpcModalCharacter(character)
+    setNpcModalItems([])
+    setNpcModalError(null)
+    setNpcModalCampaignId(null)
+    setNpcCampaignPickId(defaultCampaignId)
+    setNpcRememberCampaign(true)
+    setNpcModalOpen(true)
+
+    if (!shouldPrompt && defaultCampaignId) {
+      void loadNpcList(defaultCampaignId, character, true)
+    }
+  }, [activeCampaignId, campaigns, loadNpcList])
 
   useEffect(()=>{
     fetchCampaigns()
@@ -332,7 +477,12 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
 
         if (myCharId !== null) {
           setActiveCharacterId(myCharId)
-          await setSessionCharacter(myCharId)
+          await assignCharacterToSession(myCharId)
+        }
+
+        if (playerRunMode) {
+          alert('Player-run mode is enabled for this campaign. AI scene generation was skipped.')
+          return
         }
 
         // 3) Bootstrap an opening scene (also emits cues + suggestions now)
@@ -362,8 +512,9 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     characters.length,
     fetchCampaigns,
     fetchCharacters,
+    playerRunMode,
     quickstartBusy,
-    setSessionCharacter,
+    assignCharacterToSession,
   ])
 
   const startPlaying = useCallback(async () => {
@@ -436,7 +587,13 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       }
 
       if (selectedId !== null) {
-        await setSessionCharacter(selectedId)
+        await assignCharacterToSession(selectedId)
+      }
+
+      if (playerRunMode) {
+        alert('Player-run mode is enabled for this campaign. AI scene generation was skipped.')
+        setView('gameplay')
+        return
       }
 
       // Bootstrap (generates narrative scene + emits suggestions/cues)
@@ -467,7 +624,8 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     characters,
     fetchCampaigns,
     fetchCharacters,
-    setSessionCharacter,
+    assignCharacterToSession,
+    playerRunMode,
     startPlayBusy,
   ])
 
@@ -486,6 +644,11 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     return sessionMetaById[activeSession]?.name || activeSession
   }, [activeSession, sessionMetaById])
 
+  const activeSessionLabel = useMemo(() => {
+    if (!activeSession) return null
+    return sessionMetaById[activeSession]?.name || activeSession
+  }, [activeSession, sessionMetaById])
+
   return (
     <div className="dashboard-root">
       <aside className="dashboard-sidebar">
@@ -493,6 +656,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
         <div className="dashboard-user">{profile?.name}</div>
         <nav className="dashboard-nav">
           <button className={`nav-btn ${view==='home'?'active':''}`} onClick={() => setView('home')}>Home</button>
+          <button className={`nav-btn ${view==='gameplay'?'active':''}`} onClick={() => setView('gameplay')}>Play</button>
           
           <button className={`nav-btn ${view==='campaign-setup'?'active':''}`} onClick={() => setView('campaign-setup')}>Manage Campaigns</button>
           <button className={`nav-btn ${view==='view-characters'?'active':''}`} onClick={() => setView('view-characters')}>Manage Characters</button>
@@ -524,6 +688,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                   currentUsername={profile?.username || profile?.name || null}
                   activeCampaignId={activeCampaignId}
                   activeCampaign={activeCampaign}
+                  playerRunMode={playerRunMode}
                   onCampaignUpdated={fetchCampaigns}
                   onStartCampaign={startPlaying}
                   startCampaignBusy={startPlayBusy}
@@ -551,7 +716,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                     const parsed = Number(idStr)
                     if(!Number.isFinite(parsed)) return
                     setActiveCharacterId(parsed)
-                    await setSessionCharacter(parsed)
+                    await assignCharacterToSession(parsed)
                   }}
                 />
               </div>
@@ -598,6 +763,8 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
           <CampaignSetupView
             activeCampaignId={activeCampaignId}
             activeCampaign={activeCampaign}
+            campaigns={campaigns}
+            onSelectCampaign={handleSetActiveCampaignId}
             onCampaignUpdated={fetchCampaigns}
             onCreateCampaign={() => setShowCreateModal(true)}
             onPlay={startPlaying}
@@ -659,10 +826,24 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
               <div className="card" style={{ overflow: 'hidden' }}>
                 <div className="row-wrap" style={{ padding: 12, justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                   <div className="muted" style={{ fontSize: 13 }}>
-                    {activeSession ? `Active session: ${activeSession}` : 'No active session selected (Gameplay)'}
+                    {activeSession ? `Active session: ${activeSessionLabel}` : 'No active session selected (Gameplay)'}
                   </div>
                   <div className="muted" style={{ fontSize: 13 }}>
-                    {activeCharacterId !== null ? `Selected character id: ${activeCharacterId}` : 'No character selected'}
+                    {activeCharacterLabel}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <button
+                      className="btn btn-quiet btn-sm"
+                      type="button"
+                      disabled={!activeSession || activeCharacterId === null}
+                      onClick={async () => {
+                        setActiveCharacterId(null)
+                        await assignCharacterToSession(null)
+                      }}
+                      title={!activeSession ? 'Start or select a session first' : undefined}
+                    >
+                      Clear session character
+                    </button>
                   </div>
                 </div>
 
@@ -697,6 +878,14 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
 
                         <div className="row-wrap" style={{ justifyContent: 'flex-end' }}>
                           <button
+                            className="btn btn-quiet"
+                            type="button"
+                            onClick={() => openNpcModalForCharacter(c)}
+                          >
+                            Associated NPCs
+                          </button>
+
+                          <button
                             className="btn btn-secondary"
                             type="button"
                             disabled={sheetModalLoading}
@@ -729,14 +918,14 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                             type="button"
                             onClick={async () => {
                               setActiveCharacterId(c.id)
-                              await setSessionCharacter(c.id)
+                              await assignCharacterToSession(c.id)
                               setView('gameplay')
                             }}
-                            disabled={!activeSession}
-                            aria-disabled={!activeSession}
-                            style={!activeSession ? { opacity: 0.55 } : undefined}
+                            disabled={!activeSession || isSelected}
+                            aria-disabled={!activeSession || isSelected}
+                            style={!activeSession || isSelected ? { opacity: 0.55 } : undefined}
                           >
-                            Select for Session
+                            {isSelected ? 'Selected' : 'Select for Session'}
                           </button>
 
                           <button
@@ -745,7 +934,13 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                             onClick={async () => {
                               if (!window.confirm('Delete this character?')) return
                               const res = await apiFetch(`/characters/${c.id}`, { method: 'DELETE' })
-                              if (res.ok) await fetchCharacters()
+                              if (res.ok) {
+                                if (activeCharacterId !== null && Number(c.id) === Number(activeCharacterId)) {
+                                  setActiveCharacterId(null)
+                                  await assignCharacterToSession(null)
+                                }
+                                await fetchCharacters()
+                              }
                             }}
                           >
                             Delete
@@ -769,7 +964,103 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             setSheetModalCharacter(null)
             setSheetModalLoading(false)
           }}
+          onSaved={async () => {
+            await fetchCharacters()
+          }}
         />
+
+        <Modal
+          open={npcModalOpen}
+          title={npcModalCharacter?.name ? `Associated NPCs — ${npcModalCharacter.name}` : 'Associated NPCs'}
+          onClose={() => {
+            setNpcModalOpen(false)
+            setNpcModalItems([])
+            setNpcModalError(null)
+            setNpcModalCampaignId(null)
+            setNpcCampaignPickId(null)
+          }}
+        >
+          <div className="stack" style={{ gap: 12 }}>
+            {npcModalError ? (
+              <div className="inline-alert inline-alert-error">{npcModalError}</div>
+            ) : null}
+
+            <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+              <div className="stack" style={{ gap: 6 }}>
+                <label className="muted">Campaign</label>
+                <select
+                  className="input"
+                  value={npcCampaignPickId || ''}
+                  onChange={(e) => setNpcCampaignPickId(e.target.value || null)}
+                  disabled={npcModalBusy}
+                >
+                  <option value="">Select a campaign</option>
+                  {campaigns.map((c) => (
+                    <option key={String(c.id)} value={String(c.id)}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <label className="row" style={{ gap: 8, userSelect: 'none' }}>
+                <input
+                  type="checkbox"
+                  checked={npcRememberCampaign}
+                  onChange={(e) => setNpcRememberCampaign(e.target.checked)}
+                  disabled={npcModalBusy}
+                />
+                <span className="muted">Remember this campaign for this character</span>
+              </label>
+            </div>
+
+            <div className="row-wrap" style={{ justifyContent: 'flex-end', gap: 8 }}>
+              <button
+                className="btn btn-secondary"
+                type="button"
+                disabled={!npcCampaignPickId || npcModalBusy}
+                onClick={async () => {
+                  if (!npcCampaignPickId || !npcModalCharacter) return
+                  await loadNpcList(npcCampaignPickId, npcModalCharacter, npcRememberCampaign)
+                }}
+              >
+                {npcModalBusy ? 'Loading…' : 'Load NPCs'}
+              </button>
+            </div>
+
+            {npcModalCampaignId && npcModalItems.length === 0 && !npcModalBusy ? (
+              <div className="inline-alert">No associated NPCs found for this campaign yet.</div>
+            ) : null}
+
+            {npcModalItems.length > 0 ? (
+              <div className="stack" style={{ gap: 10 }}>
+                {npcModalItems.map((npc, idx) => (
+                  <div key={`${npc.name}-${idx}`} className="card card-pad">
+                    <div style={{ fontWeight: 700 }}>{npc.name}</div>
+                    {npc.motivations?.length ? (
+                      <div className="muted" style={{ marginTop: 6 }}>
+                        Motivations: {npc.motivations.join(', ')}
+                      </div>
+                    ) : null}
+                    {npc.quirks?.length ? (
+                      <div className="muted" style={{ marginTop: 6 }}>
+                        Quirks: {npc.quirks.join(', ')}
+                      </div>
+                    ) : null}
+                    {npc.traits && Object.keys(npc.traits).length ? (
+                      <div style={{ marginTop: 8 }}>
+                        <div className="muted" style={{ marginBottom: 4 }}>Traits</div>
+                        <ul style={{ margin: 0, paddingLeft: 18 }}>
+                          {Object.entries(npc.traits).map(([key, value]) => (
+                            <li key={key} className="muted">{key}: {String(value)}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </Modal>
 
         {view === 'create-character' && (
           <section className="dashboard-panel stack">
@@ -796,7 +1087,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                     await fetchCharacters()
                     if(activeSession && createdId !== null && characterCreateOrigin === 'gameplay'){
                       setActiveCharacterId(createdId)
-                      await setSessionCharacter(createdId)
+                      await assignCharacterToSession(createdId)
                       setView('gameplay')
                     } else {
                       if(createdId !== null) setActiveCharacterId(createdId)
@@ -834,7 +1125,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
           <ImportCharacterView
             activeSessionId={activeSession}
             onRefreshCharacters={fetchCharacters}
-            onAssignCharacterToSession={setSessionCharacter}
+            onAssignCharacterToSession={assignCharacterToSession}
             onSetActiveCharacterId={setActiveCharacterId}
             initialMode={importInitialMode || undefined}
             onGoToGameplay={() => {

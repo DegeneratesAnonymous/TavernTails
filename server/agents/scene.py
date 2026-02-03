@@ -6,6 +6,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from ..realtime import broadcaster
+from . import sessions as sessions_agent
 
 router = APIRouter(tags=["scene"])
 
@@ -38,6 +39,9 @@ KEYWORDS = {
 async def analyze_scene(payload: SceneAnalysisRequest) -> SceneAnalysisResponse:
     dice_rolls: List[RollRecommendation] = []
     prompts: List[str] = []
+
+    if payload.session_id and sessions_agent.is_player_run_mode(payload.session_id):
+        return SceneAnalysisResponse(dice_rolls=[], prompts=[])
 
     for action in payload.actions:
         lowered = action.lower()

@@ -8,8 +8,8 @@ from sqlalchemy import Column, desc, func
 from sqlalchemy.types import JSON
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
-# Use a pure-Python scheme for test reliability (avoids native bcrypt issues in test venvs)
-# In production you may prefer bcrypt/argon2 and install the corresponding packages.
+# Use a pure-Python scheme for test reliability (avoids bcrypt backend quirks in CI/dev containers).
+# If you want bcrypt/argon2 in production, add those schemes and verify backend availability.
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 DATABASE_URL = "sqlite:///./taverntails.db"

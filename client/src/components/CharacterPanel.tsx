@@ -32,6 +32,8 @@ type Props = {
   onCueRoll?: (cue: SceneCue) => Promise<void>
   title?: string
   showRoster?: boolean
+  onGoToCharacters?: () => void
+  onGoToImport?: () => void
 }
 
 export default function CharacterPanel({
@@ -43,6 +45,8 @@ export default function CharacterPanel({
   onCueRoll,
   title = 'Characters',
   showRoster = true,
+  onGoToCharacters,
+  onGoToImport,
 }: Props){
   const [drawerKey, setDrawerKey] = useState<CharacterStripKey | null>(null)
   const containerRef = useRef<HTMLDivElement|null>(null)
@@ -259,7 +263,21 @@ export default function CharacterPanel({
       <div className="character-panel-root">
         <h3 className="character-panel-title">{title}</h3>
         <div className="inline-alert">
-          No character selected yet. Create/select one from Manage Characters, then come back to Play.
+          <div style={{marginBottom: 10}}>No character selected yet. Create or import one, then return to Play.</div>
+          {!showRoster && (onGoToCharacters || onGoToImport) ? (
+            <div style={{display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap'}}>
+              {onGoToCharacters ? (
+                <button className="btn" type="button" onClick={onGoToCharacters}>
+                  Manage Characters
+                </button>
+              ) : null}
+              {onGoToImport ? (
+                <button className="btn btn-secondary" type="button" onClick={onGoToImport}>
+                  Import Character
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
     )

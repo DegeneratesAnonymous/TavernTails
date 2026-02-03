@@ -429,7 +429,7 @@ export default function DocumentsPanel({sessionId}: Props){
   }
 
   const handleReindex = useCallback(async (id: string) => {
-    if(!confirm('Rebuild embeddings for this reference?')) return
+    if(!window.confirm('Rebuild embeddings for this reference?')) return
     try{
       const res = await apiFetch(`/references/${encodeURIComponent(id)}/reindex`, { method: 'POST' })
       if(!res.ok){ const d = await res.json().catch(()=>null); throw new Error(d?.detail||'Reindex failed') }

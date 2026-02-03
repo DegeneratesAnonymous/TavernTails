@@ -94,3 +94,53 @@ def test_content_advance_persists_next_scene():
     parsed = json.loads(scene_path.read_text())
     assert parsed["id"].startswith("scene-")
     assert "Investigate" in parsed["text"] or "investigate" in parsed["text"].lower()
+
+
+def test_player_run_mode_bootstrap_skips_ai():
+    client = _client()
+    owner = "bootstrap-player-run@example.com"
+    _ensure_user(owner)
+
+    campaign = db.create_campaign(owner_id=db.get_user_by_identifier(owner).id, name="Player Run Campaign")
+    db.set_campaign_settings(campaign.id, campaign.owner_id, {"player_run_mode": True})
+
+    sid, _meta = sessions_module.create_session_folder("Player Run Session", owner, campaign_id=campaign.id)
+
+    token = create_access_token(owner)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    resp = client.post(f"/sessions/{sid}/bootstrap", headers=headers, json={})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["ok"] is True
+    scene = body["scene"]
+    assert "Player-run mode" in scene["text"]
+
+
+def test_player_run_mode_content_advance_skips_ai():
+    client = _client()
+    owner = "advance-player-run@example.com"
+    _ensure_user(owner)
+
+    campaign = db.create_campaign(owner_id=db.get_user_by_identifier(owner).id, name="Player Run Campaign 2")
+    db.set_campaign_settings(campaign.id, campaign.owner_id, {"player_run_mode": True})
+
+    sid, _meta = sessions_module.create_session_folder("Player Run Advance", owner, campaign_id=campaign.id)
+
+    token = create_access_token(owner)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    resp = client.post(f"/sessions/{sid}/bootstrap", headers=headers, json={})
+    assert resp.status_code == 200, resp.text
+
+    advance = client.post(
+        "/content/advance",
+        headers=headers,
+        json={"sceneId": "opening", "choiceId": "investigate", "sessionId": sid},
+    )
+    assert advance.status_code == 200, advance.text
+    data = advance.json()
+    next_scene = data["nextScene"]
+    assert next_scene is not None
+    assert "You follow the strongest lead" in next_scene.get("text", "")
+    assert "Paths branch ahead" not in next_scene.get("text", "")

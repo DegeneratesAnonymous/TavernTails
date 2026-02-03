@@ -18,6 +18,7 @@ type Props = {
   character: Character | null
   loading?: boolean
   onClose: () => void
+  onSaved?: () => void | Promise<void>
 }
 
 function asString(v: any): string {
@@ -500,10 +501,13 @@ function InventoryList({ items }: { items: InventoryItem[] }) {
   )
 }
 
-export default function CharacterSheetModal({ open, character, loading = false, onClose }: Props) {
+export default function CharacterSheetModal({ open, character, loading = false, onClose, onSaved }: Props) {
   const [showRaw, setShowRaw] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editSheet, setEditSheet] = useState<any>(null)
+  const [editName, setEditName] = useState('')
+  const [editLevel, setEditLevel] = useState('')
+  const [editClassName, setEditClassName] = useState('')
   const [saveBusy, setSaveBusy] = useState(false)
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailTitle, setDetailTitle] = useState<string | null>(null)
@@ -680,6 +684,14 @@ export default function CharacterSheetModal({ open, character, loading = false, 
   }
 
   const title = character ? `${character.name} (L${character.level}${character.class_name ? ` ${character.class_name}` : ''})` : 'Character Sheet'
+
+  const beginEdit = () => {
+    setEditing(true)
+    setEditSheet(cloneJson(sheet))
+    setEditName(character?.name || '')
+    setEditLevel(String(character?.level ?? ''))
+    setEditClassName(character?.class_name || '')
+  }
 
   return (
     <Modal open={open} title={title} onClose={onClose}>
@@ -866,17 +878,31 @@ export default function CharacterSheetModal({ open, character, loading = false, 
           ) : null}
 
           {/* Simple edit panel to adjust parsed PDF fields (stats, AC, HP, features) */}
-          {importMeta && !editing ? (
+          {!editing ? (
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button className="btn btn-quiet" type="button" onClick={() => { setEditing(true); setEditSheet(cloneJson(sheet)) }}>
-                Edit parsed fields
+              <button className="btn btn-quiet" type="button" onClick={beginEdit}>
+                Edit character
               </button>
             </div>
           ) : null}
 
           {editing ? (
             <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.02)' }}>
-              <div style={{ fontWeight: 700 }}>Edit parsed fields</div>
+              <div style={{ fontWeight: 700 }}>Edit character</div>
+              <div className="row-wrap" style={{ gap: 10 }}>
+                <div className="stack" style={{ gap: 6, minWidth: 180 }}>
+                  <label className="muted">Name</label>
+                  <input className="input" value={editName} onChange={(e) => setEditName(e.target.value)} />
+                </div>
+                <div className="stack" style={{ gap: 6, minWidth: 120 }}>
+                  <label className="muted">Level</label>
+                  <input className="input input-mono" type="number" min={1} max={20} value={editLevel} onChange={(e) => setEditLevel(e.target.value)} />
+                </div>
+                <div className="stack" style={{ gap: 6, minWidth: 180 }}>
+                  <label className="muted">Class</label>
+                  <input className="input" value={editClassName} onChange={(e) => setEditClassName(e.target.value)} />
+                </div>
+              </div>
               <div className="row-wrap" style={{ gap: 10 }}>
                 {(['str','dex','con','int','wis','cha'] as const).map((k) => (
                   <div key={k} className="stack" style={{ gap: 6 }}>
@@ -907,11 +933,20 @@ export default function CharacterSheetModal({ open, character, loading = false, 
                   if(!character) return
                   setSaveBusy(true)
                   try{
-                    const res = await apiFetch(`/characters/${character.id}`, { method: 'PUT', body: JSON.stringify({ sheet: editSheet }) })
+                    const parsedLevel = parseInt(editLevel.trim(), 10)
+                    const safeLevel = Number.isFinite(parsedLevel) ? Math.max(1, Math.min(20, parsedLevel)) : character.level
+                    const payload: any = {
+                      sheet: editSheet,
+                      name: editName.trim() || character.name,
+                      level: safeLevel,
+                      class_name: editClassName.trim() || null,
+                    }
+                    const res = await apiFetch(`/characters/${character.id}`, { method: 'PUT', body: JSON.stringify(payload) })
                     if(!res.ok){ const err = await res.json().catch(()=>({})); alert(err?.detail || 'Failed to save'); return }
                     // refresh: close modal and let parent reload if needed
                     setEditing(false)
                     setEditSheet(null)
+                    if (onSaved) await onSaved()
                     onClose()
                   }catch(e:any){ alert(e?.message||'Network error') }finally{ setSaveBusy(false) }
                 }}>Save</button>

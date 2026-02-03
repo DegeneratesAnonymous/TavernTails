@@ -5,7 +5,7 @@ This is the authoritative roadmap + architecture doc. Long-form references
 (`TavernTAIls_Enhanced_Project_Plan.md`, `PROJECT_PLAN_BREAKDOWN.md`) may lag and
 should not be used to make scope decisions.
 
-_Last updated: 2025-12-01 – Maintainers: TavernTAIls Core Team_
+_Last updated: 2026-02-03 – Maintainers: TavernTAIls Core Team_
 
 Supersedes `PROJECT_PLAN.md` (v2025-11-30) and `PROJECT_PLAN_BREAKDOWN.md` (v2025-11-25).
 
@@ -18,18 +18,20 @@ Supersedes `PROJECT_PLAN.md` (v2025-11-30) and `PROJECT_PLAN_BREAKDOWN.md` (v202
 ---
 
 ## 1. Executive Summary
-TavernTAIls is an AI-assisted solo/co-op tabletop RPG companion that assembles a “Session AI” of cooperating agents (Narrative, Scene, NPC, Notes, Storyboard, Image) to run persistent campaigns. The MVP targets deterministic multiplayer-friendly tooling: authenticated players spin up campaigns, curate session documents, invite friends, and rely on lightweight agent stubs while infrastructure, observability, and documentation keep the project contributor-friendly. This plan defines the scope, architecture, delivery phases, and acceptance criteria for the next 3–4 months.
+TavernTAIls is an AI-assisted solo/co-op tabletop RPG companion that assembles a “Session AI” of cooperating agents (Narrative, Scene, NPC, Notes, Storyboard, Image) to run persistent campaigns. The MVP targets deterministic multiplayer-friendly tooling: authenticated players spin up campaigns, curate session documents, invite friends, and rely on lightweight agent stubs while infrastructure, observability, and documentation keep the project contributor-friendly. The product also supports a **player‑run hub mode** where AI is optional: groups can run sessions themselves while TavernTAIls provides automated organization (notes, NPC index, documents, rolls, chat). This plan defines the scope, architecture, delivery phases, and acceptance criteria for the next 3–4 months.
 
 ## 2. Product Vision and Pillars
-1. **Agent-Oriented Gameplay** – Specialized agents with clear I/O contracts; a GM Orchestrator enforces tone, rules, and safety.
-2. **Session-Centric UX** – Campaigns retain characters, documents, chat, rolls, and images so any device can resume play.
-3. **Player Identity & Characters** – Accounts, invites, friend graph, and character import/sync from PDFs or DnD Beyond.
-4. **Reliability & Automation** – Scriptable dev setup, CI, telemetry, and playthrough validation keep agents from regressing.
+1. **Agent‑Optional Gameplay** – AI agents are additive, not required; sessions can be run by players with AI disabled.
+2. **Session‑Centric UX** – Campaigns retain characters, documents, chat, rolls, and images so any device can resume play.
+3. **Automated Organization** – Notes, NPC index, session logs, and content tagging reduce DM overhead and improve continuity.
+4. **Player Identity & Characters** – Accounts, invites, friend graph, and character import/sync from PDFs or DnD Beyond.
+5. **Reliability & Automation** – Scriptable dev setup, CI, telemetry, and playthrough validation keep the project contributor-friendly.
 
 ### Target Personas
 - **Solo Adventurer** – Single player who wants guided journaling + AI narration.
 - **Async Party** – 2–4 friends playing across time zones who need reliable persistence.
 - **GM-Builder** – Hosts customizing prompts, documents, and NPCs who need robust control surfaces.
+- **Group DM** – A player‑run table that wants automated notes/NPC tracking without AI narration.
 
 ## 3. Experience Map
 | Flow | Description | Agent Touchpoints | Acceptance Signal |
@@ -38,6 +40,7 @@ TavernTAIls is an AI-assisted solo/co-op tabletop RPG companion that assembles a
 | Campaign Setup | Create campaign, upload documents, seed NPCs | Narrative, Storyboard, Notes | Campaign dashboard lists artifacts |
 | Invite & Join | Host invites friend (min level) → player selects character | Player Agent, Scene Agent | Invite status transitions Pending → Accepted |
 | Session Play | Chat, narration stream, dice rolls, NPC management | Narrative, Scene, NPC, PencilPusher | WebSocket updates render within 200 ms |
+| Player‑Run Session | Players run the session with AI disabled; notes/NPCs auto‑organized | Notes, NPC | Session notes + NPC index updated after play |
 | Session Archive | Notes recap, hidden docs updated, session snapshot stored | Notes, Storyboard | Session timeline shows recap + attachments |
 
 ## 4. System Architecture Overview
@@ -92,6 +95,7 @@ Document Taxonomy:
 | Characters | Manual create/import, attach to invites | PDF parser, Beyond20/DnD Beyond sync | Storage, Parser tools |
 | Dice & Rolls | Local roller, log, Beyond20 ingest endpoint | Rule automation, effect templates | Characters, Scene agent |
 | Chat & Turn Queue | Text chat, !notes, manual turn tracking | Mentions, notifications, automated queue | WebSockets, Notifications |
+| Automated Organization | Session notes, NPC index, document tagging, recap timeline | Cross‑session search, merge/resolve notes | Chat, Documents, NPC |
 | Documents | Upload + tagging, hidden view, version metadata | S3 switch, collaborative editing | Storage adapter |
 | Images | Provider abstraction, cached gallery | Style marketplace, per-character portraits | GPU/LLM budget |
 
@@ -136,7 +140,7 @@ Document Taxonomy:
 
 ## 13. Release Phasing & Acceptance
 - **MVP Gate**: Auth + campaign CRUD + session documents + chat + dice stub + **Hidden docs RBAC + audited document access** + `start-app.ps1` working on Windows + doc updates. Acceptance: run scripted playthrough without manual DB edits and verify non-host users cannot read `visibility=hidden` documents.
-- **Phase 1 Gate**: Invites with character assignment, Beyond20 ingest, responsive session UI, PDF import prototype, background worker for LLMs.
+- **Phase 1 Gate**: Invites with character assignment, Beyond20 ingest, responsive session UI, PDF import prototype, background worker for LLMs, and **Player‑Run Session mode** (AI optional; notes/NPC tracking still available).
 - **Phase 2 Gate**: DnD Beyond token sync, semantic search, DM Helper enhancements, production-grade image agent.
 
 ## 14. Risks and Mitigations

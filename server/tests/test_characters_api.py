@@ -102,3 +102,73 @@ def test_characters_get_requires_ownership():
 
     resp_get_other = client.get(f"/characters/{created_id}", headers=other_headers)
     assert resp_get_other.status_code == 404, resp_get_other.text
+
+
+def test_characters_update_allows_owner_changes():
+    client = _client()
+    owner = "chars-update-owner@example.com"
+    _ensure_user(owner)
+
+    owner_token = create_access_token(owner)
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+
+    resp_create = client.post(
+        "/characters",
+        headers=owner_headers,
+        json={"name": "Update Me", "level": 1, "class_name": "Fighter"},
+    )
+    assert resp_create.status_code == 201, resp_create.text
+    created = resp_create.json()["character"]
+    created_id = created["id"]
+
+    update_payload = {
+        "name": "Updated Name",
+        "level": 4,
+        "class_name": "Rogue",
+        "sheet": {"ac": 15, "hp": {"current": 20, "max": 20}},
+    }
+    resp_update = client.put(
+        f"/characters/{created_id}",
+        headers=owner_headers,
+        json=update_payload,
+    )
+    assert resp_update.status_code == 200, resp_update.text
+    updated = resp_update.json()["character"]
+    assert updated["name"] == "Updated Name"
+    assert updated["level"] == 4
+    assert updated["class_name"] == "Rogue"
+    assert updated["sheet"]["ac"] == 15
+
+    resp_get = client.get(f"/characters/{created_id}", headers=owner_headers)
+    assert resp_get.status_code == 200, resp_get.text
+    body = resp_get.json()["character"]
+    assert body["name"] == "Updated Name"
+    assert body["level"] == 4
+
+
+def test_characters_update_requires_ownership():
+    client = _client()
+    owner = "chars-update-owner2@example.com"
+    other = "chars-update-other@example.com"
+    _ensure_user(owner)
+    _ensure_user(other)
+
+    owner_token = create_access_token(owner)
+    other_token = create_access_token(other)
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    other_headers = {"Authorization": f"Bearer {other_token}"}
+
+    resp_create = client.post(
+        "/characters",
+        headers=owner_headers,
+        json={"name": "Owner Character", "level": 2, "class_name": "Wizard"},
+    )
+    assert resp_create.status_code == 201, resp_create.text
+    created_id = resp_create.json()["character"]["id"]
+
+    resp_update_other = client.put(
+        f"/characters/{created_id}",
+        headers=other_headers,
+        json={"name": "Hacked", "level": 5},
+    )
+    assert resp_update_other.status_code == 404, resp_update_other.text

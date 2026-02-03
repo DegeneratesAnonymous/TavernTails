@@ -1,5 +1,5 @@
 # TavernTAIls Progress Tracker
-_Last updated: 2026-02-01 by GitHub Copilot_
+_Last updated: 2026-02-03 by GitHub Copilot_
 
 ## Where Things Stand
 - **Sprint Focus:** Finish Sprint 1 deliverables (chat upgrades, turn queue, agent stubs, documentation).
@@ -12,6 +12,40 @@ _Last updated: 2026-02-01 by GitHub Copilot_
 - The biggest remaining “make it real” items are character CRUD/imports and a clearer campaign→session→play flow (hidden-doc RBAC + access auditing is implemented).
 
 ## Completed Recently
+0. **Player‑Run Mode Toggle (Feb 3)**
+   - Added a campaign settings toggle and skipped AI bootstrap when enabled.
+0. **Player‑Run Mode Backend Guard (Feb 3)**
+   - Added server-side guard to skip AI bootstrap and scene analysis when player-run mode is enabled; covered by new bootstrap test.
+0. **Player‑Run Content Advance (Feb 3)**
+   - Content advance now skips AI narration/suggestions when player-run mode is enabled; test added.
+0. **Player‑Run Banner (Feb 3)**
+   - Added a gameplay banner indicating player-run mode when enabled.
+0. **Checklist Update: Player‑Run Session Mode (Feb 3)**
+   - Added tracking row in MVP_DELIVERY_CHECKLIST.md for the new mode.
+0. **Plan Update: Player‑Run Hub Positioning (Feb 3)**
+   - Updated PROJECT_PLAN.md to position AI as optional and emphasize automated organization.
+0. **Associated NPCs in Manage Characters (Feb 3)**
+   - Added an Associated NPCs modal with campaign selection and player-facing NPC details.
+0. **Character Update Ownership Test (Feb 3)**
+   - Added pytest coverage to ensure non-owners cannot update characters.
+0. **Character Update API Coverage (Feb 3)**
+   - Added pytest coverage for PUT /characters/{id} owner updates.
+0. **Character Delete Cleanup (Feb 3)**
+   - Clearing the active session character when the selected character is deleted.
+0. **Session Selection UX (Feb 3)**
+   - Disabled the select button when a character is already assigned to the active session.
+0. **Import Character Navigation (Feb 3)**
+   - Added a Back to Play action when importing with an active session.
+0. **Manage Characters Session Label (Feb 3)**
+   - Displayed the active session name in the character management header when available.
+0. **Session Character Clear Action (Feb 3)**
+   - Added a quick action in Manage Characters to clear the active session character.
+0. **Character Sheet Quick Edit (Feb 3)**
+   - Enabled editing name/level/class and parsed fields directly from the character sheet modal.
+0. **Gameplay Character Selector (Feb 3)**
+   - Added a simple selector in the Character tab to switch active characters during play.
+0. **Gameplay Character Empty-State Actions (Feb 3)**
+   - Added direct actions to Manage/Import Characters when the player sheet has no roster yet.
 0. **Character Import Polish + PDF Summaries (Feb 1)**
    - Added PDF extraction summaries to import review and character sheet views.
    - Improved import review flow (preview, conflict handling, and post-import navigation).
@@ -58,10 +92,11 @@ _Last updated: 2026-02-01 by GitHub Copilot_
    - README now links to the SOP so new contributors know how to handle `.env` files, GitHub secrets, and calendar reminders.
 
 ## Immediate Next Steps (suggested order)
-1. **Documents UI polish** – add upload retries/cancel flows, inline thumbnail previews, and clearer failure messaging for presigned uploads.
-2. **Scene/NPC automation follow-through** – connect cues to real dice triggers + NPC tracking data persisted per session.
-3. **CI coverage expansion** – extend GitHub Actions to lint/type-check the React app and pin/test boto3+moto compatibility for presign coverage.
-4. **LLM Agent Hardening** – capture structured prompts/results in storage ahead of multiplayer testing.
+1. **Player‑Run Mode switch** – add a campaign/session flag to disable AI outputs while keeping notes/NPC tracking active.
+2. **Documents UI polish** – add upload retries/cancel flows, inline thumbnail previews, and clearer failure messaging for presigned uploads.
+3. **Scene/NPC automation follow‑through** – connect cues to real dice triggers + NPC tracking data persisted per session.
+4. **CI coverage expansion** – extend GitHub Actions to lint/type-check the React app and pin/test boto3+moto compatibility for presign coverage.
+5. **LLM Agent Hardening** – capture structured prompts/results in storage ahead of multiplayer testing.
 
 ## S3 & Direct Upload Configuration
 1. **Prereqs:** Keep `boto3`/`moto` from `server/requirements.txt` installed and provision an S3 bucket with `Put/Get/Delete` rights.
@@ -89,6 +124,11 @@ _Last updated: 2026-02-01 by GitHub Copilot_
 | 2025-12-05 | `$env:PYTHONPATH='C:\\Users\\colem\\OneDrive\\solottrpg'; venv\Scripts\python.exe server/tools/smoke_upload.py` |
 | 2025-12-06 | `npm run build` (client) |
 | 2026-02-01 | `venv\Scripts\python.exe -m pytest server/tests -q` |
+| 2026-02-03 | `python -m pytest server/tests/test_campaign_settings.py -q` |
+| 2026-02-03 | `python -m pytest server/tests/test_characters_api.py -q` |
+| 2026-02-03 | `python -m pytest server/tests/test_session_bootstrap.py -q` |
+| 2026-02-03 | `python -m pytest server/tests/test_session_bootstrap.py -q` (player-run content advance) |
+| 2026-02-03 | `npm_config_script_shell=/bin/bash npm test -- --watchAll=false` (client) |
 
 ## How To Resume
 1. **Activate env:** `& .\venv\Scripts\Activate.ps1` at repo root.

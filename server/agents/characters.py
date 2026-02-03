@@ -1231,7 +1231,7 @@ def update_character(character_id: int, payload: CharacterUpdate, current_user=D
     character = db.update_character(
         character_id=character_id,
         owner_id=current_user.id,
-        updates=payload.dict(exclude_unset=True),
+        updates=payload.model_dump(exclude_unset=True),
     )
     if not character:
         raise HTTPException(status_code=404, detail="Character not found")

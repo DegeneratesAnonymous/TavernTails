@@ -112,26 +112,41 @@ def advance_scene(req: AdvanceRequest, current_user=Depends(get_current_user)):
         current = _load_current_scene(req.session_id)
         prev_title = (current.get('title') or 'Scene')
         prev_text = (current.get('text') or '')
-        seed = f"After choosing '{choice_id}', continue the scene: {prev_title}. Context: {prev_text}"
-        generated = narrative_agent.generate_narrative(narrative_agent.NarrativeRequest(
-            scene=seed,
-            player='party',
-            style='balanced',
-            weather='clear',
-            time_of_day='day',
-        ))
-        next_scene = {
-            'id': f"scene-{int(datetime.now(timezone.utc).timestamp())}",
-            'title': prev_title,
-            'image': None,
-            'text': f"{narration}\n\n{generated.narrative}\n\n{generated.prompt}",
-            'choices': [
-                {'id': 'investigate', 'label': 'Investigate further'},
-                {'id': 'talk', 'label': 'Talk / negotiate'},
-                {'id': 'press_on', 'label': 'Move to the next area'},
-                {'id': 'rest', 'label': 'Take a breather and regroup'},
-            ],
-        }
+        player_run = sessions_agent.is_player_run_mode(req.session_id)
+        if player_run:
+            next_scene = {
+                'id': f"scene-{int(datetime.now(timezone.utc).timestamp())}",
+                'title': prev_title,
+                'image': None,
+                'text': f"{narration}",
+                'choices': [
+                    {'id': 'investigate', 'label': 'Investigate further'},
+                    {'id': 'talk', 'label': 'Talk / negotiate'},
+                    {'id': 'press_on', 'label': 'Move to the next area'},
+                    {'id': 'rest', 'label': 'Take a breather and regroup'},
+                ],
+            }
+        else:
+            seed = f"After choosing '{choice_id}', continue the scene: {prev_title}. Context: {prev_text}"
+            generated = narrative_agent.generate_narrative(narrative_agent.NarrativeRequest(
+                scene=seed,
+                player='party',
+                style='balanced',
+                weather='clear',
+                time_of_day='day',
+            ))
+            next_scene = {
+                'id': f"scene-{int(datetime.now(timezone.utc).timestamp())}",
+                'title': prev_title,
+                'image': None,
+                'text': f"{narration}\n\n{generated.narrative}\n\n{generated.prompt}",
+                'choices': [
+                    {'id': 'investigate', 'label': 'Investigate further'},
+                    {'id': 'talk', 'label': 'Talk / negotiate'},
+                    {'id': 'press_on', 'label': 'Move to the next area'},
+                    {'id': 'rest', 'label': 'Take a breather and regroup'},
+                ],
+            }
 
         _write_scene(req.session_id, next_scene)
         _append_story(req.session_id, {
@@ -162,30 +177,31 @@ def advance_scene(req: AdvanceRequest, current_user=Depends(get_current_user)):
         except Exception:
             pass
 
-        try:
-            import anyio
+        if not player_run:
+            try:
+                import anyio
 
-            anyio.from_thread.run(
-                scene_agent.analyze_scene,
-                scene_agent.SceneAnalysisRequest(
-                    scene=next_scene['text'],
-                    actions=[c.get('label', '') for c in (next_scene.get('choices') or []) if isinstance(c, dict)],
+                anyio.from_thread.run(
+                    scene_agent.analyze_scene,
+                    scene_agent.SceneAnalysisRequest(
+                        scene=next_scene['text'],
+                        actions=[c.get('label', '') for c in (next_scene.get('choices') or []) if isinstance(c, dict)],
+                        session_id=req.session_id,
+                    ),
+                )
+            except Exception:
+                pass
+
+            try:
+                import anyio
+
+                anyio.from_thread.run(
+                    suggestions_agent.get_suggestions,
                     session_id=req.session_id,
-                ),
-            )
-        except Exception:
-            pass
-
-        try:
-            import anyio
-
-            anyio.from_thread.run(
-                suggestions_agent.get_suggestions,
-                session_id=req.session_id,
-                limit=4,
-                current_user=current_user,
-            )
-        except Exception:
-            pass
+                    limit=4,
+                    current_user=current_user,
+                )
+            except Exception:
+                pass
 
     return res

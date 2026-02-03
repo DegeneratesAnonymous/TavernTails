@@ -18,6 +18,29 @@ from . import suggestions as suggestions_agent
 router = APIRouter(prefix="/sessions")
 
 BASE = Path(__file__).resolve().parents[1] / 'sessions'
+
+
+def is_player_run_mode(session_id: str) -> bool:
+    """Return True if the session's campaign has player-run mode enabled."""
+    if not session_id:
+        return False
+    meta_path = BASE / session_id / 'meta.json'
+    if not meta_path.exists():
+        return False
+    try:
+        meta = json.loads(meta_path.read_text())
+    except Exception:
+        return False
+    campaign_id = meta.get('campaign_id')
+    if not campaign_id:
+        return False
+    campaign = db.get_campaign_by_id(str(campaign_id))
+    if not campaign:
+        return False
+    settings = (campaign.metadata_json or {}).get('settings') if isinstance(campaign.metadata_json, dict) else {}
+    if not isinstance(settings, dict):
+        return False
+    return bool(settings.get('player_run_mode'))
 BASE.mkdir(exist_ok=True)
 
 _doc_store = doc_storage.get_document_store()
@@ -522,6 +545,17 @@ async def bootstrap_session(session_id: str, payload: BootstrapRequest, current_
     style = (payload.style or 'balanced')
     weather = (payload.weather or 'clear')
     time_of_day = (payload.time_of_day or 'day')
+
+    if is_player_run_mode(session_id):
+        scene = {
+            'id': 'opening',
+            'title': f"{session_name} — Player-Run Session",
+            'image': None,
+            'text': "Player-run mode is enabled. Use chat, notes, and documents to run the session without AI narration.",
+            'choices': [],
+        }
+        (folder / 'scene.json').write_text(json.dumps(scene))
+        return {'ok': True, 'scene': scene}
 
     scene_seed = f"the first scene of the campaign '{session_name}', as the party arrives and the hook is revealed"
     narrative = narrative_agent.generate_narrative(narrative_agent.NarrativeRequest(

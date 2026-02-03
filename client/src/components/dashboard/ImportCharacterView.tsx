@@ -762,9 +762,16 @@ export default function ImportCharacterView({
         title="Import Character"
         subtitle="Import a character from JSON (paste or upload), or store a D&D Beyond link as a reference. We keep your raw data so future parsing improvements can enrich sheets without losing information."
         actions={
-          <button className="btn btn-quiet" type="button" disabled={busy} onClick={onDone}>
-            Done
-          </button>
+          <div className="row-wrap" style={{ justifyContent: 'flex-end', gap: 8 }}>
+            {activeSessionId ? (
+              <button className="btn btn-secondary" type="button" disabled={busy} onClick={onGoToGameplay}>
+                Back to Play
+              </button>
+            ) : null}
+            <button className="btn btn-quiet" type="button" disabled={busy} onClick={onDone}>
+              Done
+            </button>
+          </div>
         }
       />
 

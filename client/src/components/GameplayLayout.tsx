@@ -33,6 +33,7 @@ type Props = {
   activeCharacterId?: number | null
   onGoToCharacters?: () => void
   onGoToImport?: () => void
+  playerRunMode?: boolean
 }
 
 type Banner = {
@@ -62,6 +63,7 @@ export default function GameplayLayout({
   activeCharacterId,
   onGoToCharacters,
   onGoToImport,
+  playerRunMode = false,
 }: Props){
   const [drawerOpen, setDrawerOpen] = useState(false)
   const openDrawer = () => setDrawerOpen(true)
@@ -362,11 +364,14 @@ export default function GameplayLayout({
     const entries: Banner[] = [
       {id:'title', title: campaignTitle, subtitle: sessionId ? `Session ${sessionId}` : 'Session overview'},
     ]
+    if(playerRunMode){
+      entries.push({id:'player-run', title: 'Player-run session', subtitle: 'AI narration disabled'})
+    }
     if(waitingDisplay){
       entries.push({id:'waiting', title: `Waiting on ${waitingDisplay}`, subtitle: 'Ready when they are'})
     }
     return entries
-  }, [campaignTitle, waitingDisplay, sessionId])
+  }, [campaignTitle, waitingDisplay, sessionId, playerRunMode])
 
   const [bannerIndex, setBannerIndex] = useState(0)
   useEffect(()=>{
@@ -859,6 +864,28 @@ export default function GameplayLayout({
               {rightTab === 'character' ? (
                 <div className="player-sheet" aria-label="Your character sheet">
                   <div className="player-sheet-inner">
+                    {roster.length > 1 ? (
+                      <div className="row-wrap" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
+                        <label className="muted" style={{ fontSize: 12 }}>
+                          Active character
+                        </label>
+                        <select
+                          className="input"
+                          style={{ maxWidth: 220 }}
+                          value={selectedCharId || roster[0]?.id}
+                          onChange={(e) => {
+                            const nextId = e.target.value
+                            if (nextId && onSelectCharId) onSelectCharId(nextId)
+                          }}
+                        >
+                          {roster.map((entry) => (
+                            <option key={entry.id} value={entry.id}>
+                              {entry.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : null}
                     <CharacterPanel
                       title="Your character"
                       roster={playerStats ? [playerStats] : []}
@@ -867,6 +894,8 @@ export default function GameplayLayout({
                       sceneCues={sceneCues}
                       npcSpotlight={npcSpotlight}
                       onCueRoll={triggerCueRoll}
+                      onGoToCharacters={onGoToCharacters}
+                      onGoToImport={onGoToImport}
                     />
                   </div>
                 </div>
