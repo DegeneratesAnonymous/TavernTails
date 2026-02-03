@@ -20,6 +20,7 @@ from .agents.image import router as image_router
 from .agents.narrative import router as narrative_router
 from .agents.notes import router as notes_router
 from .agents.npc import router as npc_router
+from .agents import references as references_router
 from .agents.player import router as player_router
 from .agents.rolls import router as rolls_router
 from .agents.scene import router as scene_router
@@ -131,6 +132,7 @@ app.include_router(turns_router)
 app.include_router(documents_router)
 app.include_router(scene_router)
 app.include_router(npc_router)
+app.include_router(references_router.router)
 
 # Serve static build (if present) so the app is reachable at the backend port.
 build_dir = Path(__file__).resolve().parents[1] / 'client' / 'build'

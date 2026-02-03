@@ -1,5 +1,5 @@
 # TavernTAIls Progress Tracker
-_Last updated: 2026-01-11 by GitHub Copilot_
+_Last updated: 2026-02-01 by GitHub Copilot_
 
 ## Where Things Stand
 - **Sprint Focus:** Finish Sprint 1 deliverables (chat upgrades, turn queue, agent stubs, documentation).
@@ -12,6 +12,13 @@ _Last updated: 2026-01-11 by GitHub Copilot_
 - The biggest remaining “make it real” items are character CRUD/imports and a clearer campaign→session→play flow (hidden-doc RBAC + access auditing is implemented).
 
 ## Completed Recently
+0. **Character Import Polish + PDF Summaries (Feb 1)**
+   - Added PDF extraction summaries to import review and character sheet views.
+   - Improved import review flow (preview, conflict handling, and post-import navigation).
+   - Backend PDF parsing now surfaces widget-derived stats/HP/AC/features for UI use.
+0. **Best Practices Guardrails + Retro Audit Seed (Jan 30)**
+   - Added `docs/BEST_PRACTICES.md` and work order `docs/work-orders/WO-005-best-practices-retro-audit.md`.
+   - Hardened PDF upload error messaging to detect a missing backend endpoint (405) and give actionable guidance.
 0. **WP#3 Characters E2E Slice + Local CI Runner (Jan 11)**
    - Gameplay toolbar now supports creating a character and auto-assigning it to the active session member.
    - Added `./ci.ps1` Windows-safe runner to execute backend + frontend CI-equivalent checks reliably in paths containing `&`.
@@ -81,6 +88,7 @@ _Last updated: 2026-01-11 by GitHub Copilot_
 | 2025-12-05 | `npm run build` (client) |
 | 2025-12-05 | `$env:PYTHONPATH='C:\\Users\\colem\\OneDrive\\solottrpg'; venv\Scripts\python.exe server/tools/smoke_upload.py` |
 | 2025-12-06 | `npm run build` (client) |
+| 2026-02-01 | `venv\Scripts\python.exe -m pytest server/tests -q` |
 
 ## How To Resume
 1. **Activate env:** `& .\venv\Scripts\Activate.ps1` at repo root.

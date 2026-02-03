@@ -787,6 +787,20 @@ export default function GameplayLayout({
                 {sessionStarted ? 'In play' : 'Not started yet'}
               </div>
             </div>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+              <button className="btn btn-primary btn-sm" type="button" onClick={async ()=>{
+                if(!sessionId) return alert('No active session')
+                try{
+                  const res = await apiFetch('/narrative/continue', { method: 'POST', body: JSON.stringify({ session_id: sessionId }) })
+                  if(!res.ok){ const d = await res.json().catch(()=>({})); throw new Error(d?.detail||'Failed') }
+                  const data = await res.json()
+                  // Dispatch scene update to NarrativeView
+                  window.dispatchEvent(new CustomEvent('narrative:scene',{ detail: { scene: data.narrative } }))
+                  // Optionally open the chat with the prompt
+                  window.dispatchEvent(new CustomEvent('narrative:suggestions',{ detail: { suggestions: [data.prompt] } }))
+                }catch(err:any){ alert(err?.message || 'Failed to continue scene') }
+              }}>Continue</button>
+            </div>
           </div>
         </section>
         <section className="gameplay-body" aria-label="HomeScreen">

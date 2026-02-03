@@ -49,6 +49,9 @@ export default function DocumentsPanel({sessionId}: Props){
   const [isHost, setIsHost] = useState(false)
   const [uploads, setUploads] = useState<UploadEntry[]>([])
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [refs, setRefs] = useState<Array<{id:string, meta:any}>>([])
+  const [refLoading, setRefLoading] = useState(false)
+  const [refError, setRefError] = useState<string | null>(null)
   const uploadControllers = useRef<Record<string, () => void>>({})
 
   const hasSession = Boolean(sessionId)
@@ -117,7 +120,24 @@ export default function DocumentsPanel({sessionId}: Props){
 
   useEffect(()=>{
     loadDocuments()
+    loadReferences()
   },[loadDocuments])
+
+  const loadReferences = useCallback(async () => {
+    setRefLoading(true)
+    setRefError(null)
+    try{
+      const res = await apiFetch('/references/list')
+      if(!res.ok) throw new Error('Failed to load references')
+      const data = await res.json()
+      setRefs(Array.isArray(data) ? data : [])
+    }catch(err:any){
+      setRefError(err?.message || 'References unavailable')
+      setRefs([])
+    }finally{
+      setRefLoading(false)
+    }
+  },[])
 
   useEffect(()=>{
     if(!sessionId){
@@ -385,7 +405,38 @@ export default function DocumentsPanel({sessionId}: Props){
       void startUpload(entry)
     })
     if(e.target) e.target.value = ''
+    // also support uploading as a reference if the filename suggests a rules doc
   }
+
+  async function handleReferenceUpload(e: React.ChangeEvent<HTMLInputElement>){
+    const files = e.target.files
+    if(!files || files.length === 0) return
+    setRefError(null)
+    for(const f of Array.from(files)){
+      try{
+        const form = new FormData()
+        form.append('file', f)
+        form.append('title', f.name)
+        const res = await fetch(buildApiUrl('/references/upload'), { method: 'POST', body: form })
+        if(!res.ok){ const d = await res.json().catch(()=>null); throw new Error(d?.detail || 'Upload failed') }
+        // refresh list
+        await loadReferences()
+      }catch(err:any){
+        setRefError(err?.message || 'Reference upload failed')
+      }
+    }
+    if(e.target) e.target.value = ''
+  }
+
+  const handleReindex = useCallback(async (id: string) => {
+    if(!confirm('Rebuild embeddings for this reference?')) return
+    try{
+      const res = await apiFetch(`/references/${encodeURIComponent(id)}/reindex`, { method: 'POST' })
+      if(!res.ok){ const d = await res.json().catch(()=>null); throw new Error(d?.detail||'Reindex failed') }
+      await loadReferences()
+      alert('Reindex started/completed')
+    }catch(err:any){ alert(err?.message || 'Reindex failed') }
+  }, [loadReferences])
 
   const sortedDocs = useMemo(() => {
     return [...docs].sort((a,b)=> new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
@@ -418,6 +469,30 @@ export default function DocumentsPanel({sessionId}: Props){
             <button type="button" className="docsPanel__deleteBtn" onClick={()=>handleDelete(doc.id)} disabled={!hasSession} aria-label="Delete document">✕</button>
           </div>
         ))}
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        <h4 style={{ margin: '8px 0' }}>Reference PDFs</h4>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+          <input type="file" accept="application/pdf" multiple onChange={handleReferenceUpload} />
+          <div style={{ color: '#999', fontSize: 13 }}>{refLoading ? 'Refreshing…' : `${refs.length} references`}</div>
+        </div>
+        {refError && <div className="docsPanel__error">{refError}</div>}
+        {refs.length === 0 && !refLoading ? <div className="docsPanel__hint">No references uploaded.</div> : null}
+        <div style={{ maxHeight: 160, overflow: 'auto', border: '1px solid rgba(255,255,255,0.04)', padding: 8 }}>
+          {refs.map(r => (
+            <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' }}>
+              <div>
+                <div style={{ fontWeight: 700 }}>{r.meta?.title || r.id}</div>
+                <div className="muted" style={{ fontSize: 12 }}>{r.meta?.filename || ''} · {r.meta?.pages || 0} pages</div>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <a className="docsPanel__link" href={buildApiUrl(`/references/${encodeURIComponent(r.id)}/raw`)} target="_blank" rel="noreferrer">Open</a>
+                <button type="button" className="docsPanel__tinyBtn" onClick={()=>handleReindex(r.id)}>Reindex</button>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {selected && (

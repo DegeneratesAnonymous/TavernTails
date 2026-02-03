@@ -20,12 +20,6 @@ export default function SiteNavMenu({ onClose, onNavigate }: Props) {
         <div className="site-menu-section-title">Navigate</div>
         <ul className="site-menu-list">
           <li>
-            <button className="site-menu-item" onClick={() => onNavigate?.('gameplay')}>
-              <span className="site-menu-item-label">Play</span>
-              <span className="site-menu-item-description">Return to the play screen</span>
-            </button>
-          </li>
-          <li>
             <button className="site-menu-item" onClick={() => onNavigate?.('campaign-setup')}>
               <span className="site-menu-item-label">Manage campaigns</span>
               <span className="site-menu-item-description">Create, configure, and start scenes</span>

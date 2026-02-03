@@ -134,6 +134,25 @@ export default function NarrativeView({sessionId, showChoicesInScene = true}: Pr
 
   const hasChoices = Array.isArray(scene.choices) && scene.choices.length > 0
 
+  // Parse citations block if appended by the server LLM (format: "\n\nCitations: [SRC pN] snippet | [SRC pM] snippet")
+  const parseCitations = (text: string) => {
+    const marker = '\n\nCitations: '
+    const idx = text.indexOf(marker)
+    if (idx === -1) return { main: text, citations: [] }
+    const main = text.slice(0, idx).trim()
+    const rest = text.slice(idx + marker.length).trim()
+    const parts = rest.split(' | ').map(p => p.trim()).filter(Boolean)
+    const citations = parts.map(p => {
+      // Expect format: [SRC pN] snippet
+      const m = p.match(/\[([^\s\]]+)\s+p(\d+)\]\s*(.*)/)
+      if (m) return { source_id: m[1], page: Number(m[2]), snippet: m[3] || '' }
+      return { raw: p }
+    })
+    return { main, citations }
+  }
+
+  const parsed = parseCitations(scene.text || '')
+
   return (
     <div className="narrative-view">
       <div className="narrative-scene">
@@ -146,7 +165,25 @@ export default function NarrativeView({sessionId, showChoicesInScene = true}: Pr
         <div className="narrative-overlay">
           <div className="narrative-card">
             <h2 className="narrative-title">{scene.title}</h2>
-            <p className="narrative-text">{scene.text}</p>
+            <p className="narrative-text">{parsed.main}</p>
+
+            {parsed.citations && parsed.citations.length > 0 ? (
+              <div className="narrative-citations" style={{ marginTop: 8 }}>
+                <div className="muted" style={{ fontSize: 13 }}>Citations</div>
+                <ul style={{ margin: '6px 0 0 18px' }}>
+                  {parsed.citations.map((c: any, i: number) => (
+                    <li key={`cit-${i}`} style={{ marginBottom: 6 }}>
+                      {c.source_id ? (
+                        <a href={buildApiUrl(`/references/${c.source_id}/raw`) + `#page=${c.page}`} target="_blank" rel="noreferrer">
+                          [{c.source_id} p{c.page}]
+                        </a>
+                      ) : null}{' '}
+                      <span className="muted" style={{ fontSize: 13 }}>— {c.snippet || c.raw}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
 
             {showChoicesInScene && hasChoices ? (
               <div className="narrative-choices-wrap">

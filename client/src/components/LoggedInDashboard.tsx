@@ -9,6 +9,7 @@ import ImportCharacterView from './dashboard/ImportCharacterView'
 import CreatingCharacterView from './dashboard/CreatingCharacterView'
 import Beyond20View from './dashboard/Beyond20View'
 import CampaignSetupView from './dashboard/CampaignSetupView'
+import DashboardHome from './dashboard/DashboardHome'
 import CharacterSheetModal from './characters/CharacterSheetModal'
 import PageHeader from './ui/PageHeader'
 import EmptyState from './ui/EmptyState'
@@ -20,7 +21,7 @@ type Props = {
 };
 
 const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
-  const [view, setView] = useState<string>('gameplay');
+  const [view, setView] = useState<string>('home');
   const [importInitialMode, setImportInitialMode] = useState<'ddb-link' | 'paste' | 'file' | 'pdf' | null>(null)
   const [campaigns, setCampaigns] = useState<Array<any>>([])
   const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null)
@@ -47,6 +48,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [sheetModalCharacter, setSheetModalCharacter] = useState<any | null>(null)
   const [sheetModalLoading, setSheetModalLoading] = useState(false)
   const [sheetModalError, setSheetModalError] = useState<string | null>(null)
+
 
   const activeCampaign = useMemo(() => {
     return campaigns.find(c => String(c.id) === String(activeCampaignId)) || null
@@ -469,32 +471,46 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     startPlayBusy,
   ])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (activeCampaignId) {
+      window.localStorage.setItem('tt:lastCampaignId', String(activeCampaignId))
+    }
+    if (activeSession) {
+      window.localStorage.setItem('tt:lastSessionId', String(activeSession))
+    }
+  }, [activeCampaignId, activeSession])
+
+  const lastSessionLabel = useMemo(() => {
+    if (!activeSession) return null
+    return sessionMetaById[activeSession]?.name || activeSession
+  }, [activeSession, sessionMetaById])
+
   return (
     <div className="dashboard-root">
-      {view !== 'gameplay' ? (
-        <aside className="dashboard-sidebar">
-          <div className="dashboard-brand">Solo TTRPG</div>
-          <div className="dashboard-user">{profile?.name}</div>
-          <nav className="dashboard-nav">
-            <button className={`nav-btn ${view==='gameplay'?'active':''}`} onClick={() => setView('gameplay')}>Play</button>
-            <button className={`nav-btn ${view==='campaign-setup'?'active':''}`} onClick={() => setView('campaign-setup')}>Manage Campaigns</button>
-            <button className={`nav-btn ${view==='view-characters'?'active':''}`} onClick={() => setView('view-characters')}>Manage Characters</button>
-            <button
-              className={`nav-btn ${view==='import-character'?'active':''}`}
-              onClick={() => {
-                setImportInitialMode(null)
-                setView('import-character')
-              }}
-            >
-              Import Character
-            </button>
-            <button className={`nav-btn ${view==='account'?'active':''}`} onClick={() => setView('account')}>Account</button>
-          </nav>
-          <div className="sidebar-footer">
-            <button className="btn-logout" onClick={onLogout}>Sign out</button>
-          </div>
-        </aside>
-      ) : null}
+      <aside className="dashboard-sidebar">
+        <div className="dashboard-brand">Solo TTRPG</div>
+        <div className="dashboard-user">{profile?.name}</div>
+        <nav className="dashboard-nav">
+          <button className={`nav-btn ${view==='home'?'active':''}`} onClick={() => setView('home')}>Home</button>
+          
+          <button className={`nav-btn ${view==='campaign-setup'?'active':''}`} onClick={() => setView('campaign-setup')}>Manage Campaigns</button>
+          <button className={`nav-btn ${view==='view-characters'?'active':''}`} onClick={() => setView('view-characters')}>Manage Characters</button>
+          <button
+            className={`nav-btn ${view==='import-character'?'active':''}`}
+            onClick={() => {
+              setImportInitialMode(null)
+              setView('import-character')
+            }}
+          >
+            Import Character
+          </button>
+          <button className={`nav-btn ${view==='account'?'active':''}`} onClick={() => setView('account')}>Account</button>
+        </nav>
+        <div className="sidebar-footer">
+          <button className="btn-logout" onClick={onLogout}>Sign out</button>
+        </div>
+      </aside>
       <main className="dashboard-main">
         {view === 'gameplay' && (
           <section className="gameplay-panel">
@@ -522,6 +538,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                   }}
                   onGoToImport={() => setView('import-character')}
                   onNavigate={(key) => {
+                    if (key === 'home') setView('home')
                     if (key === 'gameplay') setView('gameplay')
                     if (key === 'campaign-setup') setView('campaign-setup')
                     if (key === 'view-characters') setView('view-characters')
@@ -540,6 +557,42 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
               </div>
             </div>
           </section>
+        )}
+        {view === 'home' && (
+          <DashboardHome
+            profile={profile}
+            lastSessionLabel={lastSessionLabel}
+            onQuickJoin={() => {
+              if (typeof window === 'undefined') {
+                setView('gameplay')
+                return
+              }
+              const storedCampaignId = window.localStorage.getItem('tt:lastCampaignId')
+              const storedSessionId = window.localStorage.getItem('tt:lastSessionId')
+              const campaign = storedCampaignId
+                ? campaigns.find((c) => String(c.id) === String(storedCampaignId))
+                : null
+              if (campaign) {
+                setActiveCampaignId(String(campaign.id))
+                const sessions = Array.isArray(campaign.sessions) ? campaign.sessions : []
+                const storedSession = storedSessionId
+                  ? sessions.find((s: any) => String(s.id) === String(storedSessionId))
+                  : null
+                if (storedSession) {
+                  setActiveSession(String(storedSession.id))
+                } else if (sessions.length > 0) {
+                  setActiveSession(String(sessions[0].id))
+                }
+              }
+              setView('gameplay')
+            }}
+            onGoToCampaigns={() => setView('campaign-setup')}
+            onGoToCharacters={() => setView('view-characters')}
+            onGoToImport={() => {
+              setImportInitialMode(null)
+              setView('import-character')
+            }}
+          />
         )}
         {view === 'campaign-setup' && (
           <CampaignSetupView

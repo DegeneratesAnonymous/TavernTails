@@ -51,6 +51,37 @@ def test_import_character_from_pasted_json():
     assert data["character"]["sheet"]["import"]["ddb_url"].endswith("/123456")
 
 
+def test_preview_import_character_from_pasted_json_does_not_create_character():
+    client = _client()
+    email = "import-preview-owner@example.com"
+    _ensure_user(email)
+    token = create_access_token(email)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+
+    # Preview
+    res = client.post(
+        "/characters/import/preview",
+        headers=auth_headers,
+        json={
+            "raw_json": '{"name": "Preview One", "level": 4, "class_name": "Cleric"}',
+            "ddb_url": "https://www.dndbeyond.com/characters/999",
+            "source": "paste",
+        },
+    )
+    assert res.status_code == 200, res.text
+    data = res.json()
+    assert data["preview"]["name"] == "Preview One"
+    assert data["preview"]["level"] == 4
+    assert data["preview"]["class_name"] == "Cleric"
+    assert data["preview"]["sheet"]["import"]["source"] == "paste"
+
+    # No new character should exist unless we explicitly create one.
+    list_res = client.get("/characters", headers=auth_headers)
+    assert list_res.status_code == 200, list_res.text
+    names = [c["name"] for c in list_res.json().get("characters", [])]
+    assert "Preview One" not in names
+
+
 def test_import_character_from_file():
     client = _client()
     email = "import-owner-file@example.com"
@@ -95,6 +126,27 @@ def test_import_character_from_pdf_upload_best_effort():
     assert data["character"]["class_name"] == "Ranger"
     assert data["character"]["sheet"]["import"]["source"] == "pdf"
     assert "raw_text" in data["character"]["sheet"]
+
+
+def test_preview_import_character_from_pdf_upload_best_effort():
+    client = _client()
+    email = "import-preview-owner-pdf@example.com"
+    _ensure_user(email)
+    token = create_access_token(email)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+
+    payload = b"Minsc\nLevel 3\nRanger\n"
+    res = client.post(
+        "/characters/import/pdf/preview?source=pdf",
+        headers=auth_headers,
+        files={"file": ("character.pdf", io.BytesIO(payload), "application/pdf")},
+    )
+    assert res.status_code == 200, res.text
+    data = res.json()
+    assert data["preview"]["name"] == "Minsc"
+    assert data["preview"]["level"] == 3
+    assert data["preview"]["class_name"] == "Ranger"
+    assert "raw_text" in data["preview"]["sheet"]
 
 
 def test_import_character_from_pdf_uses_filename_fallback_and_allows_overrides():
@@ -166,6 +218,12 @@ def test_import_character_from_pdf_extracts_widget_values():
 
     add_widget("CharacterName", "Launk", y=700.0)
     add_widget("CLASS  LEVEL", "Druid 4 / Cleric 2", y=670.0)
+    add_widget("STR", "15", y=640.0)
+    add_widget("DEX", "14", y=610.0)
+    add_widget("Armor Class", "17", y=595.0)
+    add_widget("Current Hit Points", "21", y=575.0)
+    add_widget("Hit Point Maximum", "28", y=555.0)
+    add_widget("Features & Traits", "Darkvision\nSecond Wind", y=535.0)
 
     bio = io.BytesIO()
     writer.write(bio)
@@ -181,6 +239,12 @@ def test_import_character_from_pdf_extracts_widget_values():
     assert data["character"]["name"] == "Launk"
     assert data["character"]["level"] == 6
     assert data["character"]["class_name"] == "Druid / Cleric"
+    assert data["character"]["sheet"]["stats"]["str"] == 15
+    assert data["character"]["sheet"]["stats"]["dex"] == 14
+    assert data["character"]["sheet"]["ac"] == 17
+    assert data["character"]["sheet"]["hp"]["current"] == 21
+    assert data["character"]["sheet"]["hp"]["max"] == 28
+    assert "Darkvision" in data["character"]["sheet"]["features"]
 
 
 def test_import_character_from_nested_classes_shape():

@@ -5,8 +5,12 @@ import HamsterWheel from '../components/HamsterWheel';
 import LoggedInDashboard from '../components/LoggedInDashboard';
 import { buildApiUrl } from '../api';
 
-const LoginSignupAgent: React.FC = () => {
-  const [isSignup, setIsSignup] = useState(false);
+type Props = {
+  initialMode?: 'login' | 'signup'
+}
+
+const LoginSignupAgent: React.FC<Props> = ({ initialMode = 'login' }) => {
+  const [isSignup, setIsSignup] = useState(initialMode === 'signup');
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [signupName, setSignupName] = useState('');
@@ -19,6 +23,10 @@ const LoginSignupAgent: React.FC = () => {
   const [verificationToken, setVerificationToken] = useState('');
   const [unverifiedEmail, setUnverifiedEmail] = useState('');
   const devCredentials = { email: 'test@example.com', password: 'secret' };
+
+  React.useEffect(() => {
+    setIsSignup(initialMode === 'signup')
+  }, [initialMode])
 
   React.useEffect(() => {
     if (profile) {
