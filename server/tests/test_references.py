@@ -1,5 +1,6 @@
 import json
 import asyncio
+from types import SimpleNamespace
 from pathlib import Path
 
 from server.agents import references
@@ -38,6 +39,7 @@ def test_list_references(tmp_path, monkeypatch):
     monkeypatch.setattr(references, "_storage_root", lambda: root)
 
     # list_references is async; run it
-    out = asyncio.run(references.list_references())
+    current_user = SimpleNamespace(email='tester@example.com', username='tester')
+    out = asyncio.run(references.list_references(current_user=current_user))
     assert isinstance(out, list)
     assert any(item.get("id") == "refA" for item in out)

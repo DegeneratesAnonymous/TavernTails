@@ -4,16 +4,54 @@ import os
 import re
 import math
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 from pypdf import PdfReader
+
+from ..auth import get_current_user
 
 logger = logging.getLogger("taverntails.references")
 
 router = APIRouter(prefix="/references", tags=["references"])
+
+
+class ReferenceMeta(BaseModel):
+    title: str
+    filename: str
+    pages: int
+
+
+class ReferenceListItem(BaseModel):
+    id: str
+    meta: ReferenceMeta
+
+
+class ReferenceSearchResult(BaseModel):
+    source_id: str
+    page: Optional[int] = None
+    snippet: Optional[str] = None
+    score: float
+
+
+class ReferenceSearchResponse(BaseModel):
+    query: str
+    results: List[ReferenceSearchResult]
+
+
+class ReferenceUploadResponse(BaseModel):
+    ok: bool
+    id: str
+    meta: ReferenceMeta
+
+
+class ReferenceReindexResponse(BaseModel):
+    ok: bool
+    id: str
+    embeddings: int
 
 
 def _storage_root() -> Path:
@@ -63,8 +101,12 @@ def _make_snippet(text: str, max_len: int = 400) -> str:
     return t[: max_len - 1].rsplit(" ", 1)[0] + "…"
 
 
-@router.post("/upload")
-async def upload_reference(file: UploadFile = File(...), title: str = Form(None)):
+@router.post("/upload", response_model=ReferenceUploadResponse)
+async def upload_reference(
+    file: UploadFile = File(...),
+    title: str = Form(None),
+    current_user=Depends(get_current_user),
+):
     """Upload a reference PDF (PHB/DMG/MM). This will extract per-page text and create an embedding index if OPENAI_API_KEY is set."""
     root = _storage_root()
     safe_name = (title or Path(file.filename).stem).strip().replace(" ", "_")
@@ -114,8 +156,8 @@ async def upload_reference(file: UploadFile = File(...), title: str = Form(None)
     return {"ok": True, "id": dest_dir.name, "meta": meta}
 
 
-@router.get("/list")
-async def list_references():
+@router.get("/list", response_model=List[ReferenceListItem])
+async def list_references(current_user=Depends(get_current_user)):
     root = _storage_root()
     out = []
     for d in sorted(root.iterdir()):
@@ -133,8 +175,8 @@ async def list_references():
     return out
 
 
-@router.get("/search")
-async def search_references(q: str, top_k: int = 5):
+@router.get("/search", response_model=ReferenceSearchResponse)
+async def search_references(q: str, top_k: int = 5, current_user=Depends(get_current_user)):
     """Search all references for the query. Returns top_k passages with score and source info."""
     if not q or not q.strip():
         raise HTTPException(status_code=400, detail="Query required")
@@ -219,8 +261,8 @@ def get_reference_raw(ref_id: str):
     raise HTTPException(status_code=404, detail='No file found for reference')
 
 
-@router.post("/{ref_id}/reindex")
-def reindex_reference(ref_id: str):
+@router.post("/{ref_id}/reindex", response_model=ReferenceReindexResponse)
+def reindex_reference(ref_id: str, current_user=Depends(get_current_user)):
     """Rebuild embeddings for a reference id (requires OPENAI_API_KEY)."""
     root = _storage_root()
     d = root / ref_id

@@ -1,5 +1,10 @@
 # TavernTAIls – Enhanced Technical and Product Plan
 
+**CANONICAL PLAN (Single Source of Truth).**
+This is the authoritative roadmap + architecture doc. Long-form references
+(`TavernTAIls_Enhanced_Project_Plan.md`, `PROJECT_PLAN_BREAKDOWN.md`) may lag and
+should not be used to make scope decisions.
+
 _Last updated: 2025-12-01 – Maintainers: TavernTAIls Core Team_
 
 Supersedes `PROJECT_PLAN.md` (v2025-11-30) and `PROJECT_PLAN_BREAKDOWN.md` (v2025-11-25).

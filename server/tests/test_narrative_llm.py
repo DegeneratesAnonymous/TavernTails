@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
@@ -71,6 +72,13 @@ def test_continue_narrative_includes_references(monkeypatch, tmp_path):
         {'type': 'narration', 'text': 'The party entered a ruined tower.'}
     ]
     (folder / 'story.json').write_text(json.dumps(story))
+    (folder / 'meta.json').write_text(json.dumps({
+        'id': session_id,
+        'name': 'Test Session',
+        'owner': 'rog@example.com',
+        'invites': [],
+        'members': [{'email': 'rog@example.com', 'role': 'owner'}],
+    }))
     (folder / 'pcs.json').write_text(json.dumps([{'name': 'Rog'}, {'name': 'Mira'}]))
     (folder / 'npcs.json').write_text(json.dumps([{'name': 'Keeper'}]))
 
@@ -99,7 +107,8 @@ def test_continue_narrative_includes_references(monkeypatch, tmp_path):
 
     try:
         req = narrative.ContinueRequest(session_id=session_id, player='Rog')
-        res = narrative.continue_narrative(req)
+        current_user = SimpleNamespace(email='rog@example.com', username='rog')
+        res = narrative.continue_narrative(req, current_user=current_user)
         assert isinstance(res.narrative, str)
         # Our fake LLM output should be used
         assert 'FAKE LLM SCENE OUTPUT' in res.narrative

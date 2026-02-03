@@ -1,12 +1,14 @@
 """Narrative Agent: generates narration + prompt."""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from fastapi import HTTPException
 from pathlib import Path
 import json
 import os
 from .references import search_query
+from ..auth import get_current_user
+from . import sessions as sessions_agent
 
 router = APIRouter(tags=["narrative"])
 
@@ -127,7 +129,7 @@ class ContinueRequest(BaseModel):
 
 
 @router.post("/narrative/continue", response_model=NarrativeResponse)
-def continue_narrative(payload: ContinueRequest):
+def continue_narrative(payload: ContinueRequest, current_user=Depends(get_current_user)):
     """Generate the next scene for a session by summarizing recent story + PCs/NPCs.
 
     This is intentionally lightweight; future improvements can call the LLM with rich context.
@@ -137,6 +139,19 @@ def continue_narrative(payload: ContinueRequest):
     folder = base / session_id
     if not folder.exists() or not folder.is_dir():
         raise HTTPException(status_code=404, detail='Session not found')
+
+    # Ensure caller is a session member.
+    meta_file = folder / 'meta.json'
+    if meta_file.exists():
+        try:
+            meta = json.loads(meta_file.read_text())
+            identifier = sessions_agent._identifier_for_user(current_user)
+            if not sessions_agent._user_is_member(meta, identifier):
+                raise HTTPException(status_code=403, detail='Not a member of this session')
+        except HTTPException:
+            raise
+        except Exception as err:
+            raise HTTPException(status_code=500, detail='Failed to read meta') from err
 
     # Read recent story entries
     story_file = folder / 'story.json'
