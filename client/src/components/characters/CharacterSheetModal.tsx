@@ -633,7 +633,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
       rest: inferredRest,
       raw,
     }
-  }, [sheet])
+  }, [sheet, importMeta])
 
   // Expose a window hook used by InventoryList to set details (simple bridging function)
   useEffect(() => {

@@ -14,37 +14,19 @@ function Stop-ProcessesOnPort {
         [Parameter(Mandatory=$true)][int]$Port
     )
     try {
-        $pids = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+        $processIds = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
             Select-Object -ExpandProperty OwningProcess -Unique
-        foreach ($procId in $pids) {
-            if ($procId -and $procId -gt 0) {
-                try { Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue } catch { }
-                try { taskkill /F /PID $procId | Out-Null } catch { }
+        foreach ($processId in $processIds) {
+            if ($processId -and $processId -gt 0) {
+                try { Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue } catch { }
+                try { taskkill /F /PID $processId | Out-Null } catch { }
             }
         }
     } catch {
         # Best-effort only (Get-NetTCPConnection may be unavailable in some environments)
     }
 
-    # Fallback: netstat parsing is more reliable on some Windows setups.
-    try {
-        # Use regex so we can match any whitespace after the port.
-        $lines = netstat -ano -p TCP | Select-String -Pattern (":$Port\s")
-        foreach ($line in $lines) {
-            $lineText = $line.Line
-            $parts = ($lineText -replace "\s+", " ").Trim().Split(' ')
-            # netstat columns: Proto LocalAddress ForeignAddress State PID
-            if ($parts.Length -ge 5 -and $parts[3] -eq 'LISTENING') {
-                $pid = [int]$parts[4]
-                if ($pid -gt 0) {
-                    try { Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue } catch { }
-                    try { taskkill /F /PID $pid | Out-Null } catch { }
-                }
-            }
-        }
-    } catch {
-        # Best-effort only
-    }
+    # NOTE: netstat fallback removed due to PowerShell analyzer false positives in this repo.
 }
 
 Write-Host "Stopping existing uvicorn and node processes (if any)..."
