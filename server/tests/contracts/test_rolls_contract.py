@@ -1,8 +1,7 @@
 from fastapi.testclient import TestClient
 
 import server.main as main
-from server import db
-from server import auth
+from server import auth, db
 
 
 def _make_user_and_token():

@@ -1,14 +1,15 @@
 """Narrative Agent: generates narration + prompt."""
 
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
-from fastapi import HTTPException
-from pathlib import Path
 import json
 import os
-from .references import search_query
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+
 from ..auth import get_current_user
 from . import sessions as sessions_agent
+from .references import search_query
 
 router = APIRouter(tags=["narrative"])
 

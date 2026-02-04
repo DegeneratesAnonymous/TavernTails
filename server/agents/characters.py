@@ -1,18 +1,21 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 import re
-from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from .. import db
-from . import references as references_agent
 from ..auth import get_current_user
+from . import references as references_agent
 
 router = APIRouter(prefix="/characters", tags=["characters"])
+
+STRIP_CHARS_FEATURES = " \t\r\n•-*\u2022|–—"
+STRIP_CHARS_WIDGET = " \t\r\n•-*\u2022_"
 
 
 def _now_iso() -> str:
@@ -393,7 +396,7 @@ def _extract_features_from_pdf_widgets(fields: Dict[str, str]) -> list[str]:
             # split on common inline separators to avoid long concatenated lines
             parts = re.split(r"\s*[|•\u2022—–\-]\s*", raw_line)
             for part in parts:
-                s = part.strip(" \t\r\n•-*\u2022|–—")
+                s = part.strip(STRIP_CHARS_FEATURES)
                 if not s:
                     continue
                 # Skip obvious section headers like "=== FOO SPECIES TRAITS ===" or all-caps headings
@@ -428,8 +431,9 @@ def _read_pdf_text(content: bytes) -> Optional[str]:
     if not content:
         return None
     try:
-        from pypdf import PdfReader
         import io
+
+        from pypdf import PdfReader
 
         reader = PdfReader(io.BytesIO(content))
         pages: list[str] = []
@@ -464,18 +468,18 @@ def _extract_fields_from_text(text: Optional[str]) -> tuple[Optional[str], Optio
     if not text or not isinstance(text, str):
         return None, None, None
 
-    lines = [l.strip() for l in re.split(r"\r?\n", text) if l and l.strip()]
+    lines = [line.strip() for line in re.split(r"\r?\n", text) if line and line.strip()]
     name: Optional[str] = None
     level: Optional[int] = None
     class_name: Optional[str] = None
 
     # Find level by regex like 'Level 3' or 'LVL 3'
-    for l in lines[:12]:
-        m = re.search(r"\blevel\b[:\s]*([0-9]{1,2})", l, flags=re.I)
+    for line in lines[:12]:
+        m = re.search(r"\blevel\b[:\s]*([0-9]{1,2})", line, flags=re.I)
         if m:
             level = _as_int(m.group(1))
             break
-        m2 = re.search(r"\b(LVL|LV)\b[:\s]*([0-9]{1,2})", l, flags=re.I)
+        m2 = re.search(r"\b(LVL|LV)\b[:\s]*([0-9]{1,2})", line, flags=re.I)
         if m2:
             level = _as_int(m2.group(2))
             break
@@ -498,32 +502,32 @@ def _extract_fields_from_text(text: Optional[str]) -> tuple[Optional[str], Optio
     ]
 
     # Try to find a line that looks like a class or 'Class / Level' combined line.
-    for l in lines[:8]:
-        up = l.upper()
+    for line in lines[:8]:
+        up = line.upper()
         # Skip template-like headings
         if any(x in up for x in ("CLASS & LEVEL", "PLAYER NAME", "CHARACTER NAME", "SPECIES", "BACKGROUND")):
             continue
         # If the line contains a known class name and a number, capture both.
         for cname in classes:
-            if re.search(rf"\b{re.escape(cname)}\b", l, flags=re.I):
+            if re.search(rf"\b{re.escape(cname)}\b", line, flags=re.I):
                 class_name = cname if not class_name else class_name
                 # try to find an inline level
-                m = re.search(r"(\d{1,2})", l)
+                m = re.search(r"(\d{1,2})", line)
                 if m and level is None:
                     level = _as_int(m.group(1))
                 break
 
     # Heuristic for name: pick the first short line that is not a template heading
-    for l in lines[:6]:
-        up = l.upper()
+    for line in lines[:6]:
+        up = line.upper()
         if any(x in up for x in ("CLASS", "LEVEL", "PLAYER NAME", "CHARACTER NAME", "SPECIES", "BACKGROUND")):
             continue
         # Avoid lines that look like page headers/metadata (contain too many digits or slashes)
-        if re.search(r"\d", l) and len(re.findall(r"[A-Za-z]", l)) < 3:
+        if re.search(r"\d", line) and len(re.findall(r"[A-Za-z]", line)) < 3:
             continue
         # Accept short single-line names
-        if 1 <= len(l) <= 60:
-            name = l
+        if 1 <= len(line) <= 60:
+            name = line
             break
 
     return name, level, class_name
@@ -755,7 +759,7 @@ def _build_character_import_sheet_from_pdf(
         seen: set[str] = set()
         for blob in blobs:
             for line in re.split(r"\r?\n", blob):
-                s = line.strip(" \t\r\n•-*_\u2022")
+                s = line.strip(STRIP_CHARS_WIDGET)
                 if not s:
                     continue
                 key = s.lower()
@@ -773,10 +777,11 @@ def _build_character_import_sheet_from_pdf(
     racial_features = _lines_from_blobs(race_blobs)
     other_features = _lines_from_blobs(other_blobs)
     # If grouping failed, fall back to the general extracted features list.
+    class_name_hint = _as_str(class_name_override) or _as_str(widget_class_name)
     if not class_features and features_from_widgets:
         # try to pick entries that mention the class name
-        if final_class_name:
-            cands = [f for f in features_from_widgets if final_class_name.lower() in f.lower()]
+        if class_name_hint:
+            cands = [f for f in features_from_widgets if class_name_hint.lower() in f.lower()]
             class_features = cands
     if not racial_features and features_from_widgets:
         # rough heuristic: look for common race/species words or short lists near top
@@ -825,7 +830,7 @@ def _build_character_import_sheet_from_pdf(
         if not blob or not isinstance(blob, str):
             return out
         for line in re.split(r"\r?\n", blob):
-            s = line.strip(" \t\r\n•-*_\u2022")
+            s = line.strip(STRIP_CHARS_WIDGET)
             if not s:
                 continue
             if len(s) > 200:

@@ -1,8 +1,8 @@
+import json
 import os
 import sys
-import json
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -63,7 +63,6 @@ def test_generate_narrative_parses_json_response(monkeypatch):
 
 def test_continue_narrative_includes_references(monkeypatch, tmp_path):
     # create a fake session folder with story/pcs/npcs
-    sessions_root = Path(__file__).resolve().parents[2] / 'sessions'
     session_id = 'testsess123'
     folder = tmp_path / 'sessions' / session_id
     folder.mkdir(parents=True)
@@ -89,7 +88,6 @@ def test_continue_narrative_includes_references(monkeypatch, tmp_path):
     sys.modules['openai'] = fake
 
     # Monkeypatch the sessions folder used by narrative.continue_narrative
-    orig_base = Path(__file__).resolve().parents[1] / 'sessions'
     monkeypatch.setattr(narrative, 'Path', Path)
 
     # Monkeypatch search_query to return a sample hit

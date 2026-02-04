@@ -1,15 +1,14 @@
 import json
 import logging
+import math
 import os
 import re
-import math
 from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-
 from pypdf import PdfReader
 
 from ..auth import get_current_user
@@ -273,8 +272,8 @@ def reindex_reference(ref_id: str, current_user=Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="No pages.json for reference")
     try:
         pages = json.loads(pages_path.read_text(encoding="utf-8"))
-    except Exception:
-        raise HTTPException(status_code=500, detail="Failed to read pages.json")
+    except Exception as err:
+        raise HTTPException(status_code=500, detail="Failed to read pages.json") from err
 
     openai_key = os.environ.get("OPENAI_API_KEY")
     if not openai_key:
@@ -294,9 +293,9 @@ def reindex_reference(ref_id: str, current_user=Depends(get_current_user)):
             embeddings.append(vect)
         (d / "embeddings.json").write_text(json.dumps(embeddings), encoding="utf-8")
         return {"ok": True, "id": ref_id, "embeddings": len(embeddings)}
-    except Exception:
+    except Exception as err:
         logger.exception("Reindex failed")
-        raise HTTPException(status_code=500, detail="Reindex failed")
+        raise HTTPException(status_code=500, detail="Reindex failed") from err
 
 
 def search_query(q: str, top_k: int = 5):
@@ -356,10 +355,10 @@ def search_query(q: str, top_k: int = 5):
         # TF-IDF fallback scoring
         # Simple tokenizer
         def tokenize(s: str):
-            return [t for t in re.findall(r"[a-z0-9]{2,}", (s or "").lower())]
+            return list(re.findall(r"[a-z0-9]{2,}", (s or "").lower()))
 
         # Build IDF
-        N = len(corpus_texts)
+        total_docs = len(corpus_texts)
         idf = {}
         df = {}
         for text in corpus_texts:
@@ -367,7 +366,7 @@ def search_query(q: str, top_k: int = 5):
             for t in tokens:
                 df[t] = df.get(t, 0) + 1
         for t, cnt in df.items():
-            idf[t] = math.log((N + 1) / (cnt + 1)) + 1.0
+            idf[t] = math.log((total_docs + 1) / (cnt + 1)) + 1.0
 
         # Query vector
         q_tokens = tokenize(q)

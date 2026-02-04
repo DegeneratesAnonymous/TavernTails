@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from .agents import references as references_router
 from .agents import ws as ws_router
 from .agents.campaigns import router as campaigns_router
 from .agents.characters import router as characters_router
@@ -20,7 +21,6 @@ from .agents.image import router as image_router
 from .agents.narrative import router as narrative_router
 from .agents.notes import router as notes_router
 from .agents.npc import router as npc_router
-from .agents import references as references_router
 from .agents.player import router as player_router
 from .agents.rolls import router as rolls_router
 from .agents.scene import router as scene_router
