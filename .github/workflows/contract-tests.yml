@@ -20,7 +20,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           if [ -f server/requirements.txt ]; then pip install -r server/requirements.txt; fi
-          pip install pytest
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; else pip install pytest; fi
 
       - name: Run contract tests
         run: |

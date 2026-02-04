@@ -1,0 +1,5 @@
+pytest
+httpx
+pytest-asyncio
+
+# Add more dev dependencies like linters or test helpers as needed
