@@ -1,5 +1,5 @@
 # TavernTAIls Progress Tracker
-_Last updated: 2026-02-03 by GitHub Copilot_
+_Last updated: 2026-02-04 by GitHub Copilot_
 
 ## Where Things Stand
 - **Sprint Focus:** Finish Sprint 1 deliverables (chat upgrades, turn queue, agent stubs, documentation).
@@ -12,6 +12,9 @@ _Last updated: 2026-02-03 by GitHub Copilot_
 - The biggest remaining “make it real” items are character CRUD/imports and a clearer campaign→session→play flow (hidden-doc RBAC + access auditing is implemented).
 
 ## Completed Recently
+0. **Contract Tests CI Fix (Feb 4)**
+   - Added contract tests for scene/rolls/npc/suggestions/turns and fixed CI import pathing with `server/tests/contracts/conftest.py`.
+   - CI now installs `requirements-dev.txt` to ensure `pytest` and helpers are available.
 0. **Dev-Agent Instruction Sets (Feb 4)**
    - Added instruction sets and WO/loop requirements to `docs/dev-agents/*` (PM, Tech Lead, Backend, Frontend, Reviewer, QA).
    - Codified WO loop_count workflow and PR/QA handoff expectations; updated docs and PROGRESS logging guidance.
