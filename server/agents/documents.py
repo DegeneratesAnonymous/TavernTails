@@ -49,6 +49,16 @@ class DocumentDetail(DocumentResponse):
     content: str
 
 
+class AuditEntry(BaseModel):
+    ts: str
+    actor: str
+    action: str
+    ok: bool
+    doc_id: str | None = None
+    visibility: str | None = None
+    detail: str | None = None
+
+
 class PresignRequest(BaseModel):
     filename: str
     content_type: str | None = None
@@ -83,6 +93,25 @@ def _session_meta_path(session_id: str) -> Path:
 
 def _audit_path(session_id: str) -> Path:
     return session_module.BASE / session_id / "document_access.jsonl"
+
+
+def _load_audit_entries(session_id: str) -> list[AuditEntry]:
+    path = _audit_path(session_id)
+    if not path.exists():
+        return []
+    entries: list[AuditEntry] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        try:
+            entries.append(AuditEntry(**payload))
+        except Exception:
+            continue
+    return entries
 
 
 def _actor_identifier(current_user) -> str:
@@ -161,6 +190,17 @@ async def list_documents(session_id: str, current_user=Depends(get_current_user)
         docs = [doc for doc in docs if _normalize_visibility(getattr(doc, "visibility", "shared")) != "hidden"]
     _audit(session_id, identifier, action="documents.list", ok=True)
     return [DocumentResponse(**asdict(doc)) for doc in docs]
+
+
+@router.get("/{session_id}/audit", response_model=list[AuditEntry])
+async def list_document_audit(session_id: str, current_user=Depends(get_current_user)):
+    _, identifier, is_host = _ensure_session_member(session_id, current_user)
+    if not is_host:
+        _audit(session_id, identifier, action="documents.audit_denied", ok=False)
+        raise HTTPException(status_code=403, detail="Host role required")
+    entries = _load_audit_entries(session_id)
+    _audit(session_id, identifier, action="documents.audit", ok=True)
+    return entries
 
 
 @router.post("/{session_id}", response_model=DocumentResponse, status_code=201)

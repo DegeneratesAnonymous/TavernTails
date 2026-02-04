@@ -15,6 +15,16 @@ type DocumentMeta = {
 
 type DocumentDetail = DocumentMeta & { content: string }
 
+type AuditEntry = {
+  ts: string
+  actor: string
+  action: string
+  ok: boolean
+  doc_id?: string | null
+  visibility?: string | null
+  detail?: string | null
+}
+
 type UploadEntry = {
   id: string
   name: string
@@ -52,6 +62,10 @@ export default function DocumentsPanel({sessionId}: Props){
   const [refs, setRefs] = useState<Array<{id:string, meta:any}>>([])
   const [refLoading, setRefLoading] = useState(false)
   const [refError, setRefError] = useState<string | null>(null)
+  const [auditOpen, setAuditOpen] = useState(false)
+  const [auditLoading, setAuditLoading] = useState(false)
+  const [auditError, setAuditError] = useState<string | null>(null)
+  const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([])
   const uploadControllers = useRef<Record<string, () => void>>({})
 
   const hasSession = Boolean(sessionId)
@@ -139,6 +153,26 @@ export default function DocumentsPanel({sessionId}: Props){
     }
   },[])
 
+  const loadAudit = useCallback(async () => {
+    if(!sessionId || !isHost){
+      setAuditEntries([])
+      return
+    }
+    setAuditLoading(true)
+    setAuditError(null)
+    try{
+      const res = await apiFetch(`/documents/${sessionId}/audit`)
+      if(!res.ok) throw new Error('Failed to load access log')
+      const data = await res.json()
+      setAuditEntries(Array.isArray(data) ? data : [])
+    }catch(err:any){
+      setAuditError(err?.message || 'Access log unavailable')
+      setAuditEntries([])
+    }finally{
+      setAuditLoading(false)
+    }
+  },[sessionId, isHost])
+
   useEffect(()=>{
     if(!sessionId){
       setIsHost(false)
@@ -161,6 +195,7 @@ export default function DocumentsPanel({sessionId}: Props){
           setIsHost(host)
           if(!host){
             setVisibility(prev => prev === 'hidden' ? 'shared' : prev)
+            setAuditOpen(false)
           }
         }
       }catch(e){
@@ -176,6 +211,8 @@ export default function DocumentsPanel({sessionId}: Props){
       setContent('')
       setCategory('core')
       setVisibility('shared')
+      setAuditOpen(false)
+      setAuditEntries([])
     }
   },[sessionId])
 
@@ -473,6 +510,49 @@ export default function DocumentsPanel({sessionId}: Props){
 
       <div style={{ marginTop: 14 }}>
         <h4 style={{ margin: '8px 0' }}>Reference PDFs</h4>
+      {isHost && hasSession && (
+        <div style={{ marginTop: 18 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div className="docsPanel__label">Access Log</div>
+            <button
+              type="button"
+              className="docsPanel__tinyBtn"
+              onClick={async () => {
+                const next = !auditOpen
+                setAuditOpen(next)
+                if (next) await loadAudit()
+              }}
+            >
+              {auditOpen ? 'Hide' : 'View'}
+            </button>
+          </div>
+          {auditOpen && (
+            <div style={{ marginTop: 8, border: '1px solid rgba(255,255,255,0.06)', padding: 8, borderRadius: 6 }}>
+              {auditLoading && <div className="docsPanel__hint">Loading access log…</div>}
+              {auditError && <div className="docsPanel__error">{auditError}</div>}
+              {!auditLoading && !auditError && auditEntries.length === 0 && (
+                <div className="docsPanel__hint">No access events recorded yet.</div>
+              )}
+              {!auditLoading && auditEntries.length > 0 && (
+                <div style={{ maxHeight: 220, overflow: 'auto' }}>
+                  {auditEntries.map((entry, idx) => (
+                    <div key={`${entry.ts}-${idx}`} style={{ padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <div style={{ fontWeight: 600 }}>{entry.action} {entry.ok ? '✓' : '✕'}</div>
+                      <div className="muted" style={{ fontSize: 12 }}>
+                        {new Date(entry.ts).toLocaleString()} · {entry.actor}
+                        {entry.doc_id ? ` · doc ${entry.doc_id}` : ''}
+                        {entry.visibility ? ` · ${entry.visibility}` : ''}
+                        {entry.detail ? ` · ${entry.detail}` : ''}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
           <input type="file" accept="application/pdf" multiple onChange={handleReferenceUpload} />
           <div style={{ color: '#999', fontSize: 13 }}>{refLoading ? 'Refreshing…' : `${refs.length} references`}</div>

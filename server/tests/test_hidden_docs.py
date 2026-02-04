@@ -74,3 +74,15 @@ def test_hidden_docs_are_host_only(tmp_path):
     audit_path = sessions_module.BASE / sid / "document_access.jsonl"
     assert audit_path.exists()
     assert audit_path.read_text(encoding="utf-8").strip()
+
+    # host can access audit log
+    resp = client.get(f"/documents/{sid}/audit", headers=owner_headers)
+    assert resp.status_code == 200, resp.text
+    audit_entries = resp.json()
+    assert isinstance(audit_entries, list)
+    assert audit_entries
+    assert audit_entries[0].get("action")
+
+    # non-host cannot access audit log
+    resp = client.get(f"/documents/{sid}/audit", headers=other_headers)
+    assert resp.status_code == 403

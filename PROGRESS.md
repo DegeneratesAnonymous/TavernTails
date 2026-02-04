@@ -12,6 +12,13 @@ _Last updated: 2026-02-03 by GitHub Copilot_
 - The biggest remaining “make it real” items are character CRUD/imports and a clearer campaign→session→play flow (hidden-doc RBAC + access auditing is implemented).
 
 ## Completed Recently
+0. **Dev-Agent Instruction Sets (Feb 4)**
+   - Added instruction sets and WO/loop requirements to `docs/dev-agents/*` (PM, Tech Lead, Backend, Frontend, Reviewer, QA).
+   - Codified WO loop_count workflow and PR/QA handoff expectations; updated docs and PROGRESS logging guidance.
+0. **Document Access Audit Viewer (Feb 4)**
+   - Added a host-only `/documents/{session_id}/audit` endpoint plus a Documents panel view for the access log; tests updated.
+0. **Process Guardrails + Plan Cleanup (Feb 4)**
+   - Removed non-canonical `PROJECT_PLAN_BREAKDOWN.md` and codified chat-driven decisions + dev-agent workflow in `docs/DEV_AGENTS.md` and `docs/BEST_PRACTICES.md`.
 0. **Player‑Run Mode Toggle (Feb 3)**
    - Added a campaign settings toggle and skipped AI bootstrap when enabled.
 0. **Player‑Run Mode Backend Guard (Feb 3)**
@@ -97,6 +104,8 @@ _Last updated: 2026-02-03 by GitHub Copilot_
 3. **Scene/NPC automation follow‑through** – connect cues to real dice triggers + NPC tracking data persisted per session.
 4. **CI coverage expansion** – extend GitHub Actions to lint/type-check the React app and pin/test boto3+moto compatibility for presign coverage.
 5. **LLM Agent Hardening** – capture structured prompts/results in storage ahead of multiplayer testing.
+6. **WO Creation** – WO-007/008/009 created for Contract Tests Baseline, Campaign→Session UX polish, and RBAC audit (Feb 4).
+7. **Contracts baseline** – initial contract test added for `narrative` endpoint under `server/tests/contracts/`.
 
 ## S3 & Direct Upload Configuration
 1. **Prereqs:** Keep `boto3`/`moto` from `server/requirements.txt` installed and provision an S3 bucket with `Put/Get/Delete` rights.

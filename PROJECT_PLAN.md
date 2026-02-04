@@ -2,12 +2,12 @@
 
 **CANONICAL PLAN (Single Source of Truth).**
 This is the authoritative roadmap + architecture doc. Long-form references
-(`TavernTAIls_Enhanced_Project_Plan.md`, `PROJECT_PLAN_BREAKDOWN.md`) may lag and
-should not be used to make scope decisions.
+(`TavernTAIls_Enhanced_Project_Plan.md`) may lag and should not be used to make
+scope decisions.
 
 _Last updated: 2026-02-03 – Maintainers: TavernTAIls Core Team_
 
-Supersedes `PROJECT_PLAN.md` (v2025-11-30) and `PROJECT_PLAN_BREAKDOWN.md` (v2025-11-25).
+Supersedes `PROJECT_PLAN.md` (v2025-11-30).
 
 ## Document Map
 - **Sections 1–8**: Product vision, personas, UX flows, and system architecture.

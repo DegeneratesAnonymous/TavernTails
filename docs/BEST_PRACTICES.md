@@ -8,6 +8,12 @@ Canonical references:
 - `docs/CI_CHECKLIST.md` (quality gates)
 - `docs/DEV_AGENTS.md` + `docs/dev-agents/*.md` (workflow)
 
+## AI-Directed Workflow
+- Decisions and stylistic choices are made in chat; the codebase should reflect what was agreed there.
+- Use a Work Order for any change that touches behavior, data, or UI.
+- Follow the agent sequence: PM → Backend/Frontend → QA → Reviewer.
+- Update `PROGRESS.md` for any contract/UI change so context stays current.
+
 ## General Engineering
 - Prefer PR-sized changes with a clear scope and acceptance criteria.
 - Keep production behavior deterministic; avoid “works on my machine” state.

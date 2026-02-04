@@ -91,3 +91,5 @@ Use `docs/WORK_ORDER_TEMPLATE.md`.
 - Each Work Order must include: touched areas, acceptance criteria, test command(s), and rollback note.
 - Prefer small PRs.
 - Keep planning-doc drift under control by updating the canonical docs after changes land.
+ - **Chat is the decision surface**: scope, priorities, and stylistic choices must be confirmed in chat before implementation.
+ - **Follow the dev-agent cycle**: PM → Backend/Frontend → QA → Reviewer for any non-trivial change.
