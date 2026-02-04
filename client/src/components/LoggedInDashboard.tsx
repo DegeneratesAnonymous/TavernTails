@@ -39,6 +39,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
 
   const [characters, setCharacters] = useState<Array<any>>([])
   const [activeCharacterId, setActiveCharacterId] = useState<number | null>(null)
+  const [selectedCharacterId, setSelectedCharacterId] = useState<number | null>(null)
   const [newCharacterName, setNewCharacterName] = useState('')
   const [newCharacterLevel, setNewCharacterLevel] = useState<number>(1)
   const [newCharacterClass, setNewCharacterClass] = useState('')
@@ -48,6 +49,8 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [sheetModalCharacter, setSheetModalCharacter] = useState<any | null>(null)
   const [sheetModalLoading, setSheetModalLoading] = useState(false)
   const [sheetModalError, setSheetModalError] = useState<string | null>(null)
+  const [characterSettingsOpen, setCharacterSettingsOpen] = useState(false)
+  const [characterPanelMode, setCharacterPanelMode] = useState<'summary' | 'spells' | 'features' | 'journal' | 'sheet'>('summary')
 
   const [npcModalOpen, setNpcModalOpen] = useState(false)
   const [npcModalBusy, setNpcModalBusy] = useState(false)
@@ -139,6 +142,74 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     }).filter((c: any) => Boolean(c?.id))
   }, [characters])
 
+  const selectedCharacter = useMemo(() => {
+    if (selectedCharacterId === null) return null
+    return characters.find((c) => Number(c?.id) === Number(selectedCharacterId)) || null
+  }, [characters, selectedCharacterId])
+
+  useEffect(() => {
+    if (!selectedCharacter) {
+      setCharacterPanelMode('summary')
+    }
+  }, [selectedCharacter])
+
+  const selectedSheetSummary = useMemo(() => {
+    if (!selectedCharacter) return null
+    const sheet = (selectedCharacter?.sheet && typeof selectedCharacter.sheet === 'object') ? selectedCharacter.sheet : {}
+    const stats = (sheet?.stats && typeof sheet.stats === 'object') ? sheet.stats : {}
+    const hpCurrent = typeof sheet?.hp?.current === 'number' ? sheet.hp.current : (typeof sheet?.hp_current === 'number' ? sheet.hp_current : null)
+    const hpMax = typeof sheet?.hp?.max === 'number' ? sheet.hp.max : (typeof sheet?.hp_max === 'number' ? sheet.hp_max : null)
+    const hpTemp = typeof sheet?.hp?.temp === 'number' ? sheet.hp.temp : (typeof sheet?.hp_temp === 'number' ? sheet.hp_temp : null)
+    const ac = typeof sheet?.ac === 'number' ? sheet.ac : null
+
+    const toList = (value: any): string[] => {
+      if (!Array.isArray(value)) return []
+      return value.map((v) => String(v)).map((v) => v.trim()).filter(Boolean)
+    }
+
+    const uniq = (items: string[]) => Array.from(new Set(items))
+    const summarize = (items: string[], limit = 8) => ({
+      items: items.slice(0, limit),
+      more: Math.max(0, items.length - limit),
+    })
+
+    const features = uniq([
+      ...toList((sheet as any)?.classFeatures),
+      ...toList((sheet as any)?.racialFeatures),
+      ...toList((sheet as any)?.otherFeatures),
+      ...toList(sheet?.features),
+    ])
+    const spells = uniq(toList(sheet?.spells))
+    const inventory = uniq(toList(sheet?.inventory))
+    const skills = uniq(toList(sheet?.skills))
+
+    return {
+      stats,
+      hpCurrent,
+      hpMax,
+      hpTemp,
+      ac,
+      features: summarize(features, 10),
+      spells: summarize(spells, 10),
+      inventory: summarize(inventory, 8),
+      skills: summarize(skills, 8),
+    }
+  }, [selectedCharacter])
+
+  useEffect(() => {
+    if (!characters.length) {
+      setSelectedCharacterId(null)
+      return
+    }
+    const hasSelected = selectedCharacterId !== null && characters.some((c) => Number(c?.id) === Number(selectedCharacterId))
+    if (hasSelected) return
+    if (activeCharacterId !== null && characters.some((c) => Number(c?.id) === Number(activeCharacterId))) {
+      setSelectedCharacterId(activeCharacterId)
+      return
+    }
+    setSelectedCharacterId(Number(characters[0].id))
+  }, [characters, activeCharacterId, selectedCharacterId])
+
   const fetchCampaigns = useCallback(async () => {
     try{
       const res = await apiFetch('/campaigns')
@@ -195,6 +266,17 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       // ignore; association is best-effort
     }
   }, [characters, fetchCharacters])
+
+  const setSessionCharacter = useCallback(async (characterId: number | null) => {
+    if(!activeSession) return
+    try{
+      await apiFetch(`/sessions/${activeSession}/character`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ character_id: characterId })
+      })
+    }catch(e){/*ignore*/}
+  }, [activeSession])
 
   const assignCharacterToSession = useCallback(async (characterId: number | null) => {
     await setSessionCharacter(characterId)
@@ -379,17 +461,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     }
     loadSessionCharacterSelection()
   },[activeSession])
-
-  const setSessionCharacter = useCallback(async (characterId: number | null) => {
-    if(!activeSession) return
-    try{
-      await apiFetch(`/sessions/${activeSession}/character`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ character_id: characterId })
-      })
-    }catch(e){/*ignore*/}
-  }, [activeSession])
 
   const quickstartPlaytest = useCallback(async () => {
     if (quickstartBusy) return
@@ -823,119 +894,107 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                 }
               />
             ) : (
-              <div className="card" style={{ overflow: 'hidden' }}>
-                <div className="row-wrap" style={{ padding: 12, justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                  <div className="muted" style={{ fontSize: 13 }}>
-                    {activeSession ? `Active session: ${activeSessionLabel}` : 'No active session selected (Gameplay)'}
-                  </div>
-                  <div className="muted" style={{ fontSize: 13 }}>
-                    {activeCharacterLabel}
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <button
-                      className="btn btn-quiet btn-sm"
-                      type="button"
-                      disabled={!activeSession || activeCharacterId === null}
-                      onClick={async () => {
-                        setActiveCharacterId(null)
-                        await assignCharacterToSession(null)
-                      }}
-                      title={!activeSession ? 'Start or select a session first' : undefined}
-                    >
-                      Clear session character
-                    </button>
+              <div className="row-wrap" style={{ gap: 16, alignItems: 'stretch' }}>
+                <div style={{ minWidth: 260, flex: '1 1 260px' }}>
+                  <div className="card card-pad stack" style={{ gap: 10 }}>
+                    <div className="muted">Characters</div>
+                    <div className="stack" style={{ gap: 6 }}>
+                      {characters.map((c) => {
+                        const sheet = (c?.sheet && typeof c.sheet === 'object') ? c.sheet : {}
+                        const importMeta = (sheet?.import && typeof sheet.import === 'object') ? sheet.import : null
+                        const source = importMeta?.source ? String(importMeta.source) : ''
+                        const isPicked = selectedCharacterId !== null && Number(c.id) === Number(selectedCharacterId)
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            className="btn btn-quiet"
+                            style={{
+                              textAlign: 'left',
+                              justifyContent: 'space-between',
+                              background: isPicked ? 'rgba(255,255,255,0.06)' : 'transparent',
+                            }}
+                            onClick={() => setSelectedCharacterId(Number(c.id))}
+                          >
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {c.name}{c.class_name ? ` (${c.class_name})` : ''} — L{c.level}
+                              </div>
+                              <div className="muted" style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {source ? `Source: ${source}` : 'Source: manual'}
+                                {importMeta?.ddb_url ? ' • DDB link stored' : ''}
+                              </div>
+                            </div>
+                            {isPicked ? <span className="muted" style={{ fontSize: 12 }}>Selected</span> : null}
+                          </button>
+                        )
+                      })}
+                    </div>
                   </div>
                 </div>
 
-                <div className="stack" style={{ gap: 0 }}>
-                  {characters.map((c) => {
-                    const sheet = (c?.sheet && typeof c.sheet === 'object') ? c.sheet : {}
-                    const importMeta = (sheet?.import && typeof sheet.import === 'object') ? sheet.import : null
-                    const source = importMeta?.source ? String(importMeta.source) : ''
-                    const isSelected = activeCharacterId !== null && Number(c.id) === Number(activeCharacterId)
-
-                    return (
-                      <div
-                        key={c.id}
-                        className="row-wrap"
-                        style={{
-                          padding: 12,
-                          justifyContent: 'space-between',
-                          borderTop: '1px solid rgba(255,255,255,0.06)',
-                          background: isSelected ? 'rgba(255,255,255,0.04)' : 'transparent',
-                        }}
-                      >
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 750, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {c.name}{c.class_name ? ` (${c.class_name})` : ''} — L{c.level}
-                            {isSelected ? <span className="muted"> {' '}• Selected</span> : null}
-                          </div>
-                          <div className="muted" style={{ fontSize: 12 }}>
-                            {source ? `Source: ${source}` : 'Source: manual'}
-                            {importMeta?.ddb_url ? ' • DDB link stored' : ''}
-                          </div>
+                <div style={{ minWidth: 320, flex: '2 1 520px' }}>
+                  {!selectedCharacter ? (
+                    <div className="inline-alert" style={{ marginTop: 12 }}>
+                      Select a character to view details and actions.
+                    </div>
+                  ) : (
+                    <div className="card card-pad" style={{ marginTop: 12 }}>
+                      <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                        <div style={{ fontWeight: 700 }}>
+                          {selectedCharacter.name}{selectedCharacter.class_name ? ` (${selectedCharacter.class_name})` : ''} — L{selectedCharacter.level}
                         </div>
-
-                        <div className="row-wrap" style={{ justifyContent: 'flex-end' }}>
+                        <div className="row-wrap" style={{ gap: 8 }}>
                           <button
-                            className="btn btn-quiet"
+                            className={`btn btn-quiet ${characterPanelMode === 'summary' ? 'active' : ''}`}
                             type="button"
-                            onClick={() => openNpcModalForCharacter(c)}
+                            onClick={() => setCharacterPanelMode('summary')}
                           >
-                            Associated NPCs
+                            Summary
                           </button>
-
+                          <button
+                            className={`btn btn-quiet ${characterPanelMode === 'journal' ? 'active' : ''}`}
+                            type="button"
+                            onClick={() => setCharacterPanelMode('journal')}
+                          >
+                            Journal
+                          </button>
+                          <button
+                            className={`btn btn-quiet ${characterPanelMode === 'spells' ? 'active' : ''}`}
+                            type="button"
+                            onClick={() => setCharacterPanelMode('spells')}
+                          >
+                            Spells
+                          </button>
+                          <button
+                            className={`btn btn-quiet ${characterPanelMode === 'features' ? 'active' : ''}`}
+                            type="button"
+                            onClick={() => setCharacterPanelMode('features')}
+                          >
+                            Features
+                          </button>
+                          <button
+                            className={`btn btn-quiet ${characterPanelMode === 'sheet' ? 'active' : ''}`}
+                            type="button"
+                            onClick={() => setCharacterPanelMode('sheet')}
+                          >
+                            Sheet
+                          </button>
                           <button
                             className="btn btn-secondary"
                             type="button"
-                            disabled={sheetModalLoading}
-                            onClick={async () => {
-                              setSheetModalError(null)
-                              setSheetModalLoading(true)
-                              setSheetModalOpen(true)
-                              setSheetModalCharacter(null)
-                              try {
-                                const res = await apiFetch(`/characters/${c.id}`)
-                                if (!res.ok) {
-                                  const err = await res.json().catch(() => ({} as any))
-                                  throw new Error(err?.detail || 'Failed to load character')
-                                }
-                                const data = await res.json()
-                                setSheetModalCharacter(data?.character || null)
-                              } catch (e: any) {
-                                setSheetModalError(e?.message || 'Failed to load character')
-                                setSheetModalOpen(false)
-                              } finally {
-                                setSheetModalLoading(false)
-                              }
-                            }}
+                            onClick={() => setCharacterSettingsOpen(true)}
                           >
-                            View
+                            Settings
                           </button>
-
-                          <button
-                            className="btn"
-                            type="button"
-                            onClick={async () => {
-                              setActiveCharacterId(c.id)
-                              await assignCharacterToSession(c.id)
-                              setView('gameplay')
-                            }}
-                            disabled={!activeSession || isSelected}
-                            aria-disabled={!activeSession || isSelected}
-                            style={!activeSession || isSelected ? { opacity: 0.55 } : undefined}
-                          >
-                            {isSelected ? 'Selected' : 'Select for Session'}
-                          </button>
-
                           <button
                             className="btn btn-quiet"
                             type="button"
                             onClick={async () => {
                               if (!window.confirm('Delete this character?')) return
-                              const res = await apiFetch(`/characters/${c.id}`, { method: 'DELETE' })
+                              const res = await apiFetch(`/characters/${selectedCharacter.id}`, { method: 'DELETE' })
                               if (res.ok) {
-                                if (activeCharacterId !== null && Number(c.id) === Number(activeCharacterId)) {
+                                if (activeCharacterId !== null && Number(selectedCharacter.id) === Number(activeCharacterId)) {
                                   setActiveCharacterId(null)
                                   await assignCharacterToSession(null)
                                 }
@@ -947,8 +1006,137 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                           </button>
                         </div>
                       </div>
-                    )
-                  })}
+                      {selectedSheetSummary && characterPanelMode === 'summary' ? (
+                        <div className="stack" style={{ gap: 12, marginTop: 12 }}>
+                          <div className="row-wrap" style={{ gap: 16 }}>
+                            <div className="card card-pad" style={{ flex: '1 1 220px' }}>
+                              <div className="muted" style={{ marginBottom: 6 }}>Vitals</div>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
+                                <div className="muted">AC</div>
+                                <div>{selectedSheetSummary.ac ?? '—'}</div>
+                                <div className="muted">HP</div>
+                                <div>{selectedSheetSummary.hpCurrent ?? '—'} / {selectedSheetSummary.hpMax ?? '—'}</div>
+                                <div className="muted">Temp HP</div>
+                                <div>{selectedSheetSummary.hpTemp ?? '—'}</div>
+                              </div>
+                            </div>
+
+                            <div className="card card-pad" style={{ flex: '1 1 220px' }}>
+                              <div className="muted" style={{ marginBottom: 6 }}>Stats</div>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6 }}>
+                                {(['str','dex','con','int','wis','cha'] as const).map((k) => (
+                                  <div key={k}>
+                                    <div className="muted">{k.toUpperCase()}</div>
+                                    <div>{(selectedSheetSummary.stats as any)?.[k] ?? '—'}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+
+                          {(selectedSheetSummary.inventory.items.length || selectedSheetSummary.skills.items.length) ? (
+                            <div className="row-wrap" style={{ gap: 16 }}>
+                              <div className="card card-pad" style={{ flex: '1 1 220px' }}>
+                                <div className="muted" style={{ marginBottom: 6 }}>Inventory</div>
+                                {selectedSheetSummary.inventory.items.length ? (
+                                  <ul style={{ margin: 0, paddingLeft: 18 }}>
+                                    {selectedSheetSummary.inventory.items.map((i) => <li key={i}>{i}</li>)}
+                                  </ul>
+                                ) : (
+                                  <div className="muted">No inventory listed.</div>
+                                )}
+                                {selectedSheetSummary.inventory.more ? (
+                                  <div className="muted" style={{ marginTop: 6 }}>+ {selectedSheetSummary.inventory.more} more</div>
+                                ) : null}
+                              </div>
+                              <div className="card card-pad" style={{ flex: '1 1 220px' }}>
+                                <div className="muted" style={{ marginBottom: 6 }}>Skills</div>
+                                {selectedSheetSummary.skills.items.length ? (
+                                  <ul style={{ margin: 0, paddingLeft: 18 }}>
+                                    {selectedSheetSummary.skills.items.map((s) => <li key={s}>{s}</li>)}
+                                  </ul>
+                                ) : (
+                                  <div className="muted">No skills listed.</div>
+                                )}
+                                {selectedSheetSummary.skills.more ? (
+                                  <div className="muted" style={{ marginTop: 6 }}>+ {selectedSheetSummary.skills.more} more</div>
+                                ) : null}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      {characterPanelMode === 'journal' ? (
+                        <div className="card card-pad" style={{ marginTop: 12 }}>
+                          <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div className="muted">Journal</div>
+                            <button className="btn btn-quiet" type="button" onClick={() => openNpcModalForCharacter(selectedCharacter)}>
+                              Open Journal
+                            </button>
+                          </div>
+                          <div className="muted" style={{ fontSize: 13, marginTop: 8 }}>
+                            Review associated NPCs and campaign notes.
+                          </div>
+                        </div>
+                      ) : null}
+                      {characterPanelMode === 'spells' ? (
+                        <div className="card card-pad" style={{ marginTop: 12 }}>
+                          <div className="muted" style={{ marginBottom: 6 }}>Spells</div>
+                          {selectedSheetSummary ? (
+                            <>
+                              {selectedSheetSummary.spells.items.length ? (
+                                <ul style={{ margin: 0, paddingLeft: 18 }}>
+                                  {selectedSheetSummary.spells.items.map((s) => <li key={s}>{s}</li>)}
+                                </ul>
+                              ) : (
+                                <div className="muted">No spells parsed.</div>
+                              )}
+                              {selectedSheetSummary.spells.more ? (
+                                <div className="muted" style={{ marginTop: 6 }}>+ {selectedSheetSummary.spells.more} more</div>
+                              ) : null}
+                            </>
+                          ) : (
+                            <div className="muted">No spells parsed.</div>
+                          )}
+                        </div>
+                      ) : null}
+                      {characterPanelMode === 'features' ? (
+                        <div className="card card-pad" style={{ marginTop: 12 }}>
+                          <div className="muted" style={{ marginBottom: 6 }}>Features</div>
+                          {selectedSheetSummary ? (
+                            <>
+                              {selectedSheetSummary.features.items.length ? (
+                                <ul style={{ margin: 0, paddingLeft: 18 }}>
+                                  {selectedSheetSummary.features.items.map((f) => <li key={f}>{f}</li>)}
+                                </ul>
+                              ) : (
+                                <div className="muted">No features parsed.</div>
+                              )}
+                              {selectedSheetSummary.features.more ? (
+                                <div className="muted" style={{ marginTop: 6 }}>+ {selectedSheetSummary.features.more} more</div>
+                              ) : null}
+                            </>
+                          ) : (
+                            <div className="muted">No features parsed.</div>
+                          )}
+                        </div>
+                      ) : null}
+                      {characterPanelMode === 'sheet' ? (
+                        <div style={{ marginTop: 12 }}>
+                          <CharacterSheetModal
+                            embedded
+                            open
+                            character={selectedCharacter}
+                            loading={false}
+                            onClose={() => undefined}
+                            onSaved={async () => {
+                              await fetchCharacters()
+                            }}
+                          />
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -971,7 +1159,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
 
         <Modal
           open={npcModalOpen}
-          title={npcModalCharacter?.name ? `Associated NPCs — ${npcModalCharacter.name}` : 'Associated NPCs'}
+          title={npcModalCharacter?.name ? `Journal — ${npcModalCharacter.name}` : 'Journal'}
           onClose={() => {
             setNpcModalOpen(false)
             setNpcModalItems([])
@@ -1059,6 +1247,55 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                 ))}
               </div>
             ) : null}
+          </div>
+        </Modal>
+
+        <Modal
+          open={characterSettingsOpen}
+          title="Character settings"
+          onClose={() => setCharacterSettingsOpen(false)}
+        >
+          <div className="stack" style={{ gap: 12 }}>
+            {!selectedCharacter ? (
+              <div className="muted">Select a character first.</div>
+            ) : (
+              <>
+                <div className="muted">
+                  {selectedCharacter.name}{selectedCharacter.class_name ? ` (${selectedCharacter.class_name})` : ''} — L{selectedCharacter.level}
+                </div>
+                <div className="row-wrap" style={{ gap: 8 }}>
+                  {(() => {
+                    const isSelected = activeCharacterId !== null && Number(selectedCharacter.id) === Number(activeCharacterId)
+                    return (
+                      <button
+                        className="btn"
+                        type="button"
+                        disabled={!activeSession || isSelected}
+                        onClick={async () => {
+                          setActiveCharacterId(selectedCharacter.id)
+                          await assignCharacterToSession(selectedCharacter.id)
+                          setCharacterSettingsOpen(false)
+                        }}
+                      >
+                        {isSelected ? 'Assigned to session' : 'Assign to session'}
+                      </button>
+                    )
+                  })()}
+                  <button
+                    className="btn btn-quiet"
+                    type="button"
+                    disabled={!activeSession || activeCharacterId === null}
+                    onClick={async () => {
+                      setActiveCharacterId(null)
+                      await assignCharacterToSession(null)
+                      setCharacterSettingsOpen(false)
+                    }}
+                  >
+                    Clear session character
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </Modal>
 

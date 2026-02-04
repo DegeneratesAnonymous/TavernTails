@@ -19,6 +19,7 @@ type Props = {
   loading?: boolean
   onClose: () => void
   onSaved?: () => void | Promise<void>
+  embedded?: boolean
 }
 
 function asString(v: any): string {
@@ -501,7 +502,7 @@ function InventoryList({ items }: { items: InventoryItem[] }) {
   )
 }
 
-export default function CharacterSheetModal({ open, character, loading = false, onClose, onSaved }: Props) {
+export default function CharacterSheetModal({ open, character, loading = false, onClose, onSaved, embedded = false }: Props) {
   const [showRaw, setShowRaw] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editSheet, setEditSheet] = useState<any>(null)
@@ -693,8 +694,8 @@ export default function CharacterSheetModal({ open, character, loading = false, 
     setEditClassName(character?.class_name || '')
   }
 
-  return (
-    <Modal open={open} title={title} onClose={onClose}>
+  const content = (
+    <>
       {loading ? (
         <div className="inline-alert">Loading…</div>
       ) : !character ? (
@@ -996,6 +997,21 @@ export default function CharacterSheetModal({ open, character, loading = false, 
           ) : null}
         </div>
       )}
+    </>
+  )
+
+  if (embedded) {
+    return (
+      <div className="card card-pad">
+        <div style={{ fontWeight: 700, marginBottom: 8 }}>{title}</div>
+        {content}
+      </div>
+    )
+  }
+
+  return (
+    <Modal open={open} title={title} onClose={onClose}>
+      {content}
     </Modal>
   )
 }

@@ -920,21 +920,56 @@ def _build_character_import_sheet_from_pdf(
         if s:
             spells.append(s)
 
+    def _is_noise_spell_line(text: str) -> bool:
+        t = (text or '').strip()
+        if not t:
+            return True
+        if len(t) < 3:
+            return True
+        # headers / separators
+        if re.match(r"^[=\-\s]+$", t):
+            return True
+        if re.search(r"\b(cantrips?|spellcasting|spells?\s*known)\b", t, re.I):
+            return True
+        # parenthetical-only notes
+        if re.match(r"^\(.*\)$", t):
+            return True
+        # ability or class lines
+        if re.match(r"^(str|dex|con|int|wis|cha)\s*\d+$", t, re.I):
+            return True
+        if re.match(r"^[A-Za-z]+\s*/\s*[A-Za-z]+$", t):
+            return True
+        # duration / time / range / components
+        if re.match(r"^d\s*:\s*\d+", t, re.I):
+            return True
+        if re.match(r"^(instantaneous|concentration|ritual)$", t, re.I):
+            return True
+        if re.match(r"^\d+\s*(rounds?|minutes?|hours?)$", t, re.I):
+            return True
+        if re.match(r"^\d+\s*(ft|feet|mile|m)\.?", t, re.I):
+            return True
+        if re.match(r"^(touch|self|sight|special)$", t, re.I):
+            return True
+        if re.match(r"^(action|bonus action|reaction)$", t, re.I):
+            return True
+        if re.match(r"^(v|s|m)(\s*/\s*(v|s|m))*$", t, re.I):
+            return True
+        # book refs like "PHB 275" or "EE 164"
+        if re.match(r"^[A-Z]{2,5}\s*\d{2,4}$", t):
+            return True
+        # drop obvious numeric-only or symbol-only
+        if re.match(r"^[\W_0-9]+$", t):
+            return True
+        return False
+
     cleaned: list[str] = []
     seen_spells: set[str] = set()
     for s in spells:
         s2 = (s or '').strip()
         if not s2:
             continue
-        # skip short/metadata tokens
-        if len(s2) < 3:
-            continue
-        if re.match(r"^[\W_0-9]+$", s2):
-            continue
-        if re.match(r"^(PHB|TCoE|VGtM|BR)$", s2):
-            continue
-        # drop obvious durations/ranges like '1 minute', '30 ft', 'At Will'
-        if re.match(r"^(at will|\d+\s*(minute|minutes|ft|feet|hour|rounds?)|\d+[A-Za-z]?)$", s2.lower()):
+        # skip noise/metadata tokens
+        if _is_noise_spell_line(s2):
             continue
         key = s2.lower()
         if key in seen_spells:
