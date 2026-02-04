@@ -61,26 +61,35 @@ jobs:
 
       - name: Install frontend deps
         working-directory: client
+        env:
+          npm_config_script_shell: /bin/bash
         run: npm ci
 
       - name: Lint with ESLint
         working-directory: client
+        env:
+          npm_config_script_shell: /bin/bash
         run: npm run lint --if-present || echo "Lint script not found, skipping"
 
       - name: Type check with TypeScript
         if: matrix.node-version == '20'
         working-directory: client
+        env:
+          npm_config_script_shell: /bin/bash
         run: npx tsc --noEmit
 
       - name: Run frontend tests
         working-directory: client
         env:
           CI: 'true'
+          npm_config_script_shell: /bin/bash
         run: npm test -- --watchAll=false
 
       - name: Build frontend
         if: matrix.node-version == '20'
         working-directory: client
+        env:
+          npm_config_script_shell: /bin/bash
         run: npm run build
 
       - name: Archive production build
