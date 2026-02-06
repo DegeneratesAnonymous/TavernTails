@@ -20,8 +20,8 @@
   gap: 12px;
   padding: 10px;
   border-radius: 12px;
-  background: radial-gradient(circle at 15% 10%, rgba(143,224,255,0.10), rgba(0,0,0,0.35));
-  border: 1px solid rgba(255,255,255,0.08);
+  background: radial-gradient(circle at 15% 10%, rgba(94,158,182,0.18), rgba(43,51,54,0.45));
+  border: 1px solid var(--tt-border);
   margin-bottom: 10px;
 }
 
@@ -29,8 +29,8 @@
   width: 56px;
   height: 56px;
   border-radius: 999px;
-  background: radial-gradient(circle at 30% 30%, rgba(143,224,255,0.25), rgba(0,0,0,0.35));
-  border: 1px solid rgba(255,255,255,0.10);
+  background: radial-gradient(circle at 30% 30%, rgba(173,136,95,0.25), rgba(43,51,54,0.45));
+  border: 1px solid var(--tt-border);
   display: grid;
   place-items: center;
 }
@@ -70,8 +70,8 @@
 .character-vital{
   padding: 8px 10px;
   border-radius: 12px;
-  background: rgba(0,0,0,0.25);
-  border: 1px solid rgba(255,255,255,0.06);
+  background: rgba(71,66,61,0.45);
+  border: 1px solid var(--tt-border);
 }
 
 .character-vital-label{
@@ -151,9 +151,9 @@
 }
 
 .character-icon-card--active .character-icon-badge{
-  background: rgba(143, 224, 255, 0.14);
-  border-color: rgba(143, 224, 255, 0.22);
-  color: rgba(143, 224, 255, 0.95);
+  background: rgba(94, 158, 182, 0.24);
+  border-color: rgba(94, 158, 182, 0.32);
+  color: rgba(255, 255, 255, 0.95);
 }
 
 /* Only expand to a 6-wide ability row when there's actually room */
@@ -190,8 +190,8 @@
 .character-ability-tile{
   padding: 10px;
   border-radius: 12px;
-  background: rgba(0,0,0,0.32);
-  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(71,66,61,0.45);
+  border: 1px solid var(--tt-border);
   display: grid;
   grid-template-columns: 1fr auto;
   grid-template-rows: auto auto;
@@ -225,8 +225,8 @@
 
 .character-sheet-card{
   border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.06);
-  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--tt-border);
+  background: rgba(94,158,182,0.18);
   overflow: hidden;
 }
 
@@ -236,8 +236,8 @@
   justify-content: space-between;
   gap: 10px;
   padding: 10px 12px;
-  background: rgba(0,0,0,0.25);
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  background: rgba(43,51,54,0.45);
+  border-bottom: 1px solid var(--tt-border);
 }
 
 .character-sheet-card-title{

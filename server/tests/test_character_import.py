@@ -224,6 +224,8 @@ def test_import_character_from_pdf_extracts_widget_values():
     add_widget("Current Hit Points", "21", y=575.0)
     add_widget("Hit Point Maximum", "28", y=555.0)
     add_widget("Features & Traits", "Darkvision\nSecond Wind", y=535.0)
+    add_widget("spellName0", "Magic Missile", y=515.0)
+    add_widget("spellComponents0", "V,S", y=495.0)
 
     bio = io.BytesIO()
     writer.write(bio)
@@ -245,6 +247,8 @@ def test_import_character_from_pdf_extracts_widget_values():
     assert data["character"]["sheet"]["hp"]["current"] == 21
     assert data["character"]["sheet"]["hp"]["max"] == 28
     assert "Darkvision" in data["character"]["sheet"]["features"]
+    assert "Magic Missile" in data["character"]["sheet"]["spells"]
+    assert "V,S" not in data["character"]["sheet"]["spells"]
 
 
 def test_import_character_from_nested_classes_shape():

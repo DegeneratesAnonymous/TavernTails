@@ -1,10 +1,10 @@
 /* Shared UI primitives + small layout utilities */
 
 :root {
-  --tt-border: rgba(255,255,255,0.08);
-  --tt-border-strong: rgba(255,255,255,0.14);
-  --tt-surface-2: rgba(255,255,255,0.04);
-  --tt-focus: rgba(97, 218, 251, 0.35);
+  --tt-border: rgba(255,255,255,0.10);
+  --tt-border-strong: rgba(255,255,255,0.18);
+  --tt-surface-2: #7A6C5C;
+  --tt-focus: rgba(173, 136, 95, 0.25);
 }
 
 /* Layout utilities */
@@ -84,7 +84,7 @@
 
 .empty-state {
   border: 1px dashed var(--tt-border-strong);
-  background: rgba(255,255,255,0.03);
+  background: rgba(95, 128, 139, 0.35);
   border-radius: var(--radius);
   padding: 14px 16px;
 }
@@ -114,7 +114,7 @@
   border: 1px solid var(--tt-border);
   border-radius: 12px;
   overflow: hidden;
-  background: rgba(255,255,255,0.03);
+  background: rgba(95, 128, 139, 0.25);
 }
 
 .segmented > button {
@@ -134,7 +134,8 @@
 }
 
 .segmented > button[aria-pressed='true'] {
-  background: rgba(255,255,255,0.12);
+  background: rgba(173, 136, 95, 0.22);
+  border-color: rgba(173, 136, 95, 0.35);
 }
 
 /* Form primitives */
@@ -201,17 +202,17 @@
 }
 
 .btn-secondary {
-  background: transparent;
-  border-color: var(--tt-border);
+  background: var(--accent-secondary);
+  border-color: transparent;
 }
 
 .btn-secondary:hover {
-  background: var(--tt-surface-2);
+  background: rgba(173, 136, 95, 0.9);
 }
 
 .btn-quiet {
-  background: rgba(255,255,255,0.06);
-  border-color: rgba(255,255,255,0.10);
+  background: rgba(95, 128, 139, 0.35);
+  border-color: rgba(255,255,255,0.12);
 }
 
 .btn-sm {

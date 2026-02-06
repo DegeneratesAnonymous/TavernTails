@@ -361,6 +361,50 @@ def _extract_features_from_pdf_widgets(fields: Dict[str, str]) -> list[str]:
     def norm(s: str) -> str:
         return re.sub(r"[^a-z0-9]", "", (s or "").lower())
 
+    def _clean_feature_title(raw: str) -> Optional[str]:
+        s = (raw or "").strip()
+        if not s:
+            return None
+
+        # Drop boilerplate headings and empty placeholders.
+        if re.search(r"={2,}", s):
+            return None
+        if s.upper() == s and len(s) <= 80 and any(k in s.upper() for k in ("SPECIES", "TRAITS", "FEATURES", "FEATS", "CLASS")):
+            return None
+        if s.lower() in {"features", "traits", "features & traits", "features and traits"}:
+            return None
+
+        # Strip common bullets/indentation.
+        s = re.sub(r"^[\s\*\-\u2022•|]+", "", s).strip()
+        if not s:
+            return None
+
+        # Prefer the leading title before source/description separators.
+        parts = re.split(r"\s*(?:\uFFFD|—|–|\|)\s*|\s{2,}", s, maxsplit=1)
+        if parts:
+            left = parts[0].strip()
+            right = parts[1].strip() if len(parts) > 1 else ""
+            if right and len(left) <= 80:
+                s = left
+
+        # Remove trailing source references like "PHB 65" or "TCoE 35".
+        s = re.sub(r"\s+[A-Z]{2,5}\s*\d{1,4}$", "", s).strip()
+
+        # Trim action/time suffixes (e.g., ": 1 Action", ": Bonus Action").
+        s = re.sub(
+            r":\s*(\d+\s*)?(bonus\s+action|action|reaction|short rest|long rest|minute|minutes|hour|hours)\b.*$",
+            "",
+            s,
+            flags=re.I,
+        ).strip()
+
+        # Final sanity checks.
+        if len(s) < 2:
+            return None
+        if len(s) > 200:
+            s = s[:200].rstrip() + "…"
+        return s
+
     # Prefer the canonical DDB field (varies slightly by export).
     preferred_keys = {"featurestraits", "featuresandtraits"}
     preferred_blobs: list[str] = []
@@ -390,31 +434,47 @@ def _extract_features_from_pdf_widgets(fields: Dict[str, str]) -> list[str]:
     hits = sorted(hits, key=lambda s: len(s), reverse=True)
     for blob in hits[:5]:
         for raw_line in re.split(r"\r?\n", blob):
-            # split on common inline separators to avoid long concatenated lines
-            parts = re.split(r"\s*[|•\u2022—–\-]\s*", raw_line)
-            for part in parts:
-                s = part.strip(" \t\r\n•-*\u2022|–—")
-                if not s:
+            line = (raw_line or "").strip()
+            if not line:
+                continue
+
+            # Only keep explicit bullet/option lines to avoid descriptions.
+            if not re.match(r"^[\s\*\-\u2022•|]", line):
+                continue
+
+            candidate = _clean_feature_title(line)
+            if not candidate:
+                continue
+            key = candidate.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            features.append(candidate)
+            if len(features) >= 120:
+                break
+        if len(features) >= 120:
+            break
+
+    if not features:
+        for blob in hits[:5]:
+            for raw_line in re.split(r"\r?\n", blob):
+                line = (raw_line or "").strip()
+                if not line:
                     continue
-                # Skip obvious section headers like "=== FOO SPECIES TRAITS ===" or all-caps headings
-                if re.search(r"={2,}", s):
+                if len(line) > 120:
                     continue
-                if s.upper() == s and len(s) <= 80 and any(k in s.upper() for k in ("SPECIES", "TRAITS", "FEATURES", "FEATS", "CLASS")):
+                candidate = _clean_feature_title(line)
+                if not candidate:
                     continue
-                if s.lower() in {"features", "traits", "features & traits", "features and traits"}:
-                    continue
-                # Keep it tight for the UI preview.
-                if len(s) > 200:
-                    s = s[:200].rstrip() + "…"
-                key = s.lower()
+                key = candidate.lower()
                 if key in seen:
                     continue
                 seen.add(key)
-                features.append(s)
-                if len(features) >= 80:
+                features.append(candidate)
+                if len(features) >= 120:
                     break
-        if len(features) >= 80:
-            break
+            if len(features) >= 120:
+                break
 
     return features
 
@@ -900,25 +960,56 @@ def _build_character_import_sheet_from_pdf(
     ex_n = _parse_int(ex) if ex is not None else None
     raw_struct["rest"] = {"hitDiceUsed": hd_used_n, "hitDiceTotal": hd_total_n, "inspiration": insp_b, "exhaustion": ex_n}
 
-    # Spells: aggregate any widget values containing 'spell' or 'cantrip', plus text-extracted spells
+    # Spells: prefer spellName widgets; otherwise fall back to heuristic extraction.
     spells: list[str] = []
-    for k, v in widget_values.items():
-        if not v:
-            continue
-        if re.search(r"spell|cantrip", k, re.I):
-            if isinstance(v, str) and ("\n" in v or "," in v):
-                parts = re.split(r"\r?\n|,", v)
-                for p in parts:
-                    s = p.strip()
-                    if s:
-                        spells.append(s)
-            else:
-                spells.append(str(v).strip())
+    spell_entries: list[dict[str, Any]] = []
+    spell_name_keys = [k for k in widget_values.keys() if re.match(r"^spellname\d+$", k, re.I)]
 
-    # merge with text-detected spells and clean noise tokens
-    for s in spells_from_text:
-        if s:
-            spells.append(s)
+    def _spell_key_order(key: str) -> int:
+        m = re.search(r"(\d+)$", key)
+        return int(m.group(1)) if m else 0
+
+    if spell_name_keys:
+        # Build structured entries from indexed fields to support a table UI.
+        indices = sorted({_spell_key_order(k) for k in spell_name_keys})
+        for idx in indices:
+            name = _as_str(widget_values.get(f"spellName{idx}"))
+            if not name:
+                continue
+            entry: dict[str, Any] = {
+                "name": name,
+                "source": _as_str(widget_values.get(f"spellSource{idx}")),
+                "save_hit": _as_str(widget_values.get(f"spellSaveHit{idx}")),
+                "time": _as_str(widget_values.get(f"spellCastingTime{idx}")),
+                "range": _as_str(widget_values.get(f"spellRange{idx}")),
+                "components": _as_str(widget_values.get(f"spellComponents{idx}")),
+                "duration": _as_str(widget_values.get(f"spellDuration{idx}")),
+                "page": _as_str(widget_values.get(f"spellPage{idx}")),
+                "notes": _as_str(widget_values.get(f"spellNotes{idx}")),
+                "prepared": _as_str(widget_values.get(f"spellPrepared{idx}")),
+                "header": _as_str(widget_values.get(f"spellHeader{idx}")),
+                "slot_header": _as_str(widget_values.get(f"spellSlotHeader{idx}")),
+            }
+            spell_entries.append(entry)
+            spells.append(name)
+    else:
+        for k, v in widget_values.items():
+            if not v:
+                continue
+            if re.search(r"spell|cantrip", k, re.I):
+                if isinstance(v, str) and ("\n" in v or "," in v):
+                    parts = re.split(r"\r?\n|,", v)
+                    for p in parts:
+                        s = p.strip()
+                        if s:
+                            spells.append(s)
+                else:
+                    spells.append(str(v).strip())
+
+        # merge with text-detected spells only if widgets did not provide names
+        for s in spells_from_text:
+            if s:
+                spells.append(s)
 
     def _is_noise_spell_line(text: str) -> bool:
         t = (text or '').strip()
@@ -998,6 +1089,8 @@ def _build_character_import_sheet_from_pdf(
         "racialFeatures": racial_features,
         "otherFeatures": other_features,
         "spells": raw_struct.get("spells", []),
+        "spellbook": spell_entries,
+        "speed": raw_struct.get("speed"),
         "import": {
             "source": source or "pdf",
             "imported_at": _now_iso(),

@@ -51,6 +51,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [sheetModalError, setSheetModalError] = useState<string | null>(null)
   const [characterSettingsOpen, setCharacterSettingsOpen] = useState(false)
   const [characterPanelMode, setCharacterPanelMode] = useState<'summary' | 'spells' | 'features' | 'journal' | 'sheet'>('summary')
+  const [selectedSpellRow, setSelectedSpellRow] = useState<any | null>(null)
 
   const [npcModalOpen, setNpcModalOpen] = useState(false)
   const [npcModalBusy, setNpcModalBusy] = useState(false)
@@ -142,6 +143,11 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     }).filter((c: any) => Boolean(c?.id))
   }, [characters])
 
+  const formatModifier = (value: number | null | undefined) => {
+    if (value === null || value === undefined || Number.isNaN(value)) return '—'
+    return value >= 0 ? `+${value}` : String(value)
+  }
+
   const selectedCharacter = useMemo(() => {
     if (selectedCharacterId === null) return null
     return characters.find((c) => Number(c?.id) === Number(selectedCharacterId)) || null
@@ -150,6 +156,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   useEffect(() => {
     if (!selectedCharacter) {
       setCharacterPanelMode('summary')
+      setSelectedSpellRow(null)
     }
   }, [selectedCharacter])
 
@@ -161,6 +168,14 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     const hpMax = typeof sheet?.hp?.max === 'number' ? sheet.hp.max : (typeof sheet?.hp_max === 'number' ? sheet.hp_max : null)
     const hpTemp = typeof sheet?.hp?.temp === 'number' ? sheet.hp.temp : (typeof sheet?.hp_temp === 'number' ? sheet.hp_temp : null)
     const ac = typeof sheet?.ac === 'number' ? sheet.ac : null
+    const speed = (sheet?.speed && typeof sheet.speed === 'object') ? sheet.speed : null
+
+    const statValue = (key: keyof typeof stats) => {
+      const value = (stats as any)?.[key]
+      return typeof value === 'number' ? value : null
+    }
+
+    const modValue = (score: number | null) => (typeof score === 'number' ? Math.floor((score - 10) / 2) : null)
 
     const toList = (value: any): string[] => {
       if (!Array.isArray(value)) return []
@@ -183,8 +198,30 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     const inventory = uniq(toList(sheet?.inventory))
     const skills = uniq(toList(sheet?.skills))
 
+    const dexScore = statValue('dex')
+    const wisScore = statValue('wis')
+
     return {
       stats,
+      statScores: {
+        str: statValue('str'),
+        dex: dexScore,
+        con: statValue('con'),
+        int: statValue('int'),
+        wis: wisScore,
+        cha: statValue('cha'),
+      },
+      statMods: {
+        str: modValue(statValue('str')),
+        dex: modValue(dexScore),
+        con: modValue(statValue('con')),
+        int: modValue(statValue('int')),
+        wis: modValue(wisScore),
+        cha: modValue(statValue('cha')),
+      },
+      initiative: modValue(dexScore),
+      passivePerception: typeof wisScore === 'number' ? 10 + (modValue(wisScore) ?? 0) : null,
+      speed,
       hpCurrent,
       hpMax,
       hpTemp,
@@ -195,6 +232,16 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       skills: summarize(skills, 8),
     }
   }, [selectedCharacter])
+
+  useEffect(() => {
+    if (!selectedCharacter || characterPanelMode !== 'spells') return
+    if (selectedSpellRow) return
+    const sheet = (selectedCharacter?.sheet && typeof selectedCharacter.sheet === 'object') ? selectedCharacter.sheet : {}
+    const spellbook = Array.isArray((sheet as any)?.spellbook) ? (sheet as any).spellbook : []
+    if (spellbook.length > 0) {
+      setSelectedSpellRow(spellbook[0])
+    }
+  }, [characterPanelMode, selectedCharacter, selectedSpellRow])
 
   useEffect(() => {
     if (!characters.length) {
@@ -896,7 +943,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             ) : (
               <div className="row-wrap" style={{ gap: 16, alignItems: 'stretch' }}>
                 <div style={{ minWidth: 260, flex: '1 1 260px' }}>
-                  <div className="card card-pad stack" style={{ gap: 10 }}>
+                  <div className="card card-pad stack" style={{ gap: 10, background: '#5F808B' }}>
                     <div className="muted">Characters</div>
                     <div className="stack" style={{ gap: 6 }}>
                       {characters.map((c) => {
@@ -912,7 +959,8 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                             style={{
                               textAlign: 'left',
                               justifyContent: 'space-between',
-                              background: isPicked ? 'rgba(255,255,255,0.06)' : 'transparent',
+                              background: isPicked ? '#AD885F' : 'transparent',
+                              color: isPicked ? '#0b1a1d' : undefined,
                             }}
                             onClick={() => setSelectedCharacterId(Number(c.id))}
                           >
@@ -939,7 +987,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                       Select a character to view details and actions.
                     </div>
                   ) : (
-                    <div className="card card-pad" style={{ marginTop: 12 }}>
+                    <div className="card card-pad" style={{ marginTop: 12, background: '#5F808B' }}>
                       <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
                         <div style={{ fontWeight: 700 }}>
                           {selectedCharacter.name}{selectedCharacter.class_name ? ` (${selectedCharacter.class_name})` : ''} — L{selectedCharacter.level}
@@ -987,47 +1035,53 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                           >
                             Settings
                           </button>
-                          <button
-                            className="btn btn-quiet"
-                            type="button"
-                            onClick={async () => {
-                              if (!window.confirm('Delete this character?')) return
-                              const res = await apiFetch(`/characters/${selectedCharacter.id}`, { method: 'DELETE' })
-                              if (res.ok) {
-                                if (activeCharacterId !== null && Number(selectedCharacter.id) === Number(activeCharacterId)) {
-                                  setActiveCharacterId(null)
-                                  await assignCharacterToSession(null)
-                                }
-                                await fetchCharacters()
-                              }
-                            }}
-                          >
-                            Delete
-                          </button>
                         </div>
                       </div>
                       {selectedSheetSummary && characterPanelMode === 'summary' ? (
                         <div className="stack" style={{ gap: 12, marginTop: 12 }}>
                           <div className="row-wrap" style={{ gap: 16 }}>
-                            <div className="card card-pad" style={{ flex: '1 1 220px' }}>
+                            <div className="card card-pad" style={{ flex: '1 1 220px', background: '#5F808B' }}>
                               <div className="muted" style={{ marginBottom: 6 }}>Vitals</div>
-                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
-                                <div className="muted">AC</div>
-                                <div>{selectedSheetSummary.ac ?? '—'}</div>
-                                <div className="muted">HP</div>
-                                <div>{selectedSheetSummary.hpCurrent ?? '—'} / {selectedSheetSummary.hpMax ?? '—'}</div>
-                                <div className="muted">Temp HP</div>
-                                <div>{selectedSheetSummary.hpTemp ?? '—'}</div>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
+                                <div>
+                                  <div className="muted">AC</div>
+                                  <div style={{ fontWeight: 700 }}>{selectedSheetSummary.ac ?? '—'}</div>
+                                </div>
+                                <div>
+                                  <div className="muted">HP</div>
+                                  <div style={{ fontWeight: 700 }}>{selectedSheetSummary.hpCurrent ?? '—'} / {selectedSheetSummary.hpMax ?? '—'}</div>
+                                </div>
+                                <div>
+                                  <div className="muted">Speed</div>
+                                  <div style={{ fontWeight: 700 }}>
+                                    {typeof selectedSheetSummary.speed?.walk === 'number'
+                                      ? `${selectedSheetSummary.speed.walk} ft`
+                                      : '—'}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="muted">Init</div>
+                                  <div style={{ fontWeight: 700 }}>{formatModifier(selectedSheetSummary.initiative)}</div>
+                                </div>
+                                <div>
+                                  <div className="muted">Passive</div>
+                                  <div style={{ fontWeight: 700 }}>{selectedSheetSummary.passivePerception ?? '—'}</div>
+                                </div>
+                                <div>
+                                  <div className="muted">Temp HP</div>
+                                  <div style={{ fontWeight: 700 }}>{selectedSheetSummary.hpTemp ?? '—'}</div>
+                                </div>
                               </div>
                             </div>
 
-                            <div className="card card-pad" style={{ flex: '1 1 220px' }}>
-                              <div className="muted" style={{ marginBottom: 6 }}>Stats</div>
-                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6 }}>
+                            <div className="card card-pad" style={{ flex: '1 1 220px', background: '#5F808B' }}>
+                              <div className="muted" style={{ marginBottom: 6 }}>Abilities</div>
+                              <div className="row-wrap" style={{ gap: 10 }}>
                                 {(['str','dex','con','int','wis','cha'] as const).map((k) => (
-                                  <div key={k}>
-                                    <div className="muted">{k.toUpperCase()}</div>
-                                    <div>{(selectedSheetSummary.stats as any)?.[k] ?? '—'}</div>
+                                  <div key={k} className="card" style={{ padding: '8px 10px', minWidth: 80 }}>
+                                    <div className="muted" style={{ fontSize: 12 }}>{k.toUpperCase()}</div>
+                                    <div style={{ fontWeight: 700 }}>{selectedSheetSummary.statScores?.[k] ?? '—'}</div>
+                                    <div className="muted" style={{ fontSize: 12 }}>{formatModifier(selectedSheetSummary.statMods?.[k])}</div>
                                   </div>
                                 ))}
                               </div>
@@ -1036,7 +1090,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
 
                           {(selectedSheetSummary.inventory.items.length || selectedSheetSummary.skills.items.length) ? (
                             <div className="row-wrap" style={{ gap: 16 }}>
-                              <div className="card card-pad" style={{ flex: '1 1 220px' }}>
+                              <div className="card card-pad" style={{ flex: '1 1 220px', background: '#5F808B' }}>
                                 <div className="muted" style={{ marginBottom: 6 }}>Inventory</div>
                                 {selectedSheetSummary.inventory.items.length ? (
                                   <ul style={{ margin: 0, paddingLeft: 18 }}>
@@ -1049,7 +1103,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                                   <div className="muted" style={{ marginTop: 6 }}>+ {selectedSheetSummary.inventory.more} more</div>
                                 ) : null}
                               </div>
-                              <div className="card card-pad" style={{ flex: '1 1 220px' }}>
+                              <div className="card card-pad" style={{ flex: '1 1 220px', background: '#5F808B' }}>
                                 <div className="muted" style={{ marginBottom: 6 }}>Skills</div>
                                 {selectedSheetSummary.skills.items.length ? (
                                   <ul style={{ margin: 0, paddingLeft: 18 }}>
@@ -1067,7 +1121,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                         </div>
                       ) : null}
                       {characterPanelMode === 'journal' ? (
-                        <div className="card card-pad" style={{ marginTop: 12 }}>
+                        <div className="card card-pad" style={{ marginTop: 12, background: '#5F808B' }}>
                           <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
                             <div className="muted">Journal</div>
                             <button className="btn btn-quiet" type="button" onClick={() => openNpcModalForCharacter(selectedCharacter)}>
@@ -1080,20 +1134,106 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                         </div>
                       ) : null}
                       {characterPanelMode === 'spells' ? (
-                        <div className="card card-pad" style={{ marginTop: 12 }}>
+                        <div className="card card-pad" style={{ marginTop: 12, background: '#5F808B' }}>
                           <div className="muted" style={{ marginBottom: 6 }}>Spells</div>
-                          {selectedSheetSummary ? (
+                          {selectedCharacter ? (
                             <>
-                              {selectedSheetSummary.spells.items.length ? (
-                                <ul style={{ margin: 0, paddingLeft: 18 }}>
-                                  {selectedSheetSummary.spells.items.map((s) => <li key={s}>{s}</li>)}
-                                </ul>
-                              ) : (
-                                <div className="muted">No spells parsed.</div>
-                              )}
-                              {selectedSheetSummary.spells.more ? (
-                                <div className="muted" style={{ marginTop: 6 }}>+ {selectedSheetSummary.spells.more} more</div>
-                              ) : null}
+                              {(() => {
+                                const sheet = (selectedCharacter?.sheet && typeof selectedCharacter.sheet === 'object') ? selectedCharacter.sheet : {}
+                                const spellbook = Array.isArray((sheet as any)?.spellbook) ? (sheet as any).spellbook : []
+                                const hasSpellbook = spellbook.length > 0
+                                if (hasSpellbook) {
+                                  let lastHeader: string | null = null
+                                  let lastSlotHeader: string | null = null
+                                  return (
+                                    <div style={{ overflowX: 'auto' }}>
+                                      <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                                        <thead>
+                                          <tr className="muted" style={{ textAlign: 'left' }}>
+                                            <th style={{ padding: '6px 8px' }}>Name</th>
+                                            <th style={{ padding: '6px 8px' }}>Source</th>
+                                            <th style={{ padding: '6px 8px' }}>Save/Atk</th>
+                                            <th style={{ padding: '6px 8px' }}>Time</th>
+                                            <th style={{ padding: '6px 8px' }}>Range</th>
+                                            <th style={{ padding: '6px 8px' }}>Comp</th>
+                                            <th style={{ padding: '6px 8px' }}>Duration</th>
+                                            <th style={{ padding: '6px 8px' }}>Page</th>
+                                            <th style={{ padding: '6px 8px' }}>Notes</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {spellbook.map((row: any, idx: number) => {
+                                            const header = typeof row?.header === 'string' ? row.header.trim() : ''
+                                            const slotHeader = typeof row?.slot_header === 'string' ? row.slot_header.trim() : ''
+                                            const headerRow = header && header !== lastHeader ? header : ''
+                                            const slotRow = slotHeader && slotHeader !== lastSlotHeader ? slotHeader : ''
+                                            if (header) lastHeader = header
+                                            if (slotHeader) lastSlotHeader = slotHeader
+                                            const isSelected = selectedSpellRow && row?.name && selectedSpellRow?.name === row.name
+
+                                            return (
+                                              <React.Fragment key={`${row?.name || 'spell'}-${idx}`}>
+                                                {headerRow ? (
+                                                  <tr>
+                                                    <td colSpan={9} style={{ padding: '6px 8px', fontWeight: 700 }}>{headerRow}</td>
+                                                  </tr>
+                                                ) : null}
+                                                {slotRow ? (
+                                                  <tr>
+                                                    <td colSpan={9} style={{ padding: '4px 8px' }} className="muted">{slotRow}</td>
+                                                  </tr>
+                                                ) : null}
+                                                <tr
+                                                  style={{ background: isSelected ? 'rgba(1,195,224,0.18)' : 'transparent', cursor: 'pointer' }}
+                                                  onClick={() => setSelectedSpellRow(row)}
+                                                >
+                                                  <td style={{ padding: '4px 8px', fontWeight: 600 }}>{row?.name || '—'}</td>
+                                                  <td style={{ padding: '4px 8px' }}>{row?.source || '—'}</td>
+                                                  <td style={{ padding: '4px 8px' }}>{row?.save_hit || '—'}</td>
+                                                  <td style={{ padding: '4px 8px' }}>{row?.time || '—'}</td>
+                                                  <td style={{ padding: '4px 8px' }}>{row?.range || '—'}</td>
+                                                  <td style={{ padding: '4px 8px' }}>{row?.components || '—'}</td>
+                                                  <td style={{ padding: '4px 8px' }}>{row?.duration || '—'}</td>
+                                                  <td style={{ padding: '4px 8px' }}>{row?.page || '—'}</td>
+                                                  <td style={{ padding: '4px 8px' }}>{row?.notes || '—'}</td>
+                                                </tr>
+                                              </React.Fragment>
+                                            )
+                                          })}
+                                        </tbody>
+                                      </table>
+                                      {selectedSpellRow ? (
+                                        <div className="card card-pad" style={{ marginTop: 12, background: '#5F808B' }}>
+                                          <div style={{ fontWeight: 700, marginBottom: 6 }}>{selectedSpellRow?.name || 'Spell'}</div>
+                                          <div className="row-wrap" style={{ gap: 12 }}>
+                                            <div><span className="muted">Source:</span> {selectedSpellRow?.source || '—'}</div>
+                                            <div><span className="muted">Save/Atk:</span> {selectedSpellRow?.save_hit || '—'}</div>
+                                            <div><span className="muted">Time:</span> {selectedSpellRow?.time || '—'}</div>
+                                            <div><span className="muted">Range:</span> {selectedSpellRow?.range || '—'}</div>
+                                            <div><span className="muted">Comp:</span> {selectedSpellRow?.components || '—'}</div>
+                                            <div><span className="muted">Duration:</span> {selectedSpellRow?.duration || '—'}</div>
+                                            <div><span className="muted">Page:</span> {selectedSpellRow?.page || '—'}</div>
+                                            <div><span className="muted">Notes:</span> {selectedSpellRow?.notes || '—'}</div>
+                                          </div>
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  )
+                                }
+
+                                return selectedSheetSummary && selectedSheetSummary.spells.items.length ? (
+                                  <>
+                                    <ul style={{ margin: 0, paddingLeft: 18 }}>
+                                      {selectedSheetSummary.spells.items.map((s) => <li key={s}>{s}</li>)}
+                                    </ul>
+                                    {selectedSheetSummary.spells.more ? (
+                                      <div className="muted" style={{ marginTop: 6 }}>+ {selectedSheetSummary.spells.more} more</div>
+                                    ) : null}
+                                  </>
+                                ) : (
+                                  <div className="muted">No spells parsed.</div>
+                                )
+                              })()}
                             </>
                           ) : (
                             <div className="muted">No spells parsed.</div>
@@ -1101,7 +1241,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                         </div>
                       ) : null}
                       {characterPanelMode === 'features' ? (
-                        <div className="card card-pad" style={{ marginTop: 12 }}>
+                        <div className="card card-pad" style={{ marginTop: 12, background: '#5F808B' }}>
                           <div className="muted" style={{ marginBottom: 6 }}>Features</div>
                           {selectedSheetSummary ? (
                             <>
@@ -1292,6 +1432,27 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                     }}
                   >
                     Clear session character
+                  </button>
+                  <button
+                    className="btn btn-quiet"
+                    type="button"
+                    onClick={async () => {
+                      if (!selectedCharacter) return
+                      if (!window.confirm('Delete this character?')) return
+                      const res = await apiFetch(`/characters/${selectedCharacter.id}`, { method: 'DELETE' })
+                      if (res.ok) {
+                        if (activeCharacterId !== null && Number(selectedCharacter.id) === Number(activeCharacterId)) {
+                          setActiveCharacterId(null)
+                          await assignCharacterToSession(null)
+                        }
+                        setSelectedCharacterId(null)
+                        setCharacterSettingsOpen(false)
+                        await fetchCharacters()
+                      }
+                    }}
+                    style={{ background: '#E09A4F', color: '#332A21' }}
+                  >
+                    Delete character
                   </button>
                 </div>
               </>
