@@ -159,14 +159,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     setReadNotificationIds(sortedNotifications.map((n) => n.id))
   }
 
-  // const activeCharacterLabel = useMemo(() => {
-  //   if (activeCharacterId === null) return 'No character selected'
-  //   const match = characters.find((c) => Number(c?.id) === Number(activeCharacterId))
-  //   if (match?.name) return `Selected character: ${match.name}`
-  //   return `Selected character id: ${activeCharacterId}`
-  // }, [activeCharacterId, characters]) // Unused - commented out for linting
-
-
   const activeCampaign = useMemo(() => {
     return campaigns.find(c => String(c.id) === String(activeCampaignId)) || null
   }, [activeCampaignId, campaigns])
@@ -905,12 +897,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     if (!activeSession) return null
     return sessionMetaById[activeSession]?.name || activeSession
   }, [activeSession, sessionMetaById])
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  // const activeSessionLabel = useMemo(() => {
-  //   if (!activeSession) return null
-  //   return sessionMetaById[activeSession]?.name || activeSession
-  // }, [activeSession, sessionMetaById]) // Unused - commented out for linting
 
   return (
     <div className="dashboard-root">
