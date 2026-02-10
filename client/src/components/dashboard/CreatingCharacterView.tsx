@@ -6,14 +6,24 @@ type Props = {
   onDone: () => void
   onGoToImportPdf: () => void
   onGoToQuickCreate: () => void
+  notificationsPending?: boolean
+  onNotificationsClick?: () => void
 }
 
-export default function CreatingCharacterView({ onDone, onGoToImportPdf, onGoToQuickCreate }: Props) {
+export default function CreatingCharacterView({
+  onDone,
+  onGoToImportPdf,
+  onGoToQuickCreate,
+  notificationsPending,
+  onNotificationsClick,
+}: Props) {
   return (
     <section className="dashboard-panel stack">
       <PageHeader
         title="Creating a Character"
         subtitle="Use TavernTails with a quick, lightweight character, or import a D&D Beyond PDF/JSON export to populate details."
+        notificationsPending={notificationsPending}
+        onNotificationsClick={onNotificationsClick}
         actions={
           <button className="btn btn-quiet" type="button" onClick={onDone}>
             Done

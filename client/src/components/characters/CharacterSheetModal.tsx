@@ -594,6 +594,13 @@ export default function CharacterSheetModal({ open, character, loading = false, 
       .concat(toStringListLoose(pick(raw, ['spellbook'])))
       .concat(toStringListLoose(pick(raw, ['knownSpells'])))
 
+    const spellbook = (() => {
+      if (Array.isArray((sheet as any)?.spellbook)) return (sheet as any).spellbook
+      const rawSpellbook = pick(raw, ['spellbook'])
+      if (Array.isArray(rawSpellbook)) return rawSpellbook
+      return []
+    })()
+
     return {
       hpCurrent: (hpCurrentDirect || null) ?? inferredHp.hpCurrent,
       hpMax: (hpMaxDirect || null) ?? inferredHp.hpMax,
@@ -609,6 +616,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
       inventory: joinList(sheet?.inventory).length ? joinList(sheet?.inventory) : inferredLists.inventory,
       inventoryItems: inferredInventory,
       spells: joinList(sheet?.spells).length ? joinList(sheet?.spells) : (inferredSpells.length ? uniqNonEmpty(inferredSpells) : inferredLists.spells),
+      spellbook,
       spellSlots: inferredSpellSlots,
       classFeatures: joinList((sheet as any)?.classFeatures).length ? joinList((sheet as any)?.classFeatures) : inferredFeatures.classFeatures,
       racialFeatures: joinList((sheet as any)?.racialFeatures).length ? joinList((sheet as any)?.racialFeatures) : inferredFeatures.racialFeatures,
@@ -817,6 +825,66 @@ export default function CharacterSheetModal({ open, character, loading = false, 
                       <strong>L{slot.level}:</strong> {slot.used ?? 0}/{slot.max ?? '—'}
                     </div>
                   ))}
+                </div>
+              ) : null}
+              {derived.spellbook.length ? (
+                <div style={{ maxHeight: 280, overflow: 'auto' }}>
+                  <table className="spellbook-table">
+                    <thead>
+                      <tr>
+                        <th className="spellbook-col spellbook-col--prep">Prep</th>
+                        <th className="spellbook-col">Spell</th>
+                        <th className="spellbook-col">Source</th>
+                        <th className="spellbook-col">Save/Atk</th>
+                        <th className="spellbook-col">Time</th>
+                        <th className="spellbook-col">Range</th>
+                        <th className="spellbook-col">Comp</th>
+                        <th className="spellbook-col">Duration</th>
+                        <th className="spellbook-col">Page</th>
+                        <th className="spellbook-col">Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(() => {
+                        const rows: any[] = []
+                        let lastHeader: string | null = null
+                        derived.spellbook.slice(0, 120).forEach((spell: any, idx: number) => {
+                          const header = (spell?.header || spell?.slot_header || '').trim()
+                          if (header && header !== lastHeader) {
+                            lastHeader = header
+                            rows.push({ type: 'header', label: header, key: `header-${idx}` })
+                          }
+                          rows.push({ type: 'spell', spell, key: `spellbook-${idx}` })
+                        })
+                        return rows.map((row) => {
+                          if (row.type === 'header') {
+                            return (
+                              <tr key={row.key} className="spellbook-header-row">
+                                <td colSpan={10}>{row.label}</td>
+                              </tr>
+                            )
+                          }
+                          const spell = row.spell
+                          const prepared = String(spell?.prepared || '').toLowerCase()
+                          const isPrepared = ['yes', 'true', '1', 'prepared', 'y'].includes(prepared) || prepared === 'o' || prepared === '○'
+                          return (
+                            <tr key={row.key}>
+                              <td className="spellbook-prep">{isPrepared ? '●' : '○'}</td>
+                              <td className="spellbook-name">{spell?.name || '—'}</td>
+                              <td>{spell?.source || '—'}</td>
+                              <td>{spell?.save_hit || '—'}</td>
+                              <td>{spell?.time || '—'}</td>
+                              <td>{spell?.range || '—'}</td>
+                              <td>{spell?.components || '—'}</td>
+                              <td>{spell?.duration || '—'}</td>
+                              <td>{spell?.page || '—'}</td>
+                              <td>{spell?.notes || '—'}</td>
+                            </tr>
+                          )
+                        })
+                      })()}
+                    </tbody>
+                  </table>
                 </div>
               ) : null}
               {derived.spells.length ? (

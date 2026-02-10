@@ -26,6 +26,8 @@ Use the palette below as the source of truth for UI styling.
 - Secondary button: background #AD885F, text #332A21, border transparent.
 - Quiet button: background rgba(95, 128, 139, 0.35), text #ffffff, border #525D61.
 - Destructive button: background #E09A4F, text #332A21, optional icon.
+- Icon-only button: use .btn-icon-only with a 16px icon, no text.
+- Tooltips: icon-only buttons must include title + aria-label for clarity.
 - Hover: increase brightness by ~8–12% and keep text legible.
 - Focus: 3px ring in rgba(173, 136, 95, 0.25).
 

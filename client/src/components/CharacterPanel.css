@@ -200,6 +200,52 @@
   min-width: 0;
 }
 
+.spellbook-table{
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.spellbook-table thead th{
+  text-align: left;
+  color: var(--muted-text);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.spellbook-table tbody td{
+  padding: 6px 6px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  white-space: nowrap;
+}
+
+.spellbook-col--prep{
+  width: 36px;
+}
+
+.spellbook-prep{
+  width: 36px;
+  text-align: center;
+  color: rgba(255,255,255,0.7);
+}
+
+.spellbook-name{
+  font-weight: 700;
+}
+
+.spellbook-header-row td{
+  padding: 6px 6px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.7);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  background: rgba(255,255,255,0.04);
+  border-top: 1px solid rgba(255,255,255,0.12);
+}
+
 .character-ability-tile .character-ability-key{
   margin: 0;
 }

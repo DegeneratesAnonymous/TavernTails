@@ -2,9 +2,13 @@ import React, { useMemo, useState } from 'react'
 
 import Beyond20Agent from '../../agents/Beyond20Agent'
 import { API_BASE, apiFetch } from '../../api'
+import PageHeader from '../ui/PageHeader'
 
 type Props = {
   activeSessionId: string | null
+  identifier?: string | null
+  notificationsPending?: boolean
+  onNotificationsClick?: () => void
 }
 
 async function copyToClipboard(text: string) {
@@ -19,7 +23,7 @@ async function copyToClipboard(text: string) {
   }
 }
 
-export default function Beyond20View({ activeSessionId }: Props) {
+export default function Beyond20View({ activeSessionId, identifier, notificationsPending, onNotificationsClick }: Props) {
   const [relayToken, setRelayToken] = useState('')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<string>('')
@@ -35,7 +39,12 @@ export default function Beyond20View({ activeSessionId }: Props) {
   return (
     <section className="stack-lg">
       <div className="card card-pad stack">
-        <h2 className="section-title">Beyond20</h2>
+        <PageHeader
+          title="Beyond20"
+          subtitle="Relay Beyond20 roll events into your TavernTails session chat."
+          notificationsPending={notificationsPending}
+          onNotificationsClick={onNotificationsClick}
+        />
         <p className="muted" style={{ marginTop: 0 }}>
           Option A relay: run a userscript on D&amp;D Beyond that listens for Beyond20 roll events and forwards them into your TavernTails session chat.
         </p>
@@ -136,7 +145,7 @@ export default function Beyond20View({ activeSessionId }: Props) {
 
       <div className="card card-pad stack">
         <h3 className="section-title">Beyond20 Custom Domains</h3>
-        <Beyond20Agent />
+        <Beyond20Agent identifier={identifier ?? null} />
       </div>
     </section>
   )

@@ -180,6 +180,16 @@ def player_me(current_user=Depends(get_current_user)):
     return {"profile": current_user.profile}
 
 
+@router.post("/player/admin-mode")
+def set_admin_mode(enabled: bool = Body(..., embed=True), current_user=Depends(get_current_user)):
+    if not db.is_admin_user(current_user):
+        raise HTTPException(status_code=403, detail="Admin privileges required")
+    updated = db.set_admin_mode(current_user.id, bool(enabled))
+    if not updated:
+        raise HTTPException(status_code=500, detail="Failed to update admin mode")
+    return {"profile": updated.profile}
+
+
 @router.get("/player/beyond20/relay-token")
 def get_beyond20_relay_token(current_user=Depends(get_current_user)):
     if current_user.id is None:

@@ -126,6 +126,18 @@ def delete_campaign(campaign_id: str, current_user=Depends(get_current_user)):
     return {'ok': True}
 
 
+@router.delete('/purge')
+def purge_campaigns(name_like: Optional[str] = None, current_user=Depends(get_current_user)):
+    if not db.is_admin_user(current_user):
+        raise HTTPException(status_code=403, detail='Admin privileges required')
+    owner_id = _require_user_id(current_user)
+    tokens: List[str] = []
+    if name_like:
+        tokens = [part.strip() for part in name_like.split(',') if part.strip()]
+    deleted = db.purge_campaigns(owner_id=owner_id, name_tokens=tokens)
+    return {'deleted': deleted}
+
+
 @router.get('/{campaign_id}/settings')
 def get_campaign_settings(campaign_id: str, current_user=Depends(get_current_user)):
     owner_id = _require_user_id(current_user)

@@ -1,5 +1,5 @@
 # TavernTAIls Progress Tracker
-_Last updated: 2026-02-03 by GitHub Copilot_
+_Last updated: 2026-02-08 by GitHub Copilot_
 
 ## Where Things Stand
 - **Sprint Focus:** Finish Sprint 1 deliverables (chat upgrades, turn queue, agent stubs, documentation).
@@ -12,6 +12,20 @@ _Last updated: 2026-02-03 by GitHub Copilot_
 - The biggest remaining “make it real” items are character CRUD/imports and a clearer campaign→session→play flow (hidden-doc RBAC + access auditing is implemented).
 
 ## Completed Recently
+0. **Spell List Format Fallback Parser (Feb 8)**
+   - Added detection for spell names in simple list format (after CANTRIPS/level headers) when full table not found; filtered widget metadata extraction.
+0. **Spell Import Table Detection Improved (Feb 8)**
+   - Enhanced spell table header detection to handle OCR variations; added OCR text fallback for spell extraction.
+0. **Import Preview Spell Display Priority (Feb 8)**
+   - Import now shows structured spellbook table first if available, hiding flat list when table data exists.
+0. **Character Delete Admin Fallback (Feb 8)**
+   - Backend now auto-deletes any character if admin user owns none; DELETE /characters/{id} simplified.
+0. **Manage Characters Spell Table Fallback (Feb 8)**
+   - Spell tab now renders table even when only flat spell names exist (no structured spellbook).
+0. **Campaign Creation State Hooks Restored (Feb 8)**
+   - Fixed missing state hooks that caused TypeScript errors in create campaign modal.
+0. **AI Agent Onboarding Guide Created (Feb 8)**
+   - Added docs/AI_AGENT_ONBOARDING.md as single source of truth for AI agent development workflow.
 0. **Player‑Run Mode Toggle (Feb 3)**
    - Added a campaign settings toggle and skipped AI bootstrap when enabled.
 0. **Player‑Run Mode Backend Guard (Feb 3)**

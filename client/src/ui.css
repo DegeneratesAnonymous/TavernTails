@@ -62,6 +62,13 @@
   gap: 16px;
 }
 
+.page-header-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
 .page-title {
   margin: 0;
   font-size: 20px;
@@ -80,6 +87,79 @@
   gap: 10px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.notification-bell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--tt-border);
+  background: rgba(95, 128, 139, 0.2);
+  color: var(--text);
+  cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease, background-color 120ms ease;
+}
+
+.notification-bell:hover {
+  transform: translateY(-1px);
+  border-color: var(--tt-border-strong);
+}
+
+.notification-bell:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.notification-bell--pending {
+  color: var(--accent);
+  border-color: rgba(224, 154, 79, 0.6);
+  background: rgba(224, 154, 79, 0.12);
+}
+
+.notification-list {
+  display: grid;
+  gap: 10px;
+}
+
+.notification-item {
+  text-align: left;
+  border: 1px solid var(--tt-border);
+  background: rgba(71, 66, 61, 0.5);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.notification-item--unread {
+  border-color: rgba(224, 154, 79, 0.6);
+  background: rgba(224, 154, 79, 0.12);
+}
+
+.notification-item-title {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.notification-item-body {
+  font-size: 13px;
+  color: var(--muted-text);
+  margin-bottom: 6px;
+}
+
+.notification-item-time {
+  font-size: 12px;
+  color: var(--muted-text);
+}
+
+.notification-empty {
+  border: 1px dashed var(--tt-border-strong);
+  border-radius: 10px;
+  padding: 12px;
+  color: var(--muted-text);
 }
 
 .empty-state {
@@ -186,6 +266,18 @@
   transition: transform 120ms ease, background-color 120ms ease, border-color 120ms ease, opacity 120ms ease;
 }
 
+.btn-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
+.btn-icon-only {
+  padding: 10px;
+  min-width: 40px;
+  gap: 0;
+}
+
 .btn:hover {
   transform: translateY(-1px);
   border-color: var(--tt-border-strong);
@@ -219,6 +311,11 @@
   padding: 8px 12px;
   font-size: 13px;
   border-radius: 9px;
+}
+
+.btn-sm.btn-icon-only {
+  padding: 8px;
+  min-width: 34px;
 }
 
 /* Alerts */

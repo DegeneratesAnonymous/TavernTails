@@ -63,6 +63,9 @@ def _init_db_if_needed():
         if os.environ.get('TAVERNTAILS_SEED_DEV_USER', '1') == '1':
             _db.ensure_dev_user()
             logger.info('Dev user ensured (test@example.com / secret)')
+        if os.environ.get('TAVERNTAILS_SEED_USERS', '1') == '1':
+            _db.ensure_seed_users()
+            logger.info('Seed users ensured (admin + bilbo)')
         logger.info('Database ready')
         _db_initialized = True
     except Exception:

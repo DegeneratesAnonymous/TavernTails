@@ -20,6 +20,14 @@ type Props = {
   onLogout: () => void;
 };
 
+type NotificationItem = {
+  id: string
+  title: string
+  body?: string
+  createdAt?: string | null
+  read?: boolean
+}
+
 const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [view, setView] = useState<string>('home');
   const [importInitialMode, setImportInitialMode] = useState<'ddb-link' | 'paste' | 'file' | 'pdf' | null>(null)
@@ -29,10 +37,10 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [activeSession, setActiveSession] = useState<string | null>(null)
   const [settingsSession, setSettingsSession] = useState<string| null>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
-  const [newCampaignName, setNewCampaignName] = useState('')
-  const [newCampaignDescription, setNewCampaignDescription] = useState('')
   const [createCampaignBusy, setCreateCampaignBusy] = useState(false)
   const [createCampaignError, setCreateCampaignError] = useState<string | null>(null)
+  const [newCampaignName, setNewCampaignName] = useState('')
+  const [newCampaignDescription, setNewCampaignDescription] = useState('')
 
   const [quickstartBusy, setQuickstartBusy] = useState(false)
   const [startPlayBusy, setStartPlayBusy] = useState(false)
@@ -53,6 +61,19 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [characterPanelMode, setCharacterPanelMode] = useState<'summary' | 'spells' | 'features' | 'journal' | 'sheet'>('summary')
   const [selectedSpellRow, setSelectedSpellRow] = useState<any | null>(null)
 
+  const SettingsIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="btn-icon">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 0 1 1.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.559.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.894.149c-.424.07-.764.383-.929.78-.165.398-.143.854.107 1.204l.527.738c.32.447.269 1.06-.12 1.45l-.774.773a1.125 1.125 0 0 1-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.398.165-.71.505-.781.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.447.32-1.06.269-1.45-.12l-.773-.774a1.125 1.125 0 0 1-.12-1.45l.527-.737c.25-.35.272-.806.108-1.204-.165-.397-.506-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.108-1.204l-.526-.738a1.125 1.125 0 0 1 .12-1.45l.773-.773a1.125 1.125 0 0 1 1.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894Z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+    </svg>
+  )
+
+  const DeleteIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="btn-icon">
+      <path strokeLinecap="round" strokeLinejoin="round" d="m9.75 9.75 4.5 4.5m0-4.5-4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+    </svg>
+  )
+
   const [npcModalOpen, setNpcModalOpen] = useState(false)
   const [npcModalBusy, setNpcModalBusy] = useState(false)
   const [npcModalError, setNpcModalError] = useState<string | null>(null)
@@ -61,6 +82,81 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [npcModalCampaignId, setNpcModalCampaignId] = useState<string | null>(null)
   const [npcCampaignPickId, setNpcCampaignPickId] = useState<string | null>(null)
   const [npcRememberCampaign, setNpcRememberCampaign] = useState(true)
+
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [readNotificationIds, setReadNotificationIds] = useState<string[]>([])
+
+  const notifications: NotificationItem[] = useMemo(() => {
+    const raw = Array.isArray(profile?.notifications) ? profile.notifications : []
+    return raw.map((item: any, idx: number) => {
+      const id = String(item?.id ?? item?.notification_id ?? `notification-${idx}`)
+      return {
+        id,
+        title: String(item?.title ?? item?.message ?? item?.text ?? 'Notification'),
+        body: item?.body ? String(item.body) : (item?.detail ? String(item.detail) : undefined),
+        createdAt: item?.created_at || item?.createdAt || item?.timestamp || null,
+        read: Boolean(item?.read),
+      }
+    })
+  }, [profile?.notifications])
+
+  const sortedNotifications = useMemo(() => {
+    return [...notifications].sort((a, b) => {
+      const at = a.createdAt ? new Date(a.createdAt).getTime() : 0
+      const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0
+      if (at && bt && at !== bt) return bt - at
+      return b.id.localeCompare(a.id)
+    })
+  }, [notifications])
+
+  const isNotificationRead = (item: NotificationItem) => {
+    return Boolean(item.read) || readNotificationIds.includes(item.id)
+  }
+
+  const notificationsPending = sortedNotifications.some((item) => !isNotificationRead(item))
+
+  const isAdmin = useMemo(() => {
+    const roles = Array.isArray(profile?.roles) ? profile.roles : []
+    return Boolean(profile?.admin) || roles.some((r: any) => String(r).toLowerCase() === 'admin')
+  }, [profile?.admin, profile?.roles])
+
+  const [adminMode, setAdminMode] = useState<boolean>(() => {
+    const pref = profile?.preferences && typeof profile.preferences === 'object' ? profile.preferences : {}
+    if (typeof pref?.admin_mode === 'boolean') return pref.admin_mode
+    return Boolean(profile?.admin)
+  })
+
+  useEffect(() => {
+    const pref = profile?.preferences && typeof profile.preferences === 'object' ? profile.preferences : {}
+    if (typeof pref?.admin_mode === 'boolean') {
+      setAdminMode(pref.admin_mode)
+      return
+    }
+    setAdminMode(Boolean(profile?.admin))
+  }, [profile?.preferences, profile?.admin])
+
+  const handleToggleAdminMode = useCallback(async (enabled: boolean) => {
+    try {
+      const res = await apiFetch('/player/admin-mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      })
+      if (!res.ok) {
+        const detail = await res.json().catch(() => null)
+        const message = detail?.detail || detail?.message || `Unable to update admin mode (${res.status}).`
+        alert(message)
+        return
+      }
+      setAdminMode(enabled)
+    } catch {
+      alert('Network error while updating admin mode.')
+    }
+  }, [])
+
+  const handleMarkAllRead = () => {
+    setReadNotificationIds(sortedNotifications.map((n) => n.id))
+  }
 
   const activeCharacterLabel = useMemo(() => {
     if (activeCharacterId === null) return 'No character selected'
@@ -118,6 +214,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
 
       const inventory = toStringArray(sheet?.inventory)
       const spells = toStringArray(sheet?.spells)
+      const spellbook = Array.isArray(sheet?.spellbook) ? sheet.spellbook : []
       const features = toStringArray(sheet?.features)
       const skills = toSkillArray(sheet?.skills)
 
@@ -139,6 +236,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
         skills,
         inventory,
         spells,
+        spellbook,
       }
     }).filter((c: any) => Boolean(c?.id))
   }, [characters])
@@ -238,8 +336,11 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     if (selectedSpellRow) return
     const sheet = (selectedCharacter?.sheet && typeof selectedCharacter.sheet === 'object') ? selectedCharacter.sheet : {}
     const spellbook = Array.isArray((sheet as any)?.spellbook) ? (sheet as any).spellbook : []
+    const spellNames = Array.isArray((sheet as any)?.spells) ? (sheet as any).spells : []
     if (spellbook.length > 0) {
       setSelectedSpellRow(spellbook[0])
+    } else if (spellNames.length > 0) {
+      setSelectedSpellRow({ name: String(spellNames[0]) })
     }
   }, [characterPanelMode, selectedCharacter, selectedSpellRow])
 
@@ -331,6 +432,48 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       await updateCharacterCampaignAssociation(characterId, activeCampaignId)
     }
   }, [activeCampaignId, setSessionCharacter, updateCharacterCampaignAssociation])
+
+  const handleDeleteTestCharacters = useCallback(async () => {
+    const confirmDelete = window.confirm('Delete test characters (name contains "test" or "launk")? This cannot be undone.')
+    if (!confirmDelete) return
+    try {
+      const res = await apiFetch('/characters/purge?name_like=test,launk', { method: 'DELETE' })
+      if (!res.ok) {
+        const detail = await res.json().catch(() => null)
+        const message = detail?.detail || detail?.message || `Delete failed (${res.status}).`
+        alert(message)
+        return
+      }
+      const data = await res.json().catch(() => ({} as any))
+      await fetchCharacters()
+      if (activeCharacterId !== null) {
+        await assignCharacterToSession(null)
+        setActiveCharacterId(null)
+      }
+      setSelectedCharacterId(null)
+      alert(`Deleted ${Number(data?.deleted ?? 0)} test character(s).`)
+    } catch {
+      alert('Network error. Please try again.')
+    }
+  }, [activeCharacterId, assignCharacterToSession, fetchCharacters])
+
+  const handleDeleteTestCampaigns = useCallback(async () => {
+    const confirmDelete = window.confirm('Delete test campaigns (name contains "test")? This cannot be undone.')
+    if (!confirmDelete) return
+    try {
+      const res = await apiFetch('/campaigns/purge?name_like=test', { method: 'DELETE' })
+      if (!res.ok) {
+        const detail = await res.json().catch(() => null)
+        const message = detail?.detail || detail?.message || `Delete failed (${res.status}).`
+        alert(message)
+        return
+      }
+      await fetchCampaigns()
+      alert('Deleted test campaigns.')
+    } catch {
+      alert('Network error. Please try again.')
+    }
+  }, [fetchCampaigns])
 
   const loadNpcList = useCallback(async (campaignId: string, character: any, rememberAssociation: boolean) => {
     setNpcModalBusy(true)
@@ -774,19 +917,8 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
         <div className="dashboard-user">{profile?.name}</div>
         <nav className="dashboard-nav">
           <button className={`nav-btn ${view==='home'?'active':''}`} onClick={() => setView('home')}>Home</button>
-          <button className={`nav-btn ${view==='gameplay'?'active':''}`} onClick={() => setView('gameplay')}>Play</button>
-          
           <button className={`nav-btn ${view==='campaign-setup'?'active':''}`} onClick={() => setView('campaign-setup')}>Manage Campaigns</button>
           <button className={`nav-btn ${view==='view-characters'?'active':''}`} onClick={() => setView('view-characters')}>Manage Characters</button>
-          <button
-            className={`nav-btn ${view==='import-character'?'active':''}`}
-            onClick={() => {
-              setImportInitialMode(null)
-              setView('import-character')
-            }}
-          >
-            Import Character
-          </button>
           <button className={`nav-btn ${view==='account'?'active':''}`} onClick={() => setView('account')}>Account</button>
         </nav>
         <div className="sidebar-footer">
@@ -807,6 +939,8 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                   activeCampaignId={activeCampaignId}
                   activeCampaign={activeCampaign}
                   playerRunMode={playerRunMode}
+                  notificationsPending={notificationsPending}
+                  onNotificationsClick={() => setNotificationsOpen(true)}
                   onCampaignUpdated={fetchCampaigns}
                   onStartCampaign={startPlaying}
                   startCampaignBusy={startPlayBusy}
@@ -845,7 +979,11 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
           <DashboardHome
             profile={profile}
             lastSessionLabel={lastSessionLabel}
-            onQuickJoin={() => {
+            onQuickstartNewGame={async () => {
+              await quickstartPlaytest()
+              setView('gameplay')
+            }}
+            onStartLastCampaign={() => {
               if (typeof window === 'undefined') {
                 setView('gameplay')
                 return
@@ -871,10 +1009,8 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             }}
             onGoToCampaigns={() => setView('campaign-setup')}
             onGoToCharacters={() => setView('view-characters')}
-            onGoToImport={() => {
-              setImportInitialMode(null)
-              setView('import-character')
-            }}
+            notificationsPending={notificationsPending}
+            onNotificationsClick={() => setNotificationsOpen(true)}
           />
         )}
         {view === 'campaign-setup' && (
@@ -887,6 +1023,10 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             onCreateCampaign={() => setShowCreateModal(true)}
             onPlay={startPlaying}
             playBusy={startPlayBusy}
+            notificationsPending={notificationsPending}
+            onNotificationsClick={() => setNotificationsOpen(true)}
+            showAdminControls={isAdmin && adminMode}
+            onDeleteTestCampaigns={handleDeleteTestCampaigns}
           />
         )}
 
@@ -895,8 +1035,15 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             <PageHeader
               title="Characters"
               subtitle="Create or import characters. You can optionally select one for the active session to use during play."
+              notificationsPending={notificationsPending}
+              onNotificationsClick={() => setNotificationsOpen(true)}
               actions={
                 <>
+                  {isAdmin && adminMode ? (
+                    <button className="btn btn-quiet" type="button" onClick={handleDeleteTestCharacters}>
+                      Delete test characters
+                    </button>
+                  ) : null}
                   <button className="btn btn-secondary" type="button" onClick={() => setView('import-character')}>
                     Import
                   </button>
@@ -907,7 +1054,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                       setView('creating-character')
                     }}
                   >
-                    Creating a Character
+                    Create Character
                   </button>
                 </>
               }
@@ -941,9 +1088,9 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                 }
               />
             ) : (
-              <div className="row-wrap" style={{ gap: 16, alignItems: 'stretch' }}>
-                <div style={{ minWidth: 260, flex: '1 1 260px' }}>
-                  <div className="card card-pad stack" style={{ gap: 10, background: '#5F808B' }}>
+              <div className="row-wrap characters-shell">
+                <div className="characters-column">
+                  <div className="card card-pad stack characters-list-card" style={{ gap: 10 }}>
                     <div className="muted">Characters</div>
                     <div className="stack" style={{ gap: 6 }}>
                       {characters.map((c) => {
@@ -955,13 +1102,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                           <button
                             key={c.id}
                             type="button"
-                            className="btn btn-quiet"
-                            style={{
-                              textAlign: 'left',
-                              justifyContent: 'space-between',
-                              background: isPicked ? '#AD885F' : 'transparent',
-                              color: isPicked ? '#0b1a1d' : undefined,
-                            }}
+                            className={`btn btn-quiet character-list-item ${isPicked ? 'is-active' : ''}`}
                             onClick={() => setSelectedCharacterId(Number(c.id))}
                           >
                             <div style={{ minWidth: 0 }}>
@@ -981,66 +1122,68 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                   </div>
                 </div>
 
-                <div style={{ minWidth: 320, flex: '2 1 520px' }}>
+                <div className="characters-column characters-detail">
                   {!selectedCharacter ? (
                     <div className="inline-alert" style={{ marginTop: 12 }}>
                       Select a character to view details and actions.
                     </div>
                   ) : (
-                    <div className="card card-pad" style={{ marginTop: 12, background: '#5F808B' }}>
+                    <div className="card card-pad characters-detail-card">
                       <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
                         <div style={{ fontWeight: 700 }}>
                           {selectedCharacter.name}{selectedCharacter.class_name ? ` (${selectedCharacter.class_name})` : ''} — L{selectedCharacter.level}
                         </div>
                         <div className="row-wrap" style={{ gap: 8 }}>
                           <button
-                            className={`btn btn-quiet ${characterPanelMode === 'summary' ? 'active' : ''}`}
+                            className={`btn btn-quiet character-tab ${characterPanelMode === 'summary' ? 'active' : ''}`}
                             type="button"
                             onClick={() => setCharacterPanelMode('summary')}
                           >
                             Summary
                           </button>
                           <button
-                            className={`btn btn-quiet ${characterPanelMode === 'journal' ? 'active' : ''}`}
+                            className={`btn btn-quiet character-tab ${characterPanelMode === 'journal' ? 'active' : ''}`}
                             type="button"
                             onClick={() => setCharacterPanelMode('journal')}
                           >
                             Journal
                           </button>
                           <button
-                            className={`btn btn-quiet ${characterPanelMode === 'spells' ? 'active' : ''}`}
+                            className={`btn btn-quiet character-tab ${characterPanelMode === 'spells' ? 'active' : ''}`}
                             type="button"
                             onClick={() => setCharacterPanelMode('spells')}
                           >
                             Spells
                           </button>
                           <button
-                            className={`btn btn-quiet ${characterPanelMode === 'features' ? 'active' : ''}`}
+                            className={`btn btn-quiet character-tab ${characterPanelMode === 'features' ? 'active' : ''}`}
                             type="button"
                             onClick={() => setCharacterPanelMode('features')}
                           >
                             Features
                           </button>
                           <button
-                            className={`btn btn-quiet ${characterPanelMode === 'sheet' ? 'active' : ''}`}
+                            className={`btn btn-quiet character-tab ${characterPanelMode === 'sheet' ? 'active' : ''}`}
                             type="button"
                             onClick={() => setCharacterPanelMode('sheet')}
                           >
                             Sheet
                           </button>
                           <button
-                            className="btn btn-secondary"
+                            className="btn btn-secondary btn-icon-only"
                             type="button"
                             onClick={() => setCharacterSettingsOpen(true)}
+                            title="Settings"
+                            aria-label="Settings"
                           >
-                            Settings
+                            <SettingsIcon />
                           </button>
                         </div>
                       </div>
                       {selectedSheetSummary && characterPanelMode === 'summary' ? (
                         <div className="stack" style={{ gap: 12, marginTop: 12 }}>
                           <div className="row-wrap" style={{ gap: 16 }}>
-                            <div className="card card-pad" style={{ flex: '1 1 220px', background: '#5F808B' }}>
+                            <div className="card card-pad characters-subcard" style={{ flex: '1 1 220px' }}>
                               <div className="muted" style={{ marginBottom: 6 }}>Vitals</div>
                               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
                                 <div>
@@ -1074,7 +1217,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                               </div>
                             </div>
 
-                            <div className="card card-pad" style={{ flex: '1 1 220px', background: '#5F808B' }}>
+                            <div className="card card-pad characters-subcard" style={{ flex: '1 1 220px' }}>
                               <div className="muted" style={{ marginBottom: 6 }}>Abilities</div>
                               <div className="row-wrap" style={{ gap: 10 }}>
                                 {(['str','dex','con','int','wis','cha'] as const).map((k) => (
@@ -1090,7 +1233,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
 
                           {(selectedSheetSummary.inventory.items.length || selectedSheetSummary.skills.items.length) ? (
                             <div className="row-wrap" style={{ gap: 16 }}>
-                              <div className="card card-pad" style={{ flex: '1 1 220px', background: '#5F808B' }}>
+                              <div className="card card-pad characters-subcard" style={{ flex: '1 1 220px' }}>
                                 <div className="muted" style={{ marginBottom: 6 }}>Inventory</div>
                                 {selectedSheetSummary.inventory.items.length ? (
                                   <ul style={{ margin: 0, paddingLeft: 18 }}>
@@ -1103,7 +1246,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                                   <div className="muted" style={{ marginTop: 6 }}>+ {selectedSheetSummary.inventory.more} more</div>
                                 ) : null}
                               </div>
-                              <div className="card card-pad" style={{ flex: '1 1 220px', background: '#5F808B' }}>
+                              <div className="card card-pad characters-subcard" style={{ flex: '1 1 220px' }}>
                                 <div className="muted" style={{ marginBottom: 6 }}>Skills</div>
                                 {selectedSheetSummary.skills.items.length ? (
                                   <ul style={{ margin: 0, paddingLeft: 18 }}>
@@ -1121,7 +1264,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                         </div>
                       ) : null}
                       {characterPanelMode === 'journal' ? (
-                        <div className="card card-pad" style={{ marginTop: 12, background: '#5F808B' }}>
+                        <div className="card card-pad characters-subcard" style={{ marginTop: 12 }}>
                           <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
                             <div className="muted">Journal</div>
                             <button className="btn btn-quiet" type="button" onClick={() => openNpcModalForCharacter(selectedCharacter)}>
@@ -1134,15 +1277,19 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                         </div>
                       ) : null}
                       {characterPanelMode === 'spells' ? (
-                        <div className="card card-pad" style={{ marginTop: 12, background: '#5F808B' }}>
+                        <div className="card card-pad characters-subcard" style={{ marginTop: 12 }}>
                           <div className="muted" style={{ marginBottom: 6 }}>Spells</div>
                           {selectedCharacter ? (
                             <>
                               {(() => {
                                 const sheet = (selectedCharacter?.sheet && typeof selectedCharacter.sheet === 'object') ? selectedCharacter.sheet : {}
                                 const spellbook = Array.isArray((sheet as any)?.spellbook) ? (sheet as any).spellbook : []
-                                const hasSpellbook = spellbook.length > 0
-                                if (hasSpellbook) {
+                                const spellNames = Array.isArray((sheet as any)?.spells) ? (sheet as any).spells : []
+                                const rows = spellbook.length
+                                  ? spellbook
+                                  : spellNames.map((name: any) => ({ name: String(name) }))
+                                const hasRows = rows.length > 0
+                                if (hasRows) {
                                   let lastHeader: string | null = null
                                   let lastSlotHeader: string | null = null
                                   return (
@@ -1162,7 +1309,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                                           </tr>
                                         </thead>
                                         <tbody>
-                                          {spellbook.map((row: any, idx: number) => {
+                                          {rows.map((row: any, idx: number) => {
                                             const header = typeof row?.header === 'string' ? row.header.trim() : ''
                                             const slotHeader = typeof row?.slot_header === 'string' ? row.slot_header.trim() : ''
                                             const headerRow = header && header !== lastHeader ? header : ''
@@ -1183,8 +1330,8 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                                                     <td colSpan={9} style={{ padding: '4px 8px' }} className="muted">{slotRow}</td>
                                                   </tr>
                                                 ) : null}
-                                                <tr
-                                                  style={{ background: isSelected ? 'rgba(1,195,224,0.18)' : 'transparent', cursor: 'pointer' }}
+                                                  <tr
+                                                  style={{ background: isSelected ? 'rgba(173,136,95,0.28)' : 'transparent', cursor: 'pointer' }}
                                                   onClick={() => setSelectedSpellRow(row)}
                                                 >
                                                   <td style={{ padding: '4px 8px', fontWeight: 600 }}>{row?.name || '—'}</td>
@@ -1203,7 +1350,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                                         </tbody>
                                       </table>
                                       {selectedSpellRow ? (
-                                        <div className="card card-pad" style={{ marginTop: 12, background: '#5F808B' }}>
+                                        <div className="card card-pad characters-subcard" style={{ marginTop: 12 }}>
                                           <div style={{ fontWeight: 700, marginBottom: 6 }}>{selectedSpellRow?.name || 'Spell'}</div>
                                           <div className="row-wrap" style={{ gap: 12 }}>
                                             <div><span className="muted">Source:</span> {selectedSpellRow?.source || '—'}</div>
@@ -1241,7 +1388,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                         </div>
                       ) : null}
                       {characterPanelMode === 'features' ? (
-                        <div className="card card-pad" style={{ marginTop: 12, background: '#5F808B' }}>
+                        <div className="card card-pad characters-subcard" style={{ marginTop: 12 }}>
                           <div className="muted" style={{ marginBottom: 6 }}>Features</div>
                           {selectedSheetSummary ? (
                             <>
@@ -1438,21 +1585,64 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                     type="button"
                     onClick={async () => {
                       if (!selectedCharacter) return
+                      if (!window.confirm('Re-parse spell data from PDF? This will attempt to fix any spell import issues.')) return
+                      const characterId = Number(selectedCharacter.id)
+                      if (!Number.isFinite(characterId)) {
+                        alert('Invalid character ID')
+                        return
+                      }
+                      try {
+                        await fetch(`/api/characters/${characterId}/reparse-spells`, {
+                          method: 'POST',
+                          credentials: 'include'
+                        })
+                        alert('Spells re-parsed successfully')
+                        fetchCharacters()
+                      } catch (err) {
+                        console.error('Failed to reparse spells:', err)
+                        alert('Failed to reparse spells')
+                      }
+                    }}
+                  >
+                    Re-parse Spells
+                  </button>
+                  <button
+                    className="btn"
+                    type="button"
+                    onClick={async () => {
+                      if (!selectedCharacter) return
                       if (!window.confirm('Delete this character?')) return
-                      const res = await apiFetch(`/characters/${selectedCharacter.id}`, { method: 'DELETE' })
-                      if (res.ok) {
-                        if (activeCharacterId !== null && Number(selectedCharacter.id) === Number(activeCharacterId)) {
+                      const characterId = Number(selectedCharacter.id)
+                      if (!Number.isFinite(characterId)) {
+                        alert('Delete failed: invalid character id.')
+                        return
+                      }
+                      try {
+                        const res = await apiFetch(`/characters/${characterId}`, { method: 'DELETE' })
+                        if (!res.ok) {
+                          const detail = await res.json().catch(() => null)
+                          const message = detail?.detail || detail?.message || `Delete failed (${res.status}).`
+                          alert(message)
+                          return
+                        }
+                        if (activeCharacterId !== null && Number(characterId) === Number(activeCharacterId)) {
                           setActiveCharacterId(null)
                           await assignCharacterToSession(null)
                         }
+                        setCharacters((prev) => prev.filter((c) => Number(c?.id) !== Number(characterId)))
                         setSelectedCharacterId(null)
                         setCharacterSettingsOpen(false)
                         await fetchCharacters()
+                      } catch (err) {
+                        alert('Network error. Please try again.')
                       }
                     }}
                     style={{ background: '#E09A4F', color: '#332A21' }}
+                    title="Delete character"
+                    aria-label="Delete character"
                   >
-                    Delete character
+                    <DeleteIcon />
+                    Delete
                   </button>
                 </div>
               </>
@@ -1465,6 +1655,8 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             <PageHeader
               title="Create Character"
               subtitle="Create a lightweight character. You can enrich it later by importing JSON."
+              notificationsPending={notificationsPending}
+              onNotificationsClick={() => setNotificationsOpen(true)}
             />
             <div style={{maxWidth:520,display:'grid',gap:10}}>
               <input className="input" placeholder="Name" value={newCharacterName} onChange={e=>setNewCharacterName(e.target.value)} />
@@ -1516,6 +1708,8 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
               setImportInitialMode('pdf')
               setView('import-character')
             }}
+            notificationsPending={notificationsPending}
+            onNotificationsClick={() => setNotificationsOpen(true)}
           />
         )}
 
@@ -1526,6 +1720,8 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             onAssignCharacterToSession={assignCharacterToSession}
             onSetActiveCharacterId={setActiveCharacterId}
             initialMode={importInitialMode || undefined}
+            notificationsPending={notificationsPending}
+            onNotificationsClick={() => setNotificationsOpen(true)}
             onGoToGameplay={() => {
               setImportInitialMode(null)
               setView('gameplay')
@@ -1551,29 +1747,280 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
 
         {view === 'account' && (
           <section className="dashboard-panel stack">
-            <PageHeader title="Account" subtitle="Profile info for debugging; will be expanded later." />
-            <pre style={{whiteSpace:'pre-wrap'}}>{JSON.stringify(profile, null, 2)}</pre>
+            {(() => {
+              const displayName = String(profile?.name || profile?.username || 'Adventurer')
+              const email = String(profile?.email || '—')
+              const username = String(profile?.username || '—')
+              const userId = profile?.id ?? profile?.user_id ?? '—'
+              const createdAt = profile?.created_at || profile?.createdAt || null
+              const preferences = (profile?.preferences && typeof profile.preferences === 'object') ? profile.preferences : {}
+              const preferenceEntries = Object.entries(preferences)
+              const initials = displayName
+                .split(' ')
+                .map((p) => p.trim()[0])
+                .filter(Boolean)
+                .slice(0, 2)
+                .join('')
+                .toUpperCase()
 
-            <div className="card card-pad stack">
-              <div style={{ fontWeight: 750 }}>Integrations</div>
-              <div className="muted" style={{ fontSize: 13 }}>
-                Beyond20 generally works from the browser extension itself (when rolling on D&amp;D Beyond or VTTs).
-                This section is for optional relay/debug tooling.
-              </div>
-              <div className="row-wrap">
-                <button className="btn btn-secondary" type="button" onClick={() => setView('beyond20')}>
-                  Beyond20 settings
-                </button>
-              </div>
-            </div>
+              const friends = Array.isArray(profile?.friends) ? profile.friends : []
+              const friendCount = typeof profile?.friend_count === 'number' ? profile.friend_count : friends.length
+              const hasVerifiedEmail = Boolean(profile?.email_verified || profile?.verified)
+              const providers = Array.isArray(profile?.providers) ? profile.providers : []
+              const oauth = profile?.oauth && typeof profile.oauth === 'object' ? profile.oauth : {}
+              const linkedProviderSet = new Set<string>([
+                ...providers.map((p: any) => String(p).toLowerCase()),
+                ...Object.keys(oauth).map((p) => String(p).toLowerCase()),
+              ])
+              const providerOptions = [
+                { id: 'google', label: 'Google' },
+                { id: 'discord', label: 'Discord' },
+                { id: 'twitch', label: 'Twitch' },
+              ]
+
+              return (
+                <>
+                  <PageHeader
+                    title="Account"
+                    subtitle="Manage profile, emails, security, and linked accounts."
+                    notificationsPending={notificationsPending}
+                    onNotificationsClick={() => setNotificationsOpen(true)}
+                  />
+
+                  <div className="account-grid">
+                    <div className="card card-pad account-card">
+                      <div className="account-header">
+                        <div className="account-avatar">{initials || 'TT'}</div>
+                        <div>
+                          <div className="account-name">{displayName}</div>
+                          <div className="muted">{email}</div>
+                        </div>
+                      </div>
+                      <div className="account-kv">
+                        <div>
+                          <div className="muted">Username</div>
+                          <div>{username}</div>
+                        </div>
+                        <div>
+                          <div className="muted">User ID</div>
+                          <div>{String(userId)}</div>
+                        </div>
+                        <div>
+                          <div className="muted">Created</div>
+                          <div>{createdAt ? new Date(createdAt).toLocaleString() : '—'}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="card card-pad account-card">
+                      <div style={{ fontWeight: 750, marginBottom: 8 }}>Emails</div>
+                      <div className="account-kv">
+                        <div>
+                          <div className="muted">Primary email</div>
+                          <div>{email}</div>
+                        </div>
+                        <div>
+                          <div className="muted">Status</div>
+                          <div>{hasVerifiedEmail ? 'Verified' : 'Unverified'}</div>
+                        </div>
+                      </div>
+                      <div className="row-wrap" style={{ marginTop: 10 }}>
+                        <button className="btn btn-secondary" type="button" disabled>
+                          Add email
+                        </button>
+                        <button className="btn btn-secondary" type="button" disabled>
+                          Send verification
+                        </button>
+                      </div>
+                      <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+                        Best practice: require verified email for account recovery and security notifications.
+                      </div>
+                    </div>
+
+                    <div className="card card-pad account-card">
+                      <div style={{ fontWeight: 750, marginBottom: 8 }}>Friends</div>
+                      <div className="account-kv">
+                        <div>
+                          <div className="muted">Total friends</div>
+                          <div>{friendCount}</div>
+                        </div>
+                      </div>
+                      {friends.length ? (
+                        <div className="account-list">
+                          {friends.slice(0, 3).map((friend: any, idx: number) => (
+                            <div key={`${friend?.id ?? idx}`} className="account-pill">
+                              {String(friend?.name ?? friend?.username ?? friend?.email ?? `Friend ${idx + 1}`)}
+                            </div>
+                          ))}
+                          {friends.length > 3 ? (
+                            <div className="account-pill">+{friends.length - 3} more</div>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <div className="muted" style={{ fontSize: 13 }}>
+                          Add friends to share campaigns and invite players.
+                        </div>
+                      )}
+                      <div className="row-wrap" style={{ marginTop: 10 }}>
+                        <button className="btn btn-secondary" type="button" disabled>
+                          Manage friends
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="card card-pad account-card">
+                      <div style={{ fontWeight: 750, marginBottom: 8 }}>Security</div>
+                      <div className="muted" style={{ fontSize: 13 }}>
+                        Keep your account secure with verified email, strong passwords, and linked providers.
+                      </div>
+                      <div className="row-wrap" style={{ marginTop: 10 }}>
+                        <button className="btn btn-secondary" type="button" disabled>
+                          Change password
+                        </button>
+                        <button className="btn btn-secondary" type="button" disabled>
+                          Send reset link
+                        </button>
+                      </div>
+                      <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+                        Best practice: enforce rate limits and require recent login to change credentials.
+                      </div>
+                    </div>
+
+                    {isAdmin ? (
+                      <div className="card card-pad account-card">
+                        <div style={{ fontWeight: 750, marginBottom: 8 }}>Admin controls</div>
+                        <div className="muted" style={{ fontSize: 13, marginBottom: 10 }}>
+                          Toggle admin mode to reveal elevated cleanup tools.
+                        </div>
+                        <div className="row-wrap" style={{ gap: 8, alignItems: 'center' }}>
+                          <div className="account-pill">Status: {adminMode ? 'Enabled' : 'Disabled'}</div>
+                          <button className="btn btn-secondary" type="button" onClick={() => handleToggleAdminMode(!adminMode)}>
+                            {adminMode ? 'Disable admin mode' : 'Enable admin mode'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div className="card card-pad account-card">
+                      <div style={{ fontWeight: 750, marginBottom: 8 }}>Linked accounts</div>
+                      <div className="muted" style={{ fontSize: 13, marginBottom: 10 }}>
+                        Link Google, Discord, or Twitch to enable one-click sign-in and account recovery.
+                      </div>
+                      <div className="account-provider-grid">
+                        {providerOptions.map((provider) => {
+                          const isLinked = linkedProviderSet.has(provider.id)
+                          return (
+                            <div key={provider.id} className="account-provider">
+                              <div>
+                                <div style={{ fontWeight: 650 }}>{provider.label}</div>
+                                <div className="muted" style={{ fontSize: 12 }}>{isLinked ? 'Linked' : 'Not linked'}</div>
+                              </div>
+                              <button className="btn btn-secondary btn-sm" type="button" disabled>
+                                {isLinked ? 'Manage' : 'Link'}
+                              </button>
+                            </div>
+                          )
+                        })}
+                      </div>
+                      <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+                        Best practice: allow unlink only if another sign-in method is available.
+                      </div>
+                    </div>
+
+                    <div className="card card-pad account-card">
+                      <div style={{ fontWeight: 750, marginBottom: 8 }}>Preferences</div>
+                      {preferenceEntries.length ? (
+                        <div className="account-kv">
+                          {preferenceEntries.map(([key, value]) => (
+                            <div key={key}>
+                              <div className="muted">{key}</div>
+                              <div>{typeof value === 'string' ? value : JSON.stringify(value)}</div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="muted" style={{ fontSize: 13 }}>
+                          No preferences set yet.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="card card-pad account-card stack">
+                    <div style={{ fontWeight: 750 }}>Integrations</div>
+                    <div className="muted" style={{ fontSize: 13 }}>
+                      Beyond20 generally works from the browser extension itself (when rolling on D&amp;D Beyond or VTTs).
+                      This section is for optional relay/debug tooling.
+                    </div>
+                    <div className="row-wrap">
+                      <button className="btn btn-secondary" type="button" onClick={() => setView('beyond20')}>
+                        Beyond20 settings
+                      </button>
+                    </div>
+                  </div>
+
+                  <details className="account-debug">
+                    <summary>Debug profile payload</summary>
+                    <pre className="account-json">{JSON.stringify(profile, null, 2)}</pre>
+                  </details>
+                </>
+              )
+            })()}
           </section>
         )}
 
         {view === 'beyond20' && (
           <div className="dashboard-panel" style={{ padding: 24 }}>
-            <Beyond20View activeSessionId={activeSession} />
+            <Beyond20View
+              activeSessionId={activeSession}
+              identifier={profile?.email || profile?.username || null}
+              notificationsPending={notificationsPending}
+              onNotificationsClick={() => setNotificationsOpen(true)}
+            />
           </div>
         )}
+        <Modal
+          open={notificationsOpen}
+          title="Notifications"
+          onClose={() => setNotificationsOpen(false)}
+        >
+          <div className="stack" style={{ gap: 12 }}>
+            <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+              <div className="muted">Latest first</div>
+              <button className="btn btn-quiet btn-sm" type="button" onClick={handleMarkAllRead} disabled={!sortedNotifications.length}>
+                Mark all read
+              </button>
+            </div>
+
+            {!sortedNotifications.length ? (
+              <div className="notification-empty">No notifications yet.</div>
+            ) : (
+              <div className="notification-list">
+                {sortedNotifications.map((item) => {
+                  const isRead = isNotificationRead(item)
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={`notification-item ${isRead ? '' : 'notification-item--unread'}`}
+                      onClick={() => {
+                        if (!isRead) {
+                          setReadNotificationIds((prev) => (prev.includes(item.id) ? prev : [...prev, item.id]))
+                        }
+                      }}
+                    >
+                      <div className="notification-item-title">{item.title}</div>
+                      {item.body ? <div className="notification-item-body">{item.body}</div> : null}
+                      <div className="notification-item-time">
+                        {item.createdAt ? new Date(item.createdAt).toLocaleString() : 'Just now'}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </Modal>
         <Modal
           open={showCreateModal}
           title="Create Campaign"

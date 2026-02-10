@@ -48,6 +48,14 @@ Canonical references:
 - Don’t log secrets or full raw exports in server logs.
 - Principle of least privilege for storage providers and API keys.
 
+## Account, Identity, and OAuth
+- Always verify primary email before enabling critical actions (password change, provider unlink, data export).
+- Provide password reset via short-lived, single-use tokens; rate-limit reset and verification endpoints.
+- When linking providers (Google/Discord/Twitch), require recent login and show last-linked timestamps.
+- Never allow unlinking the last remaining sign-in method (to avoid lockout).
+- Store provider subject IDs (not emails) and keep minimal scope access.
+- Log auth events (login, link, unlink, password change) without PII leakage.
+
 ## Retro Audits
 When something feels flaky (e.g., refresh issues, 405s), do a short retro audit:
 - Identify the *contract* (URL, method, payload, auth)

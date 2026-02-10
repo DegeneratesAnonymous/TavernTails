@@ -223,6 +223,19 @@ def test_import_character_from_pdf_extracts_widget_values():
     add_widget("Armor Class", "17", y=595.0)
     add_widget("Current Hit Points", "21", y=575.0)
     add_widget("Hit Point Maximum", "28", y=555.0)
+    add_widget("Passive Perception", "14", y=540.0)
+    add_widget("Passive Insight", "12", y=525.0)
+    add_widget("Passive Investigation", "13", y=510.0)
+    add_widget("Race", "Elf", y=495.0)
+    add_widget("Background", "Acolyte", y=480.0)
+    add_widget("Weight Carried", "120", y=465.0)
+    add_widget("Encumbered", "150", y=450.0)
+    add_widget("Heavily Encumbered", "200", y=435.0)
+    add_widget("Personality Traits", "Curious", y=420.0)
+    add_widget("Ideals", "Justice", y=405.0)
+    add_widget("Bonds", "Temple", y=390.0)
+    add_widget("Flaws", "Stubborn", y=375.0)
+    add_widget("Allies & Organizations", "Harpers", y=360.0)
     add_widget("Features & Traits", "Darkvision\nSecond Wind", y=535.0)
     add_widget("spellName0", "Magic Missile", y=515.0)
     add_widget("spellComponents0", "V,S", y=495.0)
@@ -246,9 +259,46 @@ def test_import_character_from_pdf_extracts_widget_values():
     assert data["character"]["sheet"]["ac"] == 17
     assert data["character"]["sheet"]["hp"]["current"] == 21
     assert data["character"]["sheet"]["hp"]["max"] == 28
+    assert data["character"]["sheet"]["passives"]["perception"] == 14
+    assert data["character"]["sheet"]["passives"]["insight"] == 12
+    assert data["character"]["sheet"]["passives"]["investigation"] == 13
+    assert data["character"]["sheet"]["species"] == "Elf"
+    assert data["character"]["sheet"]["background"] == "Acolyte"
+    assert data["character"]["sheet"]["carry"]["weight_current"] == 120
+    assert data["character"]["sheet"]["carry"]["encumbered_at"] == 150
+    assert data["character"]["sheet"]["carry"]["heavily_encumbered_at"] == 200
+    assert data["character"]["sheet"]["story"]["personality_traits"] == "Curious"
+    assert data["character"]["sheet"]["story"]["ideals"] == "Justice"
+    assert data["character"]["sheet"]["story"]["bonds"] == "Temple"
+    assert data["character"]["sheet"]["story"]["flaws"] == "Stubborn"
+    assert data["character"]["sheet"]["story"]["allies"] == "Harpers"
+    assert any(entry.get("class_name") == "Druid" and entry.get("level") == 4 for entry in data["character"]["sheet"]["multiclass"])
+    assert any(entry.get("class_name") == "Cleric" and entry.get("level") == 2 for entry in data["character"]["sheet"]["multiclass"])
     assert "Darkvision" in data["character"]["sheet"]["features"]
     assert "Magic Missile" in data["character"]["sheet"]["spells"]
     assert "V,S" not in data["character"]["sheet"]["spells"]
+
+    def test_spell_table_text_parsing():
+        from server.agents.characters import _extract_spellbook_from_text
+
+        text = """
+        PREP SPELL NAME        SOURCE   SAVE/ATK   TIME   RANGE   COMP   DURATION   PAGE REF   NOTES
+        O Shillelagh           Druid    +6         1BA    Touch   V,S,M  1 minute   PHB 275    D: 1m, V/S/M
+        O Shape Water          Druid    --         1A     30 ft.  V,S    Instant    EE 164     5 ft. Cube, V/S
+        === 1ST LEVEL ===
+        O Cure Wounds          Druid    --         1A     Touch   V,S    Instant    PHB 230    V/S
+        """
+
+        entries = _extract_spellbook_from_text(text)
+        assert len(entries) >= 3
+        assert entries[0]["name"] == "Shillelagh"
+        assert entries[0]["source"] == "Druid"
+        assert entries[0]["time"] == "1BA"
+        assert entries[0]["range"] == "Touch"
+        assert entries[0]["components"] == "V,S,M"
+        assert entries[0]["duration"] == "1 minute"
+        assert entries[0]["page"] == "PHB 275"
+        assert "D: 1m" in (entries[0]["notes"] or "")
 
 
 def test_import_character_from_nested_classes_shape():

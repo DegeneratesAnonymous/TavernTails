@@ -3,6 +3,56 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '../../api'
 import PageHeader from '../ui/PageHeader'
 
+const SettingsIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="btn-icon">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 0 1 1.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.559.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.894.149c-.424.07-.764.383-.929.78-.165.398-.143.854.107 1.204l.527.738c.32.447.269 1.06-.12 1.45l-.774.773a1.125 1.125 0 0 1-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.398.165-.71.505-.781.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.447.32-1.06.269-1.45-.12l-.773-.774a1.125 1.125 0 0 1-.12-1.45l.527-.737c.25-.35.272-.806.108-1.204-.165-.397-.506-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.108-1.204l-.526-.738a1.125 1.125 0 0 1 .12-1.45l.773-.773a1.125 1.125 0 0 1 1.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894Z" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+  </svg>
+)
+
+const NewIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="btn-icon">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v6m3-3H9m12 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+  </svg>
+)
+
+
+const AddPlayerIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="btn-icon">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z" />
+  </svg>
+)
+
+const RemovePlayerIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="btn-icon">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M22 10.5h-6m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM4 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 10.374 21c-2.331 0-4.512-.645-6.374-1.766Z" />
+  </svg>
+)
+
+const PlayersIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="btn-icon">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" />
+  </svg>
+)
+
+const DocumentsIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="btn-icon">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 3.75V16.5L12 14.25 7.5 16.5V3.75m9 0H18A2.25 2.25 0 0 1 20.25 6v12A2.25 2.25 0 0 1 18 20.25H6A2.25 2.25 0 0 1 3.75 18V6A2.25 2.25 0 0 1 6 3.75h1.5m9 0h-9" />
+  </svg>
+)
+
+const AddDocumentIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="btn-icon">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+  </svg>
+)
+
+const RemoveDocumentIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="btn-icon">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m6.75 12H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+  </svg>
+)
+
 type Campaign = {
   id: string
   name: string
@@ -29,6 +79,11 @@ type Props = {
 
   onPlay?: () => Promise<void> | void
   playBusy?: boolean
+
+  notificationsPending?: boolean
+  onNotificationsClick?: () => void
+  showAdminControls?: boolean
+  onDeleteTestCampaigns?: () => void
 }
 
 const DEFAULT_SETTINGS: CampaignSettings = {
@@ -59,7 +114,12 @@ export default function CampaignSetupView({
   onCreateCampaign,
   onPlay,
   playBusy,
+  notificationsPending,
+  onNotificationsClick,
+  showAdminControls = false,
+  onDeleteTestCampaigns,
 }: Props) {
+  const [viewMode, setViewMode] = useState<'list' | 'settings' | 'documents' | 'players'>('list')
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
 
@@ -74,6 +134,12 @@ export default function CampaignSetupView({
     setName(asString(activeCampaign?.name))
     setDescription(asString(activeCampaign?.description))
   }, [activeCampaignId, activeCampaign?.name, activeCampaign?.description])
+
+  useEffect(() => {
+    if (!activeCampaignId && viewMode !== 'list') {
+      setViewMode('list')
+    }
+  }, [activeCampaignId, viewMode])
 
   useEffect(() => {
     let canceled = false
@@ -118,9 +184,16 @@ export default function CampaignSetupView({
   }, [activeCampaignId])
 
   const title = useMemo(() => {
-    if (!activeCampaignId) return 'Manage Campaigns'
-    return `Manage Campaigns: ${asString(activeCampaign?.name) || activeCampaignId}`
-  }, [activeCampaignId, activeCampaign?.name])
+    if (viewMode === 'list' || !activeCampaignId) return 'Manage Campaigns'
+    const base = asString(activeCampaign?.name) || activeCampaignId
+    const suffix = viewMode === 'settings' ? 'Settings' : viewMode === 'documents' ? 'Documents' : 'Players'
+    return `Manage Campaigns: ${base} — ${suffix}`
+  }, [activeCampaignId, activeCampaign?.name, viewMode])
+
+  const openCampaignView = (campaignId: string, mode: 'settings' | 'documents' | 'players') => {
+    onSelectCampaign(campaignId)
+    setViewMode(mode)
+  }
 
   async function onSave() {
     if (!activeCampaignId) {
@@ -175,15 +248,24 @@ export default function CampaignSetupView({
       <PageHeader
         title={title}
         subtitle="Create, configure, and start/restart scenes."
+        notificationsPending={notificationsPending}
+        onNotificationsClick={onNotificationsClick}
+        actions={
+          showAdminControls && onDeleteTestCampaigns ? (
+            <button className="btn btn-quiet" type="button" onClick={onDeleteTestCampaigns}>
+              Delete test campaigns
+            </button>
+          ) : undefined
+        }
       />
 
       <div className="row-wrap" style={{ gap: 16, alignItems: 'stretch' }}>
         <div style={{ minWidth: 260, flex: '1 1 260px' }}>
-          <div className="card card-pad stack" style={{ gap: 10 }}>
+          <div className="card card-pad stack" style={{ gap: 10, background: 'var(--surface-dark)' }}>
             <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
               <div className="muted">Campaigns</div>
-              <button className="btn btn-secondary btn-sm" type="button" onClick={onCreateCampaign}>
-                New Campaign
+              <button className="btn btn-secondary btn-sm btn-icon-only" type="button" onClick={onCreateCampaign} title="New Campaign" aria-label="New Campaign">
+                <NewIcon />
               </button>
             </div>
 
@@ -192,33 +274,44 @@ export default function CampaignSetupView({
                 No campaigns yet. Create one to set the world and session settings.
               </div>
             ) : (
-              <div className="stack" style={{ gap: 6 }}>
+              <div className="stack" style={{ gap: 10 }}>
                 {sortedCampaigns.map((campaign) => {
                   const isActive = String(campaign.id) === String(activeCampaignId)
                   return (
-                    <button
+                    <div
                       key={campaign.id}
-                      type="button"
-                      className="btn btn-quiet"
+                      className="card"
                       style={{
-                        textAlign: 'left',
-                        justifyContent: 'space-between',
-                        background: isActive ? 'rgba(255,255,255,0.06)' : 'transparent',
+                        padding: 10,
+                        background: 'rgba(71,66,61,0.6)',
+                        borderColor: isActive ? 'rgba(173,136,95,0.6)' : 'var(--tt-border)',
                       }}
-                      onClick={() => onSelectCampaign(String(campaign.id))}
                     >
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {campaign.name}
-                        </div>
-                        {campaign.description ? (
-                          <div className="muted" style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {campaign.description}
+                      <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {campaign.name}
                           </div>
-                        ) : null}
+                          {campaign.description ? (
+                            <div className="muted" style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {campaign.description}
+                            </div>
+                          ) : null}
+                          {isActive ? <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>Selected</div> : null}
+                        </div>
+                        <div className="row-wrap" style={{ gap: 6, justifyContent: 'flex-end' }}>
+                          <button className="btn btn-secondary btn-sm btn-icon-only" type="button" onClick={() => openCampaignView(String(campaign.id), 'settings')} title="Settings" aria-label="Settings">
+                            <SettingsIcon />
+                          </button>
+                          <button className="btn btn-secondary btn-sm btn-icon-only" type="button" onClick={() => openCampaignView(String(campaign.id), 'documents')} title="Documents" aria-label="Documents">
+                            <DocumentsIcon />
+                          </button>
+                          <button className="btn btn-secondary btn-sm btn-icon-only" type="button" onClick={() => openCampaignView(String(campaign.id), 'players')} title="Players" aria-label="Players">
+                            <PlayersIcon />
+                          </button>
+                        </div>
                       </div>
-                      {isActive ? <span className="muted" style={{ fontSize: 12 }}>Selected</span> : null}
-                    </button>
+                    </div>
                   )
                 })}
               </div>
@@ -227,7 +320,14 @@ export default function CampaignSetupView({
         </div>
 
         <div style={{ minWidth: 320, flex: '2 1 520px' }}>
-          {!activeCampaignId ? (
+          {viewMode === 'list' ? (
+            <div className="card card-pad" style={{ background: 'var(--surface-dark)' }}>
+              <div className="muted" style={{ marginBottom: 8 }}>Select a campaign action</div>
+              <div className="muted" style={{ fontSize: 13 }}>
+                Choose Settings, Documents, or Players on the left to manage a campaign. Settings covers world details and tone.
+              </div>
+            </div>
+          ) : !activeCampaignId ? (
             <div className="inline-alert">
               Select a campaign to view and edit settings, or create a new campaign.
             </div>
@@ -239,121 +339,174 @@ export default function CampaignSetupView({
             </div>
           ) : null}
 
-          <div className="card card-pad">
-            <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-              <div className="muted">Campaign details</div>
-              <div className="row-wrap" style={{ gap: 8 }}>
-                {onPlay && activeCampaignId ? (
-                  <button className="btn" type="button" disabled={!canEdit || Boolean(playBusy)} onClick={onPlay}>
-                    {playBusy ? 'Starting…' : 'Start / Restart Scene'}
+          {viewMode === 'settings' ? (
+            <>
+              <button className="btn btn-secondary btn-sm" type="button" onClick={() => setViewMode('list')}>
+                ← Back to campaigns
+              </button>
+
+              <div className="card card-pad" style={{ background: 'var(--surface-dark)' }}>
+                <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                  <div className="muted">Campaign details</div>
+                  <div className="row-wrap" style={{ gap: 8 }}>
+                    {onPlay && activeCampaignId ? (
+                      <button className="btn" type="button" disabled={!canEdit || Boolean(playBusy)} onClick={onPlay}>
+                        {playBusy ? 'Starting…' : 'Start / Restart Scene'}
+                      </button>
+                    ) : null}
+                    <button
+                      className="btn btn-icon-only"
+                      type="button"
+                      disabled={!canEdit || saving}
+                      onClick={onSave}
+                      title={saving ? 'Saving…' : 'Save'}
+                      aria-label={saving ? 'Saving…' : 'Save'}
+                    >
+                      <SettingsIcon />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="stack" style={{ gap: 10, marginTop: 10 }}>
+                  <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Campaign name" disabled={!canEdit} />
+                  <textarea
+                    className="input"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Description (optional)"
+                    rows={3}
+                    disabled={!canEdit}
+                  />
+                </div>
+              </div>
+
+              <div className="card card-pad" style={{ opacity: loading ? 0.7 : 1, background: 'var(--surface-dark)' }}>
+                <div className="stack" style={{ gap: 10 }}>
+                  <div className="muted">World & game settings</div>
+
+                  <label className="row" style={{ gap: 8, alignItems: 'center', userSelect: 'none' }}>
+                    <input
+                      type="checkbox"
+                      checked={settings.player_run_mode}
+                      onChange={(e) => setSettings((prev) => ({ ...prev, player_run_mode: e.target.checked }))}
+                      disabled={!canEdit}
+                    />
+                    <span>
+                      Player‑run session mode (AI optional). Keeps notes/NPC organization active.
+                    </span>
+                  </label>
+
+                  <input
+                    className="input"
+                    value={settings.world_name}
+                    onChange={(e) => setSettings((prev) => ({ ...prev, world_name: e.target.value }))}
+                    placeholder="World name (e.g. Eldervale)"
+                    disabled={!canEdit}
+                  />
+
+                  <textarea
+                    className="input"
+                    value={settings.setting_summary}
+                    onChange={(e) => setSettings((prev) => ({ ...prev, setting_summary: e.target.value }))}
+                    placeholder="Setting summary (factions, hooks, vibe)"
+                    rows={4}
+                    disabled={!canEdit}
+                  />
+
+                  <div className="row-wrap">
+                    <select
+                      className="input"
+                      value={settings.tone}
+                      onChange={(e) => setSettings((prev) => ({ ...prev, tone: e.target.value }))}
+                      disabled={!canEdit}
+                      aria-disabled={!canEdit}
+                    >
+                      <option value="">Tone…</option>
+                      <option value="heroic">Heroic</option>
+                      <option value="grim">Grim</option>
+                      <option value="dark-fantasy">Dark fantasy</option>
+                      <option value="comedy">Comedy</option>
+                      <option value="horror">Horror</option>
+                    </select>
+
+                    <input
+                      className="input"
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={settings.starting_level}
+                      onChange={(e) => setSettings((prev) => ({ ...prev, starting_level: asNumber(e.target.value, 1) }))}
+                      disabled={!canEdit}
+                    />
+                  </div>
+
+                  <textarea
+                    className="input"
+                    value={settings.house_rules}
+                    onChange={(e) => setSettings((prev) => ({ ...prev, house_rules: e.target.value }))}
+                    placeholder="House rules / table rules"
+                    rows={3}
+                    disabled={!canEdit}
+                  />
+
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    These settings are stored on the campaign and can be used by agents later to keep narration/rules consistent.
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : null}
+
+          {viewMode === 'documents' ? (
+            <>
+              <button className="btn btn-secondary btn-sm" type="button" onClick={() => setViewMode('list')}>
+                ← Back to campaigns
+              </button>
+              <div className="card card-pad" style={{ background: 'var(--surface-dark)' }}>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>Shared Documents Library</div>
+                <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
+                  Documents here are shared across campaigns (tables, lore, guides, and system references).
+                </div>
+                <div className="row-wrap" style={{ gap: 8 }}>
+                  <button className="btn btn-icon-only" type="button" title="Upload Document" aria-label="Upload Document">
+                    <AddDocumentIcon />
                   </button>
-                ) : null}
-                <button className="btn" type="button" disabled={!canEdit || saving} onClick={onSave}>
-                  {saving ? 'Saving…' : 'Save'}
-                </button>
+                  <button className="btn btn-secondary btn-icon-only" type="button" title="Create Folder" aria-label="Create Folder">
+                    <NewIcon />
+                  </button>
+                  <button className="btn btn-secondary btn-icon-only" type="button" title="Remove Document" aria-label="Remove Document">
+                    <RemoveDocumentIcon />
+                  </button>
+                </div>
+                <div className="inline-alert" style={{ marginTop: 12 }}>
+                  No documents yet. Upload a PDF or document file to build your library.
+                </div>
               </div>
-            </div>
+            </>
+          ) : null}
 
-            <div className="stack" style={{ gap: 10, marginTop: 10 }}>
-              <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Campaign name" disabled={!canEdit} />
-              <textarea
-                className="input"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Description (optional)"
-                rows={3}
-                disabled={!canEdit}
-              />
-            </div>
-          </div>
-
-          <div className="card card-pad" style={{ opacity: loading ? 0.7 : 1 }}>
-            <div className="stack" style={{ gap: 10 }}>
-              <div className="muted">World & game settings</div>
-
-              <label className="row" style={{ gap: 8, alignItems: 'center', userSelect: 'none' }}>
-                <input
-                  type="checkbox"
-                  checked={settings.player_run_mode}
-                  onChange={(e) => setSettings((prev) => ({ ...prev, player_run_mode: e.target.checked }))}
-                  disabled={!canEdit}
-                />
-                <span>
-                  Player‑run session mode (AI optional). Keeps notes/NPC organization active.
-                </span>
-              </label>
-
-              <input
-                className="input"
-                value={settings.world_name}
-                onChange={(e) => setSettings((prev) => ({ ...prev, world_name: e.target.value }))}
-                placeholder="World name (e.g. Eldervale)"
-                disabled={!canEdit}
-              />
-
-              <textarea
-                className="input"
-                value={settings.setting_summary}
-                onChange={(e) => setSettings((prev) => ({ ...prev, setting_summary: e.target.value }))}
-                placeholder="Setting summary (factions, hooks, vibe)"
-                rows={4}
-                disabled={!canEdit}
-              />
-
-              <div className="row-wrap">
-                <select
-                  className="input"
-                  value={settings.ruleset}
-                  onChange={(e) => setSettings((prev) => ({ ...prev, ruleset: e.target.value }))}
-                  disabled={!canEdit}
-                  aria-disabled={!canEdit}
-                >
-                  <option value="5e">D&D 5e</option>
-                  <option value="pf2">Pathfinder 2e</option>
-                  <option value="osr">OSR</option>
-                  <option value="other">Other</option>
-                </select>
-
-                <select
-                  className="input"
-                  value={settings.tone}
-                  onChange={(e) => setSettings((prev) => ({ ...prev, tone: e.target.value }))}
-                  disabled={!canEdit}
-                  aria-disabled={!canEdit}
-                >
-                  <option value="">Tone…</option>
-                  <option value="heroic">Heroic</option>
-                  <option value="grim">Grim</option>
-                  <option value="dark-fantasy">Dark fantasy</option>
-                  <option value="comedy">Comedy</option>
-                  <option value="horror">Horror</option>
-                </select>
-
-                <input
-                  className="input"
-                  type="number"
-                  min={1}
-                  max={20}
-                  value={settings.starting_level}
-                  onChange={(e) => setSettings((prev) => ({ ...prev, starting_level: asNumber(e.target.value, 1) }))}
-                  disabled={!canEdit}
-                />
+          {viewMode === 'players' ? (
+            <>
+              <button className="btn btn-secondary btn-sm" type="button" onClick={() => setViewMode('list')}>
+                ← Back to campaigns
+              </button>
+              <div className="card card-pad" style={{ background: 'var(--surface-dark)' }}>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>Players</div>
+                <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
+                  Manage access to this campaign. (Invite and role controls coming next.)
+                </div>
+                <div className="row-wrap" style={{ gap: 8, marginBottom: 12 }}>
+                  <button className="btn btn-icon-only" type="button" title="Add Player" aria-label="Add Player">
+                    <AddPlayerIcon />
+                  </button>
+                  <button className="btn btn-secondary btn-icon-only" type="button" title="Remove Player" aria-label="Remove Player">
+                    <RemovePlayerIcon />
+                  </button>
+                </div>
+                <div className="inline-alert">No players listed yet.</div>
               </div>
-
-              <textarea
-                className="input"
-                value={settings.house_rules}
-                onChange={(e) => setSettings((prev) => ({ ...prev, house_rules: e.target.value }))}
-                placeholder="House rules / table rules"
-                rows={3}
-                disabled={!canEdit}
-              />
-
-              <div className="muted" style={{ fontSize: 12 }}>
-                These settings are stored on the campaign and can be used by agents later to keep narration/rules consistent.
-              </div>
-            </div>
-          </div>
+            </>
+          ) : null}
         </div>
       </div>
     </section>

@@ -34,7 +34,22 @@ type Props = {
   onGoToCharacters?: () => void
   onGoToImport?: () => void
   playerRunMode?: boolean
+
+  notificationsPending?: boolean
+  onNotificationsClick?: () => void
 }
+
+const BellIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="btn-icon">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" />
+  </svg>
+)
+
+const BellUnreadIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="btn-icon">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0M10.5 8.25h3l-3 4.5h3" />
+  </svg>
+)
 
 type Banner = {
   id: string
@@ -64,6 +79,8 @@ export default function GameplayLayout({
   onGoToCharacters,
   onGoToImport,
   playerRunMode = false,
+  notificationsPending = false,
+  onNotificationsClick,
 }: Props){
   const [drawerOpen, setDrawerOpen] = useState(false)
   const openDrawer = () => setDrawerOpen(true)
@@ -438,6 +455,7 @@ export default function GameplayLayout({
         const stats = (sheet?.stats && typeof sheet.stats === 'object') ? sheet.stats : {}
         const inventory = toStringArray(sheet?.inventory)
         const spells = toStringArray(sheet?.spells)
+        const spellbook = Array.isArray(sheet?.spellbook) ? sheet.spellbook : []
         const features = toStringArray(sheet?.features)
         const skills = toSkillArray(sheet?.skills)
         const id = String(ch?.id ?? '')
@@ -460,6 +478,7 @@ export default function GameplayLayout({
           skills,
           inventory,
           spells,
+          spellbook,
         } as CharacterSummary
       })
       .filter(Boolean) as CharacterSummary[]
@@ -792,7 +811,17 @@ export default function GameplayLayout({
                 {sessionStarted ? 'In play' : 'Not started yet'}
               </div>
             </div>
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button
+                className={`notification-bell ${notificationsPending ? 'notification-bell--pending' : ''}`}
+                type="button"
+                aria-label={notificationsPending ? 'Unread notifications' : 'No notifications'}
+                title={notificationsPending ? 'Unread notifications' : 'No notifications'}
+                onClick={onNotificationsClick}
+                disabled={!onNotificationsClick}
+              >
+                {notificationsPending ? <BellUnreadIcon /> : <BellIcon />}
+              </button>
               <button className="btn btn-primary btn-sm" type="button" onClick={async ()=>{
                 if(!sessionId) return alert('No active session')
                 try{

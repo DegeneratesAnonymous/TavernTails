@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, cast
 
 from passlib.context import CryptContext
-from sqlalchemy import Column, desc, func
+from sqlalchemy import Column, desc, func, delete, or_
 from sqlalchemy.types import JSON
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
@@ -172,6 +172,20 @@ def delete_campaign(campaign_id: str, owner_id: int) -> bool:
         session.delete(camp)
         session.commit()
         return True
+
+
+def purge_campaigns(owner_id: int, name_tokens: Optional[List[str]] = None) -> int:
+    tokens = [t.strip().lower() for t in (name_tokens or []) if t and t.strip()]
+    with Session(engine) as session:
+        stmt = delete(Campaign).where(Campaign.owner_id == owner_id)
+        if tokens:
+            stmt = stmt.where(or_(*[func.lower(Campaign.name).like(f"%{token}%") for token in tokens]))
+        result = session.exec(stmt)
+        session.commit()
+        try:
+            return int(result.rowcount or 0)
+        except Exception:
+            return 0
 
 
 def add_session_to_campaign(campaign_id: str, owner_id: int, session_id: str) -> Optional[Campaign]:
@@ -448,6 +462,115 @@ def ensure_dev_user():
         return user
 
 
+def is_admin_user(user: User) -> bool:
+    if not user:
+        return False
+    profile = user.profile or {}
+    if profile.get("admin") is True:
+        return True
+    roles = profile.get("roles")
+    if isinstance(roles, list) and any(str(r).lower() == "admin" for r in roles):
+        return True
+    email = (user.email or "").lower()
+    if email:
+        allow = [e.strip().lower() for e in (os.environ.get("TAVERNTAILS_ADMIN_EMAILS") or "").split(",") if e.strip()]
+        if email in allow:
+            return True
+    return False
+
+
+def set_admin_mode(user_id: int, enabled: bool) -> Optional[User]:
+    with Session(engine) as session:
+        stmt = select(User).where(User.id == user_id)
+        dbu = session.exec(stmt).first()
+        if not dbu:
+            return None
+        profile = dict(dbu.profile or {})
+        prefs = profile.setdefault("preferences", {})
+        if isinstance(prefs, dict):
+            prefs["admin_mode"] = bool(enabled)
+        profile["preferences"] = prefs
+        dbu.profile = profile
+        session.add(dbu)
+        session.commit()
+        session.refresh(dbu)
+        return dbu
+
+
+def ensure_seed_users():
+    """Ensure admin + test users exist (for local development)."""
+    admin_email = _normalize_email(os.environ.get("TAVERNTAILS_ADMIN_EMAIL", "admin@example.com")) or "admin@example.com"
+    admin_password = os.environ.get("TAVERNTAILS_ADMIN_PASSWORD", "secret")
+    admin_username = _normalize_username(os.environ.get("TAVERNTAILS_ADMIN_USERNAME", "Admin"))
+    test_email = _normalize_email(os.environ.get("TAVERNTAILS_TEST_EMAIL", "bilbo@example.com")) or "bilbo@example.com"
+    test_password = os.environ.get("TAVERNTAILS_TEST_PASSWORD", "secret")
+    test_username = _normalize_username(os.environ.get("TAVERNTAILS_TEST_USERNAME", "BilboBaggins"))
+
+    def _ensure(email: str, password: str, username: Optional[str], profile: Dict[str, Any]) -> User:
+        with Session(engine) as session:
+            stmt = select(User).where(func.lower(User.email) == email.lower())
+            existing = session.exec(stmt).first()
+            if existing:
+                updated = False
+                if username and existing.username != username:
+                    existing.username = username
+                    updated = True
+                if not existing.verified:
+                    existing.verified = True
+                    updated = True
+                if existing.verification_token:
+                    existing.verification_token = None
+                    updated = True
+                if not verify_password(password, existing.password_hash):
+                    existing.password_hash = hash_password(password)
+                    updated = True
+                merged = dict(existing.profile or {})
+                merged.update(profile or {})
+                if merged != (existing.profile or {}):
+                    existing.profile = merged
+                    updated = True
+                if updated:
+                    session.add(existing)
+                    session.commit()
+                    session.refresh(existing)
+                return existing
+            user = User(
+                email=email,
+                username=username,
+                password_hash=hash_password(password),
+                verified=True,
+                verification_token=None,
+                profile=profile,
+            )
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+            return user
+
+    _ensure(
+        admin_email,
+        admin_password,
+        admin_username,
+        {
+            "name": admin_username or admin_email.split("@")[0],
+            "email": admin_email,
+            "admin": True,
+            "preferences": {"admin_mode": True},
+        },
+    )
+
+    _ensure(
+        test_email,
+        test_password,
+        test_username,
+        {
+            "name": "Bilbo Baggins",
+            "email": test_email,
+            "preferences": {"admin_mode": False},
+        },
+    )
+
+
 def set_verification_token(email: str, token: str):
     with Session(engine) as session:
         stmt = select(User).where(func.lower(User.email) == email.lower())
@@ -552,6 +675,52 @@ def delete_character(character_id: int, owner_id: int) -> bool:
         session.delete(char)
         session.commit()
         return True
+
+
+def delete_character_any(character_id: int) -> bool:
+    with Session(engine) as session:
+        stmt = select(Character).where(Character.id == character_id)
+        char = session.exec(stmt).first()
+        if not char:
+            return False
+        session.delete(char)
+        session.commit()
+        return True
+
+
+def update_character_any(character_id: int, updates: Dict[str, Any]) -> Optional[Character]:
+    with Session(engine) as session:
+        stmt = select(Character).where(Character.id == character_id)
+        char = session.exec(stmt).first()
+        if not char:
+            return None
+        if 'name' in updates and updates['name']:
+            char.name = updates['name'].strip()
+        if 'class_name' in updates:
+            value = updates['class_name']
+            char.class_name = value.strip() if value else None
+        if 'level' in updates and updates['level']:
+            char.level = max(1, int(updates['level']))
+        if 'sheet' in updates and isinstance(updates['sheet'], dict):
+            char.sheet = updates['sheet']
+        session.add(char)
+        session.commit()
+        session.refresh(char)
+        return char
+
+
+def purge_characters(owner_id: int, name_tokens: Optional[List[str]] = None) -> int:
+    tokens = [t.strip().lower() for t in (name_tokens or []) if t and t.strip()]
+    with Session(engine) as session:
+        stmt = delete(Character).where(Character.owner_id == owner_id)
+        if tokens:
+            stmt = stmt.where(or_(*[func.lower(Character.name).like(f"%{token}%") for token in tokens]))
+        result = session.exec(stmt)
+        session.commit()
+        try:
+            return int(result.rowcount or 0)
+        except Exception:
+            return 0
 
 
 def get_beyond20_domains_for(identifier: str) -> List[str]:

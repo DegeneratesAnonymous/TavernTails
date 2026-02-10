@@ -1,5 +1,6 @@
 import React, {useMemo, useRef, useState} from 'react'
 import CharacterIconStrip, {CharacterSnapshot, CharacterStripKey} from './CharacterIconStrip'
+import EmptyState from './ui/EmptyState'
 import './CharacterPanel.css'
 
 export type SceneCue = {
@@ -21,6 +22,7 @@ export type CharacterSummary = CharacterSnapshot & {
   spellSave: number
   inventory: string[]
   spells: string[]
+  spellbook?: Array<any>
 }
 
 type Props = {
@@ -262,9 +264,10 @@ export default function CharacterPanel({
     return (
       <div className="character-panel-root">
         <h3 className="character-panel-title">{title}</h3>
-        <div className="inline-alert">
-          <div style={{marginBottom: 10}}>No character selected yet. Create or import one, then return to Play.</div>
-          {!showRoster && (onGoToCharacters || onGoToImport) ? (
+        <EmptyState
+          title="No characters yet"
+          description="Create or import a character, then return to Play."
+          actions={!showRoster && (onGoToCharacters || onGoToImport) ? (
             <div style={{display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap'}}>
               {onGoToCharacters ? (
                 <button className="btn" type="button" onClick={onGoToCharacters}>
@@ -278,7 +281,7 @@ export default function CharacterPanel({
               ) : null}
             </div>
           ) : null}
-        </div>
+        />
       </div>
     )
   }
@@ -489,6 +492,72 @@ export default function CharacterPanel({
                     <div className="character-overview-name">{selected?.name}</div>
                     <div className="character-overview-subtitle muted">Tap a button above for details</div>
                   </div>
+
+            {Array.isArray((selected as any)?.spellbook) && (selected as any).spellbook.length ? (
+              <div className="character-sheet-card" aria-label="Spellbook" style={{ marginTop: 12 }}>
+                <div className="character-sheet-card-header">
+                  <div className="character-sheet-card-title">Spellbook</div>
+                </div>
+                <div style={{ maxHeight: 260, overflow: 'auto' }}>
+                  <table className="spellbook-table">
+                    <thead>
+                      <tr>
+                        <th className="spellbook-col spellbook-col--prep">Prep</th>
+                        <th className="spellbook-col">Spell</th>
+                        <th className="spellbook-col">Source</th>
+                        <th className="spellbook-col">Save/Atk</th>
+                        <th className="spellbook-col">Time</th>
+                        <th className="spellbook-col">Range</th>
+                        <th className="spellbook-col">Comp</th>
+                        <th className="spellbook-col">Duration</th>
+                        <th className="spellbook-col">Page</th>
+                        <th className="spellbook-col">Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(() => {
+                        const rows: any[] = []
+                        let lastHeader: string | null = null
+                        ;(selected as any).spellbook.slice(0, 120).forEach((spell: any, idx: number) => {
+                          const header = (spell?.header || spell?.slot_header || '').trim()
+                          if (header && header !== lastHeader) {
+                            lastHeader = header
+                            rows.push({ type: 'header', label: header, key: `header-${idx}` })
+                          }
+                          rows.push({ type: 'spell', spell, key: `spellbook-${idx}` })
+                        })
+                        return rows.map((row) => {
+                          if (row.type === 'header') {
+                            return (
+                              <tr key={row.key} className="spellbook-header-row">
+                                <td colSpan={10}>{row.label}</td>
+                              </tr>
+                            )
+                          }
+                          const spell = row.spell
+                          const prepared = String(spell?.prepared || '').toLowerCase()
+                          const isPrepared = ['yes', 'true', '1', 'prepared', 'y'].includes(prepared) || prepared === 'o' || prepared === '○'
+                          return (
+                            <tr key={row.key}>
+                              <td className="spellbook-prep">{isPrepared ? '●' : '○'}</td>
+                              <td className="spellbook-name">{spell?.name || '—'}</td>
+                              <td>{spell?.source || '—'}</td>
+                              <td>{spell?.save_hit || '—'}</td>
+                              <td>{spell?.time || '—'}</td>
+                              <td>{spell?.range || '—'}</td>
+                              <td>{spell?.components || '—'}</td>
+                              <td>{spell?.duration || '—'}</td>
+                              <td>{spell?.page || '—'}</td>
+                              <td>{spell?.notes || '—'}</td>
+                            </tr>
+                          )
+                        })
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
                 </div>
 
                 <div className="character-overview-grid">

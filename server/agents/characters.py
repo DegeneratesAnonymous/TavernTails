@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import glob
 import json
+import os
 import re
+import subprocess
+import tempfile
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
@@ -506,6 +510,64 @@ def _read_pdf_text(content: bytes) -> Optional[str]:
         # Fall through to text decoding below
         pass
 
+    # Second pass: pdfplumber can yield better table-aligned text.
+    try:
+        import io
+        import pdfplumber
+
+        pages: list[str] = []
+        with pdfplumber.open(io.BytesIO(content)) as pdf:
+            for page in pdf.pages:
+                try:
+                    t = page.extract_text(layout=True) or ""
+                except Exception:
+                    t = ""
+                if not t:
+                    try:
+                        t = page.extract_text() or ""
+                    except Exception:
+                        t = ""
+                if t:
+                    pages.append(t)
+        if pages:
+            return "\n\n".join(pages)
+    except Exception:
+        pass
+
+    # OCR fallback (for image-only PDFs) using CLI tools.
+    if os.environ.get("TAVERNTAILS_ENABLE_OCR", "1") == "1":
+        try:
+            tesseract_cmd = os.environ.get("TAVERNTAILS_TESSERACT_CMD", "tesseract")
+            pdftoppm_cmd = os.environ.get("TAVERNTAILS_PDFTOPPM_CMD", "pdftoppm")
+            with tempfile.TemporaryDirectory() as tmpdir:
+                pdf_path = os.path.join(tmpdir, "source.pdf")
+                with open(pdf_path, "wb") as f:
+                    f.write(content)
+
+                base = os.path.join(tmpdir, "page")
+                subprocess.run(
+                    [pdftoppm_cmd, "-png", "-r", "200", pdf_path, base],
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+                images = sorted(glob.glob(base + "-*.png"))
+                ocr_pages: list[str] = []
+                for img in images:
+                    proc = subprocess.run(
+                        [tesseract_cmd, img, "stdout"],
+                        check=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                    )
+                    text = proc.stdout.decode("utf-8", errors="ignore")
+                    if text:
+                        ocr_pages.append(text)
+                if ocr_pages:
+                    return "\n\n".join(ocr_pages)
+        except Exception:
+            pass
+
     # Best-effort fallback: try to decode the bytes as UTF-8 (or latin-1)
     try:
         return content.decode("utf-8")
@@ -642,6 +704,232 @@ def _extract_spells_from_text(text: Optional[str]) -> list[str]:
         if len(out) >= 200:
             break
     return out
+
+
+def _extract_spellbook_from_text(text: Optional[str], debug: bool = False) -> list[dict[str, Any]]:
+    """Extract structured spell rows from PDF text tables.
+
+    Looks for headers like "SPELL NAME" or "PREP SPELL NAME" and parses
+    subsequent rows by splitting on 2+ spaces.
+    """
+    if not text or not isinstance(text, str):
+        return []
+
+    lines = [ln.strip() for ln in re.split(r"\r?\n", text) if ln and ln.strip()]
+    entries: list[dict[str, Any]] = []
+    in_table = False
+    current_header: Optional[str] = None
+    sources = [
+        "Artificer",
+        "Barbarian",
+        "Bard",
+        "Cleric",
+        "Druid",
+        "Fighter",
+        "Monk",
+        "Paladin",
+        "Ranger",
+        "Rogue",
+        "Sorcerer",
+        "Warlock",
+        "Wizard",
+        "Acolyte of Nature",
+    ]
+
+    def _split_cols(line: str) -> list[str]:
+        return [c.strip() for c in re.split(r"\s{2,}", line) if c and c.strip()]
+
+    def _page_ref(line: str) -> Optional[str]:
+        m = re.search(r"\b([A-Z]{2,5})\s*(\d{2,4})\b", line)
+        if m:
+            return f"{m.group(1)} {m.group(2)}"
+        return None
+
+    def _components(line: str) -> Optional[str]:
+        m = re.search(r"\bV\s*,?\s*S\s*,?\s*M\b|\bV\s*,?\s*S\b|\bV\b|\bS\b|\bM\b", line, re.I)
+        if m:
+            return m.group(0).replace(" ", "")
+        return None
+
+    def _duration(line: str) -> Optional[str]:
+        m = re.search(r"\b(instantaneous|concentration|up to \d+\s*(rounds?|minutes?|hours?|days?)|\d+\s*(rounds?|minutes?|hours?|days?))\b", line, re.I)
+        return m.group(1) if m else None
+
+    def _time(line: str) -> Optional[str]:
+        m = re.search(r"\b(\d+\s*BA|\d+\s*A|\d+\s*R|\d+\s*rounds?|\d+\s*minutes?|\d+\s*hours?|action|bonus action|reaction)\b", line, re.I)
+        return m.group(1) if m else None
+
+    def _range(line: str) -> Optional[str]:
+        m = re.search(r"\b(self|touch|sight|special|\d+\s*ft\.?|\d+\s*feet|\d+\s*mi\.?|\d+\s*miles?)\b", line, re.I)
+        return m.group(1) if m else None
+
+    for raw in lines:
+        line = raw.strip()
+        if re.match(r"^[=\-]{2,}\s*.*\s*[=\-]{2,}$", line):
+            header = re.sub(r"^[=\-]+|[=\-]+$", "", line).strip()
+            if header:
+                current_header = header
+            continue
+
+        if re.match(r"^\(at will\)$", line, re.I):
+            if current_header:
+                current_header = f"{current_header} (At Will)"
+            continue
+
+        # Detect table header (various formats)
+        if (
+            (re.search(r"\b(PREP\s+)?SPELL\s+NAME\b", line, re.I) and re.search(r"\bSOURCE\b", line, re.I)) or
+            (re.search(r"\bNAME\b", line, re.I) and re.search(r"\b(SAVE|ATK|HIT)\b", line, re.I)) or
+            (re.search(r"\bSPELL\b", line, re.I) and re.search(r"\b(TIME|RANGE|COMP|DUR)\b", line, re.I))
+        ):
+            in_table = True
+            continue
+
+        if not in_table:
+            # Track cantrip/level headers
+            if re.match(r"^(cantrips?|\d+(st|nd|rd|th)\s+level)$", line, re.I):
+                current_header = line
+            # If we see a recognizable spell-like line after a header, treat as simple list
+            elif current_header and len(line) > 2 and not re.match(r"^[=\-]+$", line):
+                # Aggressively filter out metadata - only accept lines that look like spell names
+                
+                # Skip empty or dash-only lines
+                if re.match(r"^[—\-\s]+$", line):
+                    continue
+                    
+                # Skip class names
+                if re.match(r"^(druid|cleric|wizard|sorcerer|bard|warlock|paladin|ranger|artificer|fighter|monk|rogue|barbarian|acolyte|monk)$", line, re.I):
+                    continue
+                    
+                # Skip lines containing "/" or "," (components, class combos, stats)
+                if "/" in line or "," in line:
+                    continue
+                    
+                # Skip obvious metadata: stats, durations, ranges, components, pages, actions
+                if re.match(r"^(\d+\s*[ABR]A?|[1-9]\s*BA|[1-9]\s*A|[1-9]\s*R|action|bonus\s*action|reaction|touch|self|sight|\d+\s*ft|phb|ee|xgte|tcoe|scag|v|s|m|v/s|s/m|v/m|v/s/m|instantaneous|concentration|wis|int|cha|dex|str|con)$", line, re.I):
+                    continue
+                    
+                # Skip lines with colon prefix (D:, R:, C:, T:, etc)
+                if re.match(r"^[A-Z]:\s*", line):
+                    continue
+                    
+                # Skip parenthetical notes
+                if re.match(r"^\(", line):
+                    continue
+                    
+                # Skip pure numbers, short codes, durations, or all-caps abbreviations
+                if re.match(r"^(\d+|[A-Z]{1,3}|\d+m|\d+h|\d+\s*min|\d+\s*hr|\d+\s*hour)$", line):
+                    continue
+                    
+                # Skip page references
+                if re.search(r"\b(PHB|EE|XGTE|TCOE|SCAG)\s*\d+", line, re.I):
+                    continue
+                    
+                # Skip common spell attributes that appear alone
+                if re.match(r"^(prepared|ritual|—)$", line, re.I):
+                    continue
+                    
+                # If it passed all filters, treat as spell name
+                entries.append({"name": line, "header": current_header})
+                if len(entries) >= 500:
+                    break
+            continue
+
+        # stop table on obvious section separators
+        if re.match(r"^(page\s+\d+|notes?)$", line, re.I):
+            in_table = False
+            continue
+
+        cols = _split_cols(line)
+        prepared = None
+        if cols and cols[0] in {"O", "0", "○", "◯", "•", "x", "X"}:
+            prepared = "yes" if cols[0].lower() != "x" else "no"
+            cols = cols[1:]
+
+        if len(cols) >= 6:
+            name = cols[0]
+            source = cols[1] if len(cols) > 1 else None
+            save_hit = cols[2] if len(cols) > 2 else None
+            time = cols[3] if len(cols) > 3 else None
+            range_ = cols[4] if len(cols) > 4 else None
+            components = cols[5] if len(cols) > 5 else None
+            duration = cols[6] if len(cols) > 6 else None
+            page = cols[7] if len(cols) > 7 else None
+            notes = " ".join(cols[8:]) if len(cols) > 8 else None
+            entries.append(
+                {
+                    "name": name,
+                    "source": source,
+                    "save_hit": save_hit,
+                    "time": time,
+                    "range": range_,
+                    "components": components,
+                    "duration": duration,
+                    "page": page,
+                    "notes": notes,
+                    "prepared": prepared,
+                    "header": current_header,
+                }
+            )
+            if len(entries) >= 500:
+                break
+            continue
+
+        # Fallback: parse noisy OCR lines with regex heuristics
+        scan_line = line
+        prep = None
+        if re.match(r"^[O0○◯•xX]\s+", scan_line):
+            prep = "yes" if scan_line[0].lower() != "x" else "no"
+            scan_line = scan_line[1:].strip()
+
+        source = None
+        name = None
+        rest = scan_line
+        for s in sources:
+            m = re.search(rf"\b{re.escape(s)}\b", scan_line)
+            if m:
+                source = s
+                name = scan_line[: m.start()].strip()
+                rest = scan_line[m.end():].strip()
+                break
+        if not name:
+            continue
+
+        page = _page_ref(scan_line)
+        components = _components(scan_line)
+        duration = _duration(scan_line)
+        time = _time(scan_line)
+        range_ = _range(scan_line)
+
+        save_hit = None
+        m_save = re.search(r"\b([A-Z]{3})\s*(\+?\d{1,2})\b", rest)
+        if m_save:
+            save_hit = f"{m_save.group(1)} {m_save.group(2)}"
+        else:
+            m_save2 = re.search(r"\b([+\-]?\d{1,2})\b", rest)
+            if m_save2:
+                save_hit = m_save2.group(1)
+
+        entries.append(
+            {
+                "name": name,
+                "source": source,
+                "save_hit": save_hit,
+                "time": time,
+                "range": range_,
+                "components": components,
+                "duration": duration,
+                "page": page,
+                "notes": None,
+                "prepared": prep,
+                "header": current_header,
+            }
+        )
+
+        if len(entries) >= 500:
+            break
+
+    return entries
 
 
 def _as_int(value: Any) -> Optional[int]:
@@ -872,6 +1160,84 @@ def _build_character_import_sheet_from_pdf(
     safe_level = final_level if isinstance(final_level, int) else 1
     safe_level = max(1, min(20, safe_level))
 
+    class_names = [
+        "Artificer",
+        "Barbarian",
+        "Bard",
+        "Cleric",
+        "Druid",
+        "Fighter",
+        "Monk",
+        "Paladin",
+        "Ranger",
+        "Rogue",
+        "Sorcerer",
+        "Warlock",
+        "Wizard",
+    ]
+
+    def _first_widget_value(patterns: list[str]) -> Optional[str]:
+        for k, v in widget_values.items():
+            if not v:
+                continue
+            for pat in patterns:
+                if re.search(pat, str(k), re.I):
+                    return _as_str(v)
+        return None
+
+    def _first_widget_int(patterns: list[str]) -> Optional[int]:
+        val = _first_widget_value(patterns)
+        if val is None:
+            return None
+        m = re.search(r"(\d+)", str(val))
+        return int(m.group(1)) if m else _as_int(val)
+
+    passives = {
+        "perception": _first_widget_int([r"passive\s*perception", r"passive\s*perc", r"passiveperc"]),
+        "insight": _first_widget_int([r"passive\s*insight", r"passiveinsight"]),
+        "investigation": _first_widget_int([r"passive\s*investigation", r"passiveinvestigation"]),
+    }
+
+    species = _first_widget_value([r"\brace\b", r"species", r"subrace"])
+    background = _first_widget_value([r"background"])
+
+    class_line = _first_widget_value([r"class\s*&?\s*level", r"class\s*level"])
+
+    def _parse_multiclass(text_value: Optional[str]) -> list[dict[str, Any]]:
+        if not text_value:
+            return []
+        out: list[dict[str, Any]] = []
+        for cname in class_names:
+            m = re.search(rf"\b{re.escape(cname)}\b\s*(\d{{1,2}})", text_value, re.I)
+            if m:
+                out.append({"class_name": cname, "level": int(m.group(1))})
+        if not out and final_class_name and "/" in final_class_name:
+            for part in re.split(r"\s*/\s*", final_class_name):
+                if part:
+                    out.append({"class_name": part.strip(), "level": None})
+        return out
+
+    multiclass = _parse_multiclass(class_line or extracted_class_name)
+
+    carry = {
+        "weight_current": _first_widget_int([r"weight\s*carried", r"carried\s*weight", r"current\s*weight"]),
+        "weight_capacity": _first_widget_int([r"carry\s*capacity", r"carrying\s*capacity", r"max\s*weight"]),
+        "encumbered_at": _first_widget_int([r"encumbered" ]),
+        "heavily_encumbered_at": _first_widget_int([r"heavily\s*encumbered", r"heavy\s*encumbered"]),
+        "use_encumbrance": False,
+    }
+    if any(v is not None for k, v in carry.items() if k != "use_encumbrance"):
+        carry["use_encumbrance"] = True
+
+    story = {
+        "backstory": _first_widget_value([r"backstory", r"back\s*story"]),
+        "personality_traits": _first_widget_value([r"personality\s*traits?"] ),
+        "ideals": _first_widget_value([r"ideals?"] ),
+        "bonds": _first_widget_value([r"bonds?"] ),
+        "flaws": _first_widget_value([r"flaws?"] ),
+        "allies": _first_widget_value([r"allies", r"organizations", r"organizations\s*&\s*allies"]),
+    }
+
     # Build a structured `raw` object so client-side inference helpers can read
     # values from a predictable place (e.g. `sheet.raw.speed`, `sheet.raw.deathSaves`).
     def _parse_int(v: Any) -> Optional[int]:
@@ -993,8 +1359,23 @@ def _build_character_import_sheet_from_pdf(
             spell_entries.append(entry)
             spells.append(name)
     else:
+        # Try extracting structured spellbook from combined text
+        spell_entries = _extract_spellbook_from_text(combined_text)
+        if spell_entries:
+            spells = [e.get("name") for e in spell_entries if isinstance(e.get("name"), str)]
+        else:
+            spell_entries = []
+        # Also try OCR text if available and no entries found yet
+        if not spell_entries and ocr_text:
+            ocr_entries = _extract_spellbook_from_text(ocr_text)
+            if ocr_entries:
+                spell_entries = ocr_entries
+                spells = [e.get("name") for e in ocr_entries if isinstance(e.get("name"), str)]
         for k, v in widget_values.items():
             if not v:
+                continue
+            # Skip spell metadata fields to avoid adding garbage
+            if re.search(r"spell(source|time|range|comp|duration|page|save|hit|prepared|header|slot|level|class|school|ritual|material|attack|dc)", k, re.I):
                 continue
             if re.search(r"spell|cantrip", k, re.I):
                 if isinstance(v, str) and ("\n" in v or "," in v):
@@ -1017,39 +1398,53 @@ def _build_character_import_sheet_from_pdf(
             return True
         if len(t) < 3:
             return True
+        # Skip widget field names (spellSource0:, spellTime1:, etc.)
+        if re.match(r"^spell\w+\d*:?$", t, re.I):
+            return True
+        # Skip generic words that aren't spells
+        if re.match(r"^(additional|your|the|and|or|of|in|to|a|an)$", t, re.I):
+            return True
+        # Skip empty or dash-only lines
+        if re.match(r"^[—\-\s]+$", t):
+            return True
+        # Skip class names
+        if re.match(r"^(druid|cleric|wizard|sorcerer|bard|warlock|paladin|ranger|artificer|fighter|monk|rogue|barbarian|acolyte|monk)$", t, re.I):
+            return True
+        # Skip lines containing "/" or "," (components, ranges, multi-values)
+        if "/" in t or "," in t:
+            return True
+        # Skip distances/ranges (including variations like "30 ft./5 ft. Cube")
+        if re.search(r"\d+\s*ft\.?|feet|mile", t, re.I):
+            return True
+        # Skip metadata patterns
+        if re.match(r"^(\d+\s*[ABR]A?|[1-9]\s*BA|[1-9]\s*A|[1-9]\s*R|action|bonus\s*action|reaction|touch|self|sight|phb|ee|xgte|tcoe|scag|v|s|m|v/s|s/m|v/m|v/s/m|instantaneous|concentration|wis|int|cha|dex|str|con)$", t, re.I):
+            return True
+        # Skip lines with colon prefix
+        if re.match(r"^[A-Z]:\s*", t):
+            return True
+        # Skip parenthetical notes
+        if re.match(r"^\(", t):
+            return True
+        # Skip pure numbers, codes, durations
+        if re.match(r"^(\d+|[A-Z]{1,3}|\d+m|\d+h|\d+\s*min|\d+\s*hr)$", t):
+            return True
+        # Skip page references
+        if re.search(r"\b(PHB|EE|XGTE|TCOE|SCAG)\s*\d+", t, re.I):
+            return True
+        # Skip common spell attributes
+        if re.match(r"^(prepared|ritual|—|at\s*will|===.*===)$", t, re.I):
+            return True
+        # Skip stat patterns
+        if re.match(r"^[A-Z]{3}\s*\d+$", t) or re.match(r"^[A-Z]{3}\s*/\s*[A-Z]{3}$", t):
+            return True
         # headers / separators
-        if re.match(r"^[=\-\s]+$", t):
-            return True
         if re.search(r"\b(cantrips?|spellcasting|spells?\s*known)\b", t, re.I):
-            return True
-        # parenthetical-only notes
-        if re.match(r"^\(.*\)$", t):
-            return True
-        # ability or class lines
-        if re.match(r"^(str|dex|con|int|wis|cha)\s*\d+$", t, re.I):
-            return True
-        if re.match(r"^[A-Za-z]+\s*/\s*[A-Za-z]+$", t):
-            return True
-        # duration / time / range / components
-        if re.match(r"^d\s*:\s*\d+", t, re.I):
-            return True
-        if re.match(r"^(instantaneous|concentration|ritual)$", t, re.I):
-            return True
-        if re.match(r"^\d+\s*(rounds?|minutes?|hours?)$", t, re.I):
-            return True
-        if re.match(r"^\d+\s*(ft|feet|mile|m)\.?", t, re.I):
-            return True
-        if re.match(r"^(touch|self|sight|special)$", t, re.I):
-            return True
-        if re.match(r"^(action|bonus action|reaction)$", t, re.I):
-            return True
-        if re.match(r"^(v|s|m)(\s*/\s*(v|s|m))*$", t, re.I):
-            return True
-        # book refs like "PHB 275" or "EE 164"
-        if re.match(r"^[A-Z]{2,5}\s*\d{2,4}$", t):
             return True
         # drop obvious numeric-only or symbol-only
         if re.match(r"^[\W_0-9]+$", t):
+            return True
+        # Skip anything ending with asterisk or starting with asterisk (notes/annotations)
+        if re.match(r"^\*|.*\*$", t):
             return True
         return False
 
@@ -1091,11 +1486,19 @@ def _build_character_import_sheet_from_pdf(
         "spells": raw_struct.get("spells", []),
         "spellbook": spell_entries,
         "speed": raw_struct.get("speed"),
+        "passives": passives,
+        "species": species,
+        "background": background,
+        "multiclass": multiclass,
+        "carry": carry,
+        "portrait_url": None,
+        "story": story,
         "import": {
             "source": source or "pdf",
             "imported_at": _now_iso(),
             "ddb_url": ddb_url,
             "filename": filename,
+            "warnings": [],
             "overrides": {
                 "name": _as_str(name_override),
                 "level": level_override if isinstance(level_override, int) else None,
@@ -1121,6 +1524,18 @@ def _build_character_import_sheet_from_pdf(
         # Store extracted text for future parsing improvements (avoid storing large binaries in DB).
         "raw_text": (combined_text or "")[:50000],
     }
+
+    warnings: list[str] = []
+    if not species:
+        warnings.append("Missing species")
+    if not background:
+        warnings.append("Missing background")
+    if not any(v is not None for v in passives.values()):
+        warnings.append("Missing passive scores")
+    if not carry.get("use_encumbrance"):
+        warnings.append("Missing encumbrance data")
+    if warnings:
+        sheet["import"]["warnings"] = warnings
 
     # Attach reference matches for features and spells (if reference corpus uploaded).
     try:
@@ -1198,6 +1613,17 @@ class CharacterImportLink(BaseModel):
 def list_characters(current_user=Depends(get_current_user)):
     rows = db.list_characters_for_user(current_user.id)
     return {"characters": [_serialize(row) for row in rows]}
+
+
+@router.delete("/purge", summary="Delete characters for current user by name tokens")
+def purge_characters(name_like: Optional[str] = None, current_user=Depends(get_current_user)):
+    if not db.is_admin_user(current_user):
+        raise HTTPException(status_code=403, detail="Admin privileges required")
+    tokens: List[str] = []
+    if name_like:
+        tokens = [part.strip() for part in name_like.split(',') if part.strip()]
+    deleted = db.purge_characters(owner_id=current_user.id, name_tokens=tokens)
+    return {"deleted": deleted}
 
 
 @router.post("", status_code=201)
@@ -1368,7 +1794,149 @@ def update_character(character_id: int, payload: CharacterUpdate, current_user=D
 
 @router.delete("/{character_id}")
 def delete_character(character_id: int, current_user=Depends(get_current_user)):
+    # Try owner delete first, fall back to admin delete if user is admin
     ok = db.delete_character(character_id=character_id, owner_id=current_user.id)
+    if not ok and db.is_admin_user(current_user):
+        ok = db.delete_character_any(character_id=character_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Character not found")
     return {"ok": True}
+
+
+@router.delete("/admin-delete/{character_id}")
+def admin_delete_character(character_id: int, current_user=Depends(get_current_user)):
+    if not db.is_admin_user(current_user):
+        raise HTTPException(status_code=403, detail="Admin privileges required")
+    ok = db.delete_character_any(character_id=character_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Character not found")
+    return {"ok": True}
+
+
+@router.post("/{character_id}/reparse-spells")
+def reparse_character_spells(character_id: int, current_user=Depends(get_current_user)):
+    print(f"\n=== REPARSE SPELLS FOR CHARACTER {character_id} ===")
+    # allow owners or admins to reparse
+    character = db.get_character_for_owner(character_id=character_id, owner_id=current_user.id)
+    if not character:
+        if not db.is_admin_user(current_user):
+            raise HTTPException(status_code=404, detail="Character not found")
+        character = db.get_character_by_id(character_id)
+        if not character:
+            raise HTTPException(status_code=404, detail="Character not found")
+
+    sheet = character.sheet or {}
+    raw_text = sheet.get("raw_text") or (sheet.get("raw", {}) if isinstance(sheet.get("raw"), dict) else {}).get("text") or ""
+    raw_text = raw_text if isinstance(raw_text, str) else ""
+    print(f"Raw text length: {len(raw_text)}")
+
+    widget_values: Dict[str, Any] = {}
+    try:
+        import_meta = sheet.get("import", {}) if isinstance(sheet.get("import"), dict) else {}
+        pdf_widgets = import_meta.get("pdf_widgets", {}) if isinstance(import_meta.get("pdf_widgets"), dict) else {}
+        widget_values = pdf_widgets.get("values", {}) if isinstance(pdf_widgets.get("values"), dict) else {}
+    except Exception:
+        widget_values = {}
+    print(f"Widget values with 'spell': {len([k for k in widget_values.keys() if 'spell' in k.lower()])}")
+
+    # Rebuild spellbook/spells
+    spell_entries = _extract_spellbook_from_text(raw_text)
+    print(f"Extracted {len(spell_entries)} spell entries from text")
+    spells: list[str] = []
+    if spell_entries:
+        spells = [e.get("name") for e in spell_entries if isinstance(e.get("name"), str)]
+        print(f"  -> {len(spells)} spell names from entries")
+    else:
+        # Extract from widget values, but skip metadata fields
+        for k, v in widget_values.items():
+            if not v:
+                continue
+            # Skip metadata fields (time, range, components, duration, source, etc.)
+            if re.search(r"spell(time|range|comp|duration|source|save|attack|dc|hit|page|level|class|school|ritual|material)", str(k), re.I):
+                continue
+            if re.search(r"spell|cantrip", str(k), re.I):
+                if isinstance(v, str) and ("\n" in v or "," in v):
+                    parts = re.split(r"\r?\n|,", v)
+                    for p in parts:
+                        s = p.strip()
+                        if s:
+                            spells.append(s)
+                else:
+                    spells.append(str(v).strip())
+        for s in _extract_spells_from_text(raw_text):
+            if s:
+                spells.append(s)
+
+    # Clean and de-dup with aggressive filtering
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for s in spells:
+        s2 = (s or "").strip()
+        if not s2:
+            continue
+        
+        # Apply same aggressive filters as during extraction
+        # Skip widget field names
+        if re.match(r"^spell\w+\d*:?$", s2, re.I):
+            continue
+        # Skip generic filler words
+        if re.match(r"^(additional|your|the|and|or|of|in|to|a|an)$", s2, re.I):
+            continue
+        # Skip empty or dash-only lines
+        if re.match(r"^[—\-\s]+$", s2):
+            continue
+        # Skip class names
+        if re.match(r"^(druid|cleric|wizard|sorcerer|bard|warlock|paladin|ranger|artificer|fighter|monk|rogue|barbarian|acolyte)$", s2, re.I):
+            continue
+        # Skip lines containing "/" or ","
+        if "/" in s2 or "," in s2:
+            continue
+        # Skip distances/ranges
+        if re.search(r"\d+\s*ft\.?|feet|mile", s2, re.I):
+            continue
+        # Skip metadata patterns
+        if re.match(r"^(\d+\s*[ABR]A?|[1-9]\s*BA|[1-9]\s*A|[1-9]\s*R|action|bonus\s*action|reaction|touch|self|sight|\d+\s*ft|phb|ee|xgte|tcoe|scag|v|s|m|v/s|s/m|v/m|v/s/m|instantaneous|concentration|wis|int|cha|dex|str|con)$", s2, re.I):
+            continue
+        # Skip lines with colon prefix
+        if re.match(r"^[A-Z]:\s*", s2):
+            continue
+        # Skip parenthetical notes
+        if re.match(r"^\(", s2):
+            continue
+        # Skip pure numbers, codes, durations
+        if re.match(r"^(\d+|[A-Z]{1,3}|\d+m|\d+h|\d+\s*min|\d+\s*hr)$", s2):
+            continue
+        # Skip page references
+        if re.search(r"\b(PHB|EE|XGTE|TCOE|SCAG)\s*\d+", s2, re.I):
+            continue
+        # Skip common spell attributes
+        if re.match(r"^(prepared|ritual|—|at\s*will|===.*===)$", s2, re.I):
+            continue
+        # Skip stat patterns like "CON 14", "WIS / WIS"
+        if re.match(r"^[A-Z]{3}\s*\d+$", s2) or re.match(r"^[A-Z]{3}\s*/\s*[A-Z]{3}$", s2):
+            continue
+        # Skip asterisk annotations
+        if re.match(r"^\*|.*\*$", s2):
+            continue
+        
+        key = s2.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(s2)
+        if len(cleaned) >= 500:
+            break
+
+    sheet["spellbook"] = spell_entries
+    sheet["spells"] = cleaned
+    print(f"Final counts - spellbook: {len(spell_entries)}, spells: {len(cleaned)}")
+    if cleaned:
+        print(f"First 10 cleaned spells: {cleaned[:10]}")
+
+    if db.is_admin_user(current_user) and (not character or character.owner_id != current_user.id):
+        updated = db.update_character_any(character_id=character_id, updates={"sheet": sheet})
+    else:
+        updated = db.update_character(character_id=character_id, owner_id=current_user.id, updates={"sheet": sheet})
+    if not updated:
+        raise HTTPException(status_code=500, detail="Failed to update character")
+    return {"character": _serialize(updated)}

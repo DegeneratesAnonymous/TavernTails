@@ -1,20 +1,23 @@
-import React, { useEffect, useState } from 'react';
-import { buildApiUrl } from '../api';
+import React, { useEffect, useMemo, useState } from 'react';
+import { apiFetch } from '../api';
 
-const Beyond20Agent: React.FC = () => {
-  const [name, setName] = useState('BilboBaggins');
+type Props = {
+  identifier: string | null
+}
+
+const Beyond20Agent: React.FC<Props> = ({ identifier }) => {
   const [domainsText, setDomainsText] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [invalidLines, setInvalidLines] = useState<string[]>([]);
 
+  const resolvedIdentifier = useMemo(() => (identifier ? String(identifier).trim() : ''), [identifier])
+
   useEffect(() => {
-    if (!name) return;
-    // fetch existing domains for this user
+    if (!resolvedIdentifier) return;
     const fetchDomains = async () => {
       try {
-        const url = buildApiUrl(`/player/beyond20?name=${encodeURIComponent(name)}`);
-        const res = await fetch(url, { method: 'GET' });
+        const res = await apiFetch(`/player/beyond20?identifier=${encodeURIComponent(resolvedIdentifier)}`)
         if (res.ok) {
           const data = await res.json();
           if (data.domains) setDomainsText(data.domains.join('\n'));
@@ -24,7 +27,7 @@ const Beyond20Agent: React.FC = () => {
       }
     };
     fetchDomains();
-  }, [name]);
+  }, [resolvedIdentifier]);
 
   const validateDomains = (text: string) => {
     const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
@@ -39,6 +42,10 @@ const Beyond20Agent: React.FC = () => {
   };
 
   const handleSave = async () => {
+    if (!resolvedIdentifier) {
+      setMessage('Sign in to save custom domains.');
+      return;
+    }
     setLoading(true);
     setMessage('');
     // client-side validation
@@ -49,10 +56,9 @@ const Beyond20Agent: React.FC = () => {
       return;
     }
     try {
-      const payload = { name, domains_text: domainsText };
-      const res = await fetch(buildApiUrl('/player/beyond20'), {
+      const payload = { identifier: resolvedIdentifier, domains_text: domainsText };
+      const res = await apiFetch('/player/beyond20', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
       const data = await res.json();
@@ -70,30 +76,50 @@ const Beyond20Agent: React.FC = () => {
   };
 
   return (
-    <div style={{ maxWidth: 680, margin: '12px auto', color: 'var(--text)' }}>
-      <h3>Beyond20 Custom Domains</h3>
-      <p style={{ color: 'var(--muted-text)', marginTop: 0 }}>
+    <div className="stack" style={{ gap: 10 }}>
+      <div className="muted" style={{ fontSize: 13 }}>
         Enter one domain per line. Include the protocol (http:// or https://). Wildcards (*) are allowed for subdomains and paths.
-      </p>
-      <div style={{ marginBottom: 8 }}>
-        <label style={{ display: 'block', marginBottom: 6 }}>Player name</label>
-        <input value={name} onChange={e => setName(e.target.value)} style={{ width: '100%', padding: 8, borderRadius: 6, border: '1px solid rgba(255,255,255,0.06)', background: 'var(--surface)', color: 'var(--text)' }} />
       </div>
-      <div>
-        <label style={{ display: 'block', marginBottom: 6 }}>Custom domains (one per line)</label>
-        <textarea value={domainsText} onChange={e => { setDomainsText(e.target.value); validateDomains(e.target.value); }} rows={8} style={{ width: '100%', padding: 10, borderRadius: 6, border: '1px solid rgba(255,255,255,0.06)', background: 'var(--surface)', color: 'var(--text)', fontFamily: 'monospace' }} />
+      {!resolvedIdentifier ? (
+        <div className="inline-alert">
+          Sign in to manage custom domains. Once signed in, your account identifier will be used automatically.
+        </div>
+      ) : (
+        <div className="muted" style={{ fontSize: 12 }}>
+          Using account: <span className="code-block" style={{ padding: '2px 6px' }}>{resolvedIdentifier}</span>
+        </div>
+      )}
+
+      <div className="stack" style={{ gap: 6 }}>
+        <label className="muted">Custom domains (one per line)</label>
+        <textarea
+          className="input input-mono"
+          value={domainsText}
+          onChange={(e) => {
+            setDomainsText(e.target.value)
+            validateDomains(e.target.value)
+          }}
+          rows={8}
+          disabled={!resolvedIdentifier}
+        />
       </div>
+
       {invalidLines.length > 0 && (
-        <div style={{ marginTop: 8, color: 'var(--error)' }}>
-          <strong>Invalid lines:</strong>
-          <ul>
-            {invalidLines.map(l => <li key={l}><code style={{ color: 'var(--text)' }}>{l}</code></li>)}
+        <div className="inline-alert inline-alert-error">
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>Invalid lines</div>
+          <ul style={{ margin: 0, paddingLeft: 18 }}>
+            {invalidLines.map((line) => (
+              <li key={line}><span className="code-block" style={{ padding: '2px 6px' }}>{line}</span></li>
+            ))}
           </ul>
         </div>
       )}
-      <div style={{ marginTop: 10 }}>
-        <button onClick={handleSave} disabled={loading} style={{ padding: '8px 14px', borderRadius: 6, background: 'var(--highlight)', color: 'black', border: 'none' }}>{loading ? 'Saving…' : 'Save'}</button>
-        <span style={{ marginLeft: 12, color: 'var(--muted-text)' }}>{message}</span>
+
+      <div className="row-wrap" style={{ alignItems: 'center' }}>
+        <button className="btn btn-secondary" onClick={handleSave} disabled={loading || !resolvedIdentifier}>
+          {loading ? 'Saving…' : 'Save domains'}
+        </button>
+        {message ? <span className="muted">{message}</span> : null}
       </div>
     </div>
   );

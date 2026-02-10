@@ -45,6 +45,8 @@ type Props = {
   onDone: () => void
   onGoToGameplay: () => void
   initialMode?: 'ddb-link' | 'paste' | 'file' | 'pdf'
+  notificationsPending?: boolean
+  onNotificationsClick?: () => void
 }
 
 export default function ImportCharacterView({
@@ -55,6 +57,8 @@ export default function ImportCharacterView({
   onDone,
   onGoToGameplay,
   initialMode,
+  notificationsPending,
+  onNotificationsClick,
 }: Props) {
   const [mode, setMode] = useState<'ddb-link' | 'paste' | 'file' | 'pdf'>(initialMode || 'paste')
   const [rawJson, setRawJson] = useState('')
@@ -663,7 +667,44 @@ export default function ImportCharacterView({
                   </div>
                 ) : null}
 
-                {(Array.isArray(preview?.sheet?.spells) && preview.sheet.spells.length > 0) ? (
+                {(Array.isArray(preview?.sheet?.spellbook) && preview.sheet.spellbook.length > 0) ? (
+                  <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                    <div style={{ fontWeight: 750 }}>Detected spellbook</div>
+                    <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>
+                      Spells parsed from the PDF table (name + columns).
+                    </div>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                        <thead>
+                          <tr style={{ textAlign: 'left' }}>
+                            <th style={{ padding: '6px 8px' }}>Name</th>
+                            <th style={{ padding: '6px 8px' }}>Source</th>
+                            <th style={{ padding: '6px 8px' }}>Save/Atk</th>
+                            <th style={{ padding: '6px 8px' }}>Time</th>
+                            <th style={{ padding: '6px 8px' }}>Range</th>
+                            <th style={{ padding: '6px 8px' }}>Comp</th>
+                            <th style={{ padding: '6px 8px' }}>Duration</th>
+                            <th style={{ padding: '6px 8px' }}>Page</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {preview.sheet.spellbook.slice(0, 80).map((spell: any, idx: number) => (
+                            <tr key={`spellbook-${idx}`} style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                              <td style={{ padding: '6px 8px', fontWeight: 600 }}>{String(spell?.name || '')}</td>
+                              <td style={{ padding: '6px 8px' }}>{String(spell?.source || '')}</td>
+                              <td style={{ padding: '6px 8px' }}>{String(spell?.save_hit || '')}</td>
+                              <td style={{ padding: '6px 8px' }}>{String(spell?.time || '')}</td>
+                              <td style={{ padding: '6px 8px' }}>{String(spell?.range || '')}</td>
+                              <td style={{ padding: '6px 8px' }}>{String(spell?.components || '')}</td>
+                              <td style={{ padding: '6px 8px' }}>{String(spell?.duration || '')}</td>
+                              <td style={{ padding: '6px 8px' }}>{String(spell?.page || '')}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : (Array.isArray(preview?.sheet?.spells) && preview.sheet.spells.length > 0) ? (
                   <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)' }}>
                     <div style={{ fontWeight: 750 }}>Detected spells</div>
                     <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>Spells extracted from the PDF (one per line).</div>
@@ -761,6 +802,8 @@ export default function ImportCharacterView({
       <PageHeader
         title="Import Character"
         subtitle="Import a character from JSON (paste or upload), or store a D&D Beyond link as a reference. We keep your raw data so future parsing improvements can enrich sheets without losing information."
+        notificationsPending={notificationsPending}
+        onNotificationsClick={onNotificationsClick}
         actions={
           <div className="row-wrap" style={{ justifyContent: 'flex-end', gap: 8 }}>
             {activeSessionId ? (
