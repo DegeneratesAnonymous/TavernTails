@@ -56,6 +56,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [sheetModalOpen, setSheetModalOpen] = useState(false)
   const [sheetModalCharacter, setSheetModalCharacter] = useState<any | null>(null)
   const [sheetModalLoading, setSheetModalLoading] = useState(false)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [sheetModalError, setSheetModalError] = useState<string | null>(null)
   const [characterSettingsOpen, setCharacterSettingsOpen] = useState(false)
   const [characterPanelMode, setCharacterPanelMode] = useState<'summary' | 'spells' | 'features' | 'journal' | 'sheet'>('summary')
@@ -158,12 +159,12 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     setReadNotificationIds(sortedNotifications.map((n) => n.id))
   }
 
-  const activeCharacterLabel = useMemo(() => {
-    if (activeCharacterId === null) return 'No character selected'
-    const match = characters.find((c) => Number(c?.id) === Number(activeCharacterId))
-    if (match?.name) return `Selected character: ${match.name}`
-    return `Selected character id: ${activeCharacterId}`
-  }, [activeCharacterId, characters])
+  // const activeCharacterLabel = useMemo(() => {
+  //   if (activeCharacterId === null) return 'No character selected'
+  //   const match = characters.find((c) => Number(c?.id) === Number(activeCharacterId))
+  //   if (match?.name) return `Selected character: ${match.name}`
+  //   return `Selected character id: ${activeCharacterId}`
+  // }, [activeCharacterId, characters]) // Unused - commented out for linting
 
 
   const activeCampaign = useMemo(() => {
@@ -905,10 +906,11 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     return sessionMetaById[activeSession]?.name || activeSession
   }, [activeSession, sessionMetaById])
 
-  const activeSessionLabel = useMemo(() => {
-    if (!activeSession) return null
-    return sessionMetaById[activeSession]?.name || activeSession
-  }, [activeSession, sessionMetaById])
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // const activeSessionLabel = useMemo(() => {
+  //   if (!activeSession) return null
+  //   return sessionMetaById[activeSession]?.name || activeSession
+  // }, [activeSession, sessionMetaById]) // Unused - commented out for linting
 
   return (
     <div className="dashboard-root">
