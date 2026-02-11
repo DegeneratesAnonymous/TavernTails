@@ -225,7 +225,7 @@ npm run build                  # Production build
 ### Full Stack
 ```powershell
 # Windows PowerShell (from repo root)
-.\start-app.ps1                 # Start stray processes, boots backend+frontend
+.\start-app.ps1                 # Terminates stray processes, boots backend+frontend
 ```
 
 ### CI/CD
@@ -279,8 +279,8 @@ npm run build                  # Production build
 ### Running Database Migrations
 ```bash
 cd /path/to/TavernTAIls
-alembic revision --autogenerate -m "Description of change"
-alembic upgrade head
+python -m alembic revision --autogenerate -m "Description of change"
+python -m alembic upgrade head
 ```
 
 ### Debugging WebSocket Events
