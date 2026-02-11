@@ -193,7 +193,7 @@ await broadcast_to_session(session_id, {
 ```bash
 cd server
 python -m venv venv
-source venv/bin/activate  # or venv\Scripts\activate on Windows
+source venv/bin/activate  # or venv/Scripts/Activate.ps1 (PowerShell) or venv\Scripts\activate (cmd)
 pip install -r requirements.txt
 python -m alembic upgrade head  # Run migrations
 python -m uvicorn server.main:app --reload  # Start dev server on :8000
@@ -298,7 +298,7 @@ npm run check-port  # Identify what's using the port
 ```
 
 ### Backend Won't Start
-- Check database migrations: `alembic upgrade head`
+- Check database migrations: `python -m alembic upgrade head`
 - Verify environment variables (see `.env.template`)
 - Check logs in `uvicorn.log` or console output
 
