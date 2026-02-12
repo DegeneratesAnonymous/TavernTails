@@ -368,7 +368,7 @@ def search_query(q: str, top_k: int = 5):
         # TF-IDF fallback scoring
         # Simple tokenizer
         def tokenize(s: str):
-            return [token for token in re.findall(r"[a-z0-9]{2,}", (s or "").lower())]
+            return list(re.findall(r"[a-z0-9]{2,}", (s or "").lower()))
 
         # Build IDF
         n_docs = len(corpus_texts)
