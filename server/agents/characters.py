@@ -7,14 +7,14 @@ import re
 import subprocess
 import tempfile
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from .. import db
-from . import references as references_agent
 from ..auth import get_current_user
+from . import references as references_agent
 
 router = APIRouter(prefix="/characters", tags=["characters"])
 
@@ -492,8 +492,9 @@ def _read_pdf_text(content: bytes) -> Optional[str]:
     if not content:
         return None
     try:
-        from pypdf import PdfReader
         import io
+
+        from pypdf import PdfReader
 
         reader = PdfReader(io.BytesIO(content))
         pages: list[str] = []
@@ -513,6 +514,7 @@ def _read_pdf_text(content: bytes) -> Optional[str]:
     # Second pass: pdfplumber can yield better table-aligned text.
     try:
         import io
+
         import pdfplumber
 
         pages: list[str] = []
@@ -548,8 +550,7 @@ def _read_pdf_text(content: bytes) -> Optional[str]:
                 subprocess.run(
                     [pdftoppm_cmd, "-png", "-r", "200", pdf_path, base],
                     check=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
+                    capture_output=True,
                 )
                 images = sorted(glob.glob(base + "-*.png"))
                 ocr_pages: list[str] = []
@@ -557,8 +558,7 @@ def _read_pdf_text(content: bytes) -> Optional[str]:
                     proc = subprocess.run(
                         [tesseract_cmd, img, "stdout"],
                         check=True,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
+                        capture_output=True,
                     )
                     text = proc.stdout.decode("utf-8", errors="ignore")
                     if text:
@@ -586,18 +586,18 @@ def _extract_fields_from_text(text: Optional[str]) -> tuple[Optional[str], Optio
     if not text or not isinstance(text, str):
         return None, None, None
 
-    lines = [l.strip() for l in re.split(r"\r?\n", text) if l and l.strip()]
+    lines = [line.strip() for line in re.split(r"\r?\n", text) if line and line.strip()]
     name: Optional[str] = None
     level: Optional[int] = None
     class_name: Optional[str] = None
 
     # Find level by regex like 'Level 3' or 'LVL 3'
-    for l in lines[:12]:
-        m = re.search(r"\blevel\b[:\s]*([0-9]{1,2})", l, flags=re.I)
+    for line in lines[:12]:
+        m = re.search(r"\blevel\b[:\s]*([0-9]{1,2})", line, flags=re.I)
         if m:
             level = _as_int(m.group(1))
             break
-        m2 = re.search(r"\b(LVL|LV)\b[:\s]*([0-9]{1,2})", l, flags=re.I)
+        m2 = re.search(r"\b(LVL|LV)\b[:\s]*([0-9]{1,2})", line, flags=re.I)
         if m2:
             level = _as_int(m2.group(2))
             break
@@ -620,32 +620,32 @@ def _extract_fields_from_text(text: Optional[str]) -> tuple[Optional[str], Optio
     ]
 
     # Try to find a line that looks like a class or 'Class / Level' combined line.
-    for l in lines[:8]:
-        up = l.upper()
+    for line in lines[:8]:
+        up = line.upper()
         # Skip template-like headings
         if any(x in up for x in ("CLASS & LEVEL", "PLAYER NAME", "CHARACTER NAME", "SPECIES", "BACKGROUND")):
             continue
         # If the line contains a known class name and a number, capture both.
         for cname in classes:
-            if re.search(rf"\b{re.escape(cname)}\b", l, flags=re.I):
+            if re.search(rf"\b{re.escape(cname)}\b", line, flags=re.I):
                 class_name = cname if not class_name else class_name
                 # try to find an inline level
-                m = re.search(r"(\d{1,2})", l)
+                m = re.search(r"(\d{1,2})", line)
                 if m and level is None:
                     level = _as_int(m.group(1))
                 break
 
     # Heuristic for name: pick the first short line that is not a template heading
-    for l in lines[:6]:
-        up = l.upper()
+    for line in lines[:6]:
+        up = line.upper()
         if any(x in up for x in ("CLASS", "LEVEL", "PLAYER NAME", "CHARACTER NAME", "SPECIES", "BACKGROUND")):
             continue
         # Avoid lines that look like page headers/metadata (contain too many digits or slashes)
-        if re.search(r"\d", l) and len(re.findall(r"[A-Za-z]", l)) < 3:
+        if re.search(r"\d", line) and len(re.findall(r"[A-Za-z]", line)) < 3:
             continue
         # Accept short single-line names
-        if 1 <= len(l) <= 60:
-            name = l
+        if 1 <= len(line) <= 60:
+            name = line
             break
 
     return name, level, class_name
@@ -792,43 +792,43 @@ def _extract_spellbook_from_text(text: Optional[str], debug: bool = False) -> li
             # If we see a recognizable spell-like line after a header, treat as simple list
             elif current_header and len(line) > 2 and not re.match(r"^[=\-]+$", line):
                 # Aggressively filter out metadata - only accept lines that look like spell names
-                
+
                 # Skip empty or dash-only lines
                 if re.match(r"^[—\-\s]+$", line):
                     continue
-                    
+
                 # Skip class names
                 if re.match(r"^(druid|cleric|wizard|sorcerer|bard|warlock|paladin|ranger|artificer|fighter|monk|rogue|barbarian|acolyte|monk)$", line, re.I):
                     continue
-                    
+
                 # Skip lines containing "/" or "," (components, class combos, stats)
                 if "/" in line or "," in line:
                     continue
-                    
+
                 # Skip obvious metadata: stats, durations, ranges, components, pages, actions
                 if re.match(r"^(\d+\s*[ABR]A?|[1-9]\s*BA|[1-9]\s*A|[1-9]\s*R|action|bonus\s*action|reaction|touch|self|sight|\d+\s*ft|phb|ee|xgte|tcoe|scag|v|s|m|v/s|s/m|v/m|v/s/m|instantaneous|concentration|wis|int|cha|dex|str|con)$", line, re.I):
                     continue
-                    
+
                 # Skip lines with colon prefix (D:, R:, C:, T:, etc)
                 if re.match(r"^[A-Z]:\s*", line):
                     continue
-                    
+
                 # Skip parenthetical notes
                 if re.match(r"^\(", line):
                     continue
-                    
+
                 # Skip pure numbers, short codes, durations, or all-caps abbreviations
                 if re.match(r"^(\d+|[A-Z]{1,3}|\d+m|\d+h|\d+\s*min|\d+\s*hr|\d+\s*hour)$", line):
                     continue
-                    
+
                 # Skip page references
                 if re.search(r"\b(PHB|EE|XGTE|TCOE|SCAG)\s*\d+", line, re.I):
                     continue
-                    
+
                 # Skip common spell attributes that appear alone
                 if re.match(r"^(prepared|ritual|—)$", line, re.I):
                     continue
-                    
+
                 # If it passed all filters, treat as spell name
                 entries.append({"name": line, "header": current_header})
                 if len(entries) >= 500:
@@ -1103,7 +1103,7 @@ def _build_character_import_sheet_from_pdf(
         seen: set[str] = set()
         for blob in blobs:
             for line in re.split(r"\r?\n", blob):
-                s = line.strip(" \t\r\n•-*_\u2022")
+                s = re.sub(r"^[ \t\r\n•\-*_\u2022]+|[ \t\r\n•\-*_\u2022]+$", "", line)
                 if not s:
                     continue
                 key = s.lower()
@@ -1116,23 +1116,6 @@ def _build_character_import_sheet_from_pdf(
             if len(out) >= 200:
                 break
         return out
-
-    class_features = _lines_from_blobs(class_blobs)
-    racial_features = _lines_from_blobs(race_blobs)
-    other_features = _lines_from_blobs(other_blobs)
-    # If grouping failed, fall back to the general extracted features list.
-    if not class_features and features_from_widgets:
-        # try to pick entries that mention the class name
-        if final_class_name:
-            cands = [f for f in features_from_widgets if final_class_name.lower() in f.lower()]
-            class_features = cands
-    if not racial_features and features_from_widgets:
-        # rough heuristic: look for common race/species words or short lists near top
-        cands = [f for f in features_from_widgets if any(x in f.lower() for x in ("elf", "dwarf", "halfling", "human", "tiefling", "dragonborn", "gnome", "goliath", "aasimar"))]
-        racial_features = cands
-    # remaining go to other_features
-    remaining = [f for f in features_from_widgets if f not in class_features and f not in racial_features]
-    other_features = other_features or remaining
 
     text = _read_pdf_text(content)
     # Combine extracted page text + widget key/value lines for better downstream parsing.
@@ -1156,6 +1139,23 @@ def _build_character_import_sheet_from_pdf(
 
     final_level = level_override if isinstance(level_override, int) else extracted_level
     final_class_name = _as_str(class_name_override) or extracted_class_name
+
+    class_features = _lines_from_blobs(class_blobs)
+    racial_features = _lines_from_blobs(race_blobs)
+    other_features = _lines_from_blobs(other_blobs)
+    # If grouping failed, fall back to the general extracted features list.
+    if not class_features and features_from_widgets:
+        # try to pick entries that mention the class name
+        if final_class_name:
+            cands = [f for f in features_from_widgets if final_class_name.lower() in f.lower()]
+            class_features = cands
+    if not racial_features and features_from_widgets:
+        # rough heuristic: look for common race/species words or short lists near top
+        cands = [f for f in features_from_widgets if any(x in f.lower() for x in ("elf", "dwarf", "halfling", "human", "tiefling", "dragonborn", "gnome", "goliath", "aasimar"))]
+        racial_features = cands
+    # remaining go to other_features
+    remaining = [f for f in features_from_widgets if f not in class_features and f not in racial_features]
+    other_features = other_features or remaining
 
     safe_level = final_level if isinstance(final_level, int) else 1
     safe_level = max(1, min(20, safe_level))
@@ -1251,7 +1251,7 @@ def _build_character_import_sheet_from_pdf(
         if not blob or not isinstance(blob, str):
             return out
         for line in re.split(r"\r?\n", blob):
-            s = line.strip(" \t\r\n•-*_\u2022")
+            s = re.sub(r"^[ \t\r\n•\-*_\u2022]+|[ \t\r\n•\-*_\u2022]+$", "", line)
             if not s:
                 continue
             if len(s) > 200:
@@ -1365,12 +1365,6 @@ def _build_character_import_sheet_from_pdf(
             spells = [e.get("name") for e in spell_entries if isinstance(e.get("name"), str)]
         else:
             spell_entries = []
-        # Also try OCR text if available and no entries found yet
-        if not spell_entries and ocr_text:
-            ocr_entries = _extract_spellbook_from_text(ocr_text)
-            if ocr_entries:
-                spell_entries = ocr_entries
-                spells = [e.get("name") for e in ocr_entries if isinstance(e.get("name"), str)]
         for k, v in widget_values.items():
             if not v:
                 continue
@@ -1874,7 +1868,7 @@ def reparse_character_spells(character_id: int, current_user=Depends(get_current
         s2 = (s or "").strip()
         if not s2:
             continue
-        
+
         # Apply same aggressive filters as during extraction
         # Skip widget field names
         if re.match(r"^spell\w+\d*:?$", s2, re.I):
@@ -1918,7 +1912,7 @@ def reparse_character_spells(character_id: int, current_user=Depends(get_current
         # Skip asterisk annotations
         if re.match(r"^\*|.*\*$", s2):
             continue
-        
+
         key = s2.lower()
         if key in seen:
             continue

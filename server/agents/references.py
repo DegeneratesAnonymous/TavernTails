@@ -271,8 +271,8 @@ def reindex_reference(ref_id: str, current_user=Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="No pages.json for reference")
     try:
         pages = json.loads(pages_path.read_text(encoding="utf-8"))
-    except Exception as err:
-        raise HTTPException(status_code=500, detail="Failed to read pages.json") from err
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to read pages.json") from None
 
     openai_key = os.environ.get("OPENAI_API_KEY")
     if not openai_key:
@@ -292,9 +292,9 @@ def reindex_reference(ref_id: str, current_user=Depends(get_current_user)):
             embeddings.append(vect)
         (directory / "embeddings.json").write_text(json.dumps(embeddings), encoding="utf-8")
         return {"ok": True, "id": ref_id, "embeddings": len(embeddings)}
-    except Exception as err:
+    except Exception:
         logger.exception("Reindex failed")
-        raise HTTPException(status_code=500, detail="Reindex failed") from err
+        raise HTTPException(status_code=500, detail="Reindex failed") from None
 
 
 def search_query(q: str, top_k: int = 5):

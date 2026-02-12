@@ -118,11 +118,6 @@ export default function DocumentsPanel({sessionId}: Props){
     }
   },[sessionId])
 
-  useEffect(()=>{
-    loadDocuments()
-    loadReferences()
-  },[loadDocuments])
-
   const loadReferences = useCallback(async () => {
     setRefLoading(true)
     setRefError(null)
@@ -138,6 +133,11 @@ export default function DocumentsPanel({sessionId}: Props){
       setRefLoading(false)
     }
   },[])
+
+  useEffect(()=>{
+    loadDocuments()
+    loadReferences()
+  },[loadDocuments, loadReferences])
 
   useEffect(()=>{
     if(!sessionId){

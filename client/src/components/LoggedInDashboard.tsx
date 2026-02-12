@@ -56,7 +56,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [sheetModalOpen, setSheetModalOpen] = useState(false)
   const [sheetModalCharacter, setSheetModalCharacter] = useState<any | null>(null)
   const [sheetModalLoading, setSheetModalLoading] = useState(false)
-  const [sheetModalError, setSheetModalError] = useState<string | null>(null)
   const [characterSettingsOpen, setCharacterSettingsOpen] = useState(false)
   const [characterPanelMode, setCharacterPanelMode] = useState<'summary' | 'spells' | 'features' | 'journal' | 'sheet'>('summary')
   const [selectedSpellRow, setSelectedSpellRow] = useState<any | null>(null)
@@ -157,14 +156,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const handleMarkAllRead = () => {
     setReadNotificationIds(sortedNotifications.map((n) => n.id))
   }
-
-  const activeCharacterLabel = useMemo(() => {
-    if (activeCharacterId === null) return 'No character selected'
-    const match = characters.find((c) => Number(c?.id) === Number(activeCharacterId))
-    if (match?.name) return `Selected character: ${match.name}`
-    return `Selected character id: ${activeCharacterId}`
-  }, [activeCharacterId, characters])
-
 
   const activeCampaign = useMemo(() => {
     return campaigns.find(c => String(c.id) === String(activeCampaignId)) || null
@@ -905,11 +896,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     return sessionMetaById[activeSession]?.name || activeSession
   }, [activeSession, sessionMetaById])
 
-  const activeSessionLabel = useMemo(() => {
-    if (!activeSession) return null
-    return sessionMetaById[activeSession]?.name || activeSession
-  }, [activeSession, sessionMetaById])
-
   return (
     <div className="dashboard-root">
       <aside className="dashboard-sidebar">
@@ -1059,12 +1045,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                 </>
               }
             />
-
-            {sheetModalError && (
-              <div className="inline-alert inline-alert-error">
-                {sheetModalError}
-              </div>
-            )}
 
             {characters.length === 0 ? (
               <EmptyState
