@@ -56,8 +56,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [sheetModalOpen, setSheetModalOpen] = useState(false)
   const [sheetModalCharacter, setSheetModalCharacter] = useState<any | null>(null)
   const [sheetModalLoading, setSheetModalLoading] = useState(false)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [sheetModalError, setSheetModalError] = useState<string | null>(null)
   const [characterSettingsOpen, setCharacterSettingsOpen] = useState(false)
   const [characterPanelMode, setCharacterPanelMode] = useState<'summary' | 'spells' | 'features' | 'journal' | 'sheet'>('summary')
   const [selectedSpellRow, setSelectedSpellRow] = useState<any | null>(null)
@@ -1047,12 +1045,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                 </>
               }
             />
-
-            {sheetModalError && (
-              <div className="inline-alert inline-alert-error">
-                {sheetModalError}
-              </div>
-            )}
 
             {characters.length === 0 ? (
               <EmptyState

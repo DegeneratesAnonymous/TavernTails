@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, cast
 
 from passlib.context import CryptContext
-from sqlalchemy import Column, desc, func, delete, or_
+from sqlalchemy import Column, delete, desc, func, or_
 from sqlalchemy.types import JSON
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 

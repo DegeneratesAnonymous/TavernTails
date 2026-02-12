@@ -1,15 +1,13 @@
 import json
 import logging
+import math
 import os
 import re
-import math
 from pathlib import Path
-from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-
 from pypdf import PdfReader
 
 from ..auth import get_current_user
@@ -32,14 +30,14 @@ class ReferenceListItem(BaseModel):
 
 class ReferenceSearchResult(BaseModel):
     source_id: str
-    page: Optional[int] = None
-    snippet: Optional[str] = None
+    page: int | None = None
+    snippet: str | None = None
     score: float
 
 
 class ReferenceSearchResponse(BaseModel):
     query: str
-    results: List[ReferenceSearchResult]
+    results: list[ReferenceSearchResult]
 
 
 class ReferenceUploadResponse(BaseModel):
@@ -65,12 +63,12 @@ def _save_uploaded_file(dest: Path, upload: UploadFile):
         f.write(upload.file.read())
 
 
-def _extract_pages_text(pdf_path: Path) -> List[str]:
+def _extract_pages_text(pdf_path: Path) -> list[str]:
     try:
         reader = PdfReader(str(pdf_path))
-        pages = []
-        for p in reader.pages:
-            text = p.extract_text() or ""
+        pages: list[str] = []
+        for page in reader.pages:
+            text = page.extract_text() or ""
             pages.append(text)
         return pages
     except Exception:
@@ -78,7 +76,7 @@ def _extract_pages_text(pdf_path: Path) -> List[str]:
         return []
 
 
-def _cosine_score(a: List[float], b: List[float]) -> float:
+def _cosine_score(a: list[float], b: list[float]) -> float:
     # Avoid numpy dependency; compute cosine similarity manually
     if not a or not b or len(a) != len(b):
         return 0.0
@@ -91,14 +89,14 @@ def _cosine_score(a: List[float], b: List[float]) -> float:
         nb += y * y
     if na == 0 or nb == 0:
         return 0.0
-    return dot / ((na ** 0.5) * (nb ** 0.5))
+    return dot / ((na**0.5) * (nb**0.5))
 
 
 def _make_snippet(text: str, max_len: int = 400) -> str:
-    t = " ".join(text.split())
-    if len(t) <= max_len:
-        return t
-    return t[: max_len - 1].rsplit(" ", 1)[0] + "…"
+    cleaned = " ".join(text.split())
+    if len(cleaned) <= max_len:
+        return cleaned
+    return cleaned[: max_len - 1].rsplit(" ", 1)[0] + "…"
 
 
 @router.post("/upload", response_model=ReferenceUploadResponse)
@@ -139,9 +137,9 @@ async def upload_reference(
             import openai
 
             openai.api_key = openai_key
-            embeddings = []
-            for p in pages_json:
-                text = p["text"] or ""
+            embeddings: list[list[float] | None] = []
+            for page in pages_json:
+                text = page["text"] or ""
                 if not text.strip():
                     embeddings.append(None)
                     continue
@@ -156,22 +154,22 @@ async def upload_reference(
     return {"ok": True, "id": dest_dir.name, "meta": meta}
 
 
-@router.get("/list", response_model=List[ReferenceListItem])
+@router.get("/list", response_model=list[ReferenceListItem])
 async def list_references(current_user=Depends(get_current_user)):
     root = _storage_root()
-    out = []
-    for d in sorted(root.iterdir()):
-        if not d.is_dir():
+    out: list[ReferenceListItem] = []
+    for directory in sorted(root.iterdir()):
+        if not directory.is_dir():
             continue
-        meta_path = d / "metadata.json"
+        meta_path = directory / "metadata.json"
         if meta_path.exists():
             try:
-                m = json.loads(meta_path.read_text(encoding="utf-8"))
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
             except Exception:
-                m = {"title": d.name, "filename": "", "pages": 0}
+                meta = {"title": directory.name, "filename": "", "pages": 0}
         else:
-            m = {"title": d.name, "filename": "", "pages": 0}
-        out.append({"id": d.name, "meta": m})
+            meta = {"title": directory.name, "filename": "", "pages": 0}
+        out.append({"id": directory.name, "meta": meta})
     return out
 
 
@@ -182,7 +180,7 @@ async def search_references(q: str, top_k: int = 5, current_user=Depends(get_cur
         raise HTTPException(status_code=400, detail="Query required")
     root = _storage_root()
     openai_key = os.environ.get("OPENAI_API_KEY")
-    query_vect = None
+    query_vect: list[float] | None = None
     if openai_key:
         try:
             import openai
@@ -194,12 +192,12 @@ async def search_references(q: str, top_k: int = 5, current_user=Depends(get_cur
             logger.exception("Failed to get query embedding; falling back to text match")
             query_vect = None
 
-    candidates = []
-    for d in root.iterdir():
-        if not d.is_dir():
+    candidates: list[dict[str, object]] = []
+    for directory in root.iterdir():
+        if not directory.is_dir():
             continue
-        pages_path = d / "pages.json"
-        emb_path = d / "embeddings.json"
+        pages_path = directory / "pages.json"
+        emb_path = directory / "embeddings.json"
         if not pages_path.exists():
             continue
         pages = json.loads(pages_path.read_text(encoding="utf-8"))
@@ -209,34 +207,34 @@ async def search_references(q: str, top_k: int = 5, current_user=Depends(get_cur
                 embeddings = json.loads(emb_path.read_text(encoding="utf-8"))
             except Exception:
                 embeddings = None
-        for i, p in enumerate(pages):
+        for idx, page in enumerate(pages):
             score = 0.0
-            if query_vect and embeddings and embeddings[i]:
-                score = _cosine_score(query_vect, embeddings[i])
+            if query_vect and embeddings and embeddings[idx]:
+                score = _cosine_score(query_vect, embeddings[idx])
             else:
                 # fallback: simple substring scoring
-                text = (p.get("text") or "").lower()
-                ql = q.lower()
-                if ql in text:
+                text = (page.get("text") or "").lower()
+                q_lower = q.lower()
+                if q_lower in text:
                     # score by fraction of context matched
-                    score = min(1.0, len(ql) / (len(text) + 1) * 50)
+                    score = min(1.0, len(q_lower) / (len(text) + 1) * 50)
                 else:
                     # small partial score for token overlap
-                    toks = set(ql.split())
-                    ct = sum(1 for t in toks if t in text)
+                    toks = set(q_lower.split())
+                    ct = sum(1 for tok in toks if tok in text)
                     if toks:
                         score = ct / len(toks) * 0.2
             if score > 0:
                 candidates.append(
                     {
-                        "source_id": d.name,
-                        "page": p.get("page"),
-                        "snippet": p.get("snippet"),
+                        "source_id": directory.name,
+                        "page": page.get("page"),
+                        "snippet": page.get("snippet"),
                         "score": float(score),
                     }
                 )
 
-    candidates.sort(key=lambda x: x["score"], reverse=True)
+    candidates.sort(key=lambda item: item["score"], reverse=True)
     return {"query": q, "results": candidates[:top_k]}
 
 
@@ -247,34 +245,34 @@ def get_reference_raw(ref_id: str):
     The frontend may open this URL and include a `#page=` fragment to jump to a page.
     """
     root = _storage_root()
-    d = root / ref_id
-    if not d.exists() or not d.is_dir():
+    directory = root / ref_id
+    if not directory.exists() or not directory.is_dir():
         raise HTTPException(status_code=404, detail="Reference not found")
     # Find a PDF file in the directory
-    for p in d.iterdir():
-        if p.is_file() and p.suffix.lower() == '.pdf':
-            return FileResponse(str(p), media_type='application/pdf', filename=p.name)
+    for path in directory.iterdir():
+        if path.is_file() and path.suffix.lower() == ".pdf":
+            return FileResponse(str(path), media_type="application/pdf", filename=path.name)
     # Fallback: if any file exists, return the first
-    for p in d.iterdir():
-        if p.is_file():
-            return FileResponse(str(p), filename=p.name)
-    raise HTTPException(status_code=404, detail='No file found for reference')
+    for path in directory.iterdir():
+        if path.is_file():
+            return FileResponse(str(path), filename=path.name)
+    raise HTTPException(status_code=404, detail="No file found for reference")
 
 
 @router.post("/{ref_id}/reindex", response_model=ReferenceReindexResponse)
 def reindex_reference(ref_id: str, current_user=Depends(get_current_user)):
     """Rebuild embeddings for a reference id (requires OPENAI_API_KEY)."""
     root = _storage_root()
-    d = root / ref_id
-    if not d.exists() or not d.is_dir():
+    directory = root / ref_id
+    if not directory.exists() or not directory.is_dir():
         raise HTTPException(status_code=404, detail="Reference not found")
-    pages_path = d / "pages.json"
+    pages_path = directory / "pages.json"
     if not pages_path.exists():
         raise HTTPException(status_code=400, detail="No pages.json for reference")
     try:
         pages = json.loads(pages_path.read_text(encoding="utf-8"))
     except Exception:
-        raise HTTPException(status_code=500, detail="Failed to read pages.json")
+        raise HTTPException(status_code=500, detail="Failed to read pages.json") from None
 
     openai_key = os.environ.get("OPENAI_API_KEY")
     if not openai_key:
@@ -283,20 +281,20 @@ def reindex_reference(ref_id: str, current_user=Depends(get_current_user)):
         import openai
 
         openai.api_key = openai_key
-        embeddings = []
-        for p in pages:
-            text = p.get("text") or ""
+        embeddings: list[list[float] | None] = []
+        for page in pages:
+            text = page.get("text") or ""
             if not text.strip():
                 embeddings.append(None)
                 continue
             resp = openai.Embedding.create(model="text-embedding-3-small", input=text)
             vect = resp["data"][0]["embedding"]
             embeddings.append(vect)
-        (d / "embeddings.json").write_text(json.dumps(embeddings), encoding="utf-8")
+        (directory / "embeddings.json").write_text(json.dumps(embeddings), encoding="utf-8")
         return {"ok": True, "id": ref_id, "embeddings": len(embeddings)}
     except Exception:
         logger.exception("Reindex failed")
-        raise HTTPException(status_code=500, detail="Reindex failed")
+        raise HTTPException(status_code=500, detail="Reindex failed") from None
 
 
 def search_query(q: str, top_k: int = 5):
@@ -308,7 +306,7 @@ def search_query(q: str, top_k: int = 5):
         return []
     root = _storage_root()
     openai_key = os.environ.get("OPENAI_API_KEY")
-    query_vect = None
+    query_vect: list[float] | None = None
     if openai_key:
         try:
             import openai
@@ -320,15 +318,15 @@ def search_query(q: str, top_k: int = 5):
             logger.exception("Failed to get query embedding; falling back to text match")
             query_vect = None
 
-    candidates = []
+    candidates: list[dict[str, object]] = []
     # Prepare corpus for TF-IDF fallback
-    corpus_texts = []
-    corpus_meta = []
-    for d in root.iterdir():
-        if not d.is_dir():
+    corpus_texts: list[str] = []
+    corpus_meta: list[dict[str, object]] = []
+    for directory in root.iterdir():
+        if not directory.is_dir():
             continue
-        pages_path = d / "pages.json"
-        emb_path = d / "embeddings.json"
+        pages_path = directory / "pages.json"
+        emb_path = directory / "embeddings.json"
         if not pages_path.exists():
             continue
         pages = json.loads(pages_path.read_text(encoding="utf-8"))
@@ -338,76 +336,102 @@ def search_query(q: str, top_k: int = 5):
                 embeddings = json.loads(emb_path.read_text(encoding="utf-8"))
             except Exception:
                 embeddings = None
-        for i, p in enumerate(pages):
-            text = (p.get("text") or "")
+        for idx, page in enumerate(pages):
+            text = (page.get("text") or "")
             corpus_texts.append(text)
-            corpus_meta.append({"source_id": d.name, "page": p.get("page"), "snippet": p.get("snippet"), "emb": (embeddings[i] if embeddings and i < len(embeddings) else None)})
+            corpus_meta.append(
+                {
+                    "source_id": directory.name,
+                    "page": page.get("page"),
+                    "snippet": page.get("snippet"),
+                    "emb": embeddings[idx] if embeddings and idx < len(embeddings) else None,
+                }
+            )
 
     # If we have query embedding and page embeddings, score by cosine
-    if query_vect and any(m.get("emb") for m in corpus_meta):
+    if query_vect and any(meta.get("emb") for meta in corpus_meta):
         for meta in corpus_meta:
             emb = meta.get("emb")
             if not emb:
                 continue
-            score = _cosine_score(query_vect, emb)
+            score = _cosine_score(query_vect, emb)  # type: ignore[arg-type]
             if score > 0:
-                candidates.append({"source_id": meta["source_id"], "page": meta["page"], "snippet": meta.get("snippet"), "score": float(score)})
+                candidates.append(
+                    {
+                        "source_id": meta["source_id"],
+                        "page": meta["page"],
+                        "snippet": meta.get("snippet"),
+                        "score": float(score),
+                    }
+                )
     else:
         # TF-IDF fallback scoring
         # Simple tokenizer
         def tokenize(s: str):
-            return [t for t in re.findall(r"[a-z0-9]{2,}", (s or "").lower())]
+            return list(re.findall(r"[a-z0-9]{2,}", (s or "").lower()))
 
         # Build IDF
-        N = len(corpus_texts)
-        idf = {}
-        df = {}
+        n_docs = len(corpus_texts)
+        idf: dict[str, float] = {}
+        df: dict[str, int] = {}
         for text in corpus_texts:
             tokens = set(tokenize(text))
-            for t in tokens:
-                df[t] = df.get(t, 0) + 1
-        for t, cnt in df.items():
-            idf[t] = math.log((N + 1) / (cnt + 1)) + 1.0
+            for token in tokens:
+                df[token] = df.get(token, 0) + 1
+        for token, count in df.items():
+            idf[token] = math.log((n_docs + 1) / (count + 1)) + 1.0
 
         # Query vector
         q_tokens = tokenize(q)
         if q_tokens:
-            q_tf = {}
-            for t in q_tokens:
-                q_tf[t] = q_tf.get(t, 0) + 1
-            q_vec = {t: (q_tf[t] * idf.get(t, 0.0)) for t in q_tf}
-            q_norm = sum(v * v for v in q_vec.values()) ** 0.5
+            q_tf: dict[str, int] = {}
+            for token in q_tokens:
+                q_tf[token] = q_tf.get(token, 0) + 1
+            q_vec: dict[str, float] = {token: (q_tf[token] * idf.get(token, 0.0)) for token in q_tf}
+            q_norm = sum(val * val for val in q_vec.values()) ** 0.5
 
             for idx, text in enumerate(corpus_texts):
-                t_tf = {}
+                t_tf: dict[str, int] = {}
                 toks = tokenize(text)
                 if not toks:
                     continue
-                for t in toks:
-                    t_tf[t] = t_tf.get(t, 0) + 1
+                for tok in toks:
+                    t_tf[tok] = t_tf.get(tok, 0) + 1
                 # build dot product
                 dot = 0.0
-                denom_a = 0.0
-                denom_b = 0.0
-                for t, qv in q_vec.items():
-                    tv = (t_tf.get(t, 0) * idf.get(t, 0.0))
-                    dot += qv * tv
+                for token, q_val in q_vec.items():
+                    t_val = t_tf.get(token, 0) * idf.get(token, 0.0)
+                    dot += q_val * t_val
                 denom_a = q_norm
-                denom_b = sum((t_tf.get(t, 0) * idf.get(t, 0.0)) ** 2 for t in t_tf) ** 0.5
+                denom_b = sum((t_tf.get(tok, 0) * idf.get(tok, 0.0)) ** 2 for tok in t_tf) ** 0.5
                 if denom_a > 0 and denom_b > 0:
                     score = dot / (denom_a * denom_b)
                 else:
                     score = 0.0
                 if score > 0:
                     meta = corpus_meta[idx]
-                    candidates.append({"source_id": meta["source_id"], "page": meta["page"], "snippet": meta.get("snippet"), "score": float(score)})
+                    candidates.append(
+                        {
+                            "source_id": meta["source_id"],
+                            "page": meta["page"],
+                            "snippet": meta.get("snippet"),
+                            "score": float(score),
+                        }
+                    )
         else:
             # As a last resort, substring match
-            ql = q.lower()
+            q_lower = q.lower()
             for idx, text in enumerate(corpus_texts):
-                if ql in (text or "").lower():
+                if q_lower in (text or "").lower():
                     meta = corpus_meta[idx]
-                    candidates.append({"source_id": meta["source_id"], "page": meta["page"], "snippet": meta.get("snippet"), "score": 0.5})
+                    candidates.append(
+                        {
+                            "source_id": meta["source_id"],
+                            "page": meta["page"],
+                            "snippet": meta.get("snippet"),
+                            "score": 0.5,
+                        }
+                    )
 
-    candidates.sort(key=lambda x: x["score"], reverse=True)
+    candidates.sort(key=lambda item: item["score"], reverse=True)
     return candidates[:top_k]

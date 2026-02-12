@@ -139,7 +139,6 @@ export default function DocumentsPanel({sessionId}: Props){
     loadReferences()
   },[loadDocuments, loadReferences])
 
-
   useEffect(()=>{
     if(!sessionId){
       setIsHost(false)
