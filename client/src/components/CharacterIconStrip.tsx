@@ -1,17 +1,21 @@
 import React from 'react'
 
-const ICON_BASE = `${process.env.PUBLIC_URL || ''}/icons`
-
 export type CharacterSnapshot = {
-  stats: { str: number; dex: number; wis: number }
-  features: string[]
-  inventoryCount: number
-  journalEntries: number
-  skills: { name: string; mod: number }[]
+  stats?: { str?: number; dex?: number; con?: number; int?: number; wis?: number; cha?: number }
+  features?: string[]
+  inventoryCount?: number
+  journalEntries?: number
+  skills?: { name: string; mod: number }[]
 }
+
+export type CharacterStripKey = 'abilities' | 'features' | 'inventory' | 'journal' | 'skills'
 
 type Props = {
   character?: CharacterSnapshot | null
+  activeKey?: CharacterStripKey | null
+  onSelect?: (key: CharacterStripKey) => void
+  variant?: 'full' | 'tabs'
+  hiddenKeys?: CharacterStripKey[]
 }
 
 const formatMod = (score: number) => {
@@ -19,54 +23,86 @@ const formatMod = (score: number) => {
   return mod >= 0 ? `+${mod}` : `${mod}`
 }
 
-export default function CharacterIconStrip({character}: Props){
+const toNumber = (value: any, fallback: number) => {
+  const parsed = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
+export default function CharacterIconStrip({ character, activeKey = null, onSelect, variant = 'full', hiddenKeys = [] }: Props){
   if(!character){
     return null
   }
 
+  const stats = character.stats || {}
+  const str = toNumber((stats as any).str, 10)
+  const dex = toNumber((stats as any).dex, 10)
+  const con = toNumber((stats as any).con, 10)
+  const int = toNumber((stats as any).int, 10)
+  const wis = toNumber((stats as any).wis, 10)
+  const cha = toNumber((stats as any).cha, 10)
+  const features = Array.isArray(character.features) ? character.features : []
+  const skills = Array.isArray(character.skills) ? character.skills : []
+  const inventoryCount = typeof character.inventoryCount === 'number'
+    ? character.inventoryCount
+    : Array.isArray((character as any)?.inventory)
+      ? (character as any).inventory.length
+      : 0
+  const journalEntries = typeof character.journalEntries === 'number' ? character.journalEntries : 0
+
   const items = [
     {
-      key: 'abilities',
-      icon: 'Abilities.png',
+      key: 'abilities' as const,
+      badge: 'A',
       label: 'Abilities',
-      value: `DEX ${formatMod(character.stats.dex)} / WIS ${formatMod(character.stats.wis)}`,
+      value: `STR ${formatMod(str)} · DEX ${formatMod(dex)} · CON ${formatMod(con)}`,
     },
     {
-      key: 'features',
-      icon: 'Features.png',
+      key: 'features' as const,
+      badge: 'F',
       label: 'Features',
-      value: `${character.features.length} readied`,
+      value: `${features.length} readied`,
     },
     {
-      key: 'inventory',
-      icon: 'Inventory.png',
+      key: 'inventory' as const,
+      badge: 'I',
       label: 'Inventory',
-      value: `${character.inventoryCount} items`,
+      value: `${inventoryCount} items`,
     },
     {
-      key: 'journal',
-      icon: 'Journal.png',
+      key: 'journal' as const,
+      badge: 'J',
       label: 'Journal',
-      value: `${character.journalEntries} entries`,
+      value: `${journalEntries} entries`,
     },
     {
-      key: 'skills',
-      icon: 'Skills.png',
+      key: 'skills' as const,
+      badge: 'S',
       label: 'Skills',
-      value: character.skills.length ? `${character.skills[0].name} ${character.skills[0].mod >= 0 ? '+' : ''}${character.skills[0].mod}` : 'Set next',
+      value: skills.length
+        ? `${skills[0].name} ${skills[0].mod >= 0 ? '+' : ''}${skills[0].mod}`
+        : `WIS ${formatMod(wis)} · CHA ${formatMod(cha)} · INT ${formatMod(int)}`,
     },
   ]
 
+  const visibleItems = hiddenKeys.length ? items.filter(item => !hiddenKeys.includes(item.key)) : items
+
   return (
-    <div className="character-icon-strip" aria-label="Character quick info">
-      {items.map(item => (
-        <div className="character-icon-card" key={item.key}>
-          <img src={`${ICON_BASE}/${item.icon}`} alt={item.label} loading="lazy" />
-          <div>
+    <div className={variant === 'tabs' ? 'character-icon-strip character-icon-strip--tabs' : 'character-icon-strip'} aria-label="Character quick info">
+      {visibleItems.map(item => (
+        <button
+          key={item.key}
+          type="button"
+          className={`character-icon-card character-icon-card--button ${item.key === activeKey ? 'character-icon-card--active' : ''}`}
+          onClick={() => onSelect?.(item.key)}
+          aria-pressed={item.key === activeKey}
+          title={item.label}
+        >
+          <div className="character-icon-badge" aria-hidden="true">{item.badge}</div>
+          <div className="character-icon-text">
             <div className="character-icon-label">{item.label}</div>
-            <div className="character-icon-value">{item.value}</div>
+            {variant === 'full' ? <div className="character-icon-value">{item.value}</div> : null}
           </div>
-        </div>
+        </button>
       ))}
     </div>
   )

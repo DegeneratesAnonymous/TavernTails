@@ -144,10 +144,10 @@ The command prints the port status so you can free it before starting the dev se
 - Chat + Dice loop: `/chat` endpoints persist session messages, and the React chat panel now scopes to the active session, supports `!notes` stub responses, and offloads inline `1d20+3` style rolls to `/rolls` for deterministic logging.
 
 ## Next Steps
-- Implement agent modules for each feature
-- Connect frontend and backend
-- Add authentication and session management
-- Enhance UI/UX for immersive play
+- Polish documents UI (upload retries/cancel, clearer failure messaging)
+- Extend character lifecycle (import polish, edit/merge, session assignment UX)
+- Harden agent stubs with contract tests + event persistence
+- Expand CI with lint/typecheck + minimal E2E smoke
 
 ---
 For more details, see `.github/copilot-instructions.md`.

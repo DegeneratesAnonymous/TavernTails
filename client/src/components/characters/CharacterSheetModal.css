@@ -1,0 +1,62 @@
+.tt-sheet-top{
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tt-sheet-ddb-url{
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tt-sheet-grid{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.tt-sheet-card{
+  padding: 12px;
+  min-width: 0;
+}
+
+.tt-sheet-abilities{
+  padding: 12px;
+}
+
+.tt-abilities-grid{
+  display: grid;
+  grid-template-columns: repeat(6, minmax(72px, 1fr));
+  gap: 10px;
+}
+
+.tt-ability{
+  width: 100%;
+  text-align: center;
+}
+
+.tt-ability-label{
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.tt-ability-value{
+  font-weight: 750;
+}
+
+.tt-sheet-raw{
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 720px){
+  .tt-sheet-grid{
+    grid-template-columns: 1fr;
+  }
+
+  .tt-abilities-grid{
+    grid-template-columns: repeat(3, minmax(72px, 1fr));
+  }
+}

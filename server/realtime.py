@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Dict, Set
 
 from fastapi import WebSocket
 
 
 class SessionBroadcaster:
     def __init__(self) -> None:
-        self._connections: Dict[str, Set[WebSocket]] = {}
+        self._connections: dict[str, set[WebSocket]] = {}
         self._lock = asyncio.Lock()
 
     async def connect(self, session_id: str, websocket: WebSocket) -> None:
@@ -41,11 +40,11 @@ class SessionBroadcaster:
                 stale.append(socket)
         if stale:
             async with self._lock:
-                peers = self._connections.get(session_id)
-                if peers:
+                current_peers = self._connections.get(session_id)
+                if current_peers:
                     for socket in stale:
-                        peers.discard(socket)
-                    if not peers:
+                        current_peers.discard(socket)
+                    if not current_peers:
                         self._connections.pop(session_id, None)
 
 

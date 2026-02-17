@@ -1,14 +1,18 @@
 /* Global theme variables and base styles for the dark grid UI */
 :root {
-  --bg-color: #191a1a;
-  --grid-color: rgba(114,114,114,0.22);
-  --surface: #212121;
-  --muted-surface: #1a1a1a;
-  --accent: #111;
+  --bg-color: #332A21;
+  --grid-color: rgba(95, 128, 139, 0.08);
+  --surface: #5F808B;
+  --muted-surface: #7A6C5C;
+  --accent: #E09A4F;
+  --accent-secondary: #AD885F;
+  --surface-dark: #2B3336;
+  --surface-neutral: #525D61;
+  --surface-muted: #47423D;
   --text: #ffffff;
-  --error: #ff6b6b;
-  --highlight: #61dafb;
-  --muted-text: rgba(255,255,255,0.65);
+  --error: #E09A4F;
+  --highlight: #AD885F;
+  --muted-text: rgba(255,255,255,0.72);
   --radius: 12px;
   --shadow-1: 0 6px 18px rgba(0,0,0,0.6);
 }

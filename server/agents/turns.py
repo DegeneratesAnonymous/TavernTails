@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -20,7 +19,7 @@ BASE = session_module.BASE
 
 class TurnState(BaseModel):
     session_id: str
-    order: List[str] = Field(default_factory=list)
+    order: list[str] = Field(default_factory=list)
     active_index: int = Field(default=0, ge=0)
     active: str | None = None
 
@@ -32,7 +31,7 @@ class TurnState(BaseModel):
 
 
 class TurnUpdateRequest(BaseModel):
-    order: List[str] = Field(default_factory=list)
+    order: list[str] = Field(default_factory=list)
     active_index: int = Field(default=0, ge=0)
 
 
@@ -70,8 +69,8 @@ def _ensure_member(session_id: str, user) -> None:
         raise HTTPException(status_code=404, detail='Session not found')
     try:
         meta = json.loads(meta_path.read_text())
-    except Exception as e:
-        raise HTTPException(status_code=500, detail='Failed to read session meta') from e
+    except Exception as err:
+        raise HTTPException(status_code=500, detail='Failed to read session meta') from err
     identifier = session_module._identifier_for_user(user)
     if not session_module._user_is_member(meta, identifier):
         raise HTTPException(status_code=403, detail='Not authorized for this session')

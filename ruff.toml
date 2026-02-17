@@ -13,6 +13,7 @@ exclude = [
     "*.egg-info",
     ".pytest_cache",
     "alembic/versions",
+    "server/alembic/versions",
     "server/agents/archive",
 ]
 
@@ -29,6 +30,10 @@ select = [
 ]
 ignore = [
     "E501",  # line too long (handled by formatter)
+    "B008",  # FastAPI's Depends(...) in parameters is intentional
+    "UP006", # Allow typing.List/Dict for now; avoid mass refactors
+    "UP007", # Allow Optional[...] etc. for now
+    "UP035", # Allow legacy typing imports for now
 ]
 
 # Allow autofix for all enabled rules
@@ -38,6 +43,8 @@ unfixable = []
 [lint.per-file-ignores]
 "__init__.py" = ["F401"]  # Allow unused imports in __init__.py
 "server/tests/*" = ["F401", "F811"]  # Allow test-specific patterns
+"server/main.py" = ["E402"]  # Imports after app creation to avoid circular imports
+"server/agents/content.py" = ["E402", "N815", "N806"]  # Imports after router creation, camelCase for API
 
 [format]
 # Use double quotes for strings

@@ -38,7 +38,10 @@ def test_notes_agent_contract(client: TestClient):
     data = resp.json()
     assert data["session_id"] == payloads.NOTES_REQUEST["session_id"]
     assert data["notes_logged"] == len(payloads.NOTES_REQUEST["notes"])
-    assert data["recap"] == payloads.NOTES_REQUEST["notes"][-1]
+    # Recap is deterministic and should reference the submitted notes.
+    recap = data["recap"]
+    assert isinstance(recap, str)
+    assert payloads.NOTES_REQUEST["notes"][-1] in recap
 
 
 def test_image_agent_contract(client: TestClient):

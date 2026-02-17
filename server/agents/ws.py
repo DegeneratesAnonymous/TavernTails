@@ -1,4 +1,3 @@
-from typing import Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 
@@ -9,7 +8,7 @@ from ..realtime import broadcaster
 router = APIRouter()
 
 
-def _validate_token(token: Optional[str]):
+def _validate_token(token: str | None):
     if not token:
         return None
     payload = decode_access_token(token)
@@ -19,7 +18,7 @@ def _validate_token(token: Optional[str]):
 
 
 @router.websocket('/ws/sessions/{session_id}')
-async def session_socket(websocket: WebSocket, session_id: str, token: Optional[str] = None):
+async def session_socket(websocket: WebSocket, session_id: str, token: str | None = None):
     user = _validate_token(token)
     if not user:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
