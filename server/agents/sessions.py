@@ -2,7 +2,6 @@ import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -102,10 +101,10 @@ def create_session(req: CreateSessionRequest, current_user=Depends(get_current_u
         sid, meta = create_session_folder(req.name, owner_email, invites=[])
         return {'id': sid, 'name': req.name, 'owner': owner_email}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-@router.get('', response_model=List[dict])
+@router.get('', response_model=list[dict])
 def list_sessions(current_user=Depends(get_current_user)):
     out = []
     identifier = _identifier_for_user(current_user)
@@ -160,8 +159,8 @@ def get_meta(session_id: str, current_user=Depends(get_current_user)):
         return data
     except HTTPException:
         raise
-    except Exception:
-        raise HTTPException(status_code=500, detail='Failed to read meta')
+    except Exception as e:
+        raise HTTPException(status_code=500, detail='Failed to read meta') from e
 
 
 class SetCharacterRequest(BaseModel):
@@ -179,8 +178,8 @@ def set_character_for_session(session_id: str, req: SetCharacterRequest, current
 
     try:
         data = json.loads(meta_path.read_text())
-    except Exception:
-        raise HTTPException(status_code=500, detail='Failed to read meta')
+    except Exception as e:
+        raise HTTPException(status_code=500, detail='Failed to read meta') from e
 
     identifier = _identifier_for_user(current_user)
     if not _user_is_member(data, identifier):
@@ -239,8 +238,8 @@ def delete_file(session_id: str, filename: str, current_user=Depends(get_current
         return {'ok': True}
     except HTTPException:
         raise
-    except Exception:
-        raise HTTPException(status_code=500, detail='Failed to delete file')
+    except Exception as e:
+        raise HTTPException(status_code=500, detail='Failed to delete file') from e
 
 
 @router.get('/{session_id}/file/{filename}')

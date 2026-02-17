@@ -1,15 +1,14 @@
 import json
 from pathlib import Path
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 
 class AdvanceRequest(BaseModel):
-    sceneId: Optional[str] = None
-    choiceId: Optional[str] = None
-    sessionId: Optional[str] = None
+    sceneId: str | None = None
+    choiceId: str | None = None
+    sessionId: str | None = None
 
 router = APIRouter(prefix="/content")
 SESSIONS_DIR = Path(__file__).resolve().parents[1] / 'sessions'

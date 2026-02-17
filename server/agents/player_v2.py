@@ -5,7 +5,7 @@ Clean, single-file DB-backed player router. Use this while `player.py` is being 
 
 import re
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 from fastapi import APIRouter, Body, HTTPException, Query
@@ -15,8 +15,8 @@ from .. import db
 router = APIRouter()
 
 
-def _parse_domains_text(text: str) -> List[str]:
-    lines = [l.strip() for l in text.splitlines() if l.strip()]
+def _parse_domains_text(text: str) -> list[str]:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
     valid = []
     for ln in lines:
         if not re.match(r'^https?://', ln):
@@ -28,7 +28,7 @@ def _parse_domains_text(text: str) -> List[str]:
 
 
 @router.post("/player/signup")
-def player_signup(email: str = Body(...), password: str = Body(...), name: Optional[str] = Body(None), character: Dict[str, Any] = Body({})):
+def player_signup(email: str = Body(...), password: str = Body(...), name: str | None = Body(None), character: dict[str, Any] = Body({})):
     if db.get_user_by_identifier(email):
         raise HTTPException(status_code=409, detail="User exists")
     profile = {"name": name or email.split('@')[0], "email": email, "character": character, "preferences": {}}
@@ -37,7 +37,7 @@ def player_signup(email: str = Body(...), password: str = Body(...), name: Optio
 
 
 @router.post("/player/login")
-def player_login(email: Optional[str] = Body(None), name: Optional[str] = Body(None), password: str = Body(...)):
+def player_login(email: str | None = Body(None), name: str | None = Body(None), password: str = Body(...)):
     identifier = email or name
     user = db.authenticate_user(identifier, password)
     if not user:
@@ -66,7 +66,7 @@ def resend_verification(email: str = Body(...)):
 
 
 @router.post("/player/profile")
-def player_profile(identifier: str = Body(...), name: Optional[str] = Body(None), character: Optional[Dict[str, Any]] = Body(None), preferences: Optional[Dict[str, Any]] = Body(None)):
+def player_profile(identifier: str = Body(...), name: str | None = Body(None), character: dict[str, Any] | None = Body(None), preferences: dict[str, Any] | None = Body(None)):
     user = db.get_user_by_identifier(identifier)
     if not user:
         raise HTTPException(status_code=404, detail='User not found')
@@ -84,7 +84,7 @@ def player_profile(identifier: str = Body(...), name: Optional[str] = Body(None)
 
 
 @router.post("/player/dndbeyond")
-def import_dndbeyond_character(text: Optional[str] = Body(None), url: Optional[str] = Body(None), export: Optional[Dict[str, Any]] = Body(None)):
+def import_dndbeyond_character(text: str | None = Body(None), url: str | None = Body(None), export: dict[str, Any] | None = Body(None)):
     if text:
         m = re.search(r"Name[:\s]+(.+)", text, re.I)
         name = m.group(1).strip() if m else None
@@ -100,7 +100,7 @@ def import_dndbeyond_character(text: Optional[str] = Body(None), url: Optional[s
             name = m.group(1).strip() if m else None
             return {"dndbeyond_character": {"imported": bool(name), "character": {"name": name}}}
         except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Failed to fetch URL: {e}")
+            raise HTTPException(status_code=400, detail=f"Failed to fetch URL: {e}") from e
     return {"dndbeyond_character": {"imported": False, "character": {}}}
 
 
@@ -113,7 +113,7 @@ def get_beyond20_domains(identifier: str = Query(...)):
 
 
 @router.post("/player/beyond20")
-def set_beyond20_domains(identifier: str = Body(...), domains_text: Optional[str] = Body(None), domains_list: Optional[List[str]] = Body(None)):
+def set_beyond20_domains(identifier: str = Body(...), domains_text: str | None = Body(None), domains_list: list[str] | None = Body(None)):
     if domains_list is not None:
         parsed = [d.strip() for d in domains_list]
     elif domains_text is not None:

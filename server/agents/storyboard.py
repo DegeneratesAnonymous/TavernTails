@@ -1,6 +1,5 @@
 """Storyboard agent: track beats and hooks."""
 
-from typing import List
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -10,9 +9,9 @@ router = APIRouter(tags=["storyboard"])
 
 class StoryboardRequest(BaseModel):
     scene: str
-    choices: List[str] = Field(default_factory=list)
-    unresolved: List[str] = Field(default_factory=list)
-    completed: List[str] = Field(default_factory=list)
+    choices: list[str] = Field(default_factory=list)
+    unresolved: list[str] = Field(default_factory=list)
+    completed: list[str] = Field(default_factory=list)
 
 
 class StoryboardResponse(BaseModel):
