@@ -8,11 +8,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from sqlalchemy import create_engine
-from sqlmodel import SQLModel
+from sqlalchemy import create_engine  # noqa: E402
+from sqlmodel import SQLModel  # noqa: E402
 
 # Import all models to ensure they're registered with SQLModel.metadata
-from server import db  # noqa: F401
+from server import db  # noqa: E402, F401
 
 # Get database URL from environment or use default
 db_url = os.getenv("TAVERNTAILS_DATABASE_URL", "sqlite:///./taverntails.db")
