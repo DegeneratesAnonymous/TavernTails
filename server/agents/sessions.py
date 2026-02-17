@@ -231,8 +231,8 @@ def get_meta(session_id: str, current_user=Depends(get_current_user)):
         return data
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail='Failed to read meta') from e
+    except Exception as err:
+        raise HTTPException(status_code=500, detail='Failed to read meta') from err
 
 
 class SetCharacterRequest(BaseModel):
@@ -250,8 +250,8 @@ def set_character_for_session(session_id: str, req: SetCharacterRequest, current
 
     try:
         data = json.loads(meta_path.read_text())
-    except Exception as e:
-        raise HTTPException(status_code=500, detail='Failed to read meta') from e
+    except Exception as err:
+        raise HTTPException(status_code=500, detail='Failed to read meta') from err
 
     identifier = _identifier_for_user(current_user)
     if not _user_is_member(data, identifier):
@@ -314,8 +314,8 @@ def delete_file(session_id: str, filename: str, current_user=Depends(get_current
         return {'ok': True}
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail='Failed to delete file') from e
+    except Exception as err:
+        raise HTTPException(status_code=500, detail='Failed to delete file') from err
 
 
 @router.get('/{session_id}/file/{filename}')

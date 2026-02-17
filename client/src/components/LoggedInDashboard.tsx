@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import '../LoggedIn.css';
 import './LoggedInDashboard.css';
 import GameplayLayout from './GameplayLayout'
@@ -53,8 +53,301 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [newCharacterClass, setNewCharacterClass] = useState('')
   const [characterCreateOrigin, setCharacterCreateOrigin] = useState<'gameplay' | 'nav'>('nav')
 
-  const activeCampaign = campaigns.find(c => String(c.id) === String(activeCampaignId)) || null
-  const activeCampaignSessions: Array<{id: string}> = useMemo(() => (activeCampaign?.sessions || []), [activeCampaign])
+  const [sheetModalOpen, setSheetModalOpen] = useState(false)
+  const [sheetModalCharacter, setSheetModalCharacter] = useState<any | null>(null)
+  const [sheetModalLoading, setSheetModalLoading] = useState(false)
+  const [characterSettingsOpen, setCharacterSettingsOpen] = useState(false)
+  const [characterPanelMode, setCharacterPanelMode] = useState<'summary' | 'spells' | 'features' | 'journal' | 'sheet'>('summary')
+  const [selectedSpellRow, setSelectedSpellRow] = useState<any | null>(null)
+
+  const SettingsIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="btn-icon">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 0 1 1.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.559.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.894.149c-.424.07-.764.383-.929.78-.165.398-.143.854.107 1.204l.527.738c.32.447.269 1.06-.12 1.45l-.774.773a1.125 1.125 0 0 1-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.398.165-.71.505-.781.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.447.32-1.06.269-1.45-.12l-.773-.774a1.125 1.125 0 0 1-.12-1.45l.527-.737c.25-.35.272-.806.108-1.204-.165-.397-.506-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.108-1.204l-.526-.738a1.125 1.125 0 0 1 .12-1.45l.773-.773a1.125 1.125 0 0 1 1.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894Z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+    </svg>
+  )
+
+  const DeleteIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="btn-icon">
+      <path strokeLinecap="round" strokeLinejoin="round" d="m9.75 9.75 4.5 4.5m0-4.5-4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+    </svg>
+  )
+
+  const [npcModalOpen, setNpcModalOpen] = useState(false)
+  const [npcModalBusy, setNpcModalBusy] = useState(false)
+  const [npcModalError, setNpcModalError] = useState<string | null>(null)
+  const [npcModalItems, setNpcModalItems] = useState<Array<any>>([])
+  const [npcModalCharacter, setNpcModalCharacter] = useState<any | null>(null)
+  const [npcModalCampaignId, setNpcModalCampaignId] = useState<string | null>(null)
+  const [npcCampaignPickId, setNpcCampaignPickId] = useState<string | null>(null)
+  const [npcRememberCampaign, setNpcRememberCampaign] = useState(true)
+
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [readNotificationIds, setReadNotificationIds] = useState<string[]>([])
+
+  const notifications: NotificationItem[] = useMemo(() => {
+    const raw = Array.isArray(profile?.notifications) ? profile.notifications : []
+    return raw.map((item: any, idx: number) => {
+      const id = String(item?.id ?? item?.notification_id ?? `notification-${idx}`)
+      return {
+        id,
+        title: String(item?.title ?? item?.message ?? item?.text ?? 'Notification'),
+        body: item?.body ? String(item.body) : (item?.detail ? String(item.detail) : undefined),
+        createdAt: item?.created_at || item?.createdAt || item?.timestamp || null,
+        read: Boolean(item?.read),
+      }
+    })
+  }, [profile?.notifications])
+
+  const sortedNotifications = useMemo(() => {
+    return [...notifications].sort((a, b) => {
+      const at = a.createdAt ? new Date(a.createdAt).getTime() : 0
+      const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0
+      if (at && bt && at !== bt) return bt - at
+      return b.id.localeCompare(a.id)
+    })
+  }, [notifications])
+
+  const isNotificationRead = (item: NotificationItem) => {
+    return Boolean(item.read) || readNotificationIds.includes(item.id)
+  }
+
+  const notificationsPending = sortedNotifications.some((item) => !isNotificationRead(item))
+
+  const isAdmin = useMemo(() => {
+    const roles = Array.isArray(profile?.roles) ? profile.roles : []
+    return Boolean(profile?.admin) || roles.some((r: any) => String(r).toLowerCase() === 'admin')
+  }, [profile?.admin, profile?.roles])
+
+  const [adminMode, setAdminMode] = useState<boolean>(() => {
+    const pref = profile?.preferences && typeof profile.preferences === 'object' ? profile.preferences : {}
+    if (typeof pref?.admin_mode === 'boolean') return pref.admin_mode
+    return Boolean(profile?.admin)
+  })
+
+  useEffect(() => {
+    const pref = profile?.preferences && typeof profile.preferences === 'object' ? profile.preferences : {}
+    if (typeof pref?.admin_mode === 'boolean') {
+      setAdminMode(pref.admin_mode)
+      return
+    }
+    setAdminMode(Boolean(profile?.admin))
+  }, [profile?.preferences, profile?.admin])
+
+  const handleToggleAdminMode = useCallback(async (enabled: boolean) => {
+    try {
+      const res = await apiFetch('/player/admin-mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      })
+      if (!res.ok) {
+        const detail = await res.json().catch(() => null)
+        const message = detail?.detail || detail?.message || `Unable to update admin mode (${res.status}).`
+        alert(message)
+        return
+      }
+      setAdminMode(enabled)
+    } catch {
+      alert('Network error while updating admin mode.')
+    }
+  }, [])
+
+  const handleMarkAllRead = () => {
+    setReadNotificationIds(sortedNotifications.map((n) => n.id))
+  }
+
+  const activeCampaign = useMemo(() => {
+    return campaigns.find(c => String(c.id) === String(activeCampaignId)) || null
+  }, [activeCampaignId, campaigns])
+
+  const playerRunMode = useMemo(() => {
+    const settings = (activeCampaign as any)?.metadata_json?.settings
+    return Boolean(settings?.player_run_mode)
+  }, [activeCampaign])
+
+  const activeCampaignSessions: Array<{id: string}> = useMemo(() => {
+    return (activeCampaign?.sessions || [])
+  }, [activeCampaign])
+
+  const characterRoster: CharacterSummary[] = useMemo(() => {
+    const toNum = (value: any): number | null => {
+      const parsed = typeof value === 'number' ? value : Number(value)
+      return Number.isFinite(parsed) ? parsed : null
+    }
+
+    const toStringArray = (value: any): string[] => {
+      if(Array.isArray(value)) return value.map(v => String(v))
+      return []
+    }
+
+    const toSkillArray = (value: any): { name: string; mod: number }[] => {
+      if(!Array.isArray(value)) return []
+      return value
+        .map((raw: any) => {
+          if(typeof raw === 'string') return { name: raw, mod: 0 }
+          const name = String(raw?.name ?? '').trim()
+          const mod = toNum(raw?.mod) ?? 0
+          if(!name) return null
+          return { name, mod }
+        })
+        .filter(Boolean) as any
+    }
+
+    return characters.map((c: any) => {
+      const sheet = (c?.sheet && typeof c.sheet === 'object') ? c.sheet : {}
+      const hpCurrent = toNum(sheet?.hp?.current ?? sheet?.hp_current) ?? 10
+      const hpMax = toNum(sheet?.hp?.max ?? sheet?.hp_max) ?? Math.max(hpCurrent, 10)
+      const hpTemp = toNum(sheet?.hp?.temp ?? sheet?.hp_temp) ?? 0
+      const ac = toNum(sheet?.ac) ?? 10
+      const spellSave = toNum(sheet?.spell_save ?? sheet?.spellSave ?? sheet?.spell_save_dc ?? sheet?.spellSaveDc) ?? 10
+      const stats = (sheet?.stats && typeof sheet.stats === 'object') ? sheet.stats : {}
+
+      const inventory = toStringArray(sheet?.inventory)
+      const spells = toStringArray(sheet?.spells)
+      const spellbook = Array.isArray(sheet?.spellbook) ? sheet.spellbook : []
+      const features = toStringArray(sheet?.features)
+      const skills = toSkillArray(sheet?.skills)
+
+      return {
+        id: String(c?.id ?? ''),
+        name: String(c?.name ?? 'Unnamed'),
+        level: toNum(c?.level) ?? 1,
+        hp: { current: hpCurrent, max: hpMax, temp: hpTemp || undefined },
+        ac,
+        spellSave,
+        stats: {
+          str: toNum(stats?.str) ?? 10,
+          dex: toNum(stats?.dex) ?? 10,
+          wis: toNum(stats?.wis) ?? 10,
+        },
+        features,
+        inventoryCount: typeof sheet?.inventoryCount === 'number' ? sheet.inventoryCount : inventory.length,
+        journalEntries: typeof sheet?.journalEntries === 'number' ? sheet.journalEntries : 0,
+        skills,
+        inventory,
+        spells,
+        spellbook,
+      }
+    }).filter((c: any) => Boolean(c?.id))
+  }, [characters])
+
+  const formatModifier = (value: number | null | undefined) => {
+    if (value === null || value === undefined || Number.isNaN(value)) return '—'
+    return value >= 0 ? `+${value}` : String(value)
+  }
+
+  const selectedCharacter = useMemo(() => {
+    if (selectedCharacterId === null) return null
+    return characters.find((c) => Number(c?.id) === Number(selectedCharacterId)) || null
+  }, [characters, selectedCharacterId])
+
+  useEffect(() => {
+    if (!selectedCharacter) {
+      setCharacterPanelMode('summary')
+      setSelectedSpellRow(null)
+    }
+  }, [selectedCharacter])
+
+  const selectedSheetSummary = useMemo(() => {
+    if (!selectedCharacter) return null
+    const sheet = (selectedCharacter?.sheet && typeof selectedCharacter.sheet === 'object') ? selectedCharacter.sheet : {}
+    const stats = (sheet?.stats && typeof sheet.stats === 'object') ? sheet.stats : {}
+    const hpCurrent = typeof sheet?.hp?.current === 'number' ? sheet.hp.current : (typeof sheet?.hp_current === 'number' ? sheet.hp_current : null)
+    const hpMax = typeof sheet?.hp?.max === 'number' ? sheet.hp.max : (typeof sheet?.hp_max === 'number' ? sheet.hp_max : null)
+    const hpTemp = typeof sheet?.hp?.temp === 'number' ? sheet.hp.temp : (typeof sheet?.hp_temp === 'number' ? sheet.hp_temp : null)
+    const ac = typeof sheet?.ac === 'number' ? sheet.ac : null
+    const speed = (sheet?.speed && typeof sheet.speed === 'object') ? sheet.speed : null
+
+    const statValue = (key: keyof typeof stats) => {
+      const value = (stats as any)?.[key]
+      return typeof value === 'number' ? value : null
+    }
+
+    const modValue = (score: number | null) => (typeof score === 'number' ? Math.floor((score - 10) / 2) : null)
+
+    const toList = (value: any): string[] => {
+      if (!Array.isArray(value)) return []
+      return value.map((v) => String(v)).map((v) => v.trim()).filter(Boolean)
+    }
+
+    const uniq = (items: string[]) => Array.from(new Set(items))
+    const summarize = (items: string[], limit = 8) => ({
+      items: items.slice(0, limit),
+      more: Math.max(0, items.length - limit),
+    })
+
+    const features = uniq([
+      ...toList((sheet as any)?.classFeatures),
+      ...toList((sheet as any)?.racialFeatures),
+      ...toList((sheet as any)?.otherFeatures),
+      ...toList(sheet?.features),
+    ])
+    const spells = uniq(toList(sheet?.spells))
+    const inventory = uniq(toList(sheet?.inventory))
+    const skills = uniq(toList(sheet?.skills))
+
+    const dexScore = statValue('dex')
+    const wisScore = statValue('wis')
+
+    return {
+      stats,
+      statScores: {
+        str: statValue('str'),
+        dex: dexScore,
+        con: statValue('con'),
+        int: statValue('int'),
+        wis: wisScore,
+        cha: statValue('cha'),
+      },
+      statMods: {
+        str: modValue(statValue('str')),
+        dex: modValue(dexScore),
+        con: modValue(statValue('con')),
+        int: modValue(statValue('int')),
+        wis: modValue(wisScore),
+        cha: modValue(statValue('cha')),
+      },
+      initiative: modValue(dexScore),
+      passivePerception: typeof wisScore === 'number' ? 10 + (modValue(wisScore) ?? 0) : null,
+      speed,
+      hpCurrent,
+      hpMax,
+      hpTemp,
+      ac,
+      features: summarize(features, 10),
+      spells: summarize(spells, 10),
+      inventory: summarize(inventory, 8),
+      skills: summarize(skills, 8),
+    }
+  }, [selectedCharacter])
+
+  useEffect(() => {
+    if (!selectedCharacter || characterPanelMode !== 'spells') return
+    if (selectedSpellRow) return
+    const sheet = (selectedCharacter?.sheet && typeof selectedCharacter.sheet === 'object') ? selectedCharacter.sheet : {}
+    const spellbook = Array.isArray((sheet as any)?.spellbook) ? (sheet as any).spellbook : []
+    const spellNames = Array.isArray((sheet as any)?.spells) ? (sheet as any).spells : []
+    if (spellbook.length > 0) {
+      setSelectedSpellRow(spellbook[0])
+    } else if (spellNames.length > 0) {
+      setSelectedSpellRow({ name: String(spellNames[0]) })
+    }
+  }, [characterPanelMode, selectedCharacter, selectedSpellRow])
+
+  useEffect(() => {
+    if (!characters.length) {
+      setSelectedCharacterId(null)
+      return
+    }
+    const hasSelected = selectedCharacterId !== null && characters.some((c) => Number(c?.id) === Number(selectedCharacterId))
+    if (hasSelected) return
+    if (activeCharacterId !== null && characters.some((c) => Number(c?.id) === Number(activeCharacterId))) {
+      setSelectedCharacterId(activeCharacterId)
+      return
+    }
+    setSelectedCharacterId(Number(characters[0].id))
+  }, [characters, activeCharacterId, selectedCharacterId])
 
   const fetchCampaigns = useCallback(async () => {
     try{
@@ -68,7 +361,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
         }
       }
     }catch(e){/*ignore*/}
-  }, [activeCampaignId])
+  }, [])
 
   const fetchCharacters = useCallback(async () => {
     try{
@@ -81,10 +374,187 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     }catch(e){/*ignore*/}
   }, [])
 
+  const updateCharacterCampaignAssociation = useCallback(async (characterId: number, campaignId: string | null) => {
+    if (!characterId || !campaignId) return
+    try {
+      const existing = characters.find((c) => Number(c?.id) === Number(characterId)) || null
+      let sheet = (existing?.sheet && typeof existing.sheet === 'object') ? existing.sheet : null
+      if (!sheet) {
+        const res = await apiFetch(`/characters/${characterId}`)
+        if (res.ok) {
+          const data = await res.json().catch(() => ({} as any))
+          sheet = (data?.character?.sheet && typeof data.character.sheet === 'object') ? data.character.sheet : {}
+        } else {
+          sheet = {}
+        }
+      }
+      const assoc = (sheet && typeof sheet === 'object') ? (sheet as any).associations : null
+      const nextSheet = {
+        ...(sheet || {}),
+        associations: {
+          ...(assoc && typeof assoc === 'object' ? assoc : {}),
+          campaign_id: campaignId,
+        },
+      }
+      const res = await apiFetch(`/characters/${characterId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ sheet: nextSheet }),
+      })
+      if (res.ok) await fetchCharacters()
+    } catch {
+      // ignore; association is best-effort
+    }
+  }, [characters, fetchCharacters])
+
+  const setSessionCharacter = useCallback(async (characterId: number | null) => {
+    if(!activeSession) return
+    try{
+      await apiFetch(`/sessions/${activeSession}/character`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ character_id: characterId })
+      })
+    }catch(e){/*ignore*/}
+  }, [activeSession])
+
+  const assignCharacterToSession = useCallback(async (characterId: number | null) => {
+    await setSessionCharacter(characterId)
+    if (characterId !== null && activeCampaignId) {
+      await updateCharacterCampaignAssociation(characterId, activeCampaignId)
+    }
+  }, [activeCampaignId, setSessionCharacter, updateCharacterCampaignAssociation])
+
+  const handleDeleteTestCharacters = useCallback(async () => {
+    const confirmDelete = window.confirm('Delete test characters (name contains "test" or "launk")? This cannot be undone.')
+    if (!confirmDelete) return
+    try {
+      const res = await apiFetch('/characters/purge?name_like=test,launk', { method: 'DELETE' })
+      if (!res.ok) {
+        const detail = await res.json().catch(() => null)
+        const message = detail?.detail || detail?.message || `Delete failed (${res.status}).`
+        alert(message)
+        return
+      }
+      const data = await res.json().catch(() => ({} as any))
+      await fetchCharacters()
+      if (activeCharacterId !== null) {
+        await assignCharacterToSession(null)
+        setActiveCharacterId(null)
+      }
+      setSelectedCharacterId(null)
+      alert(`Deleted ${Number(data?.deleted ?? 0)} test character(s).`)
+    } catch {
+      alert('Network error. Please try again.')
+    }
+  }, [activeCharacterId, assignCharacterToSession, fetchCharacters])
+
+  const handleDeleteTestCampaigns = useCallback(async () => {
+    const confirmDelete = window.confirm('Delete test campaigns (name contains "test")? This cannot be undone.')
+    if (!confirmDelete) return
+    try {
+      const res = await apiFetch('/campaigns/purge?name_like=test', { method: 'DELETE' })
+      if (!res.ok) {
+        const detail = await res.json().catch(() => null)
+        const message = detail?.detail || detail?.message || `Delete failed (${res.status}).`
+        alert(message)
+        return
+      }
+      await fetchCampaigns()
+      alert('Deleted test campaigns.')
+    } catch {
+      alert('Network error. Please try again.')
+    }
+  }, [fetchCampaigns])
+
+  const loadNpcList = useCallback(async (campaignId: string, character: any, rememberAssociation: boolean) => {
+    setNpcModalBusy(true)
+    setNpcModalError(null)
+    try {
+      const campaign = campaigns.find((c) => String(c.id) === String(campaignId))
+      if (!campaign) {
+        setNpcModalError('Campaign not found.')
+        setNpcModalItems([])
+        return
+      }
+      const sessions = Array.isArray(campaign.sessions) ? campaign.sessions : []
+      if (!sessions.length) {
+        setNpcModalItems([])
+        setNpcModalCampaignId(String(campaignId))
+        return
+      }
+
+      const npcBuckets = await Promise.all(
+        sessions.map(async (s: any) => {
+          const sid = String(s?.id || '')
+          if (!sid) return []
+          try {
+            const res = await apiFetch(`/sessions/${sid}/party`)
+            if (!res.ok) return []
+            const data = await res.json().catch(() => null)
+            const npcs = Array.isArray(data?.npcs) ? data.npcs : []
+            return npcs.map((npc: any) => ({ ...npc, session_id: sid }))
+          } catch {
+            return []
+          }
+        })
+      )
+
+      const flat = npcBuckets.flat()
+      const deduped = new Map<string, any>()
+      for (const npc of flat) {
+        const name = String(npc?.name || '').trim()
+        if (!name) continue
+        if (!deduped.has(name)) {
+          deduped.set(name, npc)
+        }
+      }
+      const visible = Array.from(deduped.values()).map((npc) => ({
+        name: String(npc?.name || 'Unknown NPC'),
+        traits: npc?.traits || {},
+        motivations: Array.isArray(npc?.motivations) ? npc.motivations : [],
+        quirks: Array.isArray(npc?.quirks) ? npc.quirks : [],
+        session_id: npc?.session_id,
+      })).sort((a, b) => a.name.localeCompare(b.name))
+
+      setNpcModalItems(visible)
+      setNpcModalCampaignId(String(campaignId))
+
+      if (rememberAssociation && character?.id) {
+        await updateCharacterCampaignAssociation(Number(character.id), String(campaignId))
+      }
+    } catch (e: any) {
+      setNpcModalError(e?.message || 'Failed to load NPCs.')
+    } finally {
+      setNpcModalBusy(false)
+    }
+  }, [campaigns, updateCharacterCampaignAssociation])
+
+  const openNpcModalForCharacter = useCallback((character: any) => {
+    const sheet = (character?.sheet && typeof character.sheet === 'object') ? character.sheet : {}
+    const assocCampaignId = sheet?.associations?.campaign_id || sheet?.campaign_id || null
+    const defaultCampaignId = assocCampaignId || activeCampaignId || (campaigns[0]?.id ? String(campaigns[0].id) : null)
+    const shouldPrompt = Boolean(
+      (assocCampaignId && activeCampaignId && String(assocCampaignId) !== String(activeCampaignId)) ||
+      (!assocCampaignId && campaigns.length > 1)
+    )
+
+    setNpcModalCharacter(character)
+    setNpcModalItems([])
+    setNpcModalError(null)
+    setNpcModalCampaignId(null)
+    setNpcCampaignPickId(defaultCampaignId)
+    setNpcRememberCampaign(true)
+    setNpcModalOpen(true)
+
+    if (!shouldPrompt && defaultCampaignId) {
+      void loadNpcList(defaultCampaignId, character, true)
+    }
+  }, [activeCampaignId, campaigns, loadNpcList])
+
   useEffect(()=>{
     fetchCampaigns()
     fetchCharacters()
-  },[profile, fetchCampaigns, fetchCharacters])
+  },[fetchCampaigns, fetchCharacters, profile])
 
   useEffect(()=>{
     if(!activeCampaignId) return

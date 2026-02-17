@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..auth import get_current_user
 from ..realtime import broadcaster
@@ -14,9 +14,12 @@ from . import suggestions as suggestions_agent
 
 
 class AdvanceRequest(BaseModel):
-    sceneId: str | None = None
-    choiceId: str | None = None
-    sessionId: str | None = None
+    model_config = ConfigDict(populate_by_name=True)
+
+    scene_id: str | None = Field(default=None, alias="sceneId")
+    choice_id: str | None = Field(default=None, alias="choiceId")
+    session_id: str | None = Field(default=None, alias="sessionId")
+
 
 router = APIRouter(prefix="/content")
 SESSIONS_DIR = Path(__file__).resolve().parents[1] / "sessions"

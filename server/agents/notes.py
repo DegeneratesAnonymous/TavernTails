@@ -1,7 +1,14 @@
-"""Notes agent provides quick recaps."""
+"""Notes agent provides quick recaps.
+
+This agent intentionally stays deterministic (no LLM calls) so it can be used
+in MVP flows, tests, and CI without external dependencies.
+"""
+
+from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import List
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -21,7 +28,7 @@ def _strip_role_prefix(text: str) -> str:
     return " ".join(value.split())
 
 
-def _generate_recap(notes: list[str]) -> str:
+def _generate_recap(notes: List[str]) -> str:
     cleaned = [_strip_role_prefix(n) for n in notes if isinstance(n, str) and n.strip()]
     if not cleaned:
         return "No notes captured."
@@ -46,7 +53,7 @@ def _generate_recap(notes: list[str]) -> str:
     return f"Recap: {snippet}"
 
 
-def _append_to_session_notes(session_id: str, notes: list[str], recap: str) -> None:
+def _append_to_session_notes(session_id: str, notes: List[str], recap: str) -> None:
     folder = _SESSIONS_BASE / session_id
     if not folder.exists():
         return

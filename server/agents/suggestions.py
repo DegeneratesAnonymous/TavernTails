@@ -1,7 +1,12 @@
-"""Suggestion surface fed by recent chat context."""
+"""Suggestion surface fed by recent chat context.
+
+When chat context is missing (common during early playtesting), we fall back to the
+session's current `scene.json` so suggestions still feel "alive" without extra user input.
+"""
 
 import json
 from pathlib import Path
+from typing import List
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
@@ -59,7 +64,7 @@ def _infer_theme_from_text(text: str) -> str:
     return "default"
 
 
-def _load_scene_context(session_id: str) -> tuple[str, list[str]]:
+def _load_scene_context(session_id: str) -> tuple[str, List[str]]:
     """Best-effort load of (scene text, choice labels) from a session."""
     if not session_id:
         return "", []
@@ -74,7 +79,7 @@ def _load_scene_context(session_id: str) -> tuple[str, list[str]]:
         return "", []
     text = str(raw.get("text") or "")
     choices = raw.get("choices")
-    labels: list[str] = []
+    labels: List[str] = []
     if isinstance(choices, list):
         for item in choices:
             if isinstance(item, dict):

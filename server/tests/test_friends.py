@@ -15,8 +15,8 @@ def _create_and_verify(email, password, name=None):
 def test_friend_request_flow():
     client = TestClient(main.app)
     # create two users
-    _u1 = _create_and_verify('alice@example.com', 'secret', 'alice')
-    _u2 = _create_and_verify('bob@example.com', 'secret', 'bob')
+    _create_and_verify('alice@example.com', 'secret', 'alice')
+    _create_and_verify('bob@example.com', 'secret', 'bob')
 
     # login both
     r1 = client.post('/player/login', json={'email': 'alice@example.com', 'password': 'secret'})

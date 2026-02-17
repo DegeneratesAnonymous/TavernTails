@@ -1,7 +1,7 @@
 import json
 import random
 import re
-from typing import Any
+from typing import Any, Dict, List, Tuple
 
 from fastapi import APIRouter, Body, Depends, Header, HTTPException
 from pydantic import BaseModel
@@ -92,12 +92,12 @@ def _normalize_beyond20_payload(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _extract_from_b20_roll_obj(roll_obj: dict[str, Any]) -> tuple[str, list[int], int, int]:
+def _extract_from_b20_roll_obj(roll_obj: Dict[str, Any]) -> Tuple[str, List[int], int, int]:
     """Extract (formula, rolls, mod, total) from a Beyond20 Roll object."""
     formula = (roll_obj.get("formula") or "").strip()
     parts = roll_obj.get("parts")
     op = 1
-    rolls: list[int] = []
+    rolls: List[int] = []
     mod = 0
     total_calc = 0
 
@@ -153,7 +153,7 @@ def _extract_from_b20_roll_obj(roll_obj: dict[str, Any]) -> tuple[str, list[int]
     return formula, rolls, int(mod), int(total_int)
 
 
-def _normalize_beyond20_dom_event(payload: dict[str, Any], *, fallback_by: str) -> dict[str, Any]:
+def _normalize_beyond20_dom_event(payload: Dict[str, Any], *, fallback_by: str) -> Dict[str, Any]:
     """Normalize Beyond20 DOM event payloads (roll / rendered-roll) into TavernTails roll shape."""
     action = (payload.get("action") or "").strip().lower()
     if action not in {"roll", "rendered-roll"}:
@@ -164,9 +164,9 @@ def _normalize_beyond20_dom_event(payload: dict[str, Any], *, fallback_by: str) 
         return out
 
     if action == "roll":
-        roll_req: dict[str, Any] = payload
+        roll_req: Dict[str, Any] = payload
         roll_character_raw = roll_req.get("character")
-        roll_character: dict[str, Any] = roll_character_raw if isinstance(roll_character_raw, dict) else {}
+        roll_character: Dict[str, Any] = roll_character_raw if isinstance(roll_character_raw, dict) else {}
         by = (roll_character.get("name") or roll_req.get("player") or roll_req.get("by") or fallback_by)
         expr = (roll_req.get("roll") or roll_req.get("modifier") or roll_req.get("name") or roll_req.get("type") or "").strip()
         reason = roll_req.get("name") or roll_req.get("type")
@@ -183,10 +183,10 @@ def _normalize_beyond20_dom_event(payload: dict[str, Any], *, fallback_by: str) 
 
     # rendered-roll
     req_raw = payload.get("request")
-    req: dict[str, Any] = req_raw if isinstance(req_raw, dict) else {}
+    req: Dict[str, Any] = req_raw if isinstance(req_raw, dict) else {}
 
     character_raw = payload.get("character")
-    character: dict[str, Any] = character_raw if isinstance(character_raw, dict) else {}
+    character: Dict[str, Any] = character_raw if isinstance(character_raw, dict) else {}
     if not character:
         req_character_raw = req.get("character")
         if isinstance(req_character_raw, dict):
@@ -195,10 +195,10 @@ def _normalize_beyond20_dom_event(payload: dict[str, Any], *, fallback_by: str) 
     title = (payload.get("title") or req.get("name") or req.get("type") or "Roll").strip()
 
     attack_rolls = payload.get("attack_rolls")
-    chosen: dict[str, Any] | None = None
+    chosen: Dict[str, Any] | None = None
     if isinstance(attack_rolls, list) and attack_rolls:
         for item in attack_rolls:
-            candidate: dict[str, Any] | None = None
+            candidate: Dict[str, Any] | None = None
             if isinstance(item, dict):
                 candidate = item
             elif isinstance(item, list) and len(item) >= 1 and isinstance(item[0], dict):
@@ -305,7 +305,7 @@ async def ingest_beyond20(payload: dict[str, Any] = Body(...)):
 
 @router.post('/integrations/beyond20/roll/relay')
 async def ingest_beyond20_relay(
-    payload: dict[str, Any] = Body(...),
+    payload: Dict[str, Any] = Body(...),
     x_relay_token: str | None = Header(default=None, alias='X-Relay-Token'),
 ):
     from .. import db
@@ -319,7 +319,7 @@ async def ingest_beyond20_relay(
 
     session_id = payload.get('session_id')
     b20_raw = payload.get("beyond20")
-    b20: dict[str, Any] = b20_raw if isinstance(b20_raw, dict) else (payload if isinstance(payload, dict) else {})
+    b20: Dict[str, Any] = b20_raw if isinstance(b20_raw, dict) else (payload if isinstance(payload, dict) else {})
     fallback_by = (user.profile or {}).get("name") or user.email or user.username or "Beyond20"
     result = _normalize_beyond20_dom_event(b20, fallback_by=fallback_by)
 

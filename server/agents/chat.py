@@ -32,7 +32,7 @@ MENTION_REGEX = re.compile(r"@([A-Za-z0-9_\-]{2,32})")
 
 
 def _extract_mentions(text: str) -> list[str]:
-    seen = []
+    seen: list[str] = []
     if not text:
         return seen
     for match in MENTION_REGEX.findall(text):

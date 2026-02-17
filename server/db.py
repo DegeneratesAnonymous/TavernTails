@@ -1,10 +1,10 @@
 import os
 import secrets
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Dict, List, cast
 
 from passlib.context import CryptContext
-from sqlalchemy import Column, cast, desc, func
+from sqlalchemy import Column, delete, desc, func, or_
 from sqlalchemy.types import JSON
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
@@ -76,7 +76,13 @@ def get_campaign_by_id(campaign_id: str) -> Campaign | None:
         return session.exec(stmt).first()
 
 
-def list_campaigns_for_owner(owner_id: int) -> list[Campaign]:
+def get_character_by_id(character_id: int) -> Character | None:
+    with Session(engine) as session:
+        stmt = select(Character).where(Character.id == character_id)
+        return session.exec(stmt).first()
+
+
+def list_campaigns_for_owner(owner_id: int) -> List[Campaign]:
     with Session(engine) as session:
         stmt = select(Campaign).where(Campaign.owner_id == owner_id)
         return list(session.exec(stmt).all())
@@ -131,7 +137,7 @@ def update_campaign(campaign_id: str, owner_id: int, updates: dict[str, Any]) ->
         return camp
 
 
-def get_campaign_settings(campaign_id: str, owner_id: int) -> dict[str, Any] | None:
+def get_campaign_settings(campaign_id: str, owner_id: int) -> Dict[str, Any] | None:
     with Session(engine) as session:
         stmt = select(Campaign).where(Campaign.id == campaign_id, Campaign.owner_id == owner_id)
         camp = session.exec(stmt).first()
@@ -142,7 +148,7 @@ def get_campaign_settings(campaign_id: str, owner_id: int) -> dict[str, Any] | N
         return dict(settings) if isinstance(settings, dict) else {}
 
 
-def set_campaign_settings(campaign_id: str, owner_id: int, settings: dict[str, Any]) -> Campaign | None:
+def set_campaign_settings(campaign_id: str, owner_id: int, settings: Dict[str, Any]) -> Campaign | None:
     with Session(engine) as session:
         stmt = select(Campaign).where(Campaign.id == campaign_id, Campaign.owner_id == owner_id)
         camp = session.exec(stmt).first()
@@ -166,6 +172,20 @@ def delete_campaign(campaign_id: str, owner_id: int) -> bool:
         session.delete(camp)
         session.commit()
         return True
+
+
+def purge_campaigns(owner_id: int, name_tokens: List[str] | None = None) -> int:
+    tokens = [t.strip().lower() for t in (name_tokens or []) if t and t.strip()]
+    with Session(engine) as session:
+        stmt = delete(Campaign).where(Campaign.owner_id == owner_id)
+        if tokens:
+            stmt = stmt.where(or_(*[func.lower(Campaign.name).like(f"%{token}%") for token in tokens]))
+        result = session.exec(stmt)
+        session.commit()
+        try:
+            return int(result.rowcount or 0)
+        except Exception:
+            return 0
 
 
 def add_session_to_campaign(campaign_id: str, owner_id: int, session_id: str) -> Campaign | None:
@@ -360,7 +380,26 @@ def get_user_by_identifier(identifier: str) -> User | None:
         return session.exec(stmt).first()
 
 
-def create_user(email: str, password: str, username: str | None = None, profile: dict[str, Any] | None = None) -> User:
+def search_users(query: str, *, limit: int = 10) -> List[User]:
+    q = (query or "").strip()
+    if not q:
+        return []
+    q_lower = q.lower()
+    like = f"%{q_lower}%"
+    with Session(engine) as session:
+        stmt = (
+            select(User)
+            .where(
+                (func.lower(User.username).like(like))
+                | (func.lower(User.email).like(like))
+            )
+            .order_by(User.username)
+            .limit(max(1, min(int(limit or 10), 25)))
+        )
+        return list(session.exec(stmt).all())
+
+
+def create_user(email: str, password: str, username: str | None = None, profile: Dict[str, Any] | None = None) -> User:
     clean_email = _normalize_email(email)
     if not clean_email:
         raise ValueError("Email required")
@@ -467,7 +506,7 @@ def ensure_seed_users():
     test_password = os.environ.get("TAVERNTAILS_TEST_PASSWORD", "secret")
     test_username = _normalize_username(os.environ.get("TAVERNTAILS_TEST_USERNAME", "BilboBaggins"))
 
-    def _ensure(email: str, password: str, username: str | None, profile: dict[str, Any]) -> User:
+    def _ensure(email: str, password: str, username: str | None, profile: Dict[str, Any]) -> User:
         with Session(engine) as session:
             stmt = select(User).where(func.lower(User.email) == email.lower())
             existing = session.exec(stmt).first()
@@ -606,13 +645,7 @@ def get_character_for_owner(character_id: int, owner_id: int) -> Character | Non
         return session.exec(stmt).first()
 
 
-def get_character_by_id(character_id: int) -> Character | None:
-    with Session(engine) as session:
-        stmt = select(Character).where(Character.id == character_id)
-        return session.exec(stmt).first()
-
-
-def update_character(character_id: int, owner_id: int, updates: dict[str, Any]) -> Character | None:
+def update_character(character_id: int, owner_id: int, updates: Dict[str, Any]) -> Character | None:
     with Session(engine) as session:
         stmt = select(Character).where(Character.id == character_id, Character.owner_id == owner_id)
         char = session.exec(stmt).first()
@@ -644,7 +677,53 @@ def delete_character(character_id: int, owner_id: int) -> bool:
         return True
 
 
-def get_beyond20_domains_for(identifier: str) -> list[str]:
+def delete_character_any(character_id: int) -> bool:
+    with Session(engine) as session:
+        stmt = select(Character).where(Character.id == character_id)
+        char = session.exec(stmt).first()
+        if not char:
+            return False
+        session.delete(char)
+        session.commit()
+        return True
+
+
+def update_character_any(character_id: int, updates: Dict[str, Any]) -> Character | None:
+    with Session(engine) as session:
+        stmt = select(Character).where(Character.id == character_id)
+        char = session.exec(stmt).first()
+        if not char:
+            return None
+        if 'name' in updates and updates['name']:
+            char.name = updates['name'].strip()
+        if 'class_name' in updates:
+            value = updates['class_name']
+            char.class_name = value.strip() if value else None
+        if 'level' in updates and updates['level']:
+            char.level = max(1, int(updates['level']))
+        if 'sheet' in updates and isinstance(updates['sheet'], dict):
+            char.sheet = updates['sheet']
+        session.add(char)
+        session.commit()
+        session.refresh(char)
+        return char
+
+
+def purge_characters(owner_id: int, name_tokens: List[str] | None = None) -> int:
+    tokens = [t.strip().lower() for t in (name_tokens or []) if t and t.strip()]
+    with Session(engine) as session:
+        stmt = delete(Character).where(Character.owner_id == owner_id)
+        if tokens:
+            stmt = stmt.where(or_(*[func.lower(Character.name).like(f"%{token}%") for token in tokens]))
+        result = session.exec(stmt)
+        session.commit()
+        try:
+            return int(result.rowcount or 0)
+        except Exception:
+            return 0
+
+
+def get_beyond20_domains_for(identifier: str) -> List[str]:
     user = get_user_by_identifier(identifier)
     if not user:
         return []

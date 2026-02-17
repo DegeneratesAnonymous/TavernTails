@@ -1,5 +1,6 @@
 import os
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 import jwt
 from fastapi import Depends, HTTPException, status
@@ -16,7 +17,7 @@ security = HTTPBearer()
 
 
 def create_access_token(subject: str, expires_delta: timedelta | None = None) -> str:
-    to_encode = {"sub": subject}
+    to_encode: dict[str, Any] = {"sub": subject}
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:

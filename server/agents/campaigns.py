@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Dict, List
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel
@@ -131,7 +131,7 @@ def purge_campaigns(name_like: str | None = None, current_user=Depends(get_curre
     if not db.is_admin_user(current_user):
         raise HTTPException(status_code=403, detail='Admin privileges required')
     owner_id = _require_user_id(current_user)
-    tokens: list[str] = []
+    tokens: List[str] = []
     if name_like:
         tokens = [part.strip() for part in name_like.split(',') if part.strip()]
     deleted = db.purge_campaigns(owner_id=owner_id, name_tokens=tokens)
@@ -155,7 +155,7 @@ def get_campaign_settings(campaign_id: str, current_user=Depends(get_current_use
 @router.put('/{campaign_id}/settings')
 def put_campaign_settings(
     campaign_id: str,
-    settings: dict[str, Any] = Body(...),
+    settings: Dict[str, Any] = Body(...),
     current_user=Depends(get_current_user),
 ):
     owner_id = _require_user_id(current_user)
