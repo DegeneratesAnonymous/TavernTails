@@ -1,7 +1,7 @@
 import os
 import secrets
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, cast
 
 from passlib.context import CryptContext
 from sqlalchemy import Column, delete, desc, func, or_
@@ -16,50 +16,50 @@ DATABASE_URL = "sqlite:///./taverntails.db"
 engine = create_engine(DATABASE_URL, echo=False)
 
 class User(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    email: Optional[str] = Field(default=None, index=True)
-    username: Optional[str] = Field(default=None, index=True)
+    id: int | None = Field(default=None, primary_key=True)
+    email: str | None = Field(default=None, index=True)
+    username: str | None = Field(default=None, index=True)
     password_hash: str
     verified: bool = Field(default=False)
-    verification_token: Optional[str] = None
-    profile: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    verification_token: str | None = None
+    profile: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
 
 
 class Character(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     owner_id: int = Field(foreign_key="user.id")
     name: str
     level: int = Field(default=1)
-    class_name: Optional[str] = None
-    sheet: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    class_name: str | None = None
+    sheet: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
 
 
 class Campaign(SQLModel, table=True):
-    id: Optional[str] = Field(default=None, primary_key=True)
+    id: str | None = Field(default=None, primary_key=True)
     owner_id: int = Field(foreign_key="user.id")
     name: str
-    description: Optional[str] = None
-    created_at: Optional[str] = None
+    description: str | None = None
+    created_at: str | None = None
     archived: bool = Field(default=False)
-    metadata_json: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    metadata_json: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
 
 
 class Roll(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    campaign_id: Optional[str] = Field(default=None, foreign_key="campaign.id")
+    id: int | None = Field(default=None, primary_key=True)
+    campaign_id: str | None = Field(default=None, foreign_key="campaign.id")
     expression: str
-    rolls: List[int] = Field(default_factory=list, sa_column=Column(JSON))
+    rolls: list[int] = Field(default_factory=list, sa_column=Column(JSON))
     mod: int = Field(default=0)
     total: int = Field(default=0)
-    by: Optional[str] = None
-    created_at: Optional[str] = None
+    by: str | None = None
+    created_at: str | None = None
 
 
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
 
 
-def create_campaign(owner_id: int, name: str, description: Optional[str] = None) -> Campaign:
+def create_campaign(owner_id: int, name: str, description: str | None = None) -> Campaign:
     import uuid
     cid = uuid.uuid4().hex[:8]
     camp = Campaign(id=cid, owner_id=owner_id, name=name.strip(), description=description or '', created_at=datetime.now(timezone.utc).isoformat())
@@ -70,13 +70,13 @@ def create_campaign(owner_id: int, name: str, description: Optional[str] = None)
     return camp
 
 
-def get_campaign_by_id(campaign_id: str) -> Optional[Campaign]:
+def get_campaign_by_id(campaign_id: str) -> Campaign | None:
     with Session(engine) as session:
         stmt = select(Campaign).where(Campaign.id == campaign_id)
         return session.exec(stmt).first()
 
 
-def get_character_by_id(character_id: int) -> Optional[Character]:
+def get_character_by_id(character_id: int) -> Character | None:
     with Session(engine) as session:
         stmt = select(Character).where(Character.id == character_id)
         return session.exec(stmt).first()
@@ -89,26 +89,26 @@ def list_campaigns_for_owner(owner_id: int) -> List[Campaign]:
 
 
 class ChatMessage(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    session_id: Optional[str] = Field(default=None, index=True)
-    campaign_id: Optional[str] = Field(default=None, index=True)
-    sender_id: Optional[int] = Field(default=None, foreign_key="user.id")
-    sender_name: Optional[str] = None
+    id: int | None = Field(default=None, primary_key=True)
+    session_id: str | None = Field(default=None, index=True)
+    campaign_id: str | None = Field(default=None, index=True)
+    sender_id: int | None = Field(default=None, foreign_key="user.id")
+    sender_name: str | None = None
     role: str = Field(default="player")
     message: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    metadata_json: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    metadata_json: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
 
 
 class FriendRequest(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     from_user_id: int = Field(foreign_key="user.id")
     to_user_id: int = Field(foreign_key="user.id")
     status: str = Field(default="pending")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-def _profile_with_identity(user: User) -> Dict[str, Any]:
+def _profile_with_identity(user: User) -> dict[str, Any]:
     data = dict(user.profile or {})
     if user.email:
         data.setdefault("email", user.email)
@@ -119,7 +119,7 @@ def _profile_with_identity(user: User) -> Dict[str, Any]:
     return data
 
 
-def update_campaign(campaign_id: str, owner_id: int, updates: Dict[str, Any]) -> Optional[Campaign]:
+def update_campaign(campaign_id: str, owner_id: int, updates: dict[str, Any]) -> Campaign | None:
     with Session(engine) as session:
         stmt = select(Campaign).where(Campaign.id == campaign_id, Campaign.owner_id == owner_id)
         camp = session.exec(stmt).first()
@@ -137,7 +137,7 @@ def update_campaign(campaign_id: str, owner_id: int, updates: Dict[str, Any]) ->
         return camp
 
 
-def get_campaign_settings(campaign_id: str, owner_id: int) -> Optional[Dict[str, Any]]:
+def get_campaign_settings(campaign_id: str, owner_id: int) -> Dict[str, Any] | None:
     with Session(engine) as session:
         stmt = select(Campaign).where(Campaign.id == campaign_id, Campaign.owner_id == owner_id)
         camp = session.exec(stmt).first()
@@ -148,7 +148,7 @@ def get_campaign_settings(campaign_id: str, owner_id: int) -> Optional[Dict[str,
         return dict(settings) if isinstance(settings, dict) else {}
 
 
-def set_campaign_settings(campaign_id: str, owner_id: int, settings: Dict[str, Any]) -> Optional[Campaign]:
+def set_campaign_settings(campaign_id: str, owner_id: int, settings: Dict[str, Any]) -> Campaign | None:
     with Session(engine) as session:
         stmt = select(Campaign).where(Campaign.id == campaign_id, Campaign.owner_id == owner_id)
         camp = session.exec(stmt).first()
@@ -174,7 +174,7 @@ def delete_campaign(campaign_id: str, owner_id: int) -> bool:
         return True
 
 
-def purge_campaigns(owner_id: int, name_tokens: Optional[List[str]] = None) -> int:
+def purge_campaigns(owner_id: int, name_tokens: List[str] | None = None) -> int:
     tokens = [t.strip().lower() for t in (name_tokens or []) if t and t.strip()]
     with Session(engine) as session:
         stmt = delete(Campaign).where(Campaign.owner_id == owner_id)
@@ -188,7 +188,7 @@ def purge_campaigns(owner_id: int, name_tokens: Optional[List[str]] = None) -> i
             return 0
 
 
-def add_session_to_campaign(campaign_id: str, owner_id: int, session_id: str) -> Optional[Campaign]:
+def add_session_to_campaign(campaign_id: str, owner_id: int, session_id: str) -> Campaign | None:
     with Session(engine) as session:
         stmt = select(Campaign).where(Campaign.id == campaign_id, Campaign.owner_id == owner_id)
         camp = session.exec(stmt).first()
@@ -206,7 +206,7 @@ def add_session_to_campaign(campaign_id: str, owner_id: int, session_id: str) ->
         return camp
 
 
-def create_roll(campaign_id: Optional[str], expression: str, rolls: List[int], mod: int, total: int, by: Optional[str]) -> Roll:
+def create_roll(campaign_id: str | None, expression: str, rolls: list[int], mod: int, total: int, by: str | None) -> Roll:
     rec = Roll(campaign_id=campaign_id, expression=expression, rolls=rolls, mod=mod, total=total, by=by, created_at=datetime.now(timezone.utc).isoformat())
     with Session(engine) as session:
         session.add(rec)
@@ -215,7 +215,7 @@ def create_roll(campaign_id: Optional[str], expression: str, rolls: List[int], m
     return rec
 
 
-def list_rolls_for_campaign(campaign_id: str) -> List[Roll]:
+def list_rolls_for_campaign(campaign_id: str) -> list[Roll]:
     with Session(engine) as session:
         stmt = select(Roll).where(Roll.campaign_id == campaign_id)
         return list(session.exec(stmt).all())
@@ -224,12 +224,12 @@ def list_rolls_for_campaign(campaign_id: str) -> List[Roll]:
 def log_chat_message(
     message: str,
     *,
-    session_id: Optional[str] = None,
-    campaign_id: Optional[str] = None,
-    sender_id: Optional[int] = None,
-    sender_name: Optional[str] = None,
+    session_id: str | None = None,
+    campaign_id: str | None = None,
+    sender_id: int | None = None,
+    sender_name: str | None = None,
     role: str = "player",
-    metadata: Optional[Dict[str, Any]] = None,
+    metadata: dict[str, Any] | None = None,
 ) -> ChatMessage:
     record = ChatMessage(
         session_id=session_id,
@@ -248,8 +248,8 @@ def log_chat_message(
 
 
 def list_chat_messages(
-    *, session_id: Optional[str] = None, campaign_id: Optional[str] = None, limit: int = 100
-) -> List[ChatMessage]:
+    *, session_id: str | None = None, campaign_id: str | None = None, limit: int = 100
+) -> list[ChatMessage]:
     with Session(engine) as session:
         stmt = select(ChatMessage)
         if session_id:
@@ -348,21 +348,21 @@ def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
 
 
-def _normalize_email(value: Optional[str]) -> Optional[str]:
+def _normalize_email(value: str | None) -> str | None:
     if value is None:
         return None
     trimmed = value.strip()
     return trimmed.lower() if trimmed else None
 
 
-def _normalize_username(value: Optional[str]) -> Optional[str]:
+def _normalize_username(value: str | None) -> str | None:
     if value is None:
         return None
     trimmed = value.strip()
     return trimmed or None
 
 
-def get_user_by_identifier(identifier: str) -> Optional[User]:
+def get_user_by_identifier(identifier: str) -> User | None:
     if not identifier:
         return None
     identifier = identifier.strip()
@@ -399,7 +399,7 @@ def search_users(query: str, *, limit: int = 10) -> List[User]:
         return list(session.exec(stmt).all())
 
 
-def create_user(email: str, password: str, username: Optional[str] = None, profile: Optional[Dict[str, Any]] = None) -> User:
+def create_user(email: str, password: str, username: str | None = None, profile: Dict[str, Any] | None = None) -> User:
     clean_email = _normalize_email(email)
     if not clean_email:
         raise ValueError("Email required")
@@ -479,7 +479,7 @@ def is_admin_user(user: User) -> bool:
     return False
 
 
-def set_admin_mode(user_id: int, enabled: bool) -> Optional[User]:
+def set_admin_mode(user_id: int, enabled: bool) -> User | None:
     with Session(engine) as session:
         stmt = select(User).where(User.id == user_id)
         dbu = session.exec(stmt).first()
@@ -506,7 +506,7 @@ def ensure_seed_users():
     test_password = os.environ.get("TAVERNTAILS_TEST_PASSWORD", "secret")
     test_username = _normalize_username(os.environ.get("TAVERNTAILS_TEST_USERNAME", "BilboBaggins"))
 
-    def _ensure(email: str, password: str, username: Optional[str], profile: Dict[str, Any]) -> User:
+    def _ensure(email: str, password: str, username: str | None, profile: Dict[str, Any]) -> User:
         with Session(engine) as session:
             stmt = select(User).where(func.lower(User.email) == email.lower())
             existing = session.exec(stmt).first()
@@ -599,7 +599,7 @@ def verify_user(email: str, token: str) -> bool:
         return True
 
 
-def authenticate_user(identifier: str, password: str) -> Optional[User]:
+def authenticate_user(identifier: str, password: str) -> User | None:
     user = get_user_by_identifier(identifier)
     if not user:
         return None
@@ -608,7 +608,7 @@ def authenticate_user(identifier: str, password: str) -> Optional[User]:
     return user
 
 
-def update_profile(email_or_name: str, profile_updates: Dict[str, Any]) -> Optional[User]:
+def update_profile(email_or_name: str, profile_updates: dict[str, Any]) -> User | None:
     user = get_user_by_identifier(email_or_name)
     if not user:
         return None
@@ -624,13 +624,13 @@ def update_profile(email_or_name: str, profile_updates: Dict[str, Any]) -> Optio
         return dbu
 
 
-def list_characters_for_user(owner_id: int) -> List[Character]:
+def list_characters_for_user(owner_id: int) -> list[Character]:
     with Session(engine) as session:
         stmt = select(Character).where(Character.owner_id == owner_id)
         return list(session.exec(stmt).all())
 
 
-def create_character(owner_id: int, name: str, level: int = 1, class_name: Optional[str] = None, sheet: Optional[Dict[str, Any]] = None) -> Character:
+def create_character(owner_id: int, name: str, level: int = 1, class_name: str | None = None, sheet: dict[str, Any] | None = None) -> Character:
     payload = Character(owner_id=owner_id, name=name.strip(), level=max(1, level), class_name=class_name.strip() if class_name else None, sheet=sheet or {})
     with Session(engine) as session:
         session.add(payload)
@@ -639,13 +639,13 @@ def create_character(owner_id: int, name: str, level: int = 1, class_name: Optio
         return payload
 
 
-def get_character_for_owner(character_id: int, owner_id: int) -> Optional[Character]:
+def get_character_for_owner(character_id: int, owner_id: int) -> Character | None:
     with Session(engine) as session:
         stmt = select(Character).where(Character.id == character_id, Character.owner_id == owner_id)
         return session.exec(stmt).first()
 
 
-def update_character(character_id: int, owner_id: int, updates: Dict[str, Any]) -> Optional[Character]:
+def update_character(character_id: int, owner_id: int, updates: Dict[str, Any]) -> Character | None:
     with Session(engine) as session:
         stmt = select(Character).where(Character.id == character_id, Character.owner_id == owner_id)
         char = session.exec(stmt).first()
@@ -688,7 +688,7 @@ def delete_character_any(character_id: int) -> bool:
         return True
 
 
-def update_character_any(character_id: int, updates: Dict[str, Any]) -> Optional[Character]:
+def update_character_any(character_id: int, updates: Dict[str, Any]) -> Character | None:
     with Session(engine) as session:
         stmt = select(Character).where(Character.id == character_id)
         char = session.exec(stmt).first()
@@ -709,7 +709,7 @@ def update_character_any(character_id: int, updates: Dict[str, Any]) -> Optional
         return char
 
 
-def purge_characters(owner_id: int, name_tokens: Optional[List[str]] = None) -> int:
+def purge_characters(owner_id: int, name_tokens: List[str] | None = None) -> int:
     tokens = [t.strip().lower() for t in (name_tokens or []) if t and t.strip()]
     with Session(engine) as session:
         stmt = delete(Character).where(Character.owner_id == owner_id)
@@ -731,7 +731,7 @@ def get_beyond20_domains_for(identifier: str) -> List[str]:
     return prefs.get('beyond20', {}).get('domains', [])
 
 
-def set_beyond20_domains_for(identifier: str, domains: List[str]) -> Optional[List[str]]:
+def set_beyond20_domains_for(identifier: str, domains: list[str]) -> list[str] | None:
     user = get_user_by_identifier(identifier)
     if not user:
         return None
@@ -751,7 +751,7 @@ def set_beyond20_domains_for(identifier: str, domains: List[str]) -> Optional[Li
         return domains
 
 
-def get_beyond20_relay_token_for_user_id(user_id: int) -> Optional[str]:
+def get_beyond20_relay_token_for_user_id(user_id: int) -> str | None:
     with Session(engine) as session:
         stmt = select(User).where(User.id == user_id)
         user = session.exec(stmt).first()
@@ -761,7 +761,7 @@ def get_beyond20_relay_token_for_user_id(user_id: int) -> Optional[str]:
         return (prefs.get("beyond20", {}) or {}).get("relay_token")
 
 
-def _set_beyond20_relay_token_for_user_id(user_id: int, token: str) -> Optional[str]:
+def _set_beyond20_relay_token_for_user_id(user_id: int, token: str) -> str | None:
     with Session(engine) as session:
         stmt = select(User).where(User.id == user_id)
         user = session.exec(stmt).first()
@@ -778,7 +778,7 @@ def _set_beyond20_relay_token_for_user_id(user_id: int, token: str) -> Optional[
         return token
 
 
-def ensure_beyond20_relay_token_for_user_id(user_id: int) -> Optional[str]:
+def ensure_beyond20_relay_token_for_user_id(user_id: int) -> str | None:
     existing = get_beyond20_relay_token_for_user_id(user_id)
     if existing:
         return existing
@@ -786,12 +786,12 @@ def ensure_beyond20_relay_token_for_user_id(user_id: int) -> Optional[str]:
     return _set_beyond20_relay_token_for_user_id(user_id, token)
 
 
-def rotate_beyond20_relay_token_for_user_id(user_id: int) -> Optional[str]:
+def rotate_beyond20_relay_token_for_user_id(user_id: int) -> str | None:
     token = secrets.token_hex(24)
     return _set_beyond20_relay_token_for_user_id(user_id, token)
 
 
-def get_user_by_beyond20_relay_token(token: str) -> Optional[User]:
+def get_user_by_beyond20_relay_token(token: str) -> User | None:
     if not token:
         return None
     token = token.strip()

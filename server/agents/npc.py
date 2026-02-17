@@ -1,7 +1,7 @@
 """NPC agent: summarises motivations + initiative."""
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -14,15 +14,15 @@ router = APIRouter(tags=["npc"])
 
 class NPCManageRequest(BaseModel):
     name: str = Field(..., description="NPC/Enemy name")
-    traits: Dict[str, Any] = Field(default_factory=dict)
-    motivations: List[str] = Field(default_factory=list)
-    stats: Dict[str, Any] = Field(default_factory=dict)
-    quirks: List[str] = Field(default_factory=list)
-    session_id: Optional[str] = Field(default=None, description="Session to broadcast NPC cues to")
+    traits: dict[str, Any] = Field(default_factory=dict)
+    motivations: list[str] = Field(default_factory=list)
+    stats: dict[str, Any] = Field(default_factory=dict)
+    quirks: list[str] = Field(default_factory=list)
+    session_id: str | None = Field(default=None, description="Session to broadcast NPC cues to")
 
 
 class NPCManageResponse(BaseModel):
-    npc_profile: Dict[str, Any]
+    npc_profile: dict[str, Any]
     initiative_hint: str
 
 

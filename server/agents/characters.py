@@ -7,7 +7,7 @@ import re
 import subprocess
 import tempfile
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
@@ -23,7 +23,7 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _guess_character_name_from_filename(filename: Optional[str]) -> Optional[str]:
+def _guess_character_name_from_filename(filename: str | None) -> str | None:
     if not filename:
         return None
     # Get basename
@@ -99,22 +99,22 @@ def _read_pdf_widget_values(content: bytes) -> Dict[str, str]:
     return fields
 
 
-def _extract_fields_from_pdf_widgets(fields: Dict[str, str]) -> tuple[Optional[str], Optional[int], Optional[str]]:
+def _extract_fields_from_pdf_widgets(fields: Dict[str, str]) -> tuple[str | None, int | None, str | None]:
     if not fields:
         return None, None, None
 
     name = fields.get("CharacterName") or fields.get("CHARACTER NAME")
 
     # Find a key that looks like it contains both Class and Level.
-    class_level_value: Optional[str] = None
+    class_level_value: str | None = None
     for k, v in fields.items():
         up = k.upper()
         if "CLASS" in up and "LEVEL" in up and v.strip():
             class_level_value = v
             break
 
-    class_name: Optional[str] = None
-    level: Optional[int] = None
+    class_name: str | None = None
+    level: int | None = None
 
     if class_level_value:
         candidates = [
@@ -169,7 +169,7 @@ def _extract_pdf_widget_int(
     *,
     min_value: int,
     max_value: int,
-) -> Optional[int]:
+) -> int | None:
     def norm(s: str) -> str:
         return re.sub(r"[^a-z0-9]", "", (s or "").lower())
 
@@ -237,7 +237,7 @@ def _extract_stats_from_pdf_widgets(fields: Dict[str, str]) -> Dict[str, int]:
     return result
 
 
-def _extract_ac_from_pdf_widgets(fields: Dict[str, str]) -> Optional[int]:
+def _extract_ac_from_pdf_widgets(fields: Dict[str, str]) -> int | None:
     if not fields:
         return None
     candidates = [
@@ -365,7 +365,7 @@ def _extract_features_from_pdf_widgets(fields: Dict[str, str]) -> list[str]:
     def norm(s: str) -> str:
         return re.sub(r"[^a-z0-9]", "", (s or "").lower())
 
-    def _clean_feature_title(raw: str) -> Optional[str]:
+    def _clean_feature_title(raw: str) -> str | None:
         s = (raw or "").strip()
         if not s:
             return None
@@ -483,7 +483,7 @@ def _extract_features_from_pdf_widgets(fields: Dict[str, str]) -> list[str]:
     return features
 
 
-def _read_pdf_text(content: bytes) -> Optional[str]:
+def _read_pdf_text(content: bytes) -> str | None:
     """Extract plain text from a PDF binary. Falls back to utf-8 decoding.
 
     This is best-effort: PDF parsing may fail for non-PDF uploads, so we
@@ -578,7 +578,7 @@ def _read_pdf_text(content: bytes) -> Optional[str]:
             return None
 
 
-def _extract_fields_from_text(text: Optional[str]) -> tuple[Optional[str], Optional[int], Optional[str]]:
+def _extract_fields_from_text(text: str | None) -> tuple[str | None, int | None, str | None]:
     """Heuristic extraction of name, level, and class from arbitrary text.
 
     Keep this conservative: return None for fields we can't confidently extract.
@@ -587,9 +587,9 @@ def _extract_fields_from_text(text: Optional[str]) -> tuple[Optional[str], Optio
         return None, None, None
 
     lines = [line.strip() for line in re.split(r"\r?\n", text) if line and line.strip()]
-    name: Optional[str] = None
-    level: Optional[int] = None
-    class_name: Optional[str] = None
+    name: str | None = None
+    level: int | None = None
+    class_name: str | None = None
 
     # Find level by regex like 'Level 3' or 'LVL 3'
     for line in lines[:12]:
@@ -651,7 +651,7 @@ def _extract_fields_from_text(text: Optional[str]) -> tuple[Optional[str], Optio
     return name, level, class_name
 
 
-def _as_str(value: Any) -> Optional[str]:
+def _as_str(value: Any) -> str | None:
     if value is None:
         return None
     if isinstance(value, str):
@@ -660,7 +660,7 @@ def _as_str(value: Any) -> Optional[str]:
     return str(value).strip() or None
 
 
-def _extract_spells_from_text(text: Optional[str]) -> list[str]:
+def _extract_spells_from_text(text: str | None) -> list[str]:
     """Try to extract spell names from extracted PDF text.
 
     Heuristic: find CANTRIPS / SPELLS headings and collect following bullet lines
@@ -706,7 +706,7 @@ def _extract_spells_from_text(text: Optional[str]) -> list[str]:
     return out
 
 
-def _extract_spellbook_from_text(text: Optional[str], debug: bool = False) -> list[dict[str, Any]]:
+def _extract_spellbook_from_text(text: str | None, debug: bool = False) -> list[dict[str, Any]]:
     """Extract structured spell rows from PDF text tables.
 
     Looks for headers like "SPELL NAME" or "PREP SPELL NAME" and parses
@@ -718,7 +718,7 @@ def _extract_spellbook_from_text(text: Optional[str], debug: bool = False) -> li
     lines = [ln.strip() for ln in re.split(r"\r?\n", text) if ln and ln.strip()]
     entries: list[dict[str, Any]] = []
     in_table = False
-    current_header: Optional[str] = None
+    current_header: str | None = None
     sources = [
         "Artificer",
         "Barbarian",
@@ -739,27 +739,27 @@ def _extract_spellbook_from_text(text: Optional[str], debug: bool = False) -> li
     def _split_cols(line: str) -> list[str]:
         return [c.strip() for c in re.split(r"\s{2,}", line) if c and c.strip()]
 
-    def _page_ref(line: str) -> Optional[str]:
+    def _page_ref(line: str) -> str | None:
         m = re.search(r"\b([A-Z]{2,5})\s*(\d{2,4})\b", line)
         if m:
             return f"{m.group(1)} {m.group(2)}"
         return None
 
-    def _components(line: str) -> Optional[str]:
+    def _components(line: str) -> str | None:
         m = re.search(r"\bV\s*,?\s*S\s*,?\s*M\b|\bV\s*,?\s*S\b|\bV\b|\bS\b|\bM\b", line, re.I)
         if m:
             return m.group(0).replace(" ", "")
         return None
 
-    def _duration(line: str) -> Optional[str]:
+    def _duration(line: str) -> str | None:
         m = re.search(r"\b(instantaneous|concentration|up to \d+\s*(rounds?|minutes?|hours?|days?)|\d+\s*(rounds?|minutes?|hours?|days?))\b", line, re.I)
         return m.group(1) if m else None
 
-    def _time(line: str) -> Optional[str]:
+    def _time(line: str) -> str | None:
         m = re.search(r"\b(\d+\s*BA|\d+\s*A|\d+\s*R|\d+\s*rounds?|\d+\s*minutes?|\d+\s*hours?|action|bonus action|reaction)\b", line, re.I)
         return m.group(1) if m else None
 
-    def _range(line: str) -> Optional[str]:
+    def _range(line: str) -> str | None:
         m = re.search(r"\b(self|touch|sight|special|\d+\s*ft\.?|\d+\s*feet|\d+\s*mi\.?|\d+\s*miles?)\b", line, re.I)
         return m.group(1) if m else None
 
@@ -932,7 +932,7 @@ def _extract_spellbook_from_text(text: Optional[str], debug: bool = False) -> li
     return entries
 
 
-def _as_int(value: Any) -> Optional[int]:
+def _as_int(value: Any) -> int | None:
     if value is None:
         return None
     if isinstance(value, bool):
@@ -951,12 +951,12 @@ def _as_int(value: Any) -> Optional[int]:
         return None
 
 
-def _extract_character_fields(raw: Dict[str, Any]) -> tuple[Optional[str], Optional[int], Optional[str]]:
+def _extract_character_fields(raw: Dict[str, Any]) -> tuple[str | None, int | None, str | None]:
     """Best-effort extraction from arbitrary JSON blobs.
 
     We intentionally keep this flexible because different exports have different shapes.
     """
-    def _class_name_from_classes_list(classes: Any) -> Optional[str]:
+    def _class_name_from_classes_list(classes: Any) -> str | None:
         if not isinstance(classes, list) or not classes:
             return None
         names: list[str] = []
@@ -972,7 +972,7 @@ def _extract_character_fields(raw: Dict[str, Any]) -> tuple[Optional[str], Optio
             return names[0]
         return " / ".join(names[:3])
 
-    def _level_from_classes_list(classes: Any) -> Optional[int]:
+    def _level_from_classes_list(classes: Any) -> int | None:
         if not isinstance(classes, list) or not classes:
             return None
         total = 0
@@ -986,9 +986,9 @@ def _extract_character_fields(raw: Dict[str, Any]) -> tuple[Optional[str], Optio
                 found_any = True
         return total if found_any else None
 
-    name: Optional[str] = None
-    level: Optional[int] = None
-    class_name: Optional[str] = None
+    name: str | None = None
+    level: int | None = None
+    class_name: str | None = None
 
     # Search likely roots in order: top-level, then common nesting wrappers.
     roots: list[Dict[str, Any]] = [raw]
@@ -1029,9 +1029,9 @@ def _extract_character_fields(raw: Dict[str, Any]) -> tuple[Optional[str], Optio
 def _build_character_import_sheet_from_json(
     *,
     raw_json: str,
-    ddb_url: Optional[str],
-    source: Optional[str],
-) -> tuple[str, int, Optional[str], Dict[str, Any]]:
+    ddb_url: str | None,
+    source: str | None,
+) -> tuple[str, int, str | None, Dict[str, Any]]:
     try:
         parsed = json.loads(raw_json)
     except Exception as err:
@@ -1061,13 +1061,13 @@ def _build_character_import_sheet_from_json(
 def _build_character_import_sheet_from_pdf(
     *,
     content: bytes,
-    filename: Optional[str],
-    name_override: Optional[str],
-    level_override: Optional[int],
-    class_name_override: Optional[str],
-    ddb_url: Optional[str],
-    source: Optional[str],
-) -> tuple[str, int, Optional[str], Dict[str, Any]]:
+    filename: str | None,
+    name_override: str | None,
+    level_override: int | None,
+    class_name_override: str | None,
+    ddb_url: str | None,
+    source: str | None,
+) -> tuple[str, int, str | None, Dict[str, Any]]:
     if not content:
         raise HTTPException(status_code=400, detail="Empty file")
 
@@ -1176,7 +1176,7 @@ def _build_character_import_sheet_from_pdf(
         "Wizard",
     ]
 
-    def _first_widget_value(patterns: list[str]) -> Optional[str]:
+    def _first_widget_value(patterns: list[str]) -> str | None:
         for k, v in widget_values.items():
             if not v:
                 continue
@@ -1185,7 +1185,7 @@ def _build_character_import_sheet_from_pdf(
                     return _as_str(v)
         return None
 
-    def _first_widget_int(patterns: list[str]) -> Optional[int]:
+    def _first_widget_int(patterns: list[str]) -> int | None:
         val = _first_widget_value(patterns)
         if val is None:
             return None
@@ -1203,7 +1203,7 @@ def _build_character_import_sheet_from_pdf(
 
     class_line = _first_widget_value([r"class\s*&?\s*level", r"class\s*level"])
 
-    def _parse_multiclass(text_value: Optional[str]) -> list[dict[str, Any]]:
+    def _parse_multiclass(text_value: str | None) -> list[dict[str, Any]]:
         if not text_value:
             return []
         out: list[dict[str, Any]] = []
@@ -1240,7 +1240,7 @@ def _build_character_import_sheet_from_pdf(
 
     # Build a structured `raw` object so client-side inference helpers can read
     # values from a predictable place (e.g. `sheet.raw.speed`, `sheet.raw.deathSaves`).
-    def _parse_int(v: Any) -> Optional[int]:
+    def _parse_int(v: Any) -> int | None:
         try:
             return int(str(v).strip())
         except Exception:
@@ -1266,7 +1266,7 @@ def _build_character_import_sheet_from_pdf(
     # Speeds: prefer widget values, fall back to regex/text later.
     speed_keys = [k for k in widget_values.keys() if re.search(r"speed|movement|walk|base", k, re.I)]
     if speed_keys:
-        speeds: Dict[str, Optional[int]] = {"walk": None, "fly": None, "swim": None, "climb": None, "burrow": None}
+        speeds: Dict[str, int | None] = {"walk": None, "fly": None, "swim": None, "climb": None, "burrow": None}
         for k in speed_keys:
             v = widget_values.get(k)
             if not v:
@@ -1581,26 +1581,26 @@ def _serialize(character: db.Character) -> Dict[str, Any]:
 class CharacterCreate(BaseModel):
     name: str
     level: int = Field(default=1, ge=1, le=20)
-    class_name: Optional[str] = None
-    sheet: Optional[Dict[str, Any]] = None
+    class_name: str | None = None
+    sheet: dict[str, Any] | None = None
 
 
 class CharacterUpdate(BaseModel):
-    name: Optional[str] = None
-    level: Optional[int] = Field(default=None, ge=1, le=20)
-    class_name: Optional[str] = None
-    sheet: Optional[Dict[str, Any]] = None
+    name: str | None = None
+    level: int | None = Field(default=None, ge=1, le=20)
+    class_name: str | None = None
+    sheet: dict[str, Any] | None = None
 
 
 class CharacterImport(BaseModel):
     raw_json: str = Field(..., min_length=2, description="Raw JSON exported from a sheet/source")
-    ddb_url: Optional[str] = Field(default=None, description="Optional D&D Beyond character URL")
-    source: Optional[str] = Field(default="upload", description="Freeform import source label")
+    ddb_url: str | None = Field(default=None, description="Optional D&D Beyond character URL")
+    source: str | None = Field(default="upload", description="Freeform import source label")
 
 
 class CharacterImportLink(BaseModel):
     ddb_url: str = Field(..., min_length=8, description="D&D Beyond character URL")
-    name: Optional[str] = Field(default=None, description="Optional display name override")
+    name: str | None = Field(default=None, description="Optional display name override")
 
 
 @router.get("", summary="List characters for current user")
@@ -1610,7 +1610,7 @@ def list_characters(current_user=Depends(get_current_user)):
 
 
 @router.delete("/purge", summary="Delete characters for current user by name tokens")
-def purge_characters(name_like: Optional[str] = None, current_user=Depends(get_current_user)):
+def purge_characters(name_like: str | None = None, current_user=Depends(get_current_user)):
     if not db.is_admin_user(current_user):
         raise HTTPException(status_code=403, detail="Admin privileges required")
     tokens: List[str] = []
@@ -1678,8 +1678,8 @@ def import_character(payload: CharacterImport, current_user=Depends(get_current_
 @router.post("/import/file", status_code=201, summary="Import a character from an uploaded JSON file")
 async def import_character_file(
     file: UploadFile = File(...),
-    ddb_url: Optional[str] = None,
-    source: Optional[str] = "upload",
+    ddb_url: str | None = None,
+    source: str | None = "upload",
     current_user=Depends(get_current_user),
 ):
     content = await file.read()
@@ -1697,11 +1697,11 @@ async def import_character_file(
 @router.post("/import/pdf", status_code=201, summary="Import a character from an uploaded PDF (best-effort)")
 async def import_character_pdf(
     file: UploadFile = File(...),
-    name: Optional[str] = Form(default=None),
-    level: Optional[int] = Form(default=None),
-    class_name: Optional[str] = Form(default=None),
-    ddb_url: Optional[str] = None,
-    source: Optional[str] = "pdf",
+    name: str | None = Form(default=None),
+    level: int | None = Form(default=None),
+    class_name: str | None = Form(default=None),
+    ddb_url: str | None = None,
+    source: str | None = "pdf",
     current_user=Depends(get_current_user),
 ):
     content = await file.read()
@@ -1728,11 +1728,11 @@ async def import_character_pdf(
 @router.post("/import/pdf/preview", summary="Preview a PDF character import without creating a character")
 async def preview_import_character_pdf(
     file: UploadFile = File(...),
-    name: Optional[str] = Form(default=None),
-    level: Optional[int] = Form(default=None),
-    class_name: Optional[str] = Form(default=None),
-    ddb_url: Optional[str] = None,
-    source: Optional[str] = "pdf",
+    name: str | None = Form(default=None),
+    level: int | None = Form(default=None),
+    class_name: str | None = Form(default=None),
+    ddb_url: str | None = None,
+    source: str | None = "pdf",
     current_user=Depends(get_current_user),
 ):
     content = await file.read()

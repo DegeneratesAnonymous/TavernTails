@@ -1,7 +1,6 @@
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
@@ -17,9 +16,9 @@ from . import suggestions as suggestions_agent
 class AdvanceRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    scene_id: Optional[str] = Field(default=None, alias="sceneId")
-    choice_id: Optional[str] = Field(default=None, alias="choiceId")
-    session_id: Optional[str] = Field(default=None, alias="sessionId")
+    scene_id: str | None = Field(default=None, alias="sceneId")
+    choice_id: str | None = Field(default=None, alias="choiceId")
+    session_id: str | None = Field(default=None, alias="sessionId")
 
 
 router = APIRouter(prefix="/content")

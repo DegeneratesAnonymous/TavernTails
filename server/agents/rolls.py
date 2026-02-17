@@ -18,7 +18,7 @@ class RollRequest(BaseModel):
     session_id: str | None = None
 
 
-def _parse_roll(expr: str) -> Dict[str, Any]:
+def _parse_roll(expr: str) -> dict[str, Any]:
     # Simple parser: supports NdM +/- K
     m = re.fullmatch(r"(\d*)d(\d+)([+-]\d+)?", expr.replace(' ', ''))
     if not m:
@@ -33,7 +33,7 @@ def _roll(n: int, sides: int) -> list[int]:
     return [random.randint(1, sides) for _ in range(n)]
 
 
-def _coerce_roll_values(raw: Any) -> List[int]:
+def _coerce_roll_values(raw: Any) -> list[int]:
     if raw is None:
         return []
     payload = raw
@@ -44,7 +44,7 @@ def _coerce_roll_values(raw: Any) -> List[int]:
             payload = [payload]
     if not isinstance(payload, list):
         payload = [payload]
-    values: List[int] = []
+    values: list[int] = []
     for entry in payload:
         candidate = entry
         if isinstance(entry, dict):
@@ -56,7 +56,7 @@ def _coerce_roll_values(raw: Any) -> List[int]:
     return values
 
 
-def _normalize_beyond20_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+def _normalize_beyond20_payload(payload: dict[str, Any]) -> dict[str, Any]:
     expr = (payload.get('expression') or payload.get('label') or payload.get('name') or '').strip()
     rolls = _coerce_roll_values(payload.get('rolls') or payload.get('dice') or payload.get('results'))
     try:
@@ -269,7 +269,7 @@ async def do_roll(req: RollRequest, current_user=Depends(get_current_user)):
 
 
 @router.post('/integrations/beyond20/roll')
-async def ingest_beyond20(payload: Dict[str, Any] = Body(...)):
+async def ingest_beyond20(payload: dict[str, Any] = Body(...)):
     session_id = payload.get('session_id')
     result = _normalize_beyond20_payload(payload)
     from .. import db

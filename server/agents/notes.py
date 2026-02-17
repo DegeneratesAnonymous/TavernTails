@@ -84,7 +84,7 @@ def _append_to_session_notes(session_id: str, notes: List[str], recap: str) -> N
 
 class NotesRequest(BaseModel):
     session_id: str
-    notes: List[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
 
 
 class NotesResponse(BaseModel):

@@ -12,7 +12,7 @@ import json
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, List, Optional, Tuple
+from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
@@ -67,12 +67,12 @@ class RegisterRequest(BaseModel):
     visibility: str = Field(default="shared")
 
 
-def _normalize_visibility(value: Optional[str]) -> str:
+def _normalize_visibility(value: str | None) -> str:
     lowered = (value or "").strip().lower()
     return "hidden" if lowered == "hidden" else "shared"
 
 
-def _normalize_category(value: Optional[str]) -> str:
+def _normalize_category(value: str | None) -> str:
     lowered = (value or "").strip().lower()
     return lowered or "core"
 
@@ -112,7 +112,7 @@ def _is_host(meta: dict, identifier: str) -> bool:
     return False
 
 
-def _ensure_session_member(session_id: str, current_user) -> Tuple[dict, str, bool]:
+def _ensure_session_member(session_id: str, current_user) -> tuple[dict, str, bool]:
     meta = _load_session_meta(session_id)
     identifier = _actor_identifier(current_user)
     if not session_module._user_is_member(meta, identifier):
@@ -121,7 +121,7 @@ def _ensure_session_member(session_id: str, current_user) -> Tuple[dict, str, bo
     return meta, identifier, _is_host(meta, identifier)
 
 
-def _audit(session_id: str, identifier: str, *, action: str, ok: bool = True, doc_id: Optional[str] = None, visibility: Optional[str] = None, detail: Optional[str] = None) -> None:
+def _audit(session_id: str, identifier: str, *, action: str, ok: bool = True, doc_id: str | None = None, visibility: str | None = None, detail: str | None = None) -> None:
     try:
         record = {
             "ts": datetime.now(timezone.utc).isoformat(),
@@ -141,19 +141,19 @@ def _audit(session_id: str, identifier: str, *, action: str, ok: bool = True, do
         return
 
 
-def _require_host_for_hidden(session_id: str, identifier: str, is_host: bool, *, doc_id: Optional[str] = None) -> None:
+def _require_host_for_hidden(session_id: str, identifier: str, is_host: bool, *, doc_id: str | None = None) -> None:
     if is_host:
         return
     _audit(session_id, identifier, action="documents.hidden_denied", ok=False, doc_id=doc_id, visibility="hidden")
     raise HTTPException(status_code=403, detail="Hidden documents require host role")
 
 
-def _ensure_can_access_doc(session_id: str, identifier: str, is_host: bool, doc_visibility: str, *, doc_id: Optional[str] = None) -> None:
+def _ensure_can_access_doc(session_id: str, identifier: str, is_host: bool, doc_visibility: str, *, doc_id: str | None = None) -> None:
     if _normalize_visibility(doc_visibility) == "hidden":
         _require_host_for_hidden(session_id, identifier, is_host, doc_id=doc_id)
 
 
-@router.get("/{session_id}", response_model=List[DocumentResponse])
+@router.get("/{session_id}", response_model=list[DocumentResponse])
 async def list_documents(session_id: str, current_user=Depends(get_current_user)):
     _, identifier, is_host = _ensure_session_member(session_id, current_user)
     docs = store.list_documents(session_id)

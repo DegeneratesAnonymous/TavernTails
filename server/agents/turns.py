@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -20,7 +19,7 @@ BASE = session_module.BASE
 
 class TurnState(BaseModel):
     session_id: str
-    order: List[str] = Field(default_factory=list)
+    order: list[str] = Field(default_factory=list)
     active_index: int = Field(default=0, ge=0)
     active: str | None = None
 
@@ -32,7 +31,7 @@ class TurnState(BaseModel):
 
 
 class TurnUpdateRequest(BaseModel):
-    order: List[str] = Field(default_factory=list)
+    order: list[str] = Field(default_factory=list)
     active_index: int = Field(default=0, ge=0)
 
 

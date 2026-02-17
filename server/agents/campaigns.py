@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel
@@ -26,15 +26,15 @@ def _require_user_identifier(current_user) -> str:
 
 class CampaignCreate(BaseModel):
     name: str
-    description: Optional[str] = ""
-    invites: Optional[List[str]] = None
-    create_session: Optional[bool] = True
+    description: str | None = ""
+    invites: list[str] | None = None
+    create_session: bool | None = True
 
 
 class CampaignUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    archived: Optional[bool] = None
+    name: str | None = None
+    description: str | None = None
+    archived: bool | None = None
 
 
 @router.post('', status_code=201)
@@ -127,7 +127,7 @@ def delete_campaign(campaign_id: str, current_user=Depends(get_current_user)):
 
 
 @router.delete('/purge')
-def purge_campaigns(name_like: Optional[str] = None, current_user=Depends(get_current_user)):
+def purge_campaigns(name_like: str | None = None, current_user=Depends(get_current_user)):
     if not db.is_admin_user(current_user):
         raise HTTPException(status_code=403, detail='Admin privileges required')
     owner_id = _require_user_id(current_user)

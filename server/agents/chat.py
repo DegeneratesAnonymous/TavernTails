@@ -1,5 +1,4 @@
 import re
-from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -13,27 +12,27 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 class ChatMessageCreate(BaseModel):
     message: str = Field(..., max_length=2000)
-    session_id: Optional[str] = None
-    campaign_id: Optional[str] = None
-    role: Optional[str] = Field(default="player", max_length=32)
+    session_id: str | None = None
+    campaign_id: str | None = None
+    role: str | None = Field(default="player", max_length=32)
 
 
 class ChatMessageOut(BaseModel):
     id: int
-    session_id: Optional[str]
-    campaign_id: Optional[str]
-    sender_name: Optional[str]
+    session_id: str | None
+    campaign_id: str | None
+    sender_name: str | None
     role: str
     message: str
     created_at: str
-    mentions: List[str] = Field(default_factory=list)
+    mentions: list[str] = Field(default_factory=list)
 
 
 MENTION_REGEX = re.compile(r"@([A-Za-z0-9_\-]{2,32})")
 
 
-def _extract_mentions(text: str) -> List[str]:
-    seen: List[str] = []
+def _extract_mentions(text: str) -> list[str]:
+    seen: list[str] = []
     if not text:
         return seen
     for match in MENTION_REGEX.findall(text):
@@ -59,8 +58,8 @@ def _serialize_chat_message(record: db.ChatMessage) -> ChatMessageOut:
 @router.get("", response_model=list[ChatMessageOut])
 @router.get("/messages", response_model=list[ChatMessageOut])
 def list_messages(
-    session_id: Optional[str] = Query(None),
-    campaign_id: Optional[str] = Query(None),
+    session_id: str | None = Query(None),
+    campaign_id: str | None = Query(None),
     limit: int = Query(100, ge=1, le=500),
     current_user=Depends(get_current_user),
 ):

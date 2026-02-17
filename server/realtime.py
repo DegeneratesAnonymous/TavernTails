@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Dict, Set
 
 from fastapi import WebSocket
 
 
 class SessionBroadcaster:
     def __init__(self) -> None:
-        self._connections: Dict[str, Set[WebSocket]] = {}
+        self._connections: dict[str, set[WebSocket]] = {}
         self._lock = asyncio.Lock()
 
     async def connect(self, session_id: str, websocket: WebSocket) -> None:

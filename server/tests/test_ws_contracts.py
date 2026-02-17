@@ -1,5 +1,5 @@
 import json
-from typing import Any, Dict
+from typing import Any
 
 from fastapi.testclient import TestClient
 
@@ -19,7 +19,7 @@ def _ensure_user(email: str) -> None:
     db.verify_user(email, user.verification_token)
 
 
-def _recv_until(ws, expected_type: str, max_messages: int = 10) -> Dict[str, Any]:
+def _recv_until(ws, expected_type: str, max_messages: int = 10) -> dict[str, Any]:
     last = None
     for _ in range(max_messages):
         raw = ws.receive_text()

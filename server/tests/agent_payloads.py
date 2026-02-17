@@ -6,9 +6,9 @@ pytest suites, docs, or API explorers can import the same fixtures.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 
-NARRATIVE_REQUEST: Dict[str, Any] = {
+NARRATIVE_REQUEST: dict[str, Any] = {
     "scene": "Rain lashes the watchtower parapet",
     "player": "Aria",
     "style": "cinematic heroism",
@@ -16,7 +16,7 @@ NARRATIVE_REQUEST: Dict[str, Any] = {
     "time_of_day": "night",
 }
 
-SCENE_REQUEST: Dict[str, Any] = {
+SCENE_REQUEST: dict[str, Any] = {
     "scene": "Negotiations stall as blades emerge under the table",
     "actions": [
         "I persuade the envoy to calm down",
@@ -25,7 +25,7 @@ SCENE_REQUEST: Dict[str, Any] = {
     "session_id": "scene-session",
 }
 
-NPC_REQUEST: Dict[str, Any] = {
+NPC_REQUEST: dict[str, Any] = {
     "name": "Captain Brex",
     "traits": {"faction": "Emerald Vigil"},
     "motivations": ["Protect the vault", "Expose traitors"],
@@ -34,14 +34,14 @@ NPC_REQUEST: Dict[str, Any] = {
     "session_id": "npc-session",
 }
 
-STORYBOARD_REQUEST: Dict[str, Any] = {
+STORYBOARD_REQUEST: dict[str, Any] = {
     "scene": "City Square after the riot",
     "choices": ["Appease the crowd", "Search for agitators"],
     "unresolved": ["Who armed the saboteurs?"],
     "completed": ["Defused the bomb"],
 }
 
-NOTES_REQUEST: Dict[str, Any] = {
+NOTES_REQUEST: dict[str, Any] = {
     "session_id": "session-123",
     "notes": [
         "Met with the guild",
@@ -50,12 +50,12 @@ NOTES_REQUEST: Dict[str, Any] = {
     ],
 }
 
-IMAGE_REQUEST: Dict[str, Any] = {
+IMAGE_REQUEST: dict[str, Any] = {
     "prompt": "Moonlit battle on a bridge",
     "style": "comic",
 }
 
-AGENT_PAYLOADS: Dict[str, Dict[str, Any]] = {
+AGENT_PAYLOADS: dict[str, dict[str, Any]] = {
     "narrative": NARRATIVE_REQUEST,
     "scene": SCENE_REQUEST,
     "npc": NPC_REQUEST,
@@ -64,7 +64,7 @@ AGENT_PAYLOADS: Dict[str, Dict[str, Any]] = {
     "image": IMAGE_REQUEST,
 }
 
-__all__: List[str] = [
+__all__: list[str] = [
     "NARRATIVE_REQUEST",
     "SCENE_REQUEST",
     "NPC_REQUEST",

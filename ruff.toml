@@ -43,6 +43,8 @@ unfixable = []
 [lint.per-file-ignores]
 "__init__.py" = ["F401"]  # Allow unused imports in __init__.py
 "server/tests/*" = ["F401", "F811"]  # Allow test-specific patterns
+"server/main.py" = ["E402"]  # Imports after app creation to avoid circular imports
+"server/agents/content.py" = ["E402", "N815", "N806"]  # Imports after router creation, camelCase for API
 
 [format]
 # Use double quotes for strings

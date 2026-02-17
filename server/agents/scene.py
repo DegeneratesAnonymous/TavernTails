@@ -1,6 +1,5 @@
 """Scene agent: classifies actions and recommends rolls."""
 
-from typing import List, Optional
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -13,8 +12,8 @@ router = APIRouter(tags=["scene"])
 
 class SceneAnalysisRequest(BaseModel):
     scene: str = Field(..., description="Scene description")
-    actions: List[str] = Field(default_factory=list, description="Player actions")
-    session_id: Optional[str] = Field(default=None, description="Active session to broadcast cues toward")
+    actions: list[str] = Field(default_factory=list, description="Player actions")
+    session_id: str | None = Field(default=None, description="Active session to broadcast cues toward")
 
 
 class RollRecommendation(BaseModel):
@@ -24,8 +23,8 @@ class RollRecommendation(BaseModel):
 
 
 class SceneAnalysisResponse(BaseModel):
-    dice_rolls: List[RollRecommendation]
-    prompts: List[str]
+    dice_rolls: list[RollRecommendation]
+    prompts: list[str]
 
 
 KEYWORDS = {
@@ -37,8 +36,17 @@ KEYWORDS = {
 
 @router.post("/scene/analyze", response_model=SceneAnalysisResponse)
 async def analyze_scene(payload: SceneAnalysisRequest) -> SceneAnalysisResponse:
-    dice_rolls: List[RollRecommendation] = []
-    prompts: List[str] = []
+    dice_rolls: list[RollRecommendation] = []
+    prompts: list[str] = []
+
+    if payload.session_id and sessions_agent.is_player_run_mode(payload.session_id):
+        return SceneAnalysisResponse(dice_rolls=[], prompts=[])
+
+    if payload.session_id and sessions_agent.is_player_run_mode(payload.session_id):
+        return SceneAnalysisResponse(dice_rolls=[], prompts=[])
+
+    if payload.session_id and sessions_agent.is_player_run_mode(payload.session_id):
+        return SceneAnalysisResponse(dice_rolls=[], prompts=[])
 
     if payload.session_id and sessions_agent.is_player_run_mode(payload.session_id):
         return SceneAnalysisResponse(dice_rolls=[], prompts=[])
