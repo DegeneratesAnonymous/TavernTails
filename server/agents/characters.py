@@ -1603,6 +1603,17 @@ class CharacterImportLink(BaseModel):
     name: str | None = Field(default=None, description="Optional display name override")
 
 
+class CharacterImport(BaseModel):
+    raw_json: str = Field(..., min_length=2, description="Raw JSON exported from a sheet/source")
+    ddb_url: Optional[str] = Field(default=None, description="Optional D&D Beyond character URL")
+    source: Optional[str] = Field(default="upload", description="Freeform import source label")
+
+
+class CharacterImportLink(BaseModel):
+    ddb_url: str = Field(..., min_length=8, description="D&D Beyond character URL")
+    name: Optional[str] = Field(default=None, description="Optional display name override")
+
+
 @router.get("", summary="List characters for current user")
 def list_characters(current_user=Depends(get_current_user)):
     rows = db.list_characters_for_user(current_user.id)
