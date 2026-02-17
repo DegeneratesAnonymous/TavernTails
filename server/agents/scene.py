@@ -45,6 +45,9 @@ async def analyze_scene(payload: SceneAnalysisRequest) -> SceneAnalysisResponse:
     if payload.session_id and sessions_agent.is_player_run_mode(payload.session_id):
         return SceneAnalysisResponse(dice_rolls=[], prompts=[])
 
+    if payload.session_id and sessions_agent.is_player_run_mode(payload.session_id):
+        return SceneAnalysisResponse(dice_rolls=[], prompts=[])
+
     for action in payload.actions:
         lowered = action.lower()
         for skill, tokens in KEYWORDS.items():
