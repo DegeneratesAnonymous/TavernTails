@@ -27,7 +27,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r server/requirements.txt
+          python -m pip install -r server/requirements.txt
 
       - name: Lint with ruff
         run: |
@@ -107,13 +107,14 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r server/requirements.txt
+          python -m pip install -r server/requirements.txt
 
       - name: Apply migrations
         env:
           TAVERNTAILS_DATABASE_URL: sqlite:///./taverntails_ci.db
         working-directory: server
         run: |
+          python server/tools/init_db.py
           python -m alembic upgrade head
 
       - name: Start backend

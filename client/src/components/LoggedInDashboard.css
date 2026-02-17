@@ -9,8 +9,8 @@
 
 .dashboard-sidebar {
   width: 208px;
-  background: rgba(10, 10, 12, 0.88);
-  border-right: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--surface-dark);
+  border-right: 1px solid var(--tt-border);
   padding: 28px 18px;
   display: flex;
   flex-direction: column;
@@ -42,7 +42,7 @@
 }
 
 .nav-btn {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(94, 158, 182, 0.16);
   color: var(--text);
   border: none;
   padding: 8px 10px;
@@ -55,7 +55,7 @@
 }
 
 .nav-btn.active {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(173, 136, 95, 0.35);
   font-weight: 600;
 }
 
@@ -73,7 +73,7 @@
 
 .btn-logout {
   background: var(--error);
-  color: var(--text);
+  color: #332A21;
   border: none;
   padding: 8px 14px;
   border-radius: 6px;
@@ -85,17 +85,18 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  min-height: 0;
   background: transparent;
-  padding: 0;
+  padding: 32px;
+  box-sizing: border-box;
 }
 
 .dashboard-panel {
   padding: 32px;
-  margin: 32px;
-  background: rgba(5, 5, 5, 0.75);
+  margin: 0;
+  background: rgba(71, 66, 61, 0.72);
   border-radius: var(--radius);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0 0 1px var(--tt-border);
 }
 
 .dashboard-panel h2 {
@@ -107,10 +108,10 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  margin: 32px;
+  margin: 0;
   border-radius: var(--radius);
-  background: rgba(0, 0, 0, 0.45);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  background: rgba(43, 51, 54, 0.65);
+  box-shadow: inset 0 0 0 1px var(--tt-border);
   overflow: hidden;
 }
 
@@ -119,7 +120,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 24px 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid var(--tt-border);
 }
 
 .gameplay-toolbar-title {
@@ -137,10 +138,187 @@
 .gameplay-content {
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
-.gameplay-content > * {
-  height: 100%;
+.gameplay-setup {
+  flex: 0 0 auto;
+  padding: 16px;
+  border-bottom: 1px solid var(--tt-border);
+}
+
+.gameplay-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.account-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.account-card {
+  background: var(--surface-dark);
+}
+
+.account-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.account-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: rgba(173, 136, 95, 0.35);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.account-name {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.account-kv {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  font-size: 13px;
+}
+
+.account-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.account-pill {
+  background: rgba(95, 128, 139, 0.35);
+  border: 1px solid var(--tt-border);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.account-provider-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.account-provider {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(71, 66, 61, 0.5);
+  border: 1px solid var(--tt-border);
+}
+
+.characters-shell {
+  gap: 16px;
+  align-items: stretch;
+}
+
+.characters-column {
+  min-width: 260px;
+  flex: 1 1 260px;
+}
+
+.characters-detail {
+  min-width: 320px;
+  flex: 2 1 520px;
+}
+
+.characters-list-card {
+  background: var(--surface-dark);
+  border-color: var(--tt-border);
+}
+
+.character-list-item {
+  text-align: left;
+  justify-content: space-between;
+}
+
+.character-list-item.is-active {
+  background: rgba(173, 136, 95, 0.35);
+  color: #0b1a1d;
+}
+
+.characters-detail-card {
+  margin-top: 12px;
+  background: var(--surface-dark);
+  border-color: var(--tt-border);
+}
+
+.characters-subcard {
+  background: rgba(71, 66, 61, 0.6);
+  border-color: var(--tt-border);
+}
+
+.character-tab.active {
+  background: rgba(173, 136, 95, 0.35);
+  border-color: rgba(173, 136, 95, 0.6);
+  color: #0b1a1d;
+}
+
+.home-panel {
+  gap: 16px;
+}
+
+.home-card {
+  background: var(--surface-dark);
+  border-color: var(--tt-border);
+}
+
+.home-card-title {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.home-actions {
+  gap: 10px;
+}
+
+.home-friend {
+  justify-content: space-between;
+  text-align: left;
+}
+
+.home-friend.is-active {
+  background: rgba(173, 136, 95, 0.35);
+  color: #0b1a1d;
+}
+
+.account-debug {
+  border: 1px solid var(--tt-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.account-debug summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.account-json {
+  margin-top: 10px;
+  max-height: 260px;
+  overflow: auto;
+  font-size: 12px;
+  white-space: pre-wrap;
 }
 
 @media (max-width: 900px) {
@@ -155,11 +333,28 @@
     gap: 8px;
     padding: 16px;
   }
+  .dashboard-nav{
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+  .nav-btn{
+    flex: 1 1 140px;
+  }
   .dashboard-main {
     margin-top: 0;
   }
-  .dashboard-panel,
-  .gameplay-panel {
-    margin: 16px;
+  .dashboard-main{
+    padding: 16px;
+  }
+}
+
+@media (max-width: 560px){
+  .dashboard-main{
+    padding: 12px;
+  }
+  .dashboard-panel{
+    padding: 20px;
   }
 }

@@ -37,8 +37,15 @@ export const buildWsUrl = (path: string) => {
 
 export async function apiFetch(path: string, opts: RequestInit = {}) {
   const headers: any = (opts.headers && typeof opts.headers === 'object') ? {...opts.headers} : {}
-  // Default JSON content type when body is present
-  if (opts.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json'
+  // Default JSON content type when body is present.
+  // IMPORTANT: Do not set Content-Type for FormData; the browser will add the multipart boundary.
+  const isFormDataBody =
+    typeof FormData !== 'undefined' &&
+    typeof opts.body !== 'undefined' &&
+    opts.body instanceof FormData
+  if (opts.body && !isFormDataBody && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json'
+  }
   const token = typeof window !== 'undefined' ? window.localStorage.getItem('access_token') : null
   if (token) headers['Authorization'] = `Bearer ${token}`
   const url = buildApiUrl(path)

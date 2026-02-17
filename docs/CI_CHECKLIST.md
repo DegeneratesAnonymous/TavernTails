@@ -2,6 +2,14 @@
 
 This document defines the Continuous Integration (CI) quality gates for TavernTAIls, including what checks must pass before merging code to `main` and guidance on when to block merges.
 
+## Local One-Command Runner (Windows-safe)
+
+If your workspace path contains special characters like `&` (common under OneDrive), some `npm` scripts may fail on Windows due to `.bin` path quoting. Use the repo root runner instead:
+
+- `./ci.ps1`
+
+It runs backend + frontend checks using explicit `node` entrypoints and works reliably in `Dungeons&Dragons`-style paths.
+
 ## CI Pipeline Overview
 
 Our CI pipeline runs automatically on every pull request and push to `main`. It consists of two primary jobs (backend and frontend) plus an optional smoke test job.
@@ -137,6 +145,12 @@ cd client
 npx tsc --noEmit
 ```
 
+**Windows (paths containing `&`)**:
+```powershell
+Set-Location client
+node node_modules/typescript/bin/tsc --noEmit
+```
+
 #### 3. Unit Tests (Jest/React Testing Library)
 **Purpose**: Test components and hooks
 **Command**: `npm test -- --watchAll=false --coverage`
@@ -155,6 +169,13 @@ npm test -- --watchAll=false  # Run once
 npm test -- --coverage  # With coverage
 ```
 
+**Windows (paths containing `&`)**:
+```powershell
+Set-Location client
+$env:CI='true'
+node node_modules/react-scripts/bin/react-scripts.js test --watchAll=false
+```
+
 #### 4. Build Check
 **Purpose**: Ensure production build succeeds
 **Command**: `npm run build`
@@ -169,6 +190,13 @@ npm test -- --coverage  # With coverage
 ```bash
 cd client
 npm run build
+```
+
+**Windows (paths containing `&`)**:
+```powershell
+Set-Location client
+$env:CI='true'
+node node_modules/react-scripts/bin/react-scripts.js build
 ```
 
 ### Frontend Success Criteria

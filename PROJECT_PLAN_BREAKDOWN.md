@@ -1,5 +1,8 @@
 # TavernTAIls – Enhanced Technical and Product Plan
 
+**NON-CANONICAL SNAPSHOT.**
+Refer to `PROJECT_PLAN.md` for the single source of truth. This breakdown may lag.
+
 _Last updated: 2025-12-01 – Maintainers: TavernTAIls Core Team_
 
 Supersedes `PROJECT_PLAN.md` (v2025-11-30) and `PROJECT_PLAN_BREAKDOWN.md` (v2025-11-25).

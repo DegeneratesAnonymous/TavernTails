@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 from ..auth import get_current_user
@@ -247,17 +247,28 @@ async def get_document_raw(session_id: str, doc_id: str, current_user=Depends(ge
     - For other stores this attempts to return a JSON error or 501.
     """
     _, identifier, is_host = _ensure_session_member(session_id, current_user)
-    # If local store, map to session folder
-    # LocalDocumentStore stores files under sessions/<session_id>/docs/<filename>
-    base = session_module.BASE / session_id / 'docs'
     metas = store.list_documents(session_id)
     for m in metas:
         if m.id == doc_id:
             _ensure_can_access_doc(session_id, identifier, is_host, getattr(m, "visibility", "shared"), doc_id=doc_id)
-            target = base / m.filename
+            # If S3-backed and supported, redirect to a presigned GET URL.
+            if hasattr(store, 'generate_presigned_get_url'):
+                try:
+                    url = store.generate_presigned_get_url(session_id=session_id, filename=m.filename)
+                    _audit(session_id, identifier, action="documents.raw", ok=True, doc_id=doc_id, visibility=getattr(m, "visibility", None))
+                    return RedirectResponse(url=url)
+                except NotImplementedError:
+                    pass
+                except Exception:
+                    pass
+
+            # LocalDocumentStore stores files under sessions/<session_id>/docs/<filename>
+            base = session_module.BASE / session_id / 'docs'
+            safe_name = Path(m.filename).name
+            target = base / safe_name
             if target.exists():
                 _audit(session_id, identifier, action="documents.raw", ok=True, doc_id=doc_id, visibility=getattr(m, "visibility", None))
-                return FileResponse(path=str(target), filename=m.filename)
+                return FileResponse(path=str(target), filename=safe_name)
             break
     _audit(session_id, identifier, action="documents.raw", ok=False, doc_id=doc_id, detail="raw_not_found")
     raise HTTPException(status_code=404, detail='Raw file not found')

@@ -50,11 +50,13 @@ def player_signup(
     username = name.strip() if isinstance(name, str) else None
     if db.get_user_by_identifier(email):
         raise HTTPException(status_code=409, detail="User exists")
-    profile = {"name": username or email.split("@")[0], "email": email, "preferences": {}}
+    profile: dict[str, Any] = {"name": username or email.split("@")[0], "email": email, "preferences": {}}
     if character:
         profile["character"] = character
     if age is not None:
-        profile.setdefault("preferences", {})["age"] = age
+        prefs = profile.setdefault("preferences", {})
+        if isinstance(prefs, dict):
+            prefs["age"] = age
     user = db.create_user(email=email, password=password, username=username, profile=profile)
     return {"profile": user.profile, "verification_token": user.verification_token}
 
@@ -69,7 +71,7 @@ def player_login(email: str | None = Body(None), name: str | None = Body(None), 
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not user.verified:
         raise HTTPException(status_code=403, detail="Email not verified")
-    subject = user.email or user.username
+    subject = user.email or user.username or identifier
     token = create_access_token(subject)
     return {"profile": user.profile, "access_token": token, "token_type": "bearer"}
 
@@ -176,3 +178,33 @@ def set_beyond20_domains(identifier: str = Body(...), domains_text: str | None =
 @router.get("/player/me")
 def player_me(current_user=Depends(get_current_user)):
     return {"profile": current_user.profile}
+
+
+@router.post("/player/admin-mode")
+def set_admin_mode(enabled: bool = Body(..., embed=True), current_user=Depends(get_current_user)):
+    if not db.is_admin_user(current_user):
+        raise HTTPException(status_code=403, detail="Admin privileges required")
+    updated = db.set_admin_mode(current_user.id, bool(enabled))
+    if not updated:
+        raise HTTPException(status_code=500, detail="Failed to update admin mode")
+    return {"profile": updated.profile}
+
+
+@router.get("/player/beyond20/relay-token")
+def get_beyond20_relay_token(current_user=Depends(get_current_user)):
+    if current_user.id is None:
+        raise HTTPException(status_code=400, detail="User missing id")
+    token = db.ensure_beyond20_relay_token_for_user_id(current_user.id)
+    if not token:
+        raise HTTPException(status_code=500, detail="Unable to create relay token")
+    return {"relay_token": token}
+
+
+@router.post("/player/beyond20/relay-token/rotate")
+def rotate_beyond20_relay_token(current_user=Depends(get_current_user)):
+    if current_user.id is None:
+        raise HTTPException(status_code=400, detail="User missing id")
+    token = db.rotate_beyond20_relay_token_for_user_id(current_user.id)
+    if not token:
+        raise HTTPException(status_code=500, detail="Unable to rotate relay token")
+    return {"relay_token": token}

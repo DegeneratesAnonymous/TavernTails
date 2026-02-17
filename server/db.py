@@ -1,14 +1,15 @@
 import os
+import secrets
 from datetime import datetime, timezone
 from typing import Any
 
 from passlib.context import CryptContext
-from sqlalchemy import Column, func
+from sqlalchemy import Column, cast, desc, func
 from sqlalchemy.types import JSON
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
-# Use a pure-Python scheme for test reliability (avoids native bcrypt issues in test venvs)
-# In production you may prefer bcrypt/argon2 and install the corresponding packages.
+# Use a pure-Python scheme for test reliability (avoids bcrypt backend quirks in CI/dev containers).
+# If you want bcrypt/argon2 in production, add those schemes and verify backend availability.
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 DATABASE_URL = "sqlite:///./taverntails.db"
@@ -130,6 +131,32 @@ def update_campaign(campaign_id: str, owner_id: int, updates: dict[str, Any]) ->
         return camp
 
 
+def get_campaign_settings(campaign_id: str, owner_id: int) -> dict[str, Any] | None:
+    with Session(engine) as session:
+        stmt = select(Campaign).where(Campaign.id == campaign_id, Campaign.owner_id == owner_id)
+        camp = session.exec(stmt).first()
+        if not camp:
+            return None
+        meta = dict(camp.metadata_json or {})
+        settings = meta.get("settings")
+        return dict(settings) if isinstance(settings, dict) else {}
+
+
+def set_campaign_settings(campaign_id: str, owner_id: int, settings: dict[str, Any]) -> Campaign | None:
+    with Session(engine) as session:
+        stmt = select(Campaign).where(Campaign.id == campaign_id, Campaign.owner_id == owner_id)
+        camp = session.exec(stmt).first()
+        if not camp:
+            return None
+        meta = dict(camp.metadata_json or {})
+        meta["settings"] = dict(settings)
+        camp.metadata_json = meta
+        session.add(camp)
+        session.commit()
+        session.refresh(camp)
+        return camp
+
+
 def delete_campaign(campaign_id: str, owner_id: int) -> bool:
     with Session(engine) as session:
         stmt = select(Campaign).where(Campaign.id == campaign_id, Campaign.owner_id == owner_id)
@@ -209,7 +236,7 @@ def list_chat_messages(
             stmt = stmt.where(ChatMessage.session_id == session_id)
         if campaign_id:
             stmt = stmt.where(ChatMessage.campaign_id == campaign_id)
-        stmt = stmt.order_by(ChatMessage.created_at.desc()).limit(limit)
+        stmt = stmt.order_by(desc(cast(Any, ChatMessage.created_at))).limit(limit)
         return list(reversed(list(session.exec(stmt).all())))
 
 def send_friend_request(from_identifier: str, to_identifier: str) -> FriendRequest:
@@ -239,30 +266,34 @@ def list_friends_and_requests(identifier: str):
     user = get_user_by_identifier(identifier)
     if not user:
         return {"friends": [], "pending": []}
+    user_id = user.id
+    if user_id is None:
+        return {"friends": [], "pending": []}
     with Session(engine) as session:
         # accepted friendships where user is either from or to
-        stmt = select(FriendRequest).where(
-            ((FriendRequest.from_user_id == user.id) | (FriendRequest.to_user_id == user.id)),
+        stmt_fr = select(FriendRequest).where(
+            ((FriendRequest.from_user_id == user_id) | (FriendRequest.to_user_id == user_id)),
             FriendRequest.status == "accepted",
         )
-        accepted = list(session.exec(stmt).all())
-        friend_ids = set()
+        accepted = list(session.exec(stmt_fr).all())
+        friend_ids: set[int] = set()
         for fr in accepted:
-            friend_ids.add(fr.to_user_id if fr.from_user_id == user.id else fr.from_user_id)
+            friend_ids.add(fr.to_user_id if fr.from_user_id == user_id else fr.from_user_id)
         friends = []
         if friend_ids:
-            stmt = select(User).where(User.id.in_(list(friend_ids)))
-            friends = [_profile_with_identity(u) for u in session.exec(stmt).all()]
+            stmt_users = select(User).where(cast(Any, User.id).in_(list(friend_ids)))
+            friends = [_profile_with_identity(u) for u in session.exec(stmt_users).all()]
 
         # incoming pending requests
-        stmt = select(FriendRequest).where(FriendRequest.to_user_id == user.id, FriendRequest.status == "pending")
+        stmt_pending = select(FriendRequest).where(FriendRequest.to_user_id == user_id, FriendRequest.status == "pending")
         pending = []
-        pending_rows = session.exec(stmt).all()
+        pending_rows = session.exec(stmt_pending).all()
         if pending_rows:
             from_ids = [r.from_user_id for r in pending_rows]
             user_map = {
                 u.id: _profile_with_identity(u)
-                for u in session.exec(select(User).where(User.id.in_(from_ids))).all()
+                for u in session.exec(select(User).where(cast(Any, User.id).in_(from_ids))).all()
+                if u.id is not None
             }
             for r in pending_rows:
                 pending.append({"from_id": r.from_user_id, "from_profile": user_map.get(r.from_user_id, {})})
@@ -346,7 +377,7 @@ def create_user(email: str, password: str, username: str | None = None, profile:
 
 def ensure_dev_user():
     """Create a default dev user if missing so local logins always work."""
-    email = _normalize_email(os.environ.get('TAVERNTAILS_DEV_EMAIL', 'test@example.com'))
+    email = _normalize_email(os.environ.get('TAVERNTAILS_DEV_EMAIL', 'test@example.com')) or 'test@example.com'
     password = os.environ.get('TAVERNTAILS_DEV_PASSWORD', 'secret')
     username = _normalize_username(os.environ.get('TAVERNTAILS_DEV_USERNAME', 'tester'))
     with Session(engine) as session:
@@ -390,6 +421,115 @@ def ensure_dev_user():
         session.commit()
         session.refresh(user)
         return user
+
+
+def is_admin_user(user: User) -> bool:
+    if not user:
+        return False
+    profile = user.profile or {}
+    if profile.get("admin") is True:
+        return True
+    roles = profile.get("roles")
+    if isinstance(roles, list) and any(str(r).lower() == "admin" for r in roles):
+        return True
+    email = (user.email or "").lower()
+    if email:
+        allow = [e.strip().lower() for e in (os.environ.get("TAVERNTAILS_ADMIN_EMAILS") or "").split(",") if e.strip()]
+        if email in allow:
+            return True
+    return False
+
+
+def set_admin_mode(user_id: int, enabled: bool) -> User | None:
+    with Session(engine) as session:
+        stmt = select(User).where(User.id == user_id)
+        dbu = session.exec(stmt).first()
+        if not dbu:
+            return None
+        profile = dict(dbu.profile or {})
+        prefs = profile.setdefault("preferences", {})
+        if isinstance(prefs, dict):
+            prefs["admin_mode"] = bool(enabled)
+        profile["preferences"] = prefs
+        dbu.profile = profile
+        session.add(dbu)
+        session.commit()
+        session.refresh(dbu)
+        return dbu
+
+
+def ensure_seed_users():
+    """Ensure admin + test users exist (for local development)."""
+    admin_email = _normalize_email(os.environ.get("TAVERNTAILS_ADMIN_EMAIL", "admin@example.com")) or "admin@example.com"
+    admin_password = os.environ.get("TAVERNTAILS_ADMIN_PASSWORD", "secret")
+    admin_username = _normalize_username(os.environ.get("TAVERNTAILS_ADMIN_USERNAME", "Admin"))
+    test_email = _normalize_email(os.environ.get("TAVERNTAILS_TEST_EMAIL", "bilbo@example.com")) or "bilbo@example.com"
+    test_password = os.environ.get("TAVERNTAILS_TEST_PASSWORD", "secret")
+    test_username = _normalize_username(os.environ.get("TAVERNTAILS_TEST_USERNAME", "BilboBaggins"))
+
+    def _ensure(email: str, password: str, username: str | None, profile: dict[str, Any]) -> User:
+        with Session(engine) as session:
+            stmt = select(User).where(func.lower(User.email) == email.lower())
+            existing = session.exec(stmt).first()
+            if existing:
+                updated = False
+                if username and existing.username != username:
+                    existing.username = username
+                    updated = True
+                if not existing.verified:
+                    existing.verified = True
+                    updated = True
+                if existing.verification_token:
+                    existing.verification_token = None
+                    updated = True
+                if not verify_password(password, existing.password_hash):
+                    existing.password_hash = hash_password(password)
+                    updated = True
+                merged = dict(existing.profile or {})
+                merged.update(profile or {})
+                if merged != (existing.profile or {}):
+                    existing.profile = merged
+                    updated = True
+                if updated:
+                    session.add(existing)
+                    session.commit()
+                    session.refresh(existing)
+                return existing
+            user = User(
+                email=email,
+                username=username,
+                password_hash=hash_password(password),
+                verified=True,
+                verification_token=None,
+                profile=profile,
+            )
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+            return user
+
+    _ensure(
+        admin_email,
+        admin_password,
+        admin_username,
+        {
+            "name": admin_username or admin_email.split("@")[0],
+            "email": admin_email,
+            "admin": True,
+            "preferences": {"admin_mode": True},
+        },
+    )
+
+    _ensure(
+        test_email,
+        test_password,
+        test_username,
+        {
+            "name": "Bilbo Baggins",
+            "email": test_email,
+            "preferences": {"admin_mode": False},
+        },
+    )
 
 
 def set_verification_token(email: str, token: str):
@@ -436,6 +576,8 @@ def update_profile(email_or_name: str, profile_updates: dict[str, Any]) -> User 
     with Session(engine) as session:
         stmt = select(User).where(User.id == user.id)
         dbu = session.exec(stmt).first()
+        if not dbu:
+            return None
         dbu.profile.update(profile_updates)
         session.add(dbu)
         session.commit()
@@ -517,6 +659,8 @@ def set_beyond20_domains_for(identifier: str, domains: list[str]) -> list[str] |
     with Session(engine) as session:
         stmt = select(User).where(User.id == user.id)
         dbu = session.exec(stmt).first()
+        if not dbu:
+            return None
         # Copy the profile to ensure SQLAlchemy/JSON type detects the change
         new_profile = dict(dbu.profile or {})
         prefs = new_profile.setdefault('preferences', {})
@@ -526,3 +670,60 @@ def set_beyond20_domains_for(identifier: str, domains: list[str]) -> list[str] |
         session.commit()
         session.refresh(dbu)
         return domains
+
+
+def get_beyond20_relay_token_for_user_id(user_id: int) -> str | None:
+    with Session(engine) as session:
+        stmt = select(User).where(User.id == user_id)
+        user = session.exec(stmt).first()
+        if not user:
+            return None
+        prefs = (user.profile or {}).get("preferences", {})
+        return (prefs.get("beyond20", {}) or {}).get("relay_token")
+
+
+def _set_beyond20_relay_token_for_user_id(user_id: int, token: str) -> str | None:
+    with Session(engine) as session:
+        stmt = select(User).where(User.id == user_id)
+        user = session.exec(stmt).first()
+        if not user:
+            return None
+        new_profile = dict(user.profile or {})
+        prefs = new_profile.setdefault("preferences", {})
+        beyond20 = prefs.setdefault("beyond20", {})
+        beyond20["relay_token"] = token
+        user.profile = new_profile
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+        return token
+
+
+def ensure_beyond20_relay_token_for_user_id(user_id: int) -> str | None:
+    existing = get_beyond20_relay_token_for_user_id(user_id)
+    if existing:
+        return existing
+    token = secrets.token_hex(24)
+    return _set_beyond20_relay_token_for_user_id(user_id, token)
+
+
+def rotate_beyond20_relay_token_for_user_id(user_id: int) -> str | None:
+    token = secrets.token_hex(24)
+    return _set_beyond20_relay_token_for_user_id(user_id, token)
+
+
+def get_user_by_beyond20_relay_token(token: str) -> User | None:
+    if not token:
+        return None
+    token = token.strip()
+    if not token:
+        return None
+    with Session(engine) as session:
+        stmt = select(User)
+        users = session.exec(stmt).all()
+        for user in users:
+            prefs = (user.profile or {}).get("preferences", {})
+            relay = (prefs.get("beyond20", {}) or {}).get("relay_token")
+            if relay == token:
+                return user
+        return None

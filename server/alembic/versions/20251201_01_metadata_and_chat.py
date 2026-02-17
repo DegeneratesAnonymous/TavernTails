@@ -34,8 +34,8 @@ def upgrade() -> None:
         op.create_table(
             "chatmessage",
             sa.Column("id", sa.Integer(), primary_key=True),
-            sa.Column("session_id", sa.String(length=64), index=True),
-            sa.Column("campaign_id", sa.String(length=16), index=True),
+            sa.Column("session_id", sa.String(length=64)),
+            sa.Column("campaign_id", sa.String(length=16)),
             sa.Column("sender_id", sa.Integer(), sa.ForeignKey("user.id"), nullable=True),
             sa.Column("sender_name", sa.String(length=120), nullable=True),
             sa.Column("role", sa.String(length=32), nullable=False, server_default="player"),

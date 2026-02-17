@@ -1,5 +1,12 @@
 import React, {useRef, useState, useEffect, useCallback} from 'react'
+import './Chat.css'
 import { apiFetch, buildWsUrl } from '../api'
+import ChatToolbar from './chat/ChatToolbar'
+import InvitePanel from './chat/InvitePanel'
+import AdvancedToolsPanel from './chat/AdvancedToolsPanel'
+import MessageList from './chat/MessageList'
+import Composer from './chat/Composer'
+import NpcSnapshotModal from './chat/NpcSnapshotModal'
 
 type Msg = {
   id: number|string
@@ -20,11 +27,54 @@ type AdvancedTool = {
 
 type Props = {
   sessionId?: string | null
+  variant?: 'full' | 'dock'
+  aboveComposer?: React.ReactNode
 }
 
 const rollRegex = /^\s*(\d*)d(\d+)([+-]\d+)?\s*$/i
+const slashRollRegex = /^\s*\/(r|roll)\b\s*(.*)$/i
 
-export default function Chat({sessionId}: Props){
+function normalizeRollExpression(expr: string){
+  const trimmed = (expr || '').trim()
+  if(!trimmed) return ''
+  if(/^d\d+$/i.test(trimmed)) return `1${trimmed}`
+  return trimmed
+}
+
+const ADVANCED_TOOLS: AdvancedTool[] = [
+  {
+    id:'recap',
+    label:'Request Recap',
+    description:'Ping the Notes agent for a quick session summary.',
+    command:'!notes quick recap',
+    systemText:'Notes agent ping queued — expect a recap shortly.'
+  },
+  {
+    id:'scene',
+    label:'Scene Diagnostics',
+    description:'Ask the Scene Analysis agent to flag rolls or rule triggers.',
+    systemText:'Scene diagnostics requested. Watch for roll prompts.',
+    emit:'scene:diagnostics'
+  },
+  {
+    id:'image',
+    label:'Inspire Image',
+    description:'Forward the latest narration to the Image agent for art ideas.',
+    systemText:'Image agent request queued with current scene context.',
+    emit:'image:generate'
+  },
+  {
+    id:'npc-snapshot',
+    label:'NPC Snapshot',
+    description:'Send a quick stat ping to the NPC agent for initiative cues.',
+    systemText:'NPC agent request queued for the highlighted foe.',
+    emit:'npc:profile'
+  }
+]
+
+const ADVANCED_TOOLS_FOR_PANEL = ADVANCED_TOOLS.map((t) => ({ id: t.id, label: t.label, description: t.description }))
+
+export default function Chat({sessionId, variant = 'full', aboveComposer}: Props){
   const [messages, setMessages] = useState<Msg[]>([])
   const [value, setValue] = useState('')
   const [loading, setLoading] = useState(false)
@@ -36,6 +86,7 @@ export default function Chat({sessionId}: Props){
   const [inviteNote, setInviteNote] = useState('')
   const [inviteBusy, setInviteBusy] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [npcModalOpen, setNpcModalOpen] = useState(false)
   const listRef = useRef<HTMLDivElement|null>(null)
   const notifyMentions = useCallback((list?: string[])=>{
     if(!list || !list.length) return
@@ -52,9 +103,12 @@ export default function Chat({sessionId}: Props){
   },[])
 
   useEffect(()=>{ // auto-scroll to bottom when messages change
-    if(listRef.current){
-      listRef.current.scrollTop = listRef.current.scrollHeight
-    }
+    if(!listRef.current) return
+    const el = listRef.current
+    const raf = window.requestAnimationFrame(()=>{
+      el.scrollTop = el.scrollHeight
+    })
+    return ()=>window.cancelAnimationFrame(raf)
   },[messages])
 
   useEffect(()=>{
@@ -96,14 +150,22 @@ export default function Chat({sessionId}: Props){
           setMessages(mapped)
         }
       }catch(err:any){
-        if(!canceled) setError(err?.message || 'Chat failed to load')
+        if(!canceled){
+          const msg = err?.message || 'Chat failed to load'
+          if(variant === 'dock'){
+            appendMessage({id:`chat-load-${Date.now()}`,who:'system',text:msg})
+            setError(null)
+          }else{
+            setError(msg)
+          }
+        }
       }finally{
         if(!canceled) setLoading(false)
       }
     }
     load()
     return ()=>{ canceled = true }
-  },[sessionId])
+  },[sessionId, appendMessage, variant])
 
   useEffect(()=>{
     if(!toolbarMessage) return
@@ -129,15 +191,26 @@ export default function Chat({sessionId}: Props){
       appendMessage({ id: saved.id, who:'you', text:saved.message, createdAt:saved.created_at, mentions: saved.mentions || [] })
       notifyMentions(saved.mentions)
     }catch(err:any){
-      setError(err?.message || 'Unable to send message')
+      const msg = err?.message || 'Unable to send message'
+      if(variant === 'dock'){
+        appendMessage({id:`chat-send-${Date.now()}`,who:'system',text:msg})
+        setError(null)
+      }else{
+        setError(msg)
+      }
     }
   }
 
   async function sendRoll(expr: string){
     try{
+      const normalized = normalizeRollExpression(expr)
+      if(!normalized){
+        appendMessage({id:`roll-${Date.now()}`,who:'system',text:'Usage: /r 1d20+3'})
+        return
+      }
       const res = await apiFetch('/rolls', {
         method:'POST',
-        body: JSON.stringify({ expression: expr, reason: `chat:${sessionId || 'local'}`, session_id: sessionId })
+        body: JSON.stringify({ expression: normalized, reason: `chat:${sessionId || 'local'}`, session_id: sessionId })
       })
       if(!res.ok){
         const detail = await res.json().catch(()=>null)
@@ -171,36 +244,7 @@ export default function Chat({sessionId}: Props){
     }
   }
 
-  const advancedTools: AdvancedTool[] = [
-    {
-      id:'recap',
-      label:'Request Recap',
-      description:'Ping the Notes agent for a quick session summary.',
-      command:'!notes quick recap',
-      systemText:'Notes agent ping queued — expect a recap shortly.'
-    },
-    {
-      id:'scene',
-      label:'Scene Diagnostics',
-      description:'Ask the Scene Analysis agent to flag rolls or rule triggers.',
-      systemText:'Scene diagnostics requested. Watch for roll prompts.',
-      emit:'scene:diagnostics'
-    },
-    {
-      id:'image',
-      label:'Inspire Image',
-      description:'Forward the latest narration to the Image agent for art ideas.',
-      systemText:'Image agent request queued with current scene context.',
-      emit:'image:generate'
-    },
-    {
-      id:'npc-snapshot',
-      label:'NPC Snapshot',
-      description:'Send a quick stat ping to the NPC agent for initiative cues.',
-      systemText:'NPC agent request queued for the highlighted foe.',
-      emit:'npc:profile'
-    }
-  ]
+
 
   async function handleInviteSubmit(){
     if(!sessionId){
@@ -261,12 +305,15 @@ export default function Chat({sessionId}: Props){
   }
 
   async function runAdvancedTool(tool: AdvancedTool){
+    if(tool.id === 'npc-snapshot'){
+      setNpcModalOpen(true)
+      return
+    }
     if(tool.command){
       await handleSend(tool.command)
     }
     if(tool.systemText){
-      const helperText = tool.systemText
-      appendMessage({id:`tool-${tool.id}-${Date.now()}`,who:'system',text:helperText})
+      appendMessage({id:`tool-${tool.id}-${Date.now()}`,who:'system',text:tool.systemText})
     }
     if(tool.emit){
       const detail: any = { sessionId, tool: tool.id, requestedAt: new Date().toISOString() }
@@ -275,20 +322,6 @@ export default function Chat({sessionId}: Props){
         const actionSamples = messages.filter(m => m.who !== 'gm' && m.who !== 'system').slice(-4).map(m => m.text)
         detail.scene = recentGm?.text || 'Current encounter'
         detail.actions = actionSamples
-      }
-      if(tool.id === 'npc-snapshot'){
-        const nameInput = window.prompt('NPC name to spotlight?')
-        if(!nameInput){
-          setToolbarMessage('NPC snapshot canceled — no name provided.')
-          return
-        }
-        const modInput = window.prompt('Initiative modifier (e.g. +2 or -1)?', '+0') || ''
-        const parsedMod = parseInt(modInput.replace(/[^0-9-+]/g,''), 10)
-        const stats: Record<string, number> = {}
-        if(!Number.isNaN(parsedMod)){
-          stats.initiative = parsedMod
-        }
-        detail.npc = { name: nameInput.trim(), stats }
       }
       window.dispatchEvent(new CustomEvent(tool.emit,{detail}))
     }
@@ -307,8 +340,14 @@ export default function Chat({sessionId}: Props){
       if(typeof override !== 'string') setValue('')
       return
     }
+    const slashMatch = text.match(slashRollRegex)
+    if(slashMatch){
+      const expr = normalizeRollExpression(slashMatch[2] || '')
+      await sendRoll(expr)
+      return
+    }
     if(rollRegex.test(text)){
-      await sendRoll(text)
+      await sendRoll(normalizeRollExpression(text))
       return
     }
     await sendToBackend(text)
@@ -355,64 +394,71 @@ export default function Chat({sessionId}: Props){
   },[sessionId, appendMessage, notifyMentions])
 
   return (
-    <div className="chat-root" style={{height:'100%',display:'flex',flexDirection:'column'}}>
-      <div style={{padding:'0 0 8px 0'}}>
-        <div style={{display:'flex',flexWrap:'wrap',gap:8,marginBottom:showInviteForm||showToolsPanel?8:4}}>
-          <button type="button" disabled={!sessionId || inviteBusy} onClick={()=>setShowInviteForm(v=>!v)} style={{padding:'6px 12px'}}>
-            {showInviteForm? 'Close Invite' : 'Invite Friend'}
-          </button>
-          <button type="button" disabled={!messages.length || exporting} onClick={handleExportLog} style={{padding:'6px 12px'}}>
-            {exporting? 'Exporting…' : 'Export Log'}
-          </button>
-          <button type="button" disabled={!sessionId} onClick={()=>setShowToolsPanel(v=>!v)} style={{padding:'6px 12px'}}>
-            {showToolsPanel? 'Hide Tools' : 'Advanced Tools'}
-          </button>
+    <div className={`chat-root ${variant === 'dock' ? 'chat-root--dock' : ''}`}>
+      <NpcSnapshotModal
+        open={npcModalOpen}
+        onCancel={() => {
+          setNpcModalOpen(false)
+          setToolbarMessage('NPC snapshot canceled.')
+        }}
+        onSubmit={(payload) => {
+          setNpcModalOpen(false)
+          const stats: Record<string, number> = {}
+          if (typeof payload.initiativeMod === 'number') stats.initiative = payload.initiativeMod
+          window.dispatchEvent(new CustomEvent('npc:profile', { detail: { sessionId, npc: { name: payload.name, stats } } }))
+          setToolbarMessage('NPC Snapshot queued.')
+        }}
+      />
+
+      <div>
+        <ChatToolbar
+          sessionId={sessionId}
+          inviteBusy={inviteBusy}
+          exporting={exporting}
+          hasMessages={messages.length > 0}
+          showInviteForm={showInviteForm}
+          showToolsPanel={showToolsPanel}
+          onToggleInvite={() => setShowInviteForm(v => !v)}
+          onExport={handleExportLog}
+          onToggleTools={() => setShowToolsPanel(v => !v)}
+          toolbarMessage={toolbarMessage}
+        />
+
+        {showInviteForm ? (
+          <InvitePanel
+            inviteEmail={inviteEmail}
+            inviteNote={inviteNote}
+            inviteBusy={inviteBusy}
+            onChangeEmail={setInviteEmail}
+            onChangeNote={setInviteNote}
+            onSubmit={handleInviteSubmit}
+          />
+        ) : null}
+
+        {showToolsPanel ? (
+          <AdvancedToolsPanel
+            tools={ADVANCED_TOOLS_FOR_PANEL}
+            disabled={!sessionId}
+            onRun={(toolId) => {
+              const tool = ADVANCED_TOOLS.find(t => t.id === toolId)
+              if (!tool) return
+              runAdvancedTool(tool)
+            }}
+          />
+        ) : null}
+      </div>
+
+      <MessageList ref={listRef} loading={loading} messages={messages} />
+
+      {error ? <div className="inline-alert inline-alert-error" style={{ marginTop: 10 }}>{error}</div> : null}
+
+      {aboveComposer ? (
+        <div className="chat-above-composer" aria-label="Suggested actions">
+          {aboveComposer}
         </div>
-        {toolbarMessage && <div style={{fontSize:12,color:'#67d5ff',marginBottom:6}}>{toolbarMessage}</div>}
-        {showInviteForm && (
-          <div style={{border:'1px solid rgba(255,255,255,0.08)',borderRadius:6,padding:8,marginBottom:8,background:'#101010'}}>
-            <div style={{fontSize:12,letterSpacing:0.3,color:'#ccc',marginBottom:4}}>Send a quick invite</div>
-            <input value={inviteEmail} onChange={e=>setInviteEmail(e.target.value)} placeholder="friend@example.com" style={{width:'100%',padding:6,marginBottom:6,borderRadius:4,border:'1px solid rgba(255,255,255,0.08)',background:'#0b0b0b',color:'#fff'}} disabled={inviteBusy} />
-            <textarea value={inviteNote} onChange={e=>setInviteNote(e.target.value)} placeholder="Optional note" rows={2} style={{width:'100%',padding:6,borderRadius:4,border:'1px solid rgba(255,255,255,0.08)',background:'#0b0b0b',color:'#fff'}} disabled={inviteBusy}></textarea>
-            <div style={{textAlign:'right',marginTop:8}}>
-              <button type="button" onClick={handleInviteSubmit} disabled={inviteBusy}>{inviteBusy ? 'Sending…' : 'Send Invite'}</button>
-            </div>
-          </div>
-        )}
-        {showToolsPanel && (
-          <div style={{border:'1px solid rgba(255,255,255,0.08)',borderRadius:6,padding:8,marginBottom:8,background:'#101010'}}>
-            <div style={{fontSize:12,letterSpacing:0.3,color:'#ccc',marginBottom:6}}>Session tools</div>
-            <div style={{display:'flex',flexDirection:'column',gap:6}}>
-              {advancedTools.map(tool=>(
-                <div key={tool.id} style={{display:'flex',justifyContent:'space-between',gap:8,alignItems:'center'}}>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:13,fontWeight:600}}>{tool.label}</div>
-                    <div style={{fontSize:11,color:'#aaa'}}>{tool.description}</div>
-                  </div>
-                  <button type="button" disabled={!sessionId} onClick={()=>runAdvancedTool(tool)}>Run</button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-      <div ref={listRef} style={{flex:1,overflowY:'auto',padding:8,background:'#0b0b0b',borderRadius:6}}>
-        {loading && <div style={{fontSize:12,color:'#aaa',marginBottom:8}}>Loading chat…</div>}
-        {messages.map(m=> (
-          <div key={m.id} style={{marginBottom:8,opacity:m.who==='system'?0.8:1}}>
-            <div style={{fontSize:12,color:'#999'}}>{m.who.toUpperCase()}</div>
-            <div style={{padding:6,background:m.who==='you'? '#122':'#111',borderRadius:6}}>{m.text}</div>
-            {!!m.mentions?.length && (
-              <div style={{fontSize:11,color:'#8fe0ff',marginTop:4}}>Mentions: {m.mentions.join(', ')}</div>
-            )}
-          </div>
-        ))}
-      </div>
-      {error && <p style={{color:'#ffaaaa',fontSize:12,marginTop:6}}>{error}</p>}
-      <form style={{display:'flex',marginTop:8}} onSubmit={(e)=>{e.preventDefault(); handleSend()}}>
-        <input value={value} onChange={e=>setValue(e.target.value)} style={{flex:1,padding:8,borderRadius:6,border:'1px solid rgba(255,255,255,0.06)'}} placeholder={sessionId ? "Type a message or roll (e.g. 1d20+3)" : "Select a session to chat"} disabled={!sessionId} />
-        <button style={{marginLeft:8}} type="submit" disabled={!sessionId}>Send</button>
-      </form>
+      ) : null}
+
+      <Composer sessionId={sessionId} value={value} onChange={setValue} onSend={() => handleSend()} />
     </div>
   )
 }

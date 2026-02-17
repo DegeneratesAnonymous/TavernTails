@@ -10,15 +10,15 @@ body.logged-in {
   --font-color: var(--text);
   --font-color-sub: var(--muted-text);
   --bg-color: var(--surface);
-  --bg-color-alt: var(--muted-surface);
+  --bg-color-alt: var(--surface-muted);
   --main-color: var(--text);
 }
 
 /* Example for UI elements */
 .logged-in-ui .card, .logged-in-ui .panel {
   background: var(--bg-color);
-  border: 2px solid rgba(255,255,255,0.04);
+  border: 2px solid var(--tt-border);
   color: var(--font-color);
-  box-shadow: 4px 4px rgba(0,0,0,0.6);
+  box-shadow: 4px 4px rgba(0,0,0,0.45);
   border-radius: 5px;
 }

@@ -13,6 +13,7 @@ exclude = [
     "*.egg-info",
     ".pytest_cache",
     "alembic/versions",
+    "server/alembic/versions",
     "server/agents/archive",
 ]
 

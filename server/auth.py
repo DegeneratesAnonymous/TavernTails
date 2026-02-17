@@ -38,7 +38,10 @@ def get_current_user(creds: HTTPAuthorizationCredentials = Depends(security)):
     payload = decode_access_token(token)
     if not payload or 'sub' not in payload:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid authentication credentials')
-    identifier = payload.get('sub')
+    identifier_any = payload.get('sub')
+    if not isinstance(identifier_any, str) or not identifier_any.strip():
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Invalid authentication credentials')
+    identifier = identifier_any
     user = db.get_user_by_identifier(identifier)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='User not found')
