@@ -124,10 +124,31 @@ This document outlines the agent-based architecture for TavernTAIls, lists all a
 1. **Choose Your Area**: Select an agent role that matches your skills and interests
 2. **Review Documentation**: Read `README.md`, `PROJECT_PLAN.md`, and this document
 3. **Set Up Environment**: Follow quick-start steps for your chosen agent(s)
-4. **Run the App**: Use `start-app.ps1` to start both backend and frontend
+4. **Run the App**: Use the one-command startup scripts:
+   - **Windows**: `.\start-app.ps1`
+   - **macOS/Linux**: `./start-app.sh`
+   - See [docs/LOCAL_DEV.md](LOCAL_DEV.md) for detailed setup and troubleshooting
 5. **Find a Task**: Check issues labeled with your agent area or ask the PM
 6. **Make Changes**: Follow the development workflow and CI requirements
 7. **Submit PR**: Ensure tests pass and documentation is updated
+
+## Development Scripts
+
+### Quick Start Scripts
+
+- **Windows (PowerShell)**: `start-app.ps1`
+  - `.\start-app.ps1` - Start both backend and frontend
+  - `.\start-app.ps1 -BackendOnly` - Start only backend
+  - `.\start-app.ps1 -FrontendOnly` - Start only frontend
+  - Press Enter to stop all services
+
+- **macOS/Linux (Bash)**: `start-app.sh`
+  - `./start-app.sh` - Start both backend and frontend
+  - `./start-app.sh --backend-only` - Start only backend
+  - `./start-app.sh --frontend-only` - Start only frontend
+  - Press Ctrl+C to stop all services
+
+For detailed instructions, see [docs/LOCAL_DEV.md](LOCAL_DEV.md)
 
 ## Development Workflow
 
