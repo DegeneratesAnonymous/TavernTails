@@ -44,7 +44,7 @@ type Props = {
   onSetActiveCharacterId: (characterId: number | null) => void
   onDone: () => void
   onGoToGameplay: () => void
-  initialMode?: 'ddb-link' | 'paste' | 'file' | 'pdf'
+  initialMode?: 'ddb-link' | 'ddb-api' | 'paste' | 'file' | 'pdf'
   notificationsPending?: boolean
   onNotificationsClick?: () => void
 }
@@ -60,7 +60,7 @@ export default function ImportCharacterView({
   notificationsPending,
   onNotificationsClick,
 }: Props) {
-  const [mode, setMode] = useState<'ddb-link' | 'paste' | 'file' | 'pdf'>(initialMode || 'paste')
+  const [mode, setMode] = useState<'ddb-link' | 'ddb-api' | 'paste' | 'file' | 'pdf'>(initialMode || 'ddb-api')
   const [rawJson, setRawJson] = useState('')
   const [ddbUrl, setDdbUrl] = useState('')
   const [file, setFile] = useState<File | null>(null)
@@ -103,6 +103,7 @@ export default function ImportCharacterView({
       importJson: hasPath('/characters/import/preview') || hasPath('/characters/import') || hasPath('/characters/import/file'),
       importPdf: hasPath('/characters/import/pdf/preview') || hasPath('/characters/import/pdf'),
       importLink: hasPath('/characters/import/link'),
+      importDdb: hasPath('/characters/import/ddb/preview') || hasPath('/characters/import/ddb'),
     }
   }, [backendPaths])
 
@@ -850,6 +851,9 @@ export default function ImportCharacterView({
               <button type="button" aria-pressed={mode === 'file'} onClick={() => setMode('file')} disabled={busy}>
                 Upload JSON
               </button>
+              <button type="button" aria-pressed={mode === 'ddb-api'} onClick={() => setMode('ddb-api')} disabled={busy}>
+                DDB Live Import
+              </button>
               <button type="button" aria-pressed={mode === 'pdf'} onClick={() => setMode('pdf')} disabled={busy}>
                 Upload DDB PDF
               </button>
@@ -1031,6 +1035,90 @@ export default function ImportCharacterView({
             </div>
           </div>
         ) : null}
+
+        {mode === 'ddb-api' ? (
+          <div className="stack" style={{ gap: 10 }}>
+            <div className="muted">2) Enter your D&amp;D Beyond character URL or ID</div>
+            <input
+              className="input"
+              placeholder="https://www.dndbeyond.com/characters/91460971  (or just the numeric ID)"
+              value={ddbUrl}
+              onChange={(e) => setDdbUrl(e.target.value)}
+              disabled={busy}
+            />
+            <div className="row-wrap" style={{ gap: 8 }}>
+              <button
+                className="btn"
+                disabled={busy || !ddbUrl.trim()}
+                onClick={async () => {
+                  if (!ddbUrl.trim()) {
+                    showMessage('error', 'Enter a D&D Beyond character URL or ID first.')
+                    return
+                  }
+                  setBusy(true)
+                  setMessage(null)
+                  try {
+                    const res = await apiFetch('/characters/import/ddb/preview', {
+                      method: 'POST',
+                      body: JSON.stringify({ ddb_url: ddbUrl.trim() })
+                    })
+                    if (res.ok) {
+                      const data = await res.json().catch(() => ({}))
+                      setPreview(data?.preview ?? null)
+                      setPreviewSource('ddb-api' as any)
+                      setConfirmOpen(true)
+                    } else {
+                      const err = await res.json().catch(() => ({}))
+                      showMessage('error', err?.detail || 'Failed to fetch character from D&D Beyond')
+                    }
+                  } catch (e) {
+                    showMessage('error', 'Network error - is the backend running?')
+                  } finally {
+                    setBusy(false)
+                  }
+                }}
+              >
+                {busy ? 'Fetching...' : 'Preview from D&D Beyond'}
+              </button>
+              <button
+                className="btn btn-secondary"
+                disabled={busy || !ddbUrl.trim()}
+                onClick={async () => {
+                  if (!ddbUrl.trim()) {
+                    showMessage('error', 'Enter a D&D Beyond character URL or ID first.')
+                    return
+                  }
+                  setBusy(true)
+                  setMessage(null)
+                  try {
+                    const res = await apiFetch('/characters/import/ddb', {
+                      method: 'POST',
+                      body: JSON.stringify({ ddb_url: ddbUrl.trim() })
+                    })
+                    if (res.ok) {
+                      const data = await res.json().catch(() => ({}))
+                      const createdId = typeof data?.character?.id === 'number' ? data.character.id : null
+                      await handleSaved(createdId, 'created')
+                    } else {
+                      const err = await res.json().catch(() => ({}))
+                      showMessage('error', err?.detail || 'Failed to import from D&D Beyond')
+                    }
+                  } catch (e) {
+                    showMessage('error', 'Network error - is the backend running?')
+                  } finally {
+                    setBusy(false)
+                  }
+                }}
+              >
+                Import Directly
+              </button>
+            </div>
+            <p className="muted" style={{ fontSize: 12 }}>
+              Fetches your character directly from the D&amp;D Beyond API. Character must have public sharing enabled.
+            </p>
+          </div>
+        ) : null}
+
 
         {mode === 'ddb-link' ? (
           <div className="stack" style={{ gap: 10 }}>

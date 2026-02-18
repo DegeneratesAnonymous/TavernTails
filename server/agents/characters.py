@@ -1603,6 +1603,116 @@ class CharacterImportLink(BaseModel):
     name: str | None = Field(default=None, description="Optional display name override")
 
 
+class CharacterImportDDB(BaseModel):
+    ddb_url: str = Field(..., min_length=5, description="D&D Beyond character URL or numeric character ID")
+
+
+def _build_character_import_sheet_from_ddb(
+    *,
+    ddb_url: str,
+) -> tuple[str, int, str | None, Dict[str, Any]]:
+    """Fetch a character from the DDB character service API and build an import sheet."""
+    try:
+        from ..tools.parse_ddb_pdf import import_from_ddb
+    except ImportError as exc:
+        raise HTTPException(status_code=500, detail=f"DDB import module unavailable: {exc}") from exc
+
+    try:
+        parsed = import_from_ddb(ddb_url)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    # Build the canonical sheet dict that matches the shape used by the UI
+    def _ability_dict(ab: Any) -> Dict[str, Any]:
+        return {"score": getattr(ab, "score", 10), "modifier": getattr(ab, "modifier", 0)}
+
+    def _skill_dict(sk: Any) -> Dict[str, Any]:
+        return {
+            "name": getattr(sk, "name", ""),
+            "modifier": getattr(sk, "modifier", 0),
+            "proficient": getattr(sk, "proficient", False),
+            "expertise": getattr(sk, "expertise", False),
+        }
+
+    def _feature_dict(ft: Any) -> Dict[str, Any]:
+        return {
+            "name": getattr(ft, "name", ""),
+            "source": getattr(ft, "source", ""),
+            "description": getattr(ft, "description", ""),
+        }
+
+    def _equipment_dict(eq: Any) -> Dict[str, Any]:
+        return {
+            "name": getattr(eq, "name", ""),
+            "quantity": getattr(eq, "quantity", 1),
+            "weight": getattr(eq, "weight", 0.0),
+            "equipped": getattr(eq, "equipped", False),
+            "attuned": getattr(eq, "attuned", False),
+        }
+
+    sheet: Dict[str, Any] = {
+        # Canonical combat stats
+        "stats": {k: v.score for k, v in parsed.abilities.items()},
+        "ac": parsed.armor_class,
+        "hp": {"current": parsed.hp_current, "max": parsed.hp_max, "temp": parsed.hp_temp},
+        "hp_current": parsed.hp_current,
+        "hp_max": parsed.hp_max,
+        "hp_temp": parsed.hp_temp,
+        # Character identity
+        "species": parsed.species,
+        "background": parsed.background,
+        "subclass": parsed.subclass,
+        "experience_points": parsed.experience_points,
+        # Combat
+        "initiative": parsed.initiative,
+        "proficiency_bonus": parsed.proficiency_bonus,
+        "ability_save_dc": parsed.ability_save_dc,
+        "hit_dice": parsed.hit_dice,
+        "heroic_inspiration": parsed.heroic_inspiration,
+        # Speed
+        "speed": {
+            "walk": parsed.speed_walking,
+            "fly": parsed.speed_flying,
+            "swim": parsed.speed_swimming,
+            "climb": parsed.speed_climbing,
+            "burrow": parsed.speed_burrowing,
+        },
+        # Passives
+        "passives": {
+            "perception": parsed.passive_perception,
+            "insight": parsed.passive_insight,
+            "investigation": parsed.passive_investigation,
+        },
+        # Rich data
+        "abilities": {k: _ability_dict(v) for k, v in parsed.abilities.items()},
+        "skills": [_skill_dict(s) for s in parsed.skills],
+        "features": [_feature_dict(f) for f in parsed.features_and_traits],
+        "classFeatures": [_feature_dict(f) for f in parsed.features_and_traits if f.source not in ("Feat",)],
+        "equipment": [_equipment_dict(e) for e in parsed.equipment],
+        "languages": parsed.languages,
+        "armor_proficiencies": parsed.armor_proficiencies,
+        "weapon_proficiencies": parsed.weapon_proficiencies,
+        "tool_proficiencies": parsed.tool_proficiencies,
+        "currencies": parsed.currencies,
+        "multiclass": parsed.multiclass,
+        "story": parsed.story,
+        "portrait_url": None,
+        # Import metadata
+        "import": {
+            "source": "ddb-api",
+            "imported_at": _now_iso(),
+            "ddb_url": parsed.ddb_url,
+            "ddb_character_id": parsed.ddb_character_id,
+            "warnings": parsed.parse_warnings,
+        },
+    }
+
+    safe_level = max(1, min(20, parsed.level))
+    return parsed.name, safe_level, parsed.class_name, sheet
+
+
 @router.get("", summary="List characters for current user")
 def list_characters(current_user=Depends(get_current_user)):
     rows = db.list_characters_for_user(current_user.id)
@@ -1772,6 +1882,32 @@ def import_character_link(payload: CharacterImportLink, current_user=Depends(get
     }
     character = db.create_character(owner_id=current_user.id, name=name, level=1, class_name=None, sheet=sheet)
     return {"character": _serialize(character)}
+
+
+@router.post("/import/ddb", status_code=201, summary="Import a character directly from D&D Beyond API")
+def import_character_ddb(payload: CharacterImportDDB, current_user=Depends(get_current_user)):
+    name, safe_level, class_name, sheet = _build_character_import_sheet_from_ddb(ddb_url=payload.ddb_url)
+    character = db.create_character(
+        owner_id=current_user.id,
+        name=name,
+        level=safe_level,
+        class_name=class_name,
+        sheet=sheet,
+    )
+    return {"character": _serialize(character)}
+
+
+@router.post("/import/ddb/preview", summary="Preview a D&D Beyond character import without creating")
+def preview_import_character_ddb(payload: CharacterImportDDB, current_user=Depends(get_current_user)):
+    name, safe_level, class_name, sheet = _build_character_import_sheet_from_ddb(ddb_url=payload.ddb_url)
+    return {
+        "preview": {
+            "name": name,
+            "level": safe_level,
+            "class_name": class_name,
+            "sheet": sheet,
+        }
+    }
 
 
 @router.put("/{character_id}")
