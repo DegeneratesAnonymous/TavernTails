@@ -6,17 +6,42 @@ in MVP flows, tests, and CI without external dependencies.
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+
+from ..auth import get_current_user
+from . import sessions as sessions_module
 
 router = APIRouter(tags=["notes"])
 
 
 _SESSIONS_BASE = Path(__file__).resolve().parents[1] / "sessions"
+
+
+def _actor_identifier(user) -> str:
+    """Return a normalised, lower-cased email/username for the calling user."""
+    raw: str = getattr(user, "email", "") or getattr(user, "username", "") or str(user)
+    return raw.strip().lower()
+
+
+def _ensure_notes_member(session_id: str, current_user) -> str:
+    """Raise 403 if caller is not a session member; return their identifier."""
+    folder = _SESSIONS_BASE / session_id
+    if not folder.exists():
+        raise HTTPException(status_code=404, detail="Session not found")
+    meta_path = folder / "meta.json"
+    if not meta_path.exists():
+        raise HTTPException(status_code=404, detail="Session not found")
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    identifier = _actor_identifier(current_user)
+    if not sessions_module._user_is_member(meta, identifier):
+        raise HTTPException(status_code=403, detail="Not a member of this session")
+    return identifier
 
 
 def _strip_role_prefix(text: str) -> str:
@@ -94,7 +119,8 @@ class NotesResponse(BaseModel):
 
 
 @router.post("/notes/log", response_model=NotesResponse)
-def log_notes(payload: NotesRequest) -> NotesResponse:
+def log_notes(payload: NotesRequest, current_user=Depends(get_current_user)) -> NotesResponse:
+    _ensure_notes_member(payload.session_id, current_user)
     recap = _generate_recap(payload.notes)
     _append_to_session_notes(payload.session_id, payload.notes, recap)
     return NotesResponse(session_id=payload.session_id, notes_logged=len(payload.notes), recap=recap)
