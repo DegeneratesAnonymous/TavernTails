@@ -6,14 +6,13 @@ Legacy path:  parse_ddb_pdf(path) — extracts character ID from the PDF filenam
 """
 from __future__ import annotations
 
+import json
 import math
 import re
 import urllib.request
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-
 
 # ---------------------------------------------------------------------------
 # Data classes
@@ -577,7 +576,7 @@ def import_from_ddb(url_or_id: str) -> ParsedCharacterSheet:
     return sheet
 
 
-def parse_ddb_pdf(path: "str | Path") -> ParsedCharacterSheet:
+def parse_ddb_pdf(path: str | Path) -> ParsedCharacterSheet:
     """
     Legacy entry point: extract a DDB character ID from a PDF filename and call import_from_ddb.
 
