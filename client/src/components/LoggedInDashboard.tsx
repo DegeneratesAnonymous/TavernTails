@@ -556,48 +556,52 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     fetchCharacters()
   },[fetchCampaigns, fetchCharacters, profile])
 
+  // Single source of truth: whenever activeCampaignId or the campaigns list changes,
+  // align activeSession to a session that actually belongs to the active campaign.
+  // If there are no sessions yet, auto-create one then align.
+  // This effect is the ONLY place that writes activeSession on a campaign change —
+  // handleSetActiveCampaignId deliberately only writes activeCampaignId and lets
+  // this effect handle the rest so the two paths can't race.
   useEffect(()=>{
-    if(!activeCampaignId) return
+    if(!activeCampaignId) {
+      setActiveSession(null)
+      return
+    }
     const nextCampaign = campaigns.find(c => String(c.id) === String(activeCampaignId))
     if(!nextCampaign) return
     const sessionsList: Array<any> = nextCampaign.sessions || []
+
+    // If activeSession already belongs to this campaign keep it — no thrash.
+    if (activeSession && sessionsList.some(s => String(s.id) === activeSession)) return
+
     if(sessionsList.length > 0){
-      const firstId = String(sessionsList[0].id)
-      // IMPORTANT: do not carry sessions across campaigns.
-      // When the active campaign changes, always align activeSession to that campaign.
-      setActiveSession(firstId)
+      setActiveSession(String(sessionsList[0].id))
     } else {
+      // No sessions yet — auto-create one asynchronously.
       setActiveSession(null)
+      apiFetch(`/campaigns/${activeCampaignId}/create_session`, { method: 'POST' })
+        .then(async res => {
+          if (!res.ok) return
+          const data = await res.json().catch(() => ({} as any))
+          const sid = data?.session_id ? String(data.session_id) : ''
+          if (sid) {
+            setActiveSession(sid)
+            if (data?.meta) setSessionMetaById(prev => ({ ...prev, [sid]: data.meta }))
+            await fetchCampaigns()
+          }
+        })
+        .catch(() => { /* non-fatal */ })
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   },[activeCampaignId, campaigns])
 
-  const handleSetActiveCampaignId = useCallback(async (id: string | null) => {
+  const handleSetActiveCampaignId = useCallback((id: string | null) => {
+    // Only update the campaign ID. The useEffect above owns session alignment.
     setActiveCampaignId(id)
+    // Eagerly clear the session so stale sessions from the previous campaign
+    // are never briefly visible while the effect re-runs.
     setActiveSession(null)
-    if (!id) return
-
-    // If the campaign has no sessions yet, auto-create one so the user doesn't have to.
-    const campaign = campaigns.find(c => String(c.id) === String(id))
-    const sessionsList: Array<any> = (campaign?.sessions || [])
-    if (sessionsList.length > 0) {
-      setActiveSession(String(sessionsList[0].id))
-      return
-    }
-
-    try {
-      const res = await apiFetch(`/campaigns/${id}/create_session`, { method: 'POST' })
-      if (!res.ok) return
-      const data = await res.json().catch(() => ({} as any))
-      const sid = data?.session_id ? String(data.session_id) : ''
-      if (sid) {
-        setActiveSession(sid)
-        if (data?.meta) setSessionMetaById(prev => ({ ...prev, [sid]: data.meta }))
-        await fetchCampaigns()
-      }
-    } catch (e) {
-      // ignore; user can still create a session via checklist
-    }
-  }, [campaigns, fetchCampaigns])
+  }, [])
 
   useEffect(()=>{
     async function ensureSessionMetas(){
