@@ -47,6 +47,10 @@ export default function DocumentsPanel({sessionId}: Props){
   const [category, setCategory] = useState<'core' | 'flavor'>('core')
   const [visibility, setVisibility] = useState<'shared' | 'hidden'>('shared')
   const [isHost, setIsHost] = useState(false)
+  const [auditLog, setAuditLog] = useState<Array<Record<string, any>>>([])
+  const [auditLoading, setAuditLoading] = useState(false)
+  const [auditError, setAuditError] = useState<string | null>(null)
+  const [showAuditLog, setShowAuditLog] = useState(false)
   const [uploads, setUploads] = useState<UploadEntry[]>([])
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [refs, setRefs] = useState<Array<{id:string, meta:any}>>([])
@@ -438,6 +442,25 @@ export default function DocumentsPanel({sessionId}: Props){
     }catch(err:any){ alert(err?.message || 'Reindex failed') }
   }, [loadReferences])
 
+  const loadAuditLog = useCallback(async () => {
+    if (!sessionId || !isHost) return
+    setAuditLoading(true)
+    setAuditError(null)
+    try {
+      const res = await apiFetch(`/documents/${sessionId}/audit`)
+      if (!res.ok) {
+        const d = await res.json().catch(() => null)
+        throw new Error(d?.detail || `Failed to load audit log (${res.status})`)
+      }
+      const data = await res.json()
+      setAuditLog(Array.isArray(data?.entries) ? data.entries : [])
+    } catch (err: any) {
+      setAuditError(err?.message || 'Could not load audit log')
+    } finally {
+      setAuditLoading(false)
+    }
+  }, [sessionId, isHost])
+
   const sortedDocs = useMemo(() => {
     return [...docs].sort((a,b)=> new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
   },[docs])
@@ -451,7 +474,51 @@ export default function DocumentsPanel({sessionId}: Props){
 
   return (
     <div className="docsPanel">
-      <h3 className="docsPanel__title">Session Docs</h3>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+        <h3 className="docsPanel__title" style={{ margin: 0 }}>Session Docs</h3>
+        {isHost && hasSession && (
+          <button
+            type="button"
+            className="docsPanel__tinyBtn"
+            style={{ marginLeft: 'auto' }}
+            onClick={() => {
+              setShowAuditLog(v => {
+                if (!v) loadAuditLog()
+                return !v
+              })
+            }}
+            title="Toggle access log"
+            aria-label="Toggle access log"
+          >
+            {showAuditLog ? 'Hide Log' : 'Access Log'}
+          </button>
+        )}
+      </div>
+      {isHost && showAuditLog && (
+        <div className="docsPanel__auditLog">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <strong style={{ fontSize: 13 }}>Access Log</strong>
+            <button type="button" className="docsPanel__tinyBtn" onClick={loadAuditLog} disabled={auditLoading}>
+              {auditLoading ? 'Loading…' : 'Refresh'}
+            </button>
+          </div>
+          {auditError && <div className="docsPanel__error">{auditError}</div>}
+          {!auditLoading && auditLog.length === 0 && <div className="docsPanel__hint">No audit entries yet.</div>}
+          <div style={{ maxHeight: 200, overflow: 'auto' }}>
+            {auditLog.slice().reverse().map((entry, i) => (
+              <div key={i} className="docsPanel__auditRow">
+                <span className="docsPanel__auditTs">{entry.ts ? new Date(entry.ts).toLocaleString() : '—'}</span>
+                <span className={`docsPanel__auditAction ${entry.ok === false ? 'docsPanel__auditAction--denied' : ''}`}>
+                  {entry.action}
+                </span>
+                {entry.actor && <span className="docsPanel__auditActor">{entry.actor}</span>}
+                {entry.doc_id && <span className="docsPanel__auditDoc">{entry.doc_id}</span>}
+                {entry.detail && <span className="docsPanel__auditDetail">{entry.detail}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {!hasSession && <div className="docsPanel__hint">Open a session to create shared documents.</div>}
       {error && <div className="docsPanel__error">{error}</div>}
       <div className="docsPanel__list">

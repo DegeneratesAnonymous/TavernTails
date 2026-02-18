@@ -197,6 +197,28 @@ async def delete_document(session_id: str, doc_id: str, current_user=Depends(get
     return {"ok": True}
 
 
+@router.get("/{session_id}/audit")
+def get_audit_log(session_id: str, current_user=Depends(get_current_user)):
+    """Return the document access audit log for a session. Host-only."""
+    meta, identifier, is_host = _ensure_session_member(session_id, current_user)
+    if not is_host:
+        _audit(session_id, identifier, action="documents.audit_denied", ok=False, detail="not_host")
+        raise HTTPException(status_code=403, detail="Audit log requires host role")
+    path = _audit_path(session_id)
+    entries: list[dict] = []
+    if path.exists():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entries.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    _audit(session_id, identifier, action="documents.audit_read", ok=True)
+    return {"session_id": session_id, "entries": entries}
+
+
 @router.get("/{session_id}/{doc_id}", response_model=DocumentDetail)
 async def get_document(session_id: str, doc_id: str, current_user=Depends(get_current_user)):
     _, identifier, is_host = _ensure_session_member(session_id, current_user)

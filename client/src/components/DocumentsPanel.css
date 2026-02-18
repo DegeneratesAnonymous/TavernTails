@@ -263,6 +263,31 @@
   font-size:11px;
 }
 
+/* Audit log */
+.docsPanel__auditLog{
+  background: rgba(0,0,0,0.18);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+.docsPanel__auditRow{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.docsPanel__auditRow:last-child{ border-bottom: none; }
+.docsPanel__auditTs{ color: #7A9198; min-width: 130px; font-size: 11px; }
+.docsPanel__auditAction{ font-weight: 600; color: #AD885F; }
+.docsPanel__auditAction--denied{ color: #E09A4F; }
+.docsPanel__auditActor{ color: #aaa; font-size: 11px; }
+.docsPanel__auditDoc{ color: #666; font-size: 11px; font-family: monospace; }
+.docsPanel__auditDetail{ color: #888; font-style: italic; font-size: 11px; }
+
 @media (max-width: 720px){
   .docsPanel__viewerGrid{
     flex-direction:column;
