@@ -1,5 +1,5 @@
 # TavernTAIls Progress Tracker
-_Last updated: 2026-02-08 by GitHub Copilot_
+_Last updated: 2026-02-17 by GitHub Copilot_
 
 ## Where Things Stand
 - **Sprint Focus:** Finish Sprint 1 deliverables (chat upgrades, turn queue, agent stubs, documentation).
@@ -12,6 +12,11 @@ _Last updated: 2026-02-08 by GitHub Copilot_
 - The biggest remaining “make it real” items are character CRUD/imports and a clearer campaign→session→play flow (hidden-doc RBAC + access auditing is implemented).
 
 ## Completed Recently
+0. **WO-007: Contract Tests Baseline merged (Feb 17)**
+   - PR #19 merged (clean re-submission after PRs #13/#18 had unresolvable grafted history).
+   - Added `server/tests/contracts/` with 6 contract tests covering Narrative, Scene, Rolls, NPC, Suggestions, and Turns endpoints.
+   - Added `.github/workflows/contract-tests.yml` CI job; `requirements-dev.txt`; and supporting dev-agent/design-decision docs.
+   - All 6 tests pass; CI will now enforce contract shapes on every PR.
 0. **Spell List Format Fallback Parser (Feb 8)**
    - Added detection for spell names in simple list format (after CANTRIPS/level headers) when full table not found; filtered widget metadata extraction.
 0. **Spell Import Table Detection Improved (Feb 8)**
