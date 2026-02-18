@@ -4,8 +4,26 @@ import pytest
 from fastapi.testclient import TestClient
 
 import server.main as main
+from server import db
+from server.agents import sessions as sessions_module
+from server.auth import create_access_token
 
 from . import agent_payloads as payloads
+
+
+def _ensure_user(email: str) -> None:
+    existing = db.get_user_by_identifier(email)
+    if existing:
+        if not existing.verified:
+            db.verify_user(email, existing.verification_token or "")
+        return
+    user = db.create_user(
+        email=email,
+        password="secret",
+        username=email.split("@")[0],
+        profile={"name": email.split("@")[0], "email": email},
+    )
+    db.verify_user(email, user.verification_token)
 
 
 @pytest.fixture()
@@ -33,15 +51,20 @@ def test_storyboard_agent_contract(client: TestClient):
 
 
 def test_notes_agent_contract(client: TestClient):
-    resp = client.post("/notes/log", json=payloads.NOTES_REQUEST)
+    owner = "contract-notes-host@example.com"
+    _ensure_user(owner)
+    sid, _ = sessions_module.create_session_folder("Contract Notes Session", owner)
+    headers = {"Authorization": f"Bearer {create_access_token(owner)}"}
+    payload = {**payloads.NOTES_REQUEST, "session_id": sid}
+    resp = client.post("/notes/log", json=payload, headers=headers)
     assert resp.status_code == 200, resp.text
     data = resp.json()
-    assert data["session_id"] == payloads.NOTES_REQUEST["session_id"]
-    assert data["notes_logged"] == len(payloads.NOTES_REQUEST["notes"])
+    assert data["session_id"] == sid
+    assert data["notes_logged"] == len(payload["notes"])
     # Recap is deterministic and should reference the submitted notes.
     recap = data["recap"]
     assert isinstance(recap, str)
-    assert payloads.NOTES_REQUEST["notes"][-1] in recap
+    assert payload["notes"][-1] in recap
 
 
 def test_image_agent_contract(client: TestClient):

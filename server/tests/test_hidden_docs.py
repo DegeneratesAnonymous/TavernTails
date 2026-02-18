@@ -76,6 +76,89 @@ def test_hidden_docs_are_host_only(tmp_path):
     assert audit_path.read_text(encoding="utf-8").strip()
 
 
+def test_hidden_doc_delete_rbac():
+    """Host can delete hidden docs; non-host members cannot."""
+    client = _client()
+    owner = "del-host@example.com"
+    other = "del-nonhost@example.com"
+    _ensure_user(owner)
+    _ensure_user(other)
+
+    sid, _ = sessions_module.create_session_folder("Delete RBAC Session", owner)
+    import json as _json
+    meta_path = sessions_module.BASE / sid / "meta.json"
+    data = _json.loads(meta_path.read_text())
+    data["invites"] = [other]
+    meta_path.write_text(_json.dumps(data))
+
+    owner_headers = {"Authorization": f"Bearer {create_access_token(owner)}"}
+    other_headers = {"Authorization": f"Bearer {create_access_token(other)}"}
+
+    # create a hidden doc as host
+    resp = client.post(
+        f"/documents/{sid}",
+        headers=owner_headers,
+        json={"name": "Deletable", "content": "bye", "visibility": "hidden"},
+    )
+    assert resp.status_code == 201, resp.text
+    doc_id = resp.json()["id"]
+
+    # non-host cannot delete it
+    resp = client.delete(f"/documents/{sid}/{doc_id}", headers=other_headers)
+    assert resp.status_code == 403, resp.text
+
+    # host can delete it
+    resp = client.delete(f"/documents/{sid}/{doc_id}", headers=owner_headers)
+    assert resp.status_code == 200, resp.text
+
+
+def test_audit_entries_contain_expected_fields():
+    """Audit entries have ok, action, actor, ts; denied actions also logged."""
+    client = _client()
+    owner = "audit-fields-host@example.com"
+    other = "audit-fields-nonhost@example.com"
+    _ensure_user(owner)
+    _ensure_user(other)
+
+    sid, _ = sessions_module.create_session_folder("Audit Fields Session", owner)
+    import json as _json
+    meta_path = sessions_module.BASE / sid / "meta.json"
+    data = _json.loads(meta_path.read_text())
+    data["invites"] = [other]
+    meta_path.write_text(_json.dumps(data))
+
+    owner_headers = {"Authorization": f"Bearer {create_access_token(owner)}"}
+    other_headers = {"Authorization": f"Bearer {create_access_token(other)}"}
+
+    # host creates hidden doc
+    resp = client.post(
+        f"/documents/{sid}",
+        headers=owner_headers,
+        json={"name": "AuditDoc", "content": "x", "visibility": "hidden"},
+    )
+    assert resp.status_code == 201
+    doc_id = resp.json()["id"]
+
+    # non-host tries to read it (should be denied)
+    client.get(f"/documents/{sid}/{doc_id}", headers=other_headers)
+
+    # read audit log as host
+    resp = client.get(f"/documents/{sid}/audit", headers=owner_headers)
+    assert resp.status_code == 200
+    entries = resp.json()["entries"]
+    assert len(entries) > 0
+    actions = {e["action"] for e in entries}
+    # should have at least one create and one denied-read
+    assert "documents.create" in actions
+    assert "documents.read" in actions or "documents.hidden_denied" in actions
+    for entry in entries:
+        assert "ok" in entry
+        assert isinstance(entry["ok"], bool)
+        assert "ts" in entry
+        assert "actor" in entry
+        assert "action" in entry
+
+
 def test_audit_endpoint_host_only():
     """GET /documents/{session_id}/audit is host-only."""
     client = _client()
