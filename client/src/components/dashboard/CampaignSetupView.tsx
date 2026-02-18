@@ -66,7 +66,17 @@ type CampaignSettings = {
   ruleset: string
   starting_level: number
   house_rules: string
-  player_run_mode: boolean
+}
+
+type Player = {
+  id: number
+  username: string | null
+  email: string | null
+}
+
+type GMAssignment = {
+  gm_user_id: number | null
+  gm_mode: string
 }
 
 type Props = {
@@ -93,7 +103,6 @@ const DEFAULT_SETTINGS: CampaignSettings = {
   ruleset: '5e',
   starting_level: 1,
   house_rules: '',
-  player_run_mode: false,
 }
 
 function asString(v: any): string {
@@ -127,6 +136,10 @@ export default function CampaignSetupView({
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{ kind: 'info' | 'error'; text: string } | null>(null)
+  
+  const [players, setPlayers] = useState<Player[]>([])
+  const [gmAssignment, setGmAssignment] = useState<GMAssignment>({ gm_user_id: null, gm_mode: 'ai' })
+  const [loadingGM, setLoadingGM] = useState(false)
 
   const canEdit = Boolean(activeCampaignId)
 
@@ -165,7 +178,6 @@ export default function CampaignSetupView({
           ruleset: asString(s?.ruleset) || DEFAULT_SETTINGS.ruleset,
           starting_level: Math.max(1, Math.min(20, asNumber(s?.starting_level, DEFAULT_SETTINGS.starting_level))),
           house_rules: asString(s?.house_rules),
-          player_run_mode: Boolean(s?.player_run_mode),
         }
         if (!canceled) setSettings(next)
       } catch (e: any) {
@@ -183,6 +195,59 @@ export default function CampaignSetupView({
     }
   }, [activeCampaignId])
 
+  // Load players for the campaign
+  useEffect(() => {
+    let canceled = false
+    async function loadPlayers() {
+      if (!activeCampaignId) {
+        setPlayers([])
+        return
+      }
+      try {
+        const res = await apiFetch(`/campaigns/${activeCampaignId}/players`)
+        if (!res.ok) return
+        const data = await res.json()
+        if (!canceled && data?.players) {
+          setPlayers(data.players)
+        }
+      } catch (e) {
+        if (!canceled) setPlayers([])
+      }
+    }
+    loadPlayers()
+    return () => {
+      canceled = true
+    }
+  }, [activeCampaignId])
+
+  // Load GM assignment
+  useEffect(() => {
+    let canceled = false
+    async function loadGM() {
+      if (!activeCampaignId) {
+        setGmAssignment({ gm_user_id: null, gm_mode: 'ai' })
+        return
+      }
+      try {
+        const res = await apiFetch(`/campaigns/${activeCampaignId}/gm`)
+        if (!res.ok) return
+        const data = await res.json()
+        if (!canceled && data) {
+          setGmAssignment({
+            gm_user_id: data.gm_user_id,
+            gm_mode: data.gm_mode || 'ai',
+          })
+        }
+      } catch (e) {
+        if (!canceled) setGmAssignment({ gm_user_id: null, gm_mode: 'ai' })
+      }
+    }
+    loadGM()
+    return () => {
+      canceled = true
+    }
+  }, [activeCampaignId])
+
   const title = useMemo(() => {
     if (viewMode === 'list' || !activeCampaignId) return 'Manage Campaigns'
     const base = asString(activeCampaign?.name) || activeCampaignId
@@ -193,6 +258,58 @@ export default function CampaignSetupView({
   const openCampaignView = (campaignId: string, mode: 'settings' | 'documents' | 'players') => {
     onSelectCampaign(campaignId)
     setViewMode(mode)
+  }
+
+  async function handleGMChange(selectedValue: string) {
+    if (!activeCampaignId) return
+    
+    setLoadingGM(true)
+    setMessage(null)
+    try {
+      const gm_user_id = selectedValue === 'ai' ? null : Number(selectedValue)
+      const res = await apiFetch(`/campaigns/${activeCampaignId}/gm`, {
+        method: 'PUT',
+        body: JSON.stringify({ gm_user_id }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(err?.detail || 'Failed to assign GM')
+      }
+      const data = await res.json()
+      setGmAssignment({
+        gm_user_id: data.gm_user_id,
+        gm_mode: data.gm_mode || 'ai',
+      })
+      setMessage({ kind: 'info', text: 'GM assignment updated.' })
+    } catch (e: any) {
+      setMessage({ kind: 'error', text: e?.message || 'Failed to assign GM' })
+    } finally {
+      setLoadingGM(false)
+    }
+  }
+
+  async function handleGenerateContent(type: 'npc' | 'location' | 'loot') {
+    if (!activeCampaignId) return
+    
+    setMessage(null)
+    try {
+      const endpoint = `/generate/${type}`
+      const res = await apiFetch(endpoint, {
+        method: 'POST',
+        body: JSON.stringify({ campaign_id: activeCampaignId }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(err?.detail || `Failed to generate ${type}`)
+      }
+      const data = await res.json()
+      // For now, just show a success message
+      // In the future, this could open a modal with the generated content
+      const itemName = data[type]?.name || 'Content'
+      setMessage({ kind: 'info', text: `Generated: ${itemName}` })
+    } catch (e: any) {
+      setMessage({ kind: 'error', text: e?.message || `Failed to generate ${type}` })
+    }
   }
 
   async function onSave() {
@@ -384,17 +501,29 @@ export default function CampaignSetupView({
                 <div className="stack" style={{ gap: 10 }}>
                   <div className="muted">World & game settings</div>
 
-                  <label className="row" style={{ gap: 8, alignItems: 'center', userSelect: 'none' }}>
-                    <input
-                      type="checkbox"
-                      checked={settings.player_run_mode}
-                      onChange={(e) => setSettings((prev) => ({ ...prev, player_run_mode: e.target.checked }))}
-                      disabled={!canEdit}
-                    />
-                    <span>
-                      Player‑run session mode (AI optional). Keeps notes/NPC organization active.
-                    </span>
-                  </label>
+                  <div className="stack" style={{ gap: 6 }}>
+                    <label className="muted" style={{ fontSize: 13 }}>
+                      Game Master
+                    </label>
+                    <select
+                      className="input"
+                      value={gmAssignment.gm_user_id?.toString() || 'ai'}
+                      onChange={(e) => handleGMChange(e.target.value)}
+                      disabled={!canEdit || loadingGM}
+                    >
+                      <option value="ai">AI Game Master</option>
+                      {players.map((player) => (
+                        <option key={player.id} value={player.id.toString()}>
+                          {player.username || player.email || `Player ${player.id}`}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="muted" style={{ fontSize: 12 }}>
+                      {gmAssignment.gm_mode === 'ai' 
+                        ? 'AI will actively narrate and drive the campaign.' 
+                        : 'Selected player will run the session. AI provides note-taking and organization.'}
+                    </div>
+                  </div>
 
                   <input
                     className="input"
@@ -454,6 +583,43 @@ export default function CampaignSetupView({
                   </div>
                 </div>
               </div>
+
+              {gmAssignment.gm_mode === 'player' && (
+                <div className="card card-pad" style={{ background: 'var(--surface-dark)' }}>
+                  <div className="stack" style={{ gap: 10 }}>
+                    <div className="muted">GM Generative Tools</div>
+                    <div className="muted" style={{ fontSize: 13 }}>
+                      Generate content that fits your campaign setting and tone.
+                    </div>
+                    <div className="row-wrap" style={{ gap: 8 }}>
+                      <button 
+                        className="btn btn-secondary" 
+                        type="button"
+                        onClick={() => handleGenerateContent('npc')}
+                        disabled={!canEdit}
+                      >
+                        Generate NPC
+                      </button>
+                      <button 
+                        className="btn btn-secondary" 
+                        type="button"
+                        onClick={() => handleGenerateContent('location')}
+                        disabled={!canEdit}
+                      >
+                        Generate Location
+                      </button>
+                      <button 
+                        className="btn btn-secondary" 
+                        type="button"
+                        onClick={() => handleGenerateContent('loot')}
+                        disabled={!canEdit}
+                      >
+                        Generate Loot
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </>
           ) : null}
 

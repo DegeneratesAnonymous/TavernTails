@@ -41,6 +41,8 @@ class Campaign(SQLModel, table=True):
     description: str | None = None
     created_at: str | None = None
     archived: bool = Field(default=False)
+    gm_user_id: int | None = Field(default=None, foreign_key="user.id")
+    gm_mode: str = Field(default="ai")
     metadata_json: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
 
 

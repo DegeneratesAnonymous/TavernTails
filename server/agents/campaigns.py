@@ -37,6 +37,10 @@ class CampaignUpdate(BaseModel):
     archived: bool | None = None
 
 
+class GMAssignment(BaseModel):
+    gm_user_id: int | None = None  # None or user ID for player GM, treated as "AI" if None
+
+
 @router.post('', status_code=201)
 def create_campaign(req: CampaignCreate, current_user=Depends(get_current_user)):
     owner_id = _require_user_id(current_user)
@@ -195,3 +199,85 @@ def put_campaign_settings(
     meta = updated.metadata_json or {}
     out = meta.get('settings') if isinstance(meta, dict) else {}
     return {'settings': out if isinstance(out, dict) else {}}
+
+
+@router.put('/{campaign_id}/gm')
+def assign_gm(
+    campaign_id: str,
+    assignment: GMAssignment,
+    current_user=Depends(get_current_user),
+):
+    """Assign a GM to the campaign. Pass gm_user_id=null for AI GM, or a user ID for player GM."""
+    owner_id = _require_user_id(current_user)
+    c = db.get_campaign_by_id(campaign_id)
+    if not c:
+        raise HTTPException(status_code=404, detail='Campaign not found')
+    if c.owner_id != owner_id:
+        raise HTTPException(status_code=403, detail='Forbidden')
+
+    # Update GM assignment in database
+    from sqlmodel import Session
+    with Session(db.engine) as session:
+        from sqlmodel import select
+        stmt = select(db.Campaign).where(db.Campaign.id == campaign_id)
+        camp = session.exec(stmt).first()
+        if not camp:
+            raise HTTPException(status_code=404, detail='Campaign not found')
+
+        camp.gm_user_id = assignment.gm_user_id
+        camp.gm_mode = "player" if assignment.gm_user_id else "ai"
+
+        session.add(camp)
+        session.commit()
+        session.refresh(camp)
+
+        return {
+            'campaign_id': campaign_id,
+            'gm_user_id': camp.gm_user_id,
+            'gm_mode': camp.gm_mode,
+        }
+
+
+@router.get('/{campaign_id}/gm')
+def get_gm_assignment(campaign_id: str, current_user=Depends(get_current_user)):
+    """Get the current GM assignment for a campaign."""
+    owner_id = _require_user_id(current_user)
+    c = db.get_campaign_by_id(campaign_id)
+    if not c:
+        raise HTTPException(status_code=404, detail='Campaign not found')
+    if c.owner_id != owner_id:
+        raise HTTPException(status_code=403, detail='Forbidden')
+
+    return {
+        'campaign_id': campaign_id,
+        'gm_user_id': c.gm_user_id,
+        'gm_mode': c.gm_mode,
+    }
+
+
+@router.get('/{campaign_id}/players')
+def get_campaign_players(campaign_id: str, current_user=Depends(get_current_user)):
+    """Get list of players in a campaign (owner + invites for now)."""
+    owner_id = _require_user_id(current_user)
+    c = db.get_campaign_by_id(campaign_id)
+    if not c:
+        raise HTTPException(status_code=404, detail='Campaign not found')
+    if c.owner_id != owner_id:
+        raise HTTPException(status_code=403, detail='Forbidden')
+
+    # For now, return owner as the only player
+    # In the future, this should include invited players from metadata
+    from sqlmodel import Session, select
+    with Session(db.engine) as session:
+        stmt = select(db.User).where(db.User.id == c.owner_id)
+        owner = session.exec(stmt).first()
+        if not owner:
+            return {'players': []}
+
+        players = [{
+            'id': owner.id,
+            'username': owner.username,
+            'email': owner.email,
+        }]
+
+        return {'players': players}
