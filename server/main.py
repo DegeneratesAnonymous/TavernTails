@@ -17,6 +17,7 @@ from .agents.characters import router as characters_router
 from .agents.chat import router as chat_router
 from .agents.content import router as content_router
 from .agents.documents import router as documents_router
+from .agents.generate import router as generate_router
 from .agents.image import router as image_router
 from .agents.narrative import router as narrative_router
 from .agents.notes import router as notes_router
@@ -124,6 +125,7 @@ app.include_router(content_router)
 app.include_router(sessions_router)
 app.include_router(characters_router)
 app.include_router(campaigns_router)
+app.include_router(generate_router)
 app.include_router(rolls_router)
 app.include_router(chat_router)
 app.include_router(storyboard_router)
