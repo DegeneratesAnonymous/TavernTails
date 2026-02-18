@@ -214,7 +214,7 @@ def assign_gm(
         raise HTTPException(status_code=404, detail='Campaign not found')
     if c.owner_id != owner_id:
         raise HTTPException(status_code=403, detail='Forbidden')
-    
+
     # Update GM assignment in database
     from sqlmodel import Session
     with Session(db.engine) as session:
@@ -223,14 +223,14 @@ def assign_gm(
         camp = session.exec(stmt).first()
         if not camp:
             raise HTTPException(status_code=404, detail='Campaign not found')
-        
+
         camp.gm_user_id = assignment.gm_user_id
         camp.gm_mode = "player" if assignment.gm_user_id else "ai"
-        
+
         session.add(camp)
         session.commit()
         session.refresh(camp)
-        
+
         return {
             'campaign_id': campaign_id,
             'gm_user_id': camp.gm_user_id,
@@ -247,7 +247,7 @@ def get_gm_assignment(campaign_id: str, current_user=Depends(get_current_user)):
         raise HTTPException(status_code=404, detail='Campaign not found')
     if c.owner_id != owner_id:
         raise HTTPException(status_code=403, detail='Forbidden')
-    
+
     return {
         'campaign_id': campaign_id,
         'gm_user_id': c.gm_user_id,
@@ -264,7 +264,7 @@ def get_campaign_players(campaign_id: str, current_user=Depends(get_current_user
         raise HTTPException(status_code=404, detail='Campaign not found')
     if c.owner_id != owner_id:
         raise HTTPException(status_code=403, detail='Forbidden')
-    
+
     # For now, return owner as the only player
     # In the future, this should include invited players from metadata
     from sqlmodel import Session, select
@@ -273,11 +273,11 @@ def get_campaign_players(campaign_id: str, current_user=Depends(get_current_user
         owner = session.exec(stmt).first()
         if not owner:
             return {'players': []}
-        
+
         players = [{
             'id': owner.id,
             'username': owner.username,
             'email': owner.email,
         }]
-        
+
         return {'players': players}

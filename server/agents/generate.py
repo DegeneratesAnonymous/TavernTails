@@ -46,17 +46,17 @@ class GenerateLootRequest(GenerateRequest):
 def generate_npc(req: GenerateNPCRequest, current_user=Depends(get_current_user)):
     """Generate an NPC with campaign context."""
     user_id = _require_user_id(current_user)
-    
+
     # Get campaign to verify ownership and check mode
     campaign = db.get_campaign_by_id(req.campaign_id)
     if not campaign:
         raise HTTPException(status_code=404, detail='Campaign not found')
     if campaign.owner_id != user_id:
         raise HTTPException(status_code=403, detail='Forbidden')
-    
+
     # Get campaign settings for context
     settings = db.get_campaign_settings(req.campaign_id, user_id) or {}
-    
+
     # Build context for generation
     context = {
         'world_name': settings.get('world_name', ''),
@@ -67,7 +67,7 @@ def generate_npc(req: GenerateNPCRequest, current_user=Depends(get_current_user)
         'setting': req.setting or '',
         **(req.context or {}),
     }
-    
+
     # TODO: Integrate with LLM to generate NPC based on context
     # For now, return a placeholder structure
     npc = {
@@ -80,7 +80,7 @@ def generate_npc(req: GenerateNPCRequest, current_user=Depends(get_current_user)
             'ruleset': settings.get('ruleset', '5e'),
         },
     }
-    
+
     return {'npc': npc, 'campaign_id': req.campaign_id}
 
 
@@ -88,17 +88,17 @@ def generate_npc(req: GenerateNPCRequest, current_user=Depends(get_current_user)
 def generate_location(req: GenerateLocationRequest, current_user=Depends(get_current_user)):
     """Generate a location with campaign context."""
     user_id = _require_user_id(current_user)
-    
+
     # Get campaign to verify ownership and check mode
     campaign = db.get_campaign_by_id(req.campaign_id)
     if not campaign:
         raise HTTPException(status_code=404, detail='Campaign not found')
     if campaign.owner_id != user_id:
         raise HTTPException(status_code=403, detail='Forbidden')
-    
+
     # Get campaign settings for context
     settings = db.get_campaign_settings(req.campaign_id, user_id) or {}
-    
+
     # Build context for generation
     context = {
         'world_name': settings.get('world_name', ''),
@@ -108,7 +108,7 @@ def generate_location(req: GenerateLocationRequest, current_user=Depends(get_cur
         'mood': req.mood or '',
         **(req.context or {}),
     }
-    
+
     # TODO: Integrate with LLM to generate location based on context
     # For now, return a placeholder structure
     location = {
@@ -118,7 +118,7 @@ def generate_location(req: GenerateLocationRequest, current_user=Depends(get_cur
         'mood': req.mood or settings.get('tone', ''),
         'context': context,
     }
-    
+
     return {'location': location, 'campaign_id': req.campaign_id}
 
 
@@ -126,17 +126,17 @@ def generate_location(req: GenerateLocationRequest, current_user=Depends(get_cur
 def generate_loot(req: GenerateLootRequest, current_user=Depends(get_current_user)):
     """Generate loot/items with campaign context."""
     user_id = _require_user_id(current_user)
-    
+
     # Get campaign to verify ownership and check mode
     campaign = db.get_campaign_by_id(req.campaign_id)
     if not campaign:
         raise HTTPException(status_code=404, detail='Campaign not found')
     if campaign.owner_id != user_id:
         raise HTTPException(status_code=403, detail='Forbidden')
-    
+
     # Get campaign settings for context
     settings = db.get_campaign_settings(req.campaign_id, user_id) or {}
-    
+
     # Build context for generation
     context = {
         'world_name': settings.get('world_name', ''),
@@ -147,7 +147,7 @@ def generate_loot(req: GenerateLootRequest, current_user=Depends(get_current_use
         'loot_type': req.loot_type or 'treasure',
         **(req.context or {}),
     }
-    
+
     # TODO: Integrate with LLM to generate loot based on context
     # For now, return a placeholder structure
     loot = {
@@ -160,5 +160,5 @@ def generate_loot(req: GenerateLootRequest, current_user=Depends(get_current_use
         'context': context,
         'ruleset': settings.get('ruleset', '5e'),
     }
-    
+
     return {'loot': loot, 'campaign_id': req.campaign_id}
