@@ -66,7 +66,6 @@ type CampaignSettings = {
   ruleset: string
   starting_level: number
   house_rules: string
-  player_run_mode: boolean
 }
 
 type Player = {
@@ -104,7 +103,6 @@ const DEFAULT_SETTINGS: CampaignSettings = {
   ruleset: '5e',
   starting_level: 1,
   house_rules: '',
-  player_run_mode: false,
 }
 
 function asString(v: any): string {
@@ -180,7 +178,6 @@ export default function CampaignSetupView({
           ruleset: asString(s?.ruleset) || DEFAULT_SETTINGS.ruleset,
           starting_level: Math.max(1, Math.min(20, asNumber(s?.starting_level, DEFAULT_SETTINGS.starting_level))),
           house_rules: asString(s?.house_rules),
-          player_run_mode: Boolean(s?.player_run_mode),
         }
         if (!canceled) setSettings(next)
       } catch (e: any) {
@@ -503,18 +500,6 @@ export default function CampaignSetupView({
               <div className="card card-pad" style={{ opacity: loading ? 0.7 : 1, background: 'var(--surface-dark)' }}>
                 <div className="stack" style={{ gap: 10 }}>
                   <div className="muted">World & game settings</div>
-
-                  <label className="row" style={{ gap: 8, alignItems: 'center', userSelect: 'none' }}>
-                    <input
-                      type="checkbox"
-                      checked={settings.player_run_mode}
-                      onChange={(e) => setSettings((prev) => ({ ...prev, player_run_mode: e.target.checked }))}
-                      disabled={!canEdit}
-                    />
-                    <span>
-                      Player‑run session mode (AI optional). Keeps notes/NPC organization active.
-                    </span>
-                  </label>
 
                   <div className="stack" style={{ gap: 6 }}>
                     <label className="muted" style={{ fontSize: 13 }}>
