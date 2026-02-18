@@ -56,11 +56,19 @@ def create_campaign(req: CampaignCreate, current_user=Depends(get_current_user))
         # non-fatal: campaign created but session creation failed
         created_session = None
     out = camp.dict()
-    # include enriched session links
+    # Build enriched session list from persisted metadata.
     sessions_list = (camp.metadata_json or {}).get('sessions', [])
     out['sessions'] = [{'id': s, 'meta': f'/sessions/{s}/meta', 'files': f'/sessions/{s}/files'} for s in sessions_list]
-    if created_session and created_session not in sessions_list:
-        out['sessions'].append({'id': created_session, 'meta': f'/sessions/{created_session}/meta', 'files': f'/sessions/{created_session}/files'})
+    # Ensure the newly created session is always present in the response even if
+    # add_session_to_campaign hasn't refreshed camp in-process yet.
+    if created_session:
+        existing_ids = {s['id'] for s in out['sessions']}
+        if created_session not in existing_ids:
+            out['sessions'].append({
+                'id': created_session,
+                'meta': f'/sessions/{created_session}/meta',
+                'files': f'/sessions/{created_session}/files',
+            })
     return {'campaign': out}
 
 
@@ -105,6 +113,21 @@ def create_session_from_campaign(campaign_id: str, current_user=Depends(get_curr
         return {'session_id': sid, 'meta': meta}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get('/{campaign_id}/sessions/{session_id}/validate')
+def validate_session_belongs_to_campaign(campaign_id: str, session_id: str, current_user=Depends(get_current_user)):
+    """Return 200 if session_id belongs to campaign_id, 404 otherwise.
+    Useful for defensive UI checks before bootstrapping gameplay."""
+    c = db.get_campaign_by_id(campaign_id)
+    if not c:
+        raise HTTPException(status_code=404, detail='Campaign not found')
+    if c.owner_id != _require_user_id(current_user):
+        raise HTTPException(status_code=403, detail='Forbidden')
+    sessions_list = (c.metadata_json or {}).get('sessions', [])
+    if session_id not in sessions_list:
+        raise HTTPException(status_code=404, detail='Session does not belong to this campaign')
+    return {'ok': True, 'campaign_id': campaign_id, 'session_id': session_id}
 
 
 @router.put('/{campaign_id}')
