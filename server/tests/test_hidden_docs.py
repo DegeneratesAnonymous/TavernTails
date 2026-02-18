@@ -93,7 +93,6 @@ def test_audit_endpoint_host_only():
     meta_path.write_text(_json.dumps(data))
 
     owner_headers = {"Authorization": f"Bearer {create_access_token(owner)}"}
-    other_headers = {"Authorization": f"Bearer {create_access_token(other)}"}
 
     # Create a hidden doc so there's something in the audit trail
     resp = client.post(
