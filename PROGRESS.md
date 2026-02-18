@@ -12,6 +12,11 @@ _Last updated: 2026-02-17 by GitHub Copilot_
 - The biggest remaining “make it real” items are character CRUD/imports and a clearer campaign→session→play flow (hidden-doc RBAC + access auditing is implemented).
 
 ## Completed Recently
+0. **WO-008: Campaign→Session UX Polish merged (Feb 17)**
+   - Fixed race condition where `handleSetActiveCampaignId` and a `useEffect` both called `setActiveSession`, causing stale sessions to persist across campaign switches.
+   - Single `useEffect` now owns session alignment; sessions already valid for the active campaign are preserved without re-assignment.
+   - Backend: `POST /campaigns` response dedup fix; new `GET /campaigns/{id}/sessions/{sid}/validate` endpoint (200/404/403).
+   - 7 new integration tests in `server/tests/test_campaign_session_flow.py`; all 65 backend tests pass.
 0. **WO-007: Contract Tests Baseline merged (Feb 17)**
    - PR #19 merged (clean re-submission after PRs #13/#18 had unresolvable grafted history).
    - Added `server/tests/contracts/` with 6 contract tests covering Narrative, Scene, Rolls, NPC, Suggestions, and Turns endpoints.
