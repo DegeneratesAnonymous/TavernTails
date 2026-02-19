@@ -1,0 +1,57 @@
+name: Player-Led Mode Feature
+description: Feature request specific to player-led or hybrid campaign modes
+labels: ["feature", "player-led-mode"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for features relating to player-led sessions, AI-optional gameplay, or hybrid modes.
+
+  - type: dropdown
+    id: mode_type
+    attributes:
+      label: Mode Type
+      description: Which mode does this feature primarily target?
+      options:
+        - AI-led (full AI GM)
+        - Player-led (AI optional)
+        - Hybrid (mixed AI and player control)
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Feature Description
+      description: Describe the feature and how it improves the player-led experience.
+      placeholder: When a player is running the session, they need to...
+    validations:
+      required: true
+
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Use Case
+      description: Describe a concrete scenario where this feature is used.
+      placeholder: "Example: A DM runs a session without AI narration but still wants automated NPC tracking."
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: How will we know this feature is complete?
+      placeholder: |
+        - [ ] Works in player-led mode
+        - [ ] Works in AI-led mode (if applicable)
+        - [ ] Tests pass
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: References to PROJECT_PLAN.md, related issues, or design notes.
+      placeholder: Related to #...

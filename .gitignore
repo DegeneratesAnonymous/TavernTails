@@ -7,14 +7,21 @@ __pycache__/
 client/node_modules/
 client/build/
 *.db
+*.sqlite
 logs/
 /.vscode/
+.idea/
 TaverTailsssh
+
+# OS
+Thumbs.db
 
 # Local runtime/test artifacts
 *.log
+npm-debug.log*
 client/npm-err.log
 client/npm-out.log
+uvicorn*.log
 uvicorn_*_out.log
 uvicorn_*_err.log
 

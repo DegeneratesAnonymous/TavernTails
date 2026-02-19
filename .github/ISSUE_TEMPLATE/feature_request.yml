@@ -1,0 +1,72 @@
+name: Feature Request
+description: Suggest a new feature or enhancement
+labels: ["feature", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature! Please fill out the sections below.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem does this feature solve? What user need does it address?
+      placeholder: As a user, I want...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe the solution you'd like.
+      placeholder: I'd like to see...
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: How will we know this feature is complete?
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - "critical – blocks MVP/production"
+        - "high – important for next release"
+        - "medium – should be done soon"
+        - "low – nice to have"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which component is primarily affected?
+      options:
+        - Backend (FastAPI/Python)
+        - Frontend (React/TypeScript)
+        - Agents (AI/gameplay)
+        - Database/Models
+        - CI/CD
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any references, mockups, or related issues.
+      placeholder: Related to #...

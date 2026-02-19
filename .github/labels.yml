@@ -1,0 +1,157 @@
+# GitHub Labels Configuration
+# Used by the label-sync workflow (.github/workflows/label-sync.yml)
+# Reference: https://github.com/EndBug/label-sync
+
+# ---------------------------------------------------------------------------
+# Type Labels
+# ---------------------------------------------------------------------------
+- name: bug
+  color: "d73a4a"
+  description: Something isn't working
+
+- name: feature
+  color: "0e8a16"
+  description: New feature or enhancement
+
+- name: documentation
+  color: "0075ca"
+  description: Documentation improvements
+
+- name: maintenance
+  color: "e4e669"
+  description: Code cleanup or refactoring
+
+- name: testing
+  color: "6f42c1"
+  description: Testing improvements
+
+- name: security
+  color: "b60205"
+  description: Security-related issues
+
+# ---------------------------------------------------------------------------
+# Priority Labels
+# ---------------------------------------------------------------------------
+- name: "priority: critical"
+  color: "b60205"
+  description: Blocks MVP/production
+
+- name: "priority: high"
+  color: "e4530a"
+  description: Important for next release
+
+- name: "priority: medium"
+  color: "fbca04"
+  description: Should be done soon
+
+- name: "priority: low"
+  color: "c2e0c6"
+  description: Nice to have
+
+# ---------------------------------------------------------------------------
+# Component Labels (aligned with PROJECT_PLAN.md work packages)
+# ---------------------------------------------------------------------------
+- name: "component: backend"
+  color: "1d76db"
+  description: Python/FastAPI backend
+
+- name: "component: frontend"
+  color: "0052cc"
+  description: React/TypeScript frontend
+
+- name: "component: agents"
+  color: "5319e7"
+  description: AI agent system (gameplay or dev)
+
+- name: "component: database"
+  color: "0075ca"
+  description: Database/models
+
+- name: "component: ci/cd"
+  color: "f9d0c4"
+  description: Build/deploy pipeline
+
+- name: "component: docs"
+  color: "bfd4f2"
+  description: Documentation
+
+# ---------------------------------------------------------------------------
+# Work Package Labels (PROJECT_PLAN.md §12)
+# ---------------------------------------------------------------------------
+- name: "WP#1: auth"
+  color: "c5def5"
+  description: "Auth & Friends (§12 Package #1)"
+
+- name: "WP#2: campaigns"
+  color: "c5def5"
+  description: "Campaigns & Sessions (§12 Package #2)"
+
+- name: "WP#3: characters"
+  color: "c5def5"
+  description: "Character Service & Imports (§12 Package #3)"
+
+- name: "WP#4: dice"
+  color: "c5def5"
+  description: "Dice Engine + Beyond20 (§12 Package #4)"
+
+- name: "WP#5: orchestration"
+  color: "c5def5"
+  description: "Agent Orchestration (§12 Package #5)"
+
+- name: "WP#6: documents"
+  color: "c5def5"
+  description: "Session Documents (§12 Package #6)"
+
+- name: "WP#7: chat"
+  color: "c5def5"
+  description: "Chat & Turn Queue (§12 Package #7)"
+
+- name: "WP#8: images"
+  color: "c5def5"
+  description: "Image Agent (§12 Package #8)"
+
+- name: "WP#9: testing"
+  color: "c5def5"
+  description: "Testing & CI (§12 Package #9)"
+
+# ---------------------------------------------------------------------------
+# Status Labels
+# ---------------------------------------------------------------------------
+- name: "status: blocked"
+  color: "ee0701"
+  description: Waiting on dependencies
+
+- name: "status: in-progress"
+  color: "ededed"
+  description: Currently being worked on
+
+- name: "status: needs-review"
+  color: "0e8a16"
+  description: Ready for review
+
+- name: "status: needs-info"
+  color: "fbca04"
+  description: Needs clarification
+
+# ---------------------------------------------------------------------------
+# Special Labels
+# ---------------------------------------------------------------------------
+- name: dev-agent-task
+  color: "d4c5f9"
+  description: Task for development agents
+
+- name: player-led-mode
+  color: "bfd4f2"
+  description: Related to player-run sessions
+
+- name: ai-optional
+  color: "e4e669"
+  description: Features supporting AI-optional gameplay
+
+- name: needs-triage
+  color: "e4e669"
+  description: Needs initial assessment
+
+- name: "good first issue"
+  color: "7057ff"
+  description: Good for newcomers

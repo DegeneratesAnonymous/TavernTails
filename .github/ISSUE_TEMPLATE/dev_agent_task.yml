@@ -1,0 +1,73 @@
+name: Dev Agent Task
+description: Work order for a development agent (see docs/WORK_ORDER_TEMPLATE.md)
+labels: ["dev-agent-task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This template creates a work order for a development agent.
+        See [`docs/WORK_ORDER_TEMPLATE.md`](../docs/WORK_ORDER_TEMPLATE.md) and [`docs/DEV_AGENTS.md`](../docs/DEV_AGENTS.md) for the workflow.
+
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Primary Agent
+      description: Which development agent will lead this task?
+      options:
+        - PM
+        - Backend
+        - Frontend
+        - QA
+        - Reviewer
+        - Tech Lead
+    validations:
+      required: true
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: One sentence – what does "done" look like?
+      placeholder: Implement X so that Y works end-to-end.
+    validations:
+      required: true
+
+  - type: textarea
+    id: work_order
+    attributes:
+      label: Work Order Details
+      description: Full work order content (scope, acceptance criteria, implementation notes).
+      placeholder: |
+        ## Context
+        - Why this is needed
+        - What's already implemented
+
+        ## Scope / Non-Goals
+        - In scope:
+        - Explicitly out of scope:
+
+        ## Acceptance Criteria
+        - [ ] ...
+        - [ ] Tests pass
+
+        ## Implementation Notes
+        - Suggested files / modules:
+        - API endpoints affected:
+        - WebSocket events affected:
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context & References
+      description: Relevant docs, canonical references, related code.
+      placeholder: |
+        - PROJECT_PLAN.md §...
+        - Related files: server/agents/...
+
+  - type: textarea
+    id: related
+    attributes:
+      label: Related Issues / PRs
+      placeholder: "Closes #, Relates to #"

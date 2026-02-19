@@ -1,0 +1,37 @@
+# Labeler configuration
+# Automatically applies labels to PRs based on changed files.
+# Reference: https://github.com/actions/labeler
+
+'component: backend':
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'server/**/*'
+      - 'alembic/**/*'
+
+'component: frontend':
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'client/**/*'
+
+'component: agents':
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'server/agents/**/*'
+
+'component: database':
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'server/db.py'
+      - 'alembic/**/*'
+
+'documentation':
+  - changed-files:
+    - any-glob-to-any-file:
+      - '**/*.md'
+      - 'docs/**/*'
+
+'ci/cd':
+  - changed-files:
+    - any-glob-to-any-file:
+      - '.github/**/*'
+      - 'ci.ps1'
