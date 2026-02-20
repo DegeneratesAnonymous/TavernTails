@@ -44,12 +44,22 @@ def test_campaign_variables_roundtrip():
         "themes": ["redemption", "betrayal"],
         "pacing": "fast",
         "narrative_style": "gritty",
-        "factions": ["Thieves Guild", "Royal Guard"],
+        "factions": [
+            {
+                "name": "Thieves Guild",
+                "alignment": "chaotic neutral",
+                "goals": ["control the spice trade", "bribe city officials"],
+                "members": ["Guildmaster Varro", "Shade the Informant"],
+            },
+            {
+                "name": "Royal Guard",
+                "alignment": "lawful neutral",
+                "goals": ["protect the crown"],
+                "members": ["Captain Aldric"],
+            },
+        ],
         "npc_archetypes": ["grizzled veteran", "cunning spy"],
         "naming_style": "Norse",
-        "primary_environment": "arctic tundra",
-        "location_tags": ["dangerous", "frozen", "remote"],
-        "dialogue_style": "archaic",
         "content_rating": "pg-13",
     }
 
@@ -57,17 +67,20 @@ def test_campaign_variables_roundtrip():
     assert put.status_code == 200, put.text
     assert put.json()["variables"]["pacing"] == "fast"
     assert put.json()["variables"]["themes"] == ["redemption", "betrayal"]
-    assert put.json()["variables"]["factions"] == ["Thieves Guild", "Royal Guard"]
+    factions = put.json()["variables"]["factions"]
+    assert len(factions) == 2
+    assert factions[0]["name"] == "Thieves Guild"
+    assert factions[0]["alignment"] == "chaotic neutral"
+    assert "control the spice trade" in factions[0]["goals"]
+    assert "Guildmaster Varro" in factions[0]["members"]
 
     get = client.get(f"/campaigns/{camp.id}/variables", headers=headers)
     assert get.status_code == 200, get.text
     variables = get.json()["variables"]
     assert isinstance(variables, dict)
     assert variables["naming_style"] == "Norse"
-    assert variables["primary_environment"] == "arctic tundra"
-    assert variables["location_tags"] == ["dangerous", "frozen", "remote"]
-    assert variables["dialogue_style"] == "archaic"
     assert variables["content_rating"] == "pg-13"
+    assert len(variables["factions"]) == 2
 
 
 def test_campaign_variables_defaults_when_unset():
@@ -126,17 +139,21 @@ def test_campaign_variables_in_generate_npc_context():
     camp = db.create_campaign(owner_id=user.id, name="Variables Generate Test", description="")
     assert camp.id
 
-    # Save variables first
+    # Save variables with rich faction data
     vars_payload = {
         "themes": ["survival"],
         "pacing": "slow",
         "narrative_style": "intimate",
-        "factions": ["Desert Wanderers"],
+        "factions": [
+            {
+                "name": "Desert Wanderers",
+                "alignment": "neutral good",
+                "goals": ["find the lost oasis", "protect the caravan routes"],
+                "members": ["Elder Rashid", "Scout Lena"],
+            }
+        ],
         "npc_archetypes": ["wise elder"],
         "naming_style": "Arabic-inspired",
-        "primary_environment": "arid desert",
-        "location_tags": ["harsh", "sun-scorched"],
-        "dialogue_style": "formal",
         "content_rating": "family",
     }
     client.put(f"/campaigns/{camp.id}/variables", headers=headers, json=vars_payload)
@@ -152,6 +169,8 @@ def test_campaign_variables_in_generate_npc_context():
     context = npc_data["npc"]["context"]
     assert context["themes"] == ["survival"]
     assert context["pacing"] == "slow"
-    assert context["factions"] == ["Desert Wanderers"]
+    # faction data includes goals for goal-based NPC motivations
+    assert len(context["factions"]) == 1
+    assert context["factions"][0]["name"] == "Desert Wanderers"
+    assert "find the lost oasis" in context["factions"][0]["goals"]
     assert context["naming_style"] == "Arabic-inspired"
-    assert context["dialogue_style"] == "formal"

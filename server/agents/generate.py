@@ -71,10 +71,10 @@ def generate_npc(req: GenerateNPCRequest, current_user=Depends(get_current_user)
         'themes': variables.get('themes', []),
         'pacing': variables.get('pacing', 'moderate'),
         'narrative_style': variables.get('narrative_style', 'balanced'),
+        # factions with full data (alignment, goals, members) for goal-based NPC motivations
         'factions': variables.get('factions', []),
         'npc_archetypes': variables.get('npc_archetypes', []),
         'naming_style': variables.get('naming_style', ''),
-        'dialogue_style': variables.get('dialogue_style', ''),
         'content_rating': variables.get('content_rating', 'pg-13'),
         **(req.context or {}),
     }
@@ -123,8 +123,7 @@ def generate_location(req: GenerateLocationRequest, current_user=Depends(get_cur
         'themes': variables.get('themes', []),
         'pacing': variables.get('pacing', 'moderate'),
         'narrative_style': variables.get('narrative_style', 'balanced'),
-        'primary_environment': variables.get('primary_environment', ''),
-        'location_tags': variables.get('location_tags', []),
+        'factions': variables.get('factions', []),
         'content_rating': variables.get('content_rating', 'pg-13'),
         **(req.context or {}),
     }

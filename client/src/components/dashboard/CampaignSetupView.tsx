@@ -78,13 +78,17 @@ type CampaignVariables = {
   themes: string[]
   pacing: string
   narrative_style: string
-  factions: string[]
+  factions: FactionEntry[]
   npc_archetypes: string[]
   naming_style: string
-  primary_environment: string
-  location_tags: string[]
-  dialogue_style: string
   content_rating: string
+}
+
+type FactionEntry = {
+  name: string
+  alignment: string
+  goals: string[]
+  members: string[]
 }
 
 type Player = {
@@ -131,9 +135,6 @@ const DEFAULT_VARIABLES: CampaignVariables = {
   factions: [],
   npc_archetypes: [],
   naming_style: '',
-  primary_environment: '',
-  location_tags: [],
-  dialogue_style: '',
   content_rating: 'pg-13',
 }
 
@@ -144,6 +145,10 @@ function asString(v: any): string {
 function asNumber(v: any, fallback: number): number {
   const n = typeof v === 'number' ? v : Number(v)
   return Number.isFinite(n) ? n : fallback
+}
+
+function parseCommaSeparated(value: string): string[] {
+  return value.split(',').map((t) => t.trim()).filter(Boolean)
 }
 
 export default function CampaignSetupView({
@@ -302,9 +307,6 @@ export default function CampaignSetupView({
             factions: Array.isArray(v.factions) ? v.factions : DEFAULT_VARIABLES.factions,
             npc_archetypes: Array.isArray(v.npc_archetypes) ? v.npc_archetypes : DEFAULT_VARIABLES.npc_archetypes,
             naming_style: asString(v.naming_style),
-            primary_environment: asString(v.primary_environment),
-            location_tags: Array.isArray(v.location_tags) ? v.location_tags : DEFAULT_VARIABLES.location_tags,
-            dialogue_style: asString(v.dialogue_style),
             content_rating: asString(v.content_rating) || DEFAULT_VARIABLES.content_rating,
           })
         }
@@ -813,7 +815,7 @@ export default function CampaignSetupView({
                           onChange={(e) =>
                             setVariables((prev) => ({
                               ...prev,
-                              themes: e.target.value.split(',').map((t) => t.trim()).filter(Boolean),
+                              themes: parseCommaSeparated(e.target.value),
                             }))
                           }
                           placeholder="e.g. redemption, betrayal, survival"
@@ -854,23 +856,124 @@ export default function CampaignSetupView({
                   </div>
 
                   <div>
+                    <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>Factions</div>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        type="button"
+                        disabled={!canEdit}
+                        onClick={() =>
+                          setVariables((prev) => ({
+                            ...prev,
+                            factions: [
+                              ...prev.factions,
+                              { name: '', alignment: '', goals: [], members: [] },
+                            ],
+                          }))
+                        }
+                      >
+                        + Add Faction
+                      </button>
+                    </div>
+                    <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
+                      Factions with alignment, goals, and key members help agents generate NPCs whose motivations align with faction objectives.
+                    </div>
+                    {variables.factions.length === 0 ? (
+                      <div className="muted" style={{ fontSize: 13 }}>No factions yet. Add one above.</div>
+                    ) : (
+                      <div className="stack" style={{ gap: 10 }}>
+                        {variables.factions.map((faction, idx) => (
+                          <div
+                            key={idx}
+                            className="card"
+                            style={{ padding: 10, background: 'rgba(71,66,61,0.6)', borderColor: 'var(--tt-border)' }}
+                          >
+                            <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                              <input
+                                className="input"
+                                style={{ flex: 1, marginRight: 8 }}
+                                value={faction.name}
+                                onChange={(e) => {
+                                  const updated = variables.factions.map((f, i) =>
+                                    i === idx ? { ...f, name: e.target.value } : f
+                                  )
+                                  setVariables((prev) => ({ ...prev, factions: updated }))
+                                }}
+                                placeholder="Faction name"
+                                disabled={!canEdit}
+                              />
+                              <button
+                                className="btn btn-secondary btn-sm"
+                                type="button"
+                                disabled={!canEdit}
+                                onClick={() =>
+                                  setVariables((prev) => ({
+                                    ...prev,
+                                    factions: prev.factions.filter((_, i) => i !== idx),
+                                  }))
+                                }
+                                title="Remove faction"
+                                aria-label="Remove faction"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                            <div className="row-wrap" style={{ gap: 8 }}>
+                              <div style={{ flex: 1 }}>
+                                <label className="muted" style={{ fontSize: 11 }}>Alignment</label>
+                                <input
+                                  className="input"
+                                  value={faction.alignment}
+                                  onChange={(e) => {
+                                    const updated = variables.factions.map((f, i) =>
+                                      i === idx ? { ...f, alignment: e.target.value } : f
+                                    )
+                                    setVariables((prev) => ({ ...prev, factions: updated }))
+                                  }}
+                                  placeholder="e.g. chaotic neutral"
+                                  disabled={!canEdit}
+                                />
+                              </div>
+                            </div>
+                            <div style={{ marginTop: 6 }}>
+                              <label className="muted" style={{ fontSize: 11 }}>Goals (comma-separated)</label>
+                              <input
+                                className="input"
+                                value={faction.goals.join(', ')}
+                                onChange={(e) => {
+                                  const updated = variables.factions.map((f, i) =>
+                                    i === idx ? { ...f, goals: parseCommaSeparated(e.target.value) } : f
+                                  )
+                                  setVariables((prev) => ({ ...prev, factions: updated }))
+                                }}
+                                placeholder="e.g. control the spice trade, overthrow the king"
+                                disabled={!canEdit}
+                              />
+                            </div>
+                            <div style={{ marginTop: 6 }}>
+                              <label className="muted" style={{ fontSize: 11 }}>Key Members (comma-separated)</label>
+                              <input
+                                className="input"
+                                value={faction.members.join(', ')}
+                                onChange={(e) => {
+                                  const updated = variables.factions.map((f, i) =>
+                                    i === idx ? { ...f, members: parseCommaSeparated(e.target.value) } : f
+                                  )
+                                  setVariables((prev) => ({ ...prev, factions: updated }))
+                                }}
+                                placeholder="e.g. Guildmaster Varro, Shade the Informant"
+                                disabled={!canEdit}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
                     <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>NPCs &amp; Characters</div>
                     <div className="stack" style={{ gap: 8 }}>
-                      <div>
-                        <label className="muted" style={{ fontSize: 12 }}>Factions (comma-separated)</label>
-                        <input
-                          className="input"
-                          value={variables.factions.join(', ')}
-                          onChange={(e) =>
-                            setVariables((prev) => ({
-                              ...prev,
-                              factions: e.target.value.split(',').map((t) => t.trim()).filter(Boolean),
-                            }))
-                          }
-                          placeholder="e.g. Thieves Guild, Royal Guard, Merchant League"
-                          disabled={!canEdit}
-                        />
-                      </div>
                       <div>
                         <label className="muted" style={{ fontSize: 12 }}>NPC Archetypes (comma-separated)</label>
                         <input
@@ -879,7 +982,7 @@ export default function CampaignSetupView({
                           onChange={(e) =>
                             setVariables((prev) => ({
                               ...prev,
-                              npc_archetypes: e.target.value.split(',').map((t) => t.trim()).filter(Boolean),
+                              npc_archetypes: parseCommaSeparated(e.target.value),
                             }))
                           }
                           placeholder="e.g. grizzled veteran, cunning spy, wise elder"
@@ -900,67 +1003,19 @@ export default function CampaignSetupView({
                   </div>
 
                   <div>
-                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>Locations &amp; World</div>
-                    <div className="stack" style={{ gap: 8 }}>
-                      <div>
-                        <label className="muted" style={{ fontSize: 12 }}>Primary Environment</label>
-                        <input
-                          className="input"
-                          value={variables.primary_environment}
-                          onChange={(e) => setVariables((prev) => ({ ...prev, primary_environment: e.target.value }))}
-                          placeholder="e.g. arctic tundra, tropical jungle, underground caverns"
-                          disabled={!canEdit}
-                        />
-                      </div>
-                      <div>
-                        <label className="muted" style={{ fontSize: 12 }}>Location Tags (comma-separated)</label>
-                        <input
-                          className="input"
-                          value={variables.location_tags.join(', ')}
-                          onChange={(e) =>
-                            setVariables((prev) => ({
-                              ...prev,
-                              location_tags: e.target.value.split(',').map((t) => t.trim()).filter(Boolean),
-                            }))
-                          }
-                          placeholder="e.g. dangerous, mystical, urban, ruined"
-                          disabled={!canEdit}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>Dialogue &amp; Voice</div>
-                    <div className="row-wrap" style={{ gap: 8 }}>
-                      <div style={{ flex: 1 }}>
-                        <label className="muted" style={{ fontSize: 12 }}>Dialogue Style</label>
-                        <select
-                          className="input"
-                          value={variables.dialogue_style}
-                          onChange={(e) => setVariables((prev) => ({ ...prev, dialogue_style: e.target.value }))}
-                          disabled={!canEdit}
-                        >
-                          <option value="">Default</option>
-                          <option value="formal">Formal</option>
-                          <option value="archaic">Archaic</option>
-                          <option value="modern">Modern</option>
-                          <option value="regional slang">Regional Slang</option>
-                        </select>
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <label className="muted" style={{ fontSize: 12 }}>Content Rating</label>
-                        <select
-                          className="input"
-                          value={variables.content_rating}
-                          onChange={(e) => setVariables((prev) => ({ ...prev, content_rating: e.target.value }))}
-                          disabled={!canEdit}
-                        >
-                          <option value="family">Family</option>
-                          <option value="pg-13">PG-13</option>
-                          <option value="mature">Mature</option>
-                        </select>
-                      </div>
+                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>Content</div>
+                    <div>
+                      <label className="muted" style={{ fontSize: 12 }}>Content Rating</label>
+                      <select
+                        className="input"
+                        value={variables.content_rating}
+                        onChange={(e) => setVariables((prev) => ({ ...prev, content_rating: e.target.value }))}
+                        disabled={!canEdit}
+                      >
+                        <option value="family">Family</option>
+                        <option value="pg-13">PG-13</option>
+                        <option value="mature">Mature</option>
+                      </select>
                     </div>
                   </div>
                 </div>

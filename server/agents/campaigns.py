@@ -283,9 +283,32 @@ def get_campaign_players(campaign_id: str, current_user=Depends(get_current_user
         return {'players': players}
 
 
+class FactionEntry(BaseModel):
+    """A named faction with membership, alignment, and goals for agent context."""
+
+    name: str = Field(..., description="Faction name, e.g. 'Thieves Guild'")
+    alignment: str = Field(
+        default="",
+        description="Faction alignment, e.g. 'chaotic neutral', 'lawful evil'",
+    )
+    goals: List[str] = Field(
+        default_factory=list,
+        description="Primary faction goals, e.g. ['control the spice trade', 'overthrow the king']",
+    )
+    members: List[str] = Field(
+        default_factory=list,
+        description="Key member names, e.g. ['Guildmaster Varro', 'Shade the Informant']",
+    )
+
+
 class CampaignVariables(BaseModel):
     """Structured variables that generative agents factor in when producing
-    story content, NPC profiles, location descriptions, dialogue, and scenes."""
+    story content, NPC profiles, location descriptions, dialogue, and scenes.
+
+    Fields that the narrator infers automatically from user preferences (such as
+    environment details or dialogue register) are intentionally omitted; agents
+    derive those from the setting_summary and tone in campaign settings.
+    """
 
     # ── Narrative / Story ──────────────────────────────────────────────────
     themes: List[str] = Field(
@@ -301,35 +324,23 @@ class CampaignVariables(BaseModel):
         description="Narrative register: 'epic', 'intimate', 'gritty', 'lighthearted', 'balanced'",
     )
 
-    # ── NPCs / Characters ──────────────────────────────────────────────────
-    factions: List[str] = Field(
+    # ── Factions ───────────────────────────────────────────────────────────
+    factions: List[FactionEntry] = Field(
         default_factory=list,
-        description="Named factions or groups present in the world, e.g. ['Thieves Guild', 'Royal Guard']",
+        description="Named factions with alignment, goals, and key members",
     )
+
+    # ── NPCs / Characters ──────────────────────────────────────────────────
     npc_archetypes: List[str] = Field(
         default_factory=list,
-        description="Dominant NPC archetypes agents should favour, e.g. ['grizzled veteran', 'trickster merchant']",
+        description="Dominant NPC archetypes agents should favour; motivations are goal-based and derived from faction membership, e.g. ['grizzled veteran', 'trickster merchant']",
     )
     naming_style: str = Field(
         default="",
         description="Naming convention hint for NPCs/places, e.g. 'Norse', 'Elvish', 'Latin-inspired'",
     )
 
-    # ── Locations / World ─────────────────────────────────────────────────
-    primary_environment: str = Field(
-        default="",
-        description="Dominant environment type, e.g. 'arctic tundra', 'tropical jungle', 'underground caverns'",
-    )
-    location_tags: List[str] = Field(
-        default_factory=list,
-        description="Descriptive location tags, e.g. ['dangerous', 'mystical', 'urban', 'ruined']",
-    )
-
     # ── Dialogue / Voice ──────────────────────────────────────────────────
-    dialogue_style: str = Field(
-        default="",
-        description="Preferred dialogue register: 'formal', 'archaic', 'modern', 'regional slang'",
-    )
     content_rating: str = Field(
         default="pg-13",
         description="Content maturity level: 'family', 'pg-13', 'mature'",
