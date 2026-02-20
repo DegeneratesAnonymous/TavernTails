@@ -1,0 +1,109 @@
+name: Issue Confirm — /proceed
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  issues: write
+
+jobs:
+  confirm:
+    name: Handle /proceed command on issues
+    runs-on: ubuntu-latest
+    # Only run on issue comments (not PR comments)
+    if: ${{ !github.event.issue.pull_request }}
+    steps:
+      - name: Process /proceed command
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comment = context.payload.comment;
+            const issue = context.payload.issue;
+            const commenter = comment.user.login;
+            const commentBody = comment.body || '';
+
+            // Only react to /proceed command (case-insensitive, allows leading whitespace)
+            if (!/^\s*\/proceed(?:\s|$)/i.test(commentBody)) {
+              return;
+            }
+
+            // Verify commenter is a repository collaborator or owner
+            try {
+              await github.rest.repos.checkCollaborator({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                username: commenter,
+              });
+            } catch (e) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: '\u26a0\ufe0f @' + commenter + ' \u2014 only repository collaborators can use the `/proceed` command to initiate development agents.',
+              });
+              return;
+            }
+
+            const currentLabels = issue.labels.map(l => l.name);
+
+            // Remove status: needs-info label if present
+            if (currentLabels.includes('status: needs-info')) {
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  name: 'status: needs-info',
+                });
+              } catch (e) {
+                // Label may already be removed; continue
+              }
+            }
+
+            // Remove needs-triage label if present
+            if (currentLabels.includes('needs-triage')) {
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  name: 'needs-triage',
+                });
+              } catch (e) {
+                // Label may already be removed; continue
+              }
+            }
+
+            // Add dev-agent-task + status: in-progress labels
+            // Adding dev-agent-task triggers dev-agent-task-to-pr.yml
+            const labelsToAdd = [];
+            if (!currentLabels.includes('dev-agent-task')) {
+              labelsToAdd.push('dev-agent-task');
+            }
+            if (!currentLabels.includes('status: in-progress')) {
+              labelsToAdd.push('status: in-progress');
+            }
+            if (labelsToAdd.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: labelsToAdd,
+              });
+            }
+
+            const confirmLines = [
+              '\u2705 **Confirmed by @' + commenter + '** \u2014 development agents have been initiated!',
+              '',
+              'A draft PR will be automatically created for this issue. The Tech Lead will be notified to provide an initial task breakdown.',
+              '',
+              '> \ud83e\udd16 The `dev-agent-task` label has been applied, triggering the automated PR creation workflow.',
+            ];
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: confirmLines.join('\n'),
+            });

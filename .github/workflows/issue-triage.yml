@@ -1,0 +1,168 @@
+name: Issue Triage
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  triage:
+    name: Auto-triage new issue
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scaffold and label new issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const issueNumber = issue.number;
+            const title = issue.title || '';
+            const body = issue.body || '';
+            const existingLabels = issue.labels.map(l => l.name);
+
+            // ── Detect issue type ────────────────────────────────────────────
+            let issueType = 'unknown';
+            if (/^\[feature\]/i.test(title) || /^\[feat\]/i.test(title) || existingLabels.includes('feature')) {
+              issueType = 'feature';
+            } else if (/^\[fix\]/i.test(title) || /^\[bug\]/i.test(title) || existingLabels.includes('bug')) {
+              issueType = 'bug';
+            } else if (/^\[dev.?agent\]/i.test(title) || existingLabels.includes('dev-agent-task')) {
+              issueType = 'dev-agent-task';
+            }
+
+            // ── Add type label if not already present ────────────────────────
+            const labelsToAdd = ['status: needs-info'];
+            if (issueType === 'feature' && !existingLabels.includes('feature')) {
+              labelsToAdd.push('feature');
+            } else if (issueType === 'bug' && !existingLabels.includes('bug')) {
+              labelsToAdd.push('bug');
+            }
+            if (!existingLabels.includes('needs-triage')) {
+              labelsToAdd.push('needs-triage');
+            }
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              labels: labelsToAdd,
+            });
+
+            // ── Scaffold body if required sections are missing ───────────────
+            let needsScaffold = false;
+            let missingFields = [];
+            let scaffoldedBody = body;
+
+            if (issueType === 'feature') {
+              const required = ['Problem Statement', 'Proposed Solution', 'Acceptance Criteria'];
+              const missing = required.filter(s => !body.includes(s));
+              if (missing.length > 0) {
+                needsScaffold = true;
+                missingFields = missing;
+                scaffoldedBody = [
+                  '## Problem Statement',
+                  body.trim() ? body.trim() : '_Please describe the problem this feature solves._',
+                  '',
+                  '## Proposed Solution',
+                  "_Describe the solution you'd like._",
+                  '',
+                  '## Acceptance Criteria',
+                  '- [ ] _Define how we will know this feature is complete_',
+                  '',
+                  '## Priority',
+                  '_critical \u2013 blocks MVP/production | high \u2013 important for next release | medium \u2013 should be done soon | low \u2013 nice to have_',
+                  '',
+                  '## Component',
+                  '_Backend (FastAPI/Python) | Frontend (React/TypeScript) | Agents (AI/gameplay) | Database/Models | CI/CD | Documentation | Other_',
+                  '',
+                  '## Additional Context',
+                  '_Any references, mockups, or related issues._',
+                ].join('\n');
+              }
+            } else if (issueType === 'bug') {
+              const required = ['Steps to Reproduce', 'Expected Behavior', 'Actual Behavior'];
+              const missing = required.filter(s => !body.includes(s));
+              if (missing.length > 0) {
+                needsScaffold = true;
+                missingFields = missing;
+                scaffoldedBody = [
+                  '## Description',
+                  body.trim() ? body.trim() : '_A clear and concise description of what the bug is._',
+                  '',
+                  '## Steps to Reproduce',
+                  '1. ',
+                  '2. ',
+                  '3. ',
+                  '',
+                  '## Expected Behavior',
+                  '_What did you expect to happen?_',
+                  '',
+                  '## Actual Behavior',
+                  '_What actually happened?_',
+                  '',
+                  '## Component',
+                  '_Backend (FastAPI/Python) | Frontend (React/TypeScript) | Agents (AI/gameplay) | Database/Models | CI/CD | Documentation | Other_',
+                  '',
+                  '## Priority',
+                  '_critical \u2013 blocks MVP/production | high \u2013 important for next release | medium \u2013 should be done soon | low \u2013 nice to have_',
+                  '',
+                  '## Additional Context',
+                  '_Add any other context, screenshots, or logs._',
+                ].join('\n');
+              }
+            }
+
+            // ── Update issue body if scaffolded ──────────────────────────────
+            if (needsScaffold) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: scaffoldedBody,
+              });
+            }
+
+            // ── Post triage comment ──────────────────────────────────────────
+            const typeLabel = issueType === 'feature'
+              ? 'Feature Request'
+              : issueType === 'bug'
+                ? 'Bug Report'
+                : issueType === 'dev-agent-task'
+                  ? 'Dev Agent Task'
+                  : 'issue';
+
+            let commentLines;
+            if (needsScaffold) {
+              commentLines = [
+                '## \ud83e\uddd9 Issue Auto-Triaged',
+                '',
+                'Thank you for filing this ' + typeLabel + '! The issue body has been automatically scaffolded to match the **' + typeLabel + '** template.',
+                '',
+                '**Please review and fill in the following missing sections:**',
+                ...missingFields.map(f => '- [ ] **' + f + '**'),
+                '',
+                'Once you have filled in all required sections and are ready to proceed, comment `/proceed` on this issue to initiate the development agents and automatically create a draft PR.',
+                '',
+                '> \ud83d\udccc This issue is labeled **`status: needs-info`** until you confirm with `/proceed`.',
+                '> \ud83d\udccb See the [issue templates](../tree/main/.github/ISSUE_TEMPLATE) for guidance on required fields.',
+              ];
+            } else {
+              commentLines = [
+                '## \ud83e\uddd9 Issue Received',
+                '',
+                'Thank you for filing this ' + typeLabel + '!',
+                '',
+                'When all required information is in place and you are ready to begin work, comment `/proceed` on this issue to initiate the development agents and automatically create a draft PR.',
+                '',
+                '> \ud83d\udccc This issue is labeled **`status: needs-info`** until you confirm with `/proceed`.',
+              ];
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: commentLines.join('\n'),
+            });

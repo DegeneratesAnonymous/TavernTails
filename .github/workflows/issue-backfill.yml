@@ -1,0 +1,231 @@
+name: Issue Backfill — Bring Existing Issues In Line With Templates
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_numbers:
+        description: 'Comma-separated issue numbers to update (leave empty to process all open issues)'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Dry run — log changes without applying them (true/false)'
+        required: false
+        default: 'false'
+
+permissions:
+  issues: write
+
+jobs:
+  backfill:
+    name: Backfill issue templates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scaffold open issues to match templates
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const dryRun = '${{ inputs.dry_run }}' === 'true';
+            const inputNumbers = '${{ inputs.issue_numbers }}'.trim();
+
+            // ── Collect target issues ────────────────────────────────────────
+            let targetIssues = [];
+
+            if (inputNumbers) {
+              const nums = inputNumbers.split(',').map(s => parseInt(s.trim(), 10)).filter(Boolean);
+              for (const num of nums) {
+                const { data: issue } = await github.rest.issues.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: num,
+                });
+                targetIssues.push(issue);
+              }
+            } else {
+              // Fetch all open issues (paginated)
+              let page = 1;
+              while (true) {
+                const { data: issues } = await github.rest.issues.listForRepo({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  state: 'open',
+                  per_page: 100,
+                  page,
+                });
+                if (issues.length === 0) break;
+                // Exclude pull requests (GitHub returns PRs as issues)
+                targetIssues.push(...issues.filter(i => !i.pull_request));
+                if (issues.length < 100) break;
+                page++;
+              }
+            }
+
+            console.log('Processing ' + targetIssues.length + ' issue(s). Dry run: ' + dryRun);
+
+            // ── Helper: scaffold feature body ────────────────────────────────
+            function scaffoldFeature(body) {
+              return [
+                '## Problem Statement',
+                body.trim() ? body.trim() : '_Please describe the problem this feature solves._',
+                '',
+                '## Proposed Solution',
+                "_Describe the solution you'd like._",
+                '',
+                '## Acceptance Criteria',
+                '- [ ] _Define how we will know this feature is complete_',
+                '',
+                '## Priority',
+                '_critical \u2013 blocks MVP/production | high \u2013 important for next release | medium \u2013 should be done soon | low \u2013 nice to have_',
+                '',
+                '## Component',
+                '_Backend (FastAPI/Python) | Frontend (React/TypeScript) | Agents (AI/gameplay) | Database/Models | CI/CD | Documentation | Other_',
+                '',
+                '## Additional Context',
+                '_Any references, mockups, or related issues._',
+              ].join('\n');
+            }
+
+            // ── Helper: scaffold bug body ────────────────────────────────────
+            function scaffoldBug(body) {
+              return [
+                '## Description',
+                body.trim() ? body.trim() : '_A clear and concise description of what the bug is._',
+                '',
+                '## Steps to Reproduce',
+                '1. ',
+                '2. ',
+                '3. ',
+                '',
+                '## Expected Behavior',
+                '_What did you expect to happen?_',
+                '',
+                '## Actual Behavior',
+                '_What actually happened?_',
+                '',
+                '## Component',
+                '_Backend (FastAPI/Python) | Frontend (React/TypeScript) | Agents (AI/gameplay) | Database/Models | CI/CD | Documentation | Other_',
+                '',
+                '## Priority',
+                '_critical \u2013 blocks MVP/production | high \u2013 important for next release | medium \u2013 should be done soon | low \u2013 nice to have_',
+                '',
+                '## Additional Context',
+                '_Add any other context, screenshots, or logs._',
+              ].join('\n');
+            }
+
+            // ── Process each issue ───────────────────────────────────────────
+            for (const issue of targetIssues) {
+              const title = issue.title || '';
+              const body = issue.body || '';
+              const existingLabels = issue.labels.map(l => l.name);
+
+              // Detect type
+              let issueType = 'unknown';
+              if (/^\[feature\]/i.test(title) || /^\[feat\]/i.test(title) || existingLabels.includes('feature')) {
+                issueType = 'feature';
+              } else if (/^\[fix\]/i.test(title) || /^\[bug\]/i.test(title) || existingLabels.includes('bug')) {
+                issueType = 'bug';
+              } else if (/^\[dev.?agent\]/i.test(title) || existingLabels.includes('dev-agent-task')) {
+                issueType = 'dev-agent-task';
+              }
+
+              let needsScaffold = false;
+              let missingFields = [];
+              let scaffoldedBody = body;
+
+              if (issueType === 'feature') {
+                const required = ['Problem Statement', 'Proposed Solution', 'Acceptance Criteria'];
+                const missing = required.filter(s => !body.includes(s));
+                if (missing.length > 0) {
+                  needsScaffold = true;
+                  missingFields = missing;
+                  scaffoldedBody = scaffoldFeature(body);
+                }
+              } else if (issueType === 'bug') {
+                const required = ['Steps to Reproduce', 'Expected Behavior', 'Actual Behavior'];
+                const missing = required.filter(s => !body.includes(s));
+                if (missing.length > 0) {
+                  needsScaffold = true;
+                  missingFields = missing;
+                  scaffoldedBody = scaffoldBug(body);
+                }
+              }
+
+              const labelsToAdd = [];
+              if (!existingLabels.includes('status: needs-info')) {
+                labelsToAdd.push('status: needs-info');
+              }
+              if (!existingLabels.includes('needs-triage')) {
+                labelsToAdd.push('needs-triage');
+              }
+              if (issueType === 'feature' && !existingLabels.includes('feature')) {
+                labelsToAdd.push('feature');
+              } else if (issueType === 'bug' && !existingLabels.includes('bug')) {
+                labelsToAdd.push('bug');
+              }
+
+              console.log('Issue #' + issue.number + ': "' + title + '" — type: ' + issueType + ', needsScaffold: ' + needsScaffold + ', labelsToAdd: [' + labelsToAdd.join(', ') + ']');
+
+              if (!dryRun) {
+                if (needsScaffold) {
+                  await github.rest.issues.update({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issue.number,
+                    body: scaffoldedBody,
+                  });
+                  console.log('  \u2192 Updated body for issue #' + issue.number);
+                }
+
+                if (labelsToAdd.length > 0) {
+                  await github.rest.issues.addLabels({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issue.number,
+                    labels: labelsToAdd,
+                  });
+                  console.log('  \u2192 Added labels [' + labelsToAdd.join(', ') + '] to issue #' + issue.number);
+                }
+
+                const typeLabel = issueType === 'feature'
+                  ? 'Feature Request'
+                  : issueType === 'bug'
+                    ? 'Bug Report'
+                    : 'issue';
+
+                let commentLines;
+                if (needsScaffold) {
+                  commentLines = [
+                    '## \ud83e\uddd9 Issue Updated \u2014 Template Applied',
+                    '',
+                    'This ' + typeLabel + ' has been automatically updated to match the standard template structure.',
+                    '',
+                    '**Please review and fill in the following missing sections:**',
+                    ...missingFields.map(f => '- [ ] **' + f + '**'),
+                    '',
+                    'Once all required information is in place, comment `/proceed` on this issue to initiate the development agents and automatically create a draft PR.',
+                    '',
+                    '> \ud83d\udccc This issue is labeled **`status: needs-info`** until you confirm with `/proceed`.',
+                    '> \ud83d\udccb See the [issue templates](../tree/main/.github/ISSUE_TEMPLATE) for guidance on required fields.',
+                  ];
+                } else {
+                  commentLines = [
+                    '## \ud83e\uddd9 Issue Triaged',
+                    '',
+                    'This issue has been labeled as part of the backfill process.',
+                    '',
+                    'When all required information is in place and you are ready to begin work, comment `/proceed` on this issue to initiate the development agents and automatically create a draft PR.',
+                    '',
+                    '> \ud83d\udccc This issue is labeled **`status: needs-info`** until you confirm with `/proceed`.',
+                  ];
+                }
+
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  body: commentLines.join('\n'),
+                });
+              }
+            }
+
+            console.log('Backfill complete.');
