@@ -108,6 +108,12 @@
   transition: transform 220ms ease;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-drawer {
+    transition: none;
+  }
+}
+
 .dashboard-drawer.drawer-open {
   transform: translateX(0);
 }

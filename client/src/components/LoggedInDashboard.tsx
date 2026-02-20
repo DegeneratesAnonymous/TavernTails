@@ -1985,11 +1985,19 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                               setAccountSaveMsg(null)
                               try {
                                 const payload: any = {}
-                                if (accountEditName !== null && accountEditName.trim() !== displayName) {
-                                  payload.name = accountEditName.trim()
+                                const newName = (accountEditName !== null ? accountEditName : displayName).trim()
+                                const newEmail = (accountEditEmail !== null ? accountEditEmail : (profile?.email || '')).trim()
+                                if (!newName) {
+                                  throw new Error('Display name cannot be empty.')
                                 }
-                                if (accountEditEmail !== null && accountEditEmail.trim() !== (profile?.email || '')) {
-                                  payload.email = accountEditEmail.trim()
+                                if (newEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+                                  throw new Error('Please enter a valid email address.')
+                                }
+                                if (accountEditName !== null && newName !== displayName) {
+                                  payload.name = newName
+                                }
+                                if (accountEditEmail !== null && newEmail !== (profile?.email || '')) {
+                                  payload.email = newEmail
                                 }
                                 if (Object.keys(payload).length === 0) {
                                   setAccountSaveMsg({ kind: 'info', text: 'No changes to save.' })

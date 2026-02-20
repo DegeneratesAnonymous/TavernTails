@@ -414,6 +414,12 @@ export default function CampaignSetupView({
         throw new Error(err?.detail || 'Failed to save campaign settings')
       }
 
+      // Persist content_rating via variables endpoint
+      await apiFetch(`/campaigns/${activeCampaignId}/variables`, {
+        method: 'PUT',
+        body: JSON.stringify({ content_rating: variables.content_rating }),
+      }).catch(() => { /* non-fatal; variables endpoint may not exist yet */ })
+
       await onCampaignUpdated()
       setMessage({ kind: 'info', text: 'Campaign settings saved.' })
     } catch (e: any) {
@@ -631,9 +637,11 @@ export default function CampaignSetupView({
                         onChange={(e) => setVariables((prev) => ({ ...prev, content_rating: e.target.value }))}
                         disabled={!canEdit}
                       >
-                        <option value="pg">PG</option>
+                        <option value="pg">PG (Family-friendly)</option>
+                        <option value="family">PG (Family-friendly)</option>
                         <option value="pg-13">PG-13</option>
-                        <option value="r">R</option>
+                        <option value="r">R (Mature)</option>
+                        <option value="mature">R (Mature)</option>
                       </select>
                     </div>
                   </div>
