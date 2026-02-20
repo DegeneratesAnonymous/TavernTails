@@ -1,0 +1,438 @@
+"""TTRPG system detection from character sheet data.
+
+Analyses skill names, class names, stat labels, and raw text to infer
+which TTRPG system a character sheet belongs to.  The result is stored on
+the character sheet so generative agents can tailor output without needing
+explicit user configuration.
+
+Design goals:
+- System-agnostic: no single system is assumed as "default".
+- Best-effort: returns the best guess plus a confidence score and evidence
+  list so the UI / agents can handle uncertainty gracefully.
+- Extensible: add new systems by appending to SYSTEM_SIGNATURES below.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Any, Dict, List
+
+# ---------------------------------------------------------------------------
+# System signatures
+# Each system entry has:
+#   "classes"  - set of class/role names used in this system
+#   "skills"   - set of skill names used in this system
+#   "stats"    - set of primary ability/stat names
+#   "keywords" - freeform strings found in raw text that strongly indicate
+#                this system (e.g. publisher name, rulebook title)
+# Matches are case-insensitive.  Scoring is additive: each matching
+# class/skill/stat contributes 2 pts, each keyword match contributes 3 pts.
+# ---------------------------------------------------------------------------
+SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
+    {
+        "name": "D&D 5e",
+        "publisher": "Wizards of the Coast",
+        "classes": {
+            "artificer", "barbarian", "bard", "cleric", "druid", "fighter",
+            "monk", "paladin", "ranger", "rogue", "sorcerer", "warlock", "wizard",
+        },
+        "skills": {
+            "acrobatics", "animal handling", "arcana", "athletics",
+            "deception", "history", "insight", "intimidation",
+            "investigation", "medicine", "nature", "perception",
+            "performance", "persuasion", "religion", "sleight of hand",
+            "stealth", "survival",
+        },
+        "stats": {"str", "dex", "con", "int", "wis", "cha",
+                  "strength", "dexterity", "constitution", "intelligence",
+                  "wisdom", "charisma"},
+        "keywords": {
+            "d&d", "dnd", "dungeons & dragons", "dungeons and dragons",
+            "5e", "5th edition", "d&d beyond", "dndbeyond",
+            "player's handbook", "phb", "tasha's", "xanathar",
+            "sword coast", "forgotten realms",
+        },
+    },
+    {
+        "name": "Pathfinder 2e",
+        "publisher": "Paizo",
+        "classes": {
+            "alchemist", "barbarian", "bard", "champion", "cleric", "druid",
+            "fighter", "investigator", "magus", "monk", "oracle", "psychic",
+            "ranger", "rogue", "sorcerer", "summoner", "swashbuckler",
+            "thaumaturge", "witch", "wizard",
+        },
+        "skills": {
+            "acrobatics", "arcana", "athletics", "crafting", "deception",
+            "diplomacy", "intimidation", "lore", "medicine", "nature",
+            "occultism", "performance", "religion", "society", "stealth",
+            "survival", "thievery",
+        },
+        "stats": {"str", "dex", "con", "int", "wis", "cha",
+                  "strength", "dexterity", "constitution", "intelligence",
+                  "wisdom", "charisma"},
+        "keywords": {
+            "pathfinder", "pf2e", "pf2", "paizo", "pathfinder 2",
+            "pathfinder second edition", "age of ashes", "abomination vaults",
+            "core rulebook",
+        },
+    },
+    {
+        "name": "Pathfinder 1e",
+        "publisher": "Paizo",
+        "classes": {
+            "alchemist", "barbarian", "bard", "cavalier", "cleric",
+            "druid", "fighter", "gunslinger", "inquisitor", "magus",
+            "monk", "ninja", "oracle", "paladin", "ranger", "rogue",
+            "samurai", "sorcerer", "summoner", "witch", "wizard",
+        },
+        "skills": {
+            "acrobatics", "appraise", "bluff", "climb", "craft",
+            "diplomacy", "disable device", "disguise", "escape artist",
+            "fly", "handle animal", "heal", "intimidate", "knowledge",
+            "linguistics", "perception", "perform", "profession", "ride",
+            "sense motive", "sleight of hand", "spellcraft", "stealth",
+            "survival", "swim", "use magic device",
+        },
+        "stats": {"str", "dex", "con", "int", "wis", "cha",
+                  "strength", "dexterity", "constitution", "intelligence",
+                  "wisdom", "charisma"},
+        "keywords": {
+            "pathfinder 1e", "pathfinder 1", "pathfinder first edition",
+            "pathfinder rpg",
+        },
+    },
+    {
+        "name": "Starfinder",
+        "publisher": "Paizo",
+        "classes": {
+            "biohacker", "envoy", "evolutionist", "mechanic", "mystic",
+            "nanocyte", "operative", "precog", "solarian", "soldier",
+            "technomancer", "vanguard", "witchwarper",
+        },
+        "skills": {
+            "acrobatics", "athletics", "bluff", "computers", "culture",
+            "diplomacy", "disguise", "engineering", "intimidate", "life science",
+            "medicine", "mysticism", "perception", "physical science",
+            "piloting", "profession", "sense motive", "sleight of hand",
+            "social", "stealth", "survival",
+        },
+        "stats": {"str", "dex", "con", "int", "wis", "cha",
+                  "strength", "dexterity", "constitution", "intelligence",
+                  "wisdom", "charisma"},
+        "keywords": {
+            "starfinder", "sfrd", "pact worlds", "drift", "eox",
+            "armada", "starship", "absalom station",
+        },
+    },
+    {
+        "name": "Call of Cthulhu",
+        "publisher": "Chaosium",
+        "classes": {
+            "accountant", "artist", "author", "clergyman", "criminal",
+            "dilettante", "doctor of medicine", "engineer", "entertainer",
+            "farmer", "federal agent", "hobo", "investigator", "journalist",
+            "lawyer", "librarian", "military officer", "missionary", "nurse",
+            "occultist", "parapsychologist", "police detective",
+            "private investigator", "professor", "soldier", "spy",
+            "street tough", "tribal shaman",
+        },
+        "skills": {
+            "accounting", "anthropology", "appraise", "archaeology",
+            "art/craft", "charm", "climb", "computer use", "credit rating",
+            "cthulhu mythos", "disguise", "dodge", "drive auto",
+            "electrical repair", "fast talk", "fighting", "first aid",
+            "history", "hypnosis", "intimidate", "jump", "language",
+            "law", "library use", "listen", "locksmith",
+            "mechanical repair", "medicine", "natural world", "navigate",
+            "occult", "operate heavy machinery", "persuade", "photography",
+            "pilot", "psychology", "psychoanalysis", "ride", "science",
+            "sleight of hand", "spot hidden", "stealth", "swim",
+            "throw", "track",
+        },
+        "stats": {
+            "str", "dex", "con", "int", "pow", "app", "edu", "siz",
+            "strength", "dexterity", "constitution", "intelligence",
+            "power", "appearance", "education", "size",
+            "sanity", "luck", "hit points", "magic points",
+        },
+        "keywords": {
+            "call of cthulhu", "coc", "cthulhu", "investigator",
+            "keeper", "chaosium", "sanity", "cosmic horror",
+            "lovecraft", "7th edition",
+        },
+    },
+    {
+        "name": "Star Trek Adventures",
+        "publisher": "Modiphius Entertainment",
+        "classes": {
+            "command", "conn", "engineering", "medical", "operations",
+            "science", "security", "tactical",
+        },
+        "skills": {
+            "command", "conn", "engineering", "medical", "science", "security",
+        },
+        "stats": {
+            "control", "daring", "fitness", "insight",
+            "presence", "reason",
+            "engineering", "medicine", "science",
+            "conn", "command", "security",
+        },
+        "keywords": {
+            "star trek", "sta", "star trek adventures", "modiphius",
+            "starfleet", "federation", "klingon", "vulcan", "romulan",
+            "starship", "uss", "united federation of planets",
+        },
+    },
+    {
+        "name": "Shadow of the Demon Lord",
+        "publisher": "Schwalb Entertainment",
+        "classes": {
+            "warrior", "priest", "rogue", "magician",
+        },
+        "skills": set(),
+        "stats": {"strength", "agility", "intellect", "will"},
+        "keywords": {
+            "shadow of the demon lord", "sotdl", "schwalb",
+            "demon lord", "tradition",
+        },
+    },
+    {
+        "name": "Warhammer Fantasy Roleplay",
+        "publisher": "Cubicle 7",
+        "classes": {
+            "apprentice wizard", "burgher", "cavalryman", "courtier",
+            "entertainer", "innkeeper", "investigator", "knight",
+            "mercenary", "physician", "rat catcher", "scholar", "scout",
+            "soldier", "thief", "warrior priest", "wizard",
+        },
+        "skills": {
+            "animal care", "bribery", "channelling", "charm",
+            "charm animal", "climb", "consume alcohol", "cool",
+            "dodge", "drive", "endurance", "entertain",
+            "evaluate", "gamble", "gossip", "haggle", "heal",
+            "intimidate", "intuition", "leadership", "lore",
+            "melee", "navigation", "outdoor survival", "perception",
+            "ranged", "ride", "row", "sail", "stealth",
+            "swim", "trade", "track",
+        },
+        "stats": {
+            "ws", "bs", "s", "t", "i", "ag", "dex", "int", "wp", "fel",
+            "weapon skill", "ballistic skill", "strength", "toughness",
+            "initiative", "agility", "dexterity", "intelligence",
+            "willpower", "fellowship",
+        },
+        "keywords": {
+            "warhammer", "wfrp", "cubicle 7", "altdorf", "reikland",
+            "sigmar", "old world", "chaos",
+        },
+    },
+    {
+        "name": "Alien RPG",
+        "publisher": "Free League Publishing",
+        "classes": {
+            "colonial marine", "company agent", "kid", "medic",
+            "officer", "pilot", "roughneck", "scientist",
+        },
+        "skills": {
+            "close combat", "command", "comtech", "heavy machinery",
+            "manipulation", "medical aid", "mobility", "observation",
+            "piloting", "ranged combat", "stamina", "survival",
+        },
+        "stats": {
+            "strength", "agility", "wits", "empathy",
+        },
+        "keywords": {
+            "alien rpg", "alien", "free league", "xenomorph",
+            "weyland-yutani", "nostromo",
+        },
+    },
+    {
+        "name": "Shadowrun",
+        "publisher": "Catalyst Game Labs",
+        "classes": {
+            "adept", "decker", "face", "gunslinger", "mage", "rigger",
+            "samurai", "shaman", "smuggler", "soldier", "spy",
+            "street samurai", "street shaman", "technomancer",
+        },
+        "skills": {
+            "archery", "automatics", "blades", "clubs", "computer",
+            "con", "cybercombat", "demolitions", "disguise",
+            "electronics", "etiquette", "forgery", "gunnery",
+            "gymnastics", "hacking", "hardware", "heavy weapons",
+            "impersonation", "intimidation", "locksmith",
+            "longarms", "medicine", "navigation", "negotiation",
+            "palming", "perception", "pilot", "pistols", "running",
+            "shotguns", "sneaking", "software", "spellcasting",
+            "summoning", "survival", "swimming", "unarmed combat",
+        },
+        "stats": {
+            "body", "agility", "reaction", "strength", "willpower",
+            "logic", "intuition", "charisma", "edge", "magic",
+            "resonance", "essence",
+        },
+        "keywords": {
+            "shadowrun", "sixth world", "nuyen", "matrix",
+            "sprawl", "corp", "megacorp", "awakened", "otaku",
+        },
+    },
+]
+
+# Build a lowercase lookup index for fast matching
+_SYSTEMS_BY_NAME: Dict[str, Dict[str, Any]] = {s["name"]: s for s in SYSTEM_SIGNATURES}
+
+
+def _norm(text: str) -> str:
+    """Lowercase and strip for comparison."""
+    return (text or "").lower().strip()
+
+
+def _score_system(sig: Dict[str, Any], sheet: Dict[str, Any]) -> tuple[int, List[str]]:
+    """Return (score, evidence_list) for a single system signature vs a sheet."""
+    score = 0
+    evidence: List[str] = []
+
+    # ---- Class name matching -----------------------------------------------
+    class_name = _norm(sheet.get("class_name") or "")
+    for cls_part in re.split(r"[/,|]+", class_name):
+        cls_part = cls_part.strip()
+        if cls_part and cls_part in sig["classes"]:
+            score += 2
+            evidence.append(f"class:{cls_part}")
+
+    # Also check multiclass list
+    for mc_entry in sheet.get("multiclass") or []:
+        mc_cls = _norm(mc_entry.get("class_name") or mc_entry.get("name") or "")
+        if mc_cls and mc_cls in sig["classes"]:
+            score += 2
+            evidence.append(f"multiclass:{mc_cls}")
+
+    # ---- Skill name matching -----------------------------------------------
+    skill_names = _collect_skill_names(sheet)
+    for sname in skill_names:
+        sname_norm = _norm(sname)
+        if sname_norm in sig["skills"]:
+            score += 2
+            evidence.append(f"skill:{sname_norm}")
+
+    # ---- Stat key matching -------------------------------------------------
+    stats = sheet.get("stats") or {}
+    if isinstance(stats, dict):
+        for stat_key in stats:
+            sk = _norm(stat_key)
+            if sk in sig["stats"]:
+                score += 1
+                evidence.append(f"stat:{sk}")
+
+    # ---- Keyword matching in raw text / import metadata --------------------
+    searchable = _collect_raw_text(sheet)
+    for kw in sig["keywords"]:
+        pattern = re.escape(kw)
+        if re.search(rf"\b{pattern}\b", searchable, re.IGNORECASE):
+            score += 3
+            evidence.append(f"keyword:{kw}")
+
+    return score, evidence
+
+
+def _collect_skill_names(sheet: Dict[str, Any]) -> List[str]:
+    """Extract skill names from a sheet regardless of import format."""
+    names: List[str] = []
+    skills = sheet.get("skills") or []
+    if isinstance(skills, list):
+        for entry in skills:
+            if isinstance(entry, dict):
+                n = entry.get("name") or entry.get("skill") or ""
+                if n:
+                    names.append(str(n))
+            elif isinstance(entry, str):
+                names.append(entry)
+    return names
+
+
+def _collect_raw_text(sheet: Dict[str, Any]) -> str:
+    """Collect all freeform text from a sheet for keyword scanning."""
+    parts: List[str] = []
+
+    raw_text = sheet.get("raw_text") or ""
+    if isinstance(raw_text, str):
+        parts.append(raw_text[:10000])
+
+    # Import metadata sometimes has the source URL / label
+    imp = sheet.get("import") or {}
+    if isinstance(imp, dict):
+        for field in ("source", "ddb_url", "filename"):
+            v = imp.get(field) or ""
+            if v:
+                parts.append(str(v))
+
+    # Raw embedded JSON
+    raw_embedded = sheet.get("raw") or {}
+    if isinstance(raw_embedded, dict):
+        # Only stringify top-level string values to keep it fast
+        for v in raw_embedded.values():
+            if isinstance(v, str):
+                parts.append(v[:500])
+
+    return " ".join(parts)
+
+
+def infer_ttrpg_system(sheet: Dict[str, Any]) -> Dict[str, Any]:
+    """Analyse a character sheet and return the best-guess TTRPG system.
+
+    Returns a dict with::
+
+        {
+          "system_name":   str,   # detected system name, or "Unknown"
+          "publisher":     str,   # publisher name, or ""
+          "confidence":    float, # 0.0 – 1.0 relative confidence
+          "evidence":      list,  # list of signals that fired
+          "all_scores":    dict,  # {system_name: score} for debugging/UI
+        }
+
+    The caller should store this on the character sheet so agents can use it.
+    """
+    if not isinstance(sheet, dict):
+        return _unknown_result()
+
+    scored: List[tuple[int, str, List[str]]] = []
+    for sig in SYSTEM_SIGNATURES:
+        s, ev = _score_system(sig, sheet)
+        scored.append((s, sig["name"], ev))
+
+    scored.sort(key=lambda t: t[0], reverse=True)
+
+    top_score, top_name, top_evidence = scored[0]
+    second_score = scored[1][0] if len(scored) > 1 else 0
+
+    if top_score == 0:
+        return _unknown_result()
+
+    # Confidence: ratio of top score vs (top + second), capped at 1.0.
+    # Using the sum of top two scores keeps the value relative to how much
+    # stronger the winner is than its closest rival.
+    max_score = max(top_score + second_score, 1)
+    confidence = round(min(1.0, top_score / max_score), 3)
+
+    publisher = next(
+        (sig["publisher"] for sig in SYSTEM_SIGNATURES if sig["name"] == top_name),
+        "",
+    )
+
+    return {
+        "system_name": top_name,
+        "publisher": publisher,
+        "confidence": confidence,
+        "evidence": top_evidence,
+        "all_scores": {name: s for s, name, _ in scored},
+    }
+
+
+def _unknown_result() -> Dict[str, Any]:
+    return {
+        "system_name": "Unknown",
+        "publisher": "",
+        "confidence": 0.0,
+        "evidence": [],
+        "all_scores": {sig["name"]: 0 for sig in SYSTEM_SIGNATURES},
+    }

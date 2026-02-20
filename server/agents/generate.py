@@ -30,6 +30,7 @@ class GenerateRequest(BaseModel):
 class GenerateNPCRequest(GenerateRequest):
     npc_type: str | None = None  # e.g., "merchant", "guard", "villain"
     setting: str | None = None
+    character_id: int | None = None  # optional: pull detected system + skills from this character
 
 
 class GenerateLocationRequest(GenerateRequest):
@@ -59,6 +60,25 @@ def generate_npc(req: GenerateNPCRequest, current_user=Depends(get_current_user)
     # Ownership verified above; or {} handles the "variables not yet configured" case.
     variables = db.get_campaign_variables(req.campaign_id, user_id) or {}
 
+    # Optionally pull TTRPG system + skills from a player character sheet.
+    # This lets agents tailor output to the specific ruleset in use.
+    character_system: Dict[str, Any] = {}
+    if req.character_id is not None:
+        char = db.get_character_for_owner(character_id=req.character_id, owner_id=user_id)
+        if char and char.sheet:
+            detected = (char.sheet or {}).get('detected_system') or {}
+            character_system = {
+                'detected_system': detected.get('system_name', 'Unknown'),
+                'system_publisher': detected.get('publisher', ''),
+                'system_confidence': detected.get('confidence', 0.0),
+                'player_skills': [
+                    s.get('name') for s in ((char.sheet or {}).get('skills') or [])
+                    if isinstance(s, dict) and s.get('name')
+                ],
+                'player_class': char.class_name or '',
+                'player_level': char.level or 1,
+            }
+
     # Build context for generation
     context = {
         'world_name': settings.get('world_name', ''),
@@ -76,6 +96,8 @@ def generate_npc(req: GenerateNPCRequest, current_user=Depends(get_current_user)
         'npc_archetypes': variables.get('npc_archetypes', []),
         'naming_style': variables.get('naming_style', ''),
         'content_rating': variables.get('content_rating', 'pg-13'),
+        # system-aware context derived from the player's character sheet
+        **character_system,
         **(req.context or {}),
     }
 
@@ -88,7 +110,7 @@ def generate_npc(req: GenerateNPCRequest, current_user=Depends(get_current_user)
         'context': context,
         'stats': {
             'level': settings.get('starting_level', 1),
-            'ruleset': settings.get('ruleset', '5e'),
+            'ruleset': context.get('detected_system') or settings.get('ruleset') or 'Unknown',
         },
     }
 

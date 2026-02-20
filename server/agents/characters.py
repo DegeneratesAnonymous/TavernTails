@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from .. import db
 from ..auth import get_current_user
 from . import references as references_agent
+from .system_detect import infer_ttrpg_system
 
 router = APIRouter(prefix="/characters", tags=["characters"])
 
@@ -481,6 +482,96 @@ def _extract_features_from_pdf_widgets(fields: Dict[str, str]) -> list[str]:
                 break
 
     return features
+
+
+def _extract_skills_from_pdf_widgets(fields: Dict[str, str]) -> list[Dict[str, Any]]:
+    """Extract skill entries from PDF widget key/value pairs.
+
+    Works for any TTRPG PDF: looks for widget keys whose names look like skill
+    names (no numbers, not a known stat abbreviation, not metadata), and builds
+    lightweight structured entries with name, modifier, and proficiency hints.
+
+    Returns a list of ``{"name": str, "modifier": int | None, "proficient": bool}``.
+    """
+    if not fields:
+        return []
+
+    # Known non-skill single-word keys to skip (stats, metadata, etc.)
+    _skip_keys = {
+        "str", "dex", "con", "int", "wis", "cha",
+        "strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma",
+        "level", "race", "class", "background", "name", "hp", "ac",
+        "initiative", "speed", "proficiency", "proficiency bonus",
+        "charactername", "playername", "experience", "alignment",
+    }
+
+    def _norm(s: str) -> str:
+        return re.sub(r"[^a-z ]", "", s.lower()).strip()
+
+    skills: list[Dict[str, Any]] = []
+    seen: set[str] = set()
+
+    for raw_key, raw_value in fields.items():
+        # Normalise key: strip non-alpha/space chars, lowercase
+        key = _norm(raw_key)
+        if not key or key in _skip_keys:
+            continue
+
+        # Skip keys that match common metadata patterns
+        if re.match(
+            r"(armor|armorclass|hitpoint|passive|spell|weight|encumber|backstory"
+            r"|personality|ideals?|bonds?|flaw|allies|features|traits|attack|death"
+            r"|currency|pp|gp|ep|sp|cp|languages|proficiencies|equipment|tool)",
+            key,
+        ):
+            continue
+
+        # The value should look like a numeric modifier or a checkbox/proficiency flag
+        val = (raw_value or "").strip()
+        if not val:
+            continue
+
+        # Parse modifier: first integer-like token in the value (up to 4 digits,
+        # covers percentile systems like Call of Cthulhu with values up to 100+)
+        mod_match = re.search(r"([+\-]?\d{1,4})", val)
+        modifier: int | None = None
+        if mod_match:
+            try:
+                modifier = int(mod_match.group(1))
+            except ValueError:
+                pass
+
+        # Proficiency hint: value looks like "Yes", "true", "1", "●", "✓"
+        proficient = False
+        if re.match(r"^(yes|true|1|●|✓|x|checked|on)$", val, re.I):
+            proficient = True
+        # Some PDFs show "+prof" suffix
+        if "prof" in val.lower():
+            proficient = True
+
+        # Only include if we got at least a modifier or it's flagged proficient
+        if modifier is None and not proficient:
+            continue
+
+        # Use a readable title-case skill name
+        display_name = key.title()
+        key_dedup = key
+        if key_dedup in seen:
+            continue
+        seen.add(key_dedup)
+
+        skills.append({
+            "name": display_name,
+            "modifier": modifier,
+            "proficient": proficient,
+        })
+
+        if len(skills) >= 200:
+            break
+
+    return skills
+
+
 
 
 def _read_pdf_text(content: bytes) -> str | None:
@@ -1055,6 +1146,20 @@ def _build_character_import_sheet_from_json(
         "raw": parsed,
     }
 
+    # Detect TTRPG system from whatever the JSON provides.
+    try:
+        detect_input = {
+            "class_name": class_name,
+            "multiclass": parsed.get("classes") or [],
+            "skills": parsed.get("skills") or [],
+            "stats": parsed.get("stats") or parsed.get("abilities") or {},
+            "raw_text": raw_json[:10000],
+            "import": {"source": source, "ddb_url": ddb_url},
+        }
+        sheet["detected_system"] = infer_ttrpg_system(detect_input)
+    except Exception:
+        pass
+
     return name, safe_level, class_name, sheet
 
 
@@ -1078,6 +1183,7 @@ def _build_character_import_sheet_from_pdf(
     ac_from_widgets = _extract_ac_from_pdf_widgets(widget_values)
     hp_from_widgets = _extract_hp_from_pdf_widgets(widget_values)
     features_from_widgets = _extract_features_from_pdf_widgets(widget_values)
+    skills_from_widgets = _extract_skills_from_pdf_widgets(widget_values)
 
     # Try to group features into class / racial / other using widget keys when available.
     class_features: list[str] = []
@@ -1477,6 +1583,7 @@ def _build_character_import_sheet_from_pdf(
         "classFeatures": class_features,
         "racialFeatures": racial_features,
         "otherFeatures": other_features,
+        "skills": skills_from_widgets,
         "spells": raw_struct.get("spells", []),
         "spellbook": spell_entries,
         "speed": raw_struct.get("speed"),
@@ -1563,6 +1670,20 @@ def _build_character_import_sheet_from_pdf(
             sheet["references"] = refs
     except Exception:
         # Do not fail the import if reference lookup errors occur
+        pass
+
+    # Detect TTRPG system from extracted sheet data.
+    try:
+        detect_input = {
+            "class_name": final_class_name,
+            "multiclass": multiclass,
+            "skills": skills_from_widgets,
+            "stats": stats_from_widgets,
+            "raw_text": (combined_text or "")[:10000],
+            "import": {"source": source, "ddb_url": ddb_url, "filename": filename},
+        }
+        sheet["detected_system"] = infer_ttrpg_system(detect_input)
+    except Exception:
         pass
 
     return final_name, safe_level, final_class_name, sheet
