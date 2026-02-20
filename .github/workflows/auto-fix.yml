@@ -1,0 +1,72 @@
+name: Auto-fix
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+    types: [ opened, synchronize, reopened ]
+
+# Write access is required to commit fixes back to the PR branch.
+# This workflow only runs for PRs from the same repository (not forks)
+# so the GITHUB_TOKEN has the necessary permissions.
+permissions:
+  contents: write
+
+jobs:
+  auto-fix:
+    name: Auto-fix Linting
+    runs-on: ubuntu-latest
+    # Skip forks: the GITHUB_TOKEN on fork PRs is read-only and cannot push fixes.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Backend: ruff auto-fix ──────────────────────────────────────────────
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r server/requirements.txt
+
+      - name: Auto-fix with ruff
+        run: ruff check server/ --fix --exit-zero
+
+      # ── Frontend: ESLint auto-fix ───────────────────────────────────────────
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: client
+        run: npm ci
+
+      - name: Auto-fix with ESLint
+        working-directory: client
+        # Exit code 1 = fixable lint errors (expected); exit code 2 = fatal config error (should fail).
+        # The `|| { ... }` form is safe under bash's set -e default.
+        run: >
+          ./node_modules/.bin/eslint src/ --fix --ext .ts,.tsx,.js,.jsx
+          || { ec=$?; [ $ec -eq 1 ] || exit $ec; }
+
+      # ── Commit fixes (if any) back to the PR branch ────────────────────────
+      - name: Commit and push fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff --staged --quiet; then
+            git commit -m "chore: auto-fix linting issues"
+            git push
+          else
+            echo "No fixes needed"
+          fi
