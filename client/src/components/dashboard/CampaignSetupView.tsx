@@ -41,6 +41,12 @@ const DocumentsIcon = () => (
   </svg>
 )
 
+const VariablesIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="btn-icon">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 0 1 0 3.75H5.625a1.875 1.875 0 0 1 0-3.75Z" />
+  </svg>
+)
+
 const AddDocumentIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="btn-icon">
     <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
@@ -66,6 +72,19 @@ type CampaignSettings = {
   ruleset: string
   starting_level: number
   house_rules: string
+}
+
+type CampaignVariables = {
+  themes: string[]
+  pacing: string
+  narrative_style: string
+  factions: string[]
+  npc_archetypes: string[]
+  naming_style: string
+  primary_environment: string
+  location_tags: string[]
+  dialogue_style: string
+  content_rating: string
 }
 
 type Player = {
@@ -105,6 +124,19 @@ const DEFAULT_SETTINGS: CampaignSettings = {
   house_rules: '',
 }
 
+const DEFAULT_VARIABLES: CampaignVariables = {
+  themes: [],
+  pacing: 'moderate',
+  narrative_style: 'balanced',
+  factions: [],
+  npc_archetypes: [],
+  naming_style: '',
+  primary_environment: '',
+  location_tags: [],
+  dialogue_style: '',
+  content_rating: 'pg-13',
+}
+
 function asString(v: any): string {
   return typeof v === 'string' ? v : v == null ? '' : String(v)
 }
@@ -128,11 +160,12 @@ export default function CampaignSetupView({
   showAdminControls = false,
   onDeleteTestCampaigns,
 }: Props) {
-  const [viewMode, setViewMode] = useState<'list' | 'settings' | 'documents' | 'players'>('list')
+  const [viewMode, setViewMode] = useState<'list' | 'settings' | 'documents' | 'players' | 'variables'>('list')
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
 
   const [settings, setSettings] = useState<CampaignSettings>(DEFAULT_SETTINGS)
+  const [variables, setVariables] = useState<CampaignVariables>(DEFAULT_VARIABLES)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{ kind: 'info' | 'error'; text: string } | null>(null)
@@ -248,14 +281,58 @@ export default function CampaignSetupView({
     }
   }, [activeCampaignId])
 
+  // Load campaign variables
+  useEffect(() => {
+    let canceled = false
+    async function loadVariables() {
+      if (!activeCampaignId) {
+        setVariables(DEFAULT_VARIABLES)
+        return
+      }
+      try {
+        const res = await apiFetch(`/campaigns/${activeCampaignId}/variables`)
+        if (!res.ok) return
+        const data = await res.json()
+        const v = data?.variables
+        if (!canceled && v) {
+          setVariables({
+            themes: Array.isArray(v.themes) ? v.themes : DEFAULT_VARIABLES.themes,
+            pacing: asString(v.pacing) || DEFAULT_VARIABLES.pacing,
+            narrative_style: asString(v.narrative_style) || DEFAULT_VARIABLES.narrative_style,
+            factions: Array.isArray(v.factions) ? v.factions : DEFAULT_VARIABLES.factions,
+            npc_archetypes: Array.isArray(v.npc_archetypes) ? v.npc_archetypes : DEFAULT_VARIABLES.npc_archetypes,
+            naming_style: asString(v.naming_style),
+            primary_environment: asString(v.primary_environment),
+            location_tags: Array.isArray(v.location_tags) ? v.location_tags : DEFAULT_VARIABLES.location_tags,
+            dialogue_style: asString(v.dialogue_style),
+            content_rating: asString(v.content_rating) || DEFAULT_VARIABLES.content_rating,
+          })
+        }
+      } catch (e) {
+        if (!canceled) setVariables(DEFAULT_VARIABLES)
+      }
+    }
+    loadVariables()
+    return () => {
+      canceled = true
+    }
+  }, [activeCampaignId])
+
   const title = useMemo(() => {
     if (viewMode === 'list' || !activeCampaignId) return 'Manage Campaigns'
     const base = asString(activeCampaign?.name) || activeCampaignId
-    const suffix = viewMode === 'settings' ? 'Settings' : viewMode === 'documents' ? 'Documents' : 'Players'
+    const suffix =
+      viewMode === 'settings'
+        ? 'Settings'
+        : viewMode === 'documents'
+        ? 'Documents'
+        : viewMode === 'variables'
+        ? 'Variables'
+        : 'Players'
     return `Manage Campaigns: ${base} — ${suffix}`
   }, [activeCampaignId, activeCampaign?.name, viewMode])
 
-  const openCampaignView = (campaignId: string, mode: 'settings' | 'documents' | 'players') => {
+  const openCampaignView = (campaignId: string, mode: 'settings' | 'documents' | 'players' | 'variables') => {
     onSelectCampaign(campaignId)
     setViewMode(mode)
   }
@@ -356,6 +433,31 @@ export default function CampaignSetupView({
     }
   }
 
+  async function onSaveVariables() {
+    if (!activeCampaignId) {
+      setMessage({ kind: 'error', text: 'Select or create a campaign first.' })
+      return
+    }
+
+    setSaving(true)
+    setMessage(null)
+    try {
+      const res = await apiFetch(`/campaigns/${activeCampaignId}/variables`, {
+        method: 'PUT',
+        body: JSON.stringify(variables),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(err?.detail || 'Failed to save campaign variables')
+      }
+      setMessage({ kind: 'info', text: 'Campaign variables saved.' })
+    } catch (e: any) {
+      setMessage({ kind: 'error', text: e?.message || 'Failed to save campaign variables' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const sortedCampaigns = useMemo(() => {
     return [...campaigns].sort((a, b) => a.name.localeCompare(b.name))
   }, [campaigns])
@@ -419,6 +521,9 @@ export default function CampaignSetupView({
                         <div className="row-wrap" style={{ gap: 6, justifyContent: 'flex-end' }}>
                           <button className="btn btn-secondary btn-sm btn-icon-only" type="button" onClick={() => openCampaignView(String(campaign.id), 'settings')} title="Settings" aria-label="Settings">
                             <SettingsIcon />
+                          </button>
+                          <button className="btn btn-secondary btn-sm btn-icon-only" type="button" onClick={() => openCampaignView(String(campaign.id), 'variables')} title="Variables" aria-label="Variables">
+                            <VariablesIcon />
                           </button>
                           <button className="btn btn-secondary btn-sm btn-icon-only" type="button" onClick={() => openCampaignView(String(campaign.id), 'documents')} title="Documents" aria-label="Documents">
                             <DocumentsIcon />
@@ -670,6 +775,195 @@ export default function CampaignSetupView({
                   </button>
                 </div>
                 <div className="inline-alert">No players listed yet.</div>
+              </div>
+            </>
+          ) : null}
+
+          {viewMode === 'variables' ? (
+            <>
+              <button className="btn btn-secondary btn-sm" type="button" onClick={() => setViewMode('list')}>
+                ← Back to campaigns
+              </button>
+
+              <div className="card card-pad" style={{ opacity: loading ? 0.7 : 1, background: 'var(--surface-dark)' }}>
+                <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                  <div className="muted">Campaign Variables</div>
+                  <button
+                    className="btn btn-sm"
+                    type="button"
+                    disabled={!canEdit || saving}
+                    onClick={onSaveVariables}
+                  >
+                    {saving ? 'Saving…' : 'Save Variables'}
+                  </button>
+                </div>
+                <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
+                  These variables are factored by generative agents when producing story content, NPCs, locations, dialogue, and scenes.
+                </div>
+
+                <div className="stack" style={{ gap: 14 }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>Narrative &amp; Story</div>
+                    <div className="stack" style={{ gap: 8 }}>
+                      <div>
+                        <label className="muted" style={{ fontSize: 12 }}>Themes (comma-separated)</label>
+                        <input
+                          className="input"
+                          value={variables.themes.join(', ')}
+                          onChange={(e) =>
+                            setVariables((prev) => ({
+                              ...prev,
+                              themes: e.target.value.split(',').map((t) => t.trim()).filter(Boolean),
+                            }))
+                          }
+                          placeholder="e.g. redemption, betrayal, survival"
+                          disabled={!canEdit}
+                        />
+                      </div>
+                      <div className="row-wrap" style={{ gap: 8 }}>
+                        <div style={{ flex: 1 }}>
+                          <label className="muted" style={{ fontSize: 12 }}>Pacing</label>
+                          <select
+                            className="input"
+                            value={variables.pacing}
+                            onChange={(e) => setVariables((prev) => ({ ...prev, pacing: e.target.value }))}
+                            disabled={!canEdit}
+                          >
+                            <option value="slow">Slow</option>
+                            <option value="moderate">Moderate</option>
+                            <option value="fast">Fast</option>
+                          </select>
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <label className="muted" style={{ fontSize: 12 }}>Narrative Style</label>
+                          <select
+                            className="input"
+                            value={variables.narrative_style}
+                            onChange={(e) => setVariables((prev) => ({ ...prev, narrative_style: e.target.value }))}
+                            disabled={!canEdit}
+                          >
+                            <option value="balanced">Balanced</option>
+                            <option value="epic">Epic</option>
+                            <option value="intimate">Intimate</option>
+                            <option value="gritty">Gritty</option>
+                            <option value="lighthearted">Lighthearted</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>NPCs &amp; Characters</div>
+                    <div className="stack" style={{ gap: 8 }}>
+                      <div>
+                        <label className="muted" style={{ fontSize: 12 }}>Factions (comma-separated)</label>
+                        <input
+                          className="input"
+                          value={variables.factions.join(', ')}
+                          onChange={(e) =>
+                            setVariables((prev) => ({
+                              ...prev,
+                              factions: e.target.value.split(',').map((t) => t.trim()).filter(Boolean),
+                            }))
+                          }
+                          placeholder="e.g. Thieves Guild, Royal Guard, Merchant League"
+                          disabled={!canEdit}
+                        />
+                      </div>
+                      <div>
+                        <label className="muted" style={{ fontSize: 12 }}>NPC Archetypes (comma-separated)</label>
+                        <input
+                          className="input"
+                          value={variables.npc_archetypes.join(', ')}
+                          onChange={(e) =>
+                            setVariables((prev) => ({
+                              ...prev,
+                              npc_archetypes: e.target.value.split(',').map((t) => t.trim()).filter(Boolean),
+                            }))
+                          }
+                          placeholder="e.g. grizzled veteran, cunning spy, wise elder"
+                          disabled={!canEdit}
+                        />
+                      </div>
+                      <div>
+                        <label className="muted" style={{ fontSize: 12 }}>Naming Style</label>
+                        <input
+                          className="input"
+                          value={variables.naming_style}
+                          onChange={(e) => setVariables((prev) => ({ ...prev, naming_style: e.target.value }))}
+                          placeholder="e.g. Norse, Elvish, Latin-inspired"
+                          disabled={!canEdit}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>Locations &amp; World</div>
+                    <div className="stack" style={{ gap: 8 }}>
+                      <div>
+                        <label className="muted" style={{ fontSize: 12 }}>Primary Environment</label>
+                        <input
+                          className="input"
+                          value={variables.primary_environment}
+                          onChange={(e) => setVariables((prev) => ({ ...prev, primary_environment: e.target.value }))}
+                          placeholder="e.g. arctic tundra, tropical jungle, underground caverns"
+                          disabled={!canEdit}
+                        />
+                      </div>
+                      <div>
+                        <label className="muted" style={{ fontSize: 12 }}>Location Tags (comma-separated)</label>
+                        <input
+                          className="input"
+                          value={variables.location_tags.join(', ')}
+                          onChange={(e) =>
+                            setVariables((prev) => ({
+                              ...prev,
+                              location_tags: e.target.value.split(',').map((t) => t.trim()).filter(Boolean),
+                            }))
+                          }
+                          placeholder="e.g. dangerous, mystical, urban, ruined"
+                          disabled={!canEdit}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>Dialogue &amp; Voice</div>
+                    <div className="row-wrap" style={{ gap: 8 }}>
+                      <div style={{ flex: 1 }}>
+                        <label className="muted" style={{ fontSize: 12 }}>Dialogue Style</label>
+                        <select
+                          className="input"
+                          value={variables.dialogue_style}
+                          onChange={(e) => setVariables((prev) => ({ ...prev, dialogue_style: e.target.value }))}
+                          disabled={!canEdit}
+                        >
+                          <option value="">Default</option>
+                          <option value="formal">Formal</option>
+                          <option value="archaic">Archaic</option>
+                          <option value="modern">Modern</option>
+                          <option value="regional slang">Regional Slang</option>
+                        </select>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label className="muted" style={{ fontSize: 12 }}>Content Rating</label>
+                        <select
+                          className="input"
+                          value={variables.content_rating}
+                          onChange={(e) => setVariables((prev) => ({ ...prev, content_rating: e.target.value }))}
+                          disabled={!canEdit}
+                        >
+                          <option value="family">Family</option>
+                          <option value="pg-13">PG-13</option>
+                          <option value="mature">Mature</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </>
           ) : null}

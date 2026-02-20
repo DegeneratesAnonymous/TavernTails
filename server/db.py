@@ -165,6 +165,34 @@ def set_campaign_settings(campaign_id: str, owner_id: int, settings: Dict[str, A
         return camp
 
 
+def get_campaign_variables(campaign_id: str, owner_id: int) -> Dict[str, Any] | None:
+    """Return the campaign variables dict, or {} if not yet set, or None if not found/forbidden."""
+    with Session(engine) as session:
+        stmt = select(Campaign).where(Campaign.id == campaign_id, Campaign.owner_id == owner_id)
+        camp = session.exec(stmt).first()
+        if not camp:
+            return None
+        meta = dict(camp.metadata_json or {})
+        variables = meta.get("variables")
+        return dict(variables) if isinstance(variables, dict) else {}
+
+
+def set_campaign_variables(campaign_id: str, owner_id: int, variables: Dict[str, Any]) -> Campaign | None:
+    """Persist campaign variables into metadata_json['variables']."""
+    with Session(engine) as session:
+        stmt = select(Campaign).where(Campaign.id == campaign_id, Campaign.owner_id == owner_id)
+        camp = session.exec(stmt).first()
+        if not camp:
+            return None
+        meta = dict(camp.metadata_json or {})
+        meta["variables"] = dict(variables)
+        camp.metadata_json = meta
+        session.add(camp)
+        session.commit()
+        session.refresh(camp)
+        return camp
+
+
 def delete_campaign(campaign_id: str, owner_id: int) -> bool:
     with Session(engine) as session:
         stmt = select(Campaign).where(Campaign.id == campaign_id, Campaign.owner_id == owner_id)

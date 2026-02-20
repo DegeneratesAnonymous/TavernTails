@@ -56,6 +56,8 @@ def generate_npc(req: GenerateNPCRequest, current_user=Depends(get_current_user)
 
     # Get campaign settings for context
     settings = db.get_campaign_settings(req.campaign_id, user_id) or {}
+    # Ownership verified above; or {} handles the "variables not yet configured" case.
+    variables = db.get_campaign_variables(req.campaign_id, user_id) or {}
 
     # Build context for generation
     context = {
@@ -65,6 +67,15 @@ def generate_npc(req: GenerateNPCRequest, current_user=Depends(get_current_user)
         'ruleset': settings.get('ruleset', '5e'),
         'npc_type': req.npc_type or 'generic',
         'setting': req.setting or '',
+        # campaign variables
+        'themes': variables.get('themes', []),
+        'pacing': variables.get('pacing', 'moderate'),
+        'narrative_style': variables.get('narrative_style', 'balanced'),
+        'factions': variables.get('factions', []),
+        'npc_archetypes': variables.get('npc_archetypes', []),
+        'naming_style': variables.get('naming_style', ''),
+        'dialogue_style': variables.get('dialogue_style', ''),
+        'content_rating': variables.get('content_rating', 'pg-13'),
         **(req.context or {}),
     }
 
@@ -98,6 +109,8 @@ def generate_location(req: GenerateLocationRequest, current_user=Depends(get_cur
 
     # Get campaign settings for context
     settings = db.get_campaign_settings(req.campaign_id, user_id) or {}
+    # Ownership verified above; or {} handles the "variables not yet configured" case.
+    variables = db.get_campaign_variables(req.campaign_id, user_id) or {}
 
     # Build context for generation
     context = {
@@ -106,6 +119,13 @@ def generate_location(req: GenerateLocationRequest, current_user=Depends(get_cur
         'tone': settings.get('tone', ''),
         'location_type': req.location_type or 'generic',
         'mood': req.mood or '',
+        # campaign variables
+        'themes': variables.get('themes', []),
+        'pacing': variables.get('pacing', 'moderate'),
+        'narrative_style': variables.get('narrative_style', 'balanced'),
+        'primary_environment': variables.get('primary_environment', ''),
+        'location_tags': variables.get('location_tags', []),
+        'content_rating': variables.get('content_rating', 'pg-13'),
         **(req.context or {}),
     }
 
@@ -136,6 +156,8 @@ def generate_loot(req: GenerateLootRequest, current_user=Depends(get_current_use
 
     # Get campaign settings for context
     settings = db.get_campaign_settings(req.campaign_id, user_id) or {}
+    # Ownership verified above; or {} handles the "variables not yet configured" case.
+    variables = db.get_campaign_variables(req.campaign_id, user_id) or {}
 
     # Build context for generation
     context = {
@@ -145,6 +167,10 @@ def generate_loot(req: GenerateLootRequest, current_user=Depends(get_current_use
         'starting_level': settings.get('starting_level', 1),
         'challenge_rating': req.challenge_rating or settings.get('starting_level', 1),
         'loot_type': req.loot_type or 'treasure',
+        # campaign variables
+        'themes': variables.get('themes', []),
+        'narrative_style': variables.get('narrative_style', 'balanced'),
+        'content_rating': variables.get('content_rating', 'pg-13'),
         **(req.context or {}),
     }
 
