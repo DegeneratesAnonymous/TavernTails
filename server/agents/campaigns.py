@@ -1,7 +1,7 @@
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Body, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .. import db
 from ..auth import get_current_user
@@ -281,3 +281,103 @@ def get_campaign_players(campaign_id: str, current_user=Depends(get_current_user
         }]
 
         return {'players': players}
+
+
+class FactionEntry(BaseModel):
+    """A named faction with membership, alignment, and goals for agent context."""
+
+    name: str = Field(..., description="Faction name, e.g. 'Thieves Guild'")
+    alignment: str = Field(
+        default="",
+        description="Faction alignment, e.g. 'chaotic neutral', 'lawful evil'",
+    )
+    goals: List[str] = Field(
+        default_factory=list,
+        description="Primary faction goals, e.g. ['control the spice trade', 'overthrow the king']",
+    )
+    members: List[str] = Field(
+        default_factory=list,
+        description="Key member names, e.g. ['Guildmaster Varro', 'Shade the Informant']",
+    )
+
+
+class CampaignVariables(BaseModel):
+    """Structured variables that generative agents factor in when producing
+    story content, NPC profiles, location descriptions, dialogue, and scenes.
+
+    Fields that the narrator infers automatically from user preferences (such as
+    environment details or dialogue register) are intentionally omitted; agents
+    derive those from the setting_summary and tone in campaign settings.
+    """
+
+    # ── Narrative / Story ──────────────────────────────────────────────────
+    themes: List[str] = Field(
+        default_factory=list,
+        description="Recurring story themes, e.g. ['redemption', 'betrayal', 'survival']",
+    )
+    pacing: str = Field(
+        default="moderate",
+        description="Overall story pacing: 'slow' | 'moderate' | 'fast'",
+    )
+    narrative_style: str = Field(
+        default="balanced",
+        description="Narrative register: 'epic', 'intimate', 'gritty', 'lighthearted', 'balanced'",
+    )
+
+    # ── Factions ───────────────────────────────────────────────────────────
+    factions: List[FactionEntry] = Field(
+        default_factory=list,
+        description="Named factions with alignment, goals, and key members",
+    )
+
+    # ── NPCs / Characters ──────────────────────────────────────────────────
+    npc_archetypes: List[str] = Field(
+        default_factory=list,
+        description="Dominant NPC archetypes agents should favour; motivations are goal-based and derived from faction membership, e.g. ['grizzled veteran', 'trickster merchant']",
+    )
+    naming_style: str = Field(
+        default="",
+        description="Naming convention hint for NPCs/places, e.g. 'Norse', 'Elvish', 'Latin-inspired'",
+    )
+
+    # ── Dialogue / Voice ──────────────────────────────────────────────────
+    content_rating: str = Field(
+        default="pg-13",
+        description="Content maturity level: 'family', 'pg-13', 'mature'",
+    )
+
+
+@router.get('/{campaign_id}/variables')
+def get_campaign_variables(campaign_id: str, current_user=Depends(get_current_user)):
+    """Return the campaign variables used by generative agents."""
+    owner_id = _require_user_id(current_user)
+    c = db.get_campaign_by_id(campaign_id)
+    if not c:
+        raise HTTPException(status_code=404, detail='Campaign not found')
+    if c.owner_id != owner_id:
+        raise HTTPException(status_code=403, detail='Forbidden')
+    variables = db.get_campaign_variables(campaign_id, owner_id)
+    if variables is None:
+        raise HTTPException(status_code=404, detail='Campaign not found or forbidden')
+    return {'variables': variables}
+
+
+@router.put('/{campaign_id}/variables')
+def put_campaign_variables(
+    campaign_id: str,
+    variables: CampaignVariables,
+    current_user=Depends(get_current_user),
+):
+    """Save campaign variables used by generative agents."""
+    owner_id = _require_user_id(current_user)
+    c = db.get_campaign_by_id(campaign_id)
+    if not c:
+        raise HTTPException(status_code=404, detail='Campaign not found')
+    if c.owner_id != owner_id:
+        raise HTTPException(status_code=403, detail='Forbidden')
+    updated = db.set_campaign_variables(campaign_id, owner_id, variables.model_dump())
+    if not updated:
+        raise HTTPException(status_code=404, detail='Campaign not found or forbidden')
+    meta = updated.metadata_json or {}
+    out = meta.get('variables') if isinstance(meta, dict) else {}
+    return {'variables': out if isinstance(out, dict) else {}}
