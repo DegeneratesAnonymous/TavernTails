@@ -1,0 +1,162 @@
+name: Dev Agent Task to Draft PR
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  create-draft-pr:
+    name: Create Draft PR for Dev Agent Task
+    runs-on: ubuntu-latest
+    if: github.event.label.name == 'dev-agent-task'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create draft PR linked to issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const issueNumber = issue.number;
+            const issueTitle = issue.title;
+            const issueBody = issue.body || '_No description provided._';
+            const issueUrl = issue.html_url;
+            const defaultBranch = context.payload.repository.default_branch;
+
+            // Derive a branch name from the issue title
+            const branchSlug = issueTitle
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, '-')
+              .replace(/^-+|-+$/g, '')
+              .slice(0, 60);
+            const branchName = `dev-agent/issue-${issueNumber}-${branchSlug}`;
+
+            // Get the SHA of the default branch to create a new branch from
+            const { data: refData } = await github.rest.git.getRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: `heads/${defaultBranch}`,
+            });
+            const sha = refData.object.sha;
+
+            // Create the branch
+            try {
+              await github.rest.git.createRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `refs/heads/${branchName}`,
+                sha,
+              });
+            } catch (err) {
+              if (err.status === 422) {
+                console.log(`Branch ${branchName} already exists, continuing.`);
+              } else {
+                throw err;
+              }
+            }
+
+            // Build PR body from the issue content
+            const prBody = `## Description
+<!-- Auto-generated from issue #${issueNumber}. Update this description before merging. -->
+
+${issueBody}
+
+## Related Issue
+Closes #${issueNumber}
+
+## Type of Change
+<!-- Check all that apply. -->
+- [ ] Bug fix (non-breaking change that fixes an issue)
+- [ ] New feature (non-breaking change that adds functionality)
+- [ ] Documentation update
+- [ ] Refactoring (no functional changes)
+- [ ] Tests (adds or improves test coverage)
+- [ ] CI/CD (build, workflow, or tooling changes)
+- [ ] Breaking change (fix or feature that would cause existing functionality to break)
+
+## Testing
+<!-- Describe how you tested your changes. Check all that apply. -->
+- [ ] \`pytest server/tests -q\` passes
+- [ ] \`npm test -- --watchAll=false\` passes (in \`client/\`)
+- [ ] \`mypy server --ignore-missing-imports --check-untyped-defs\` passes (or non-blocking)
+- [ ] \`ruff check server/\` passes
+- [ ] \`npx tsc --noEmit\` passes (in \`client/\`)
+- [ ] Manually tested in the browser / API client
+
+## CI Checklist Compliance
+<!-- Reference: docs/CI_CHECKLIST.md -->
+- [ ] Backend linting (ruff) passes
+- [ ] Backend tests pass
+- [ ] Frontend build succeeds
+- [ ] No new type errors introduced
+- [ ] Security / RBAC implications considered
+
+## Tech Lead Task Breakdown
+<!-- To be filled in by Tech Lead after initial assessment -->
+_Awaiting Tech Lead assessment. See agent collaboration comment for details._
+
+- **Backend**:
+- **Frontend**:
+- **QA**:
+- **Security Reviewer**:
+- **DevOps**:
+
+## Dev Agents Referenced
+<!-- Which development agents were involved? (see docs/DEV_AGENTS.md) -->
+<!-- All agents will be automatically notified and should review. -->
+- [ ] PM / Docs
+- [ ] Tech Lead
+- [ ] Backend
+- [ ] Frontend
+- [ ] QA
+- [ ] Security Reviewer
+- [ ] DevOps
+
+## Screenshots / Recordings
+<!-- For UI changes, add screenshots or screen recordings here. -->
+<!-- Delete this section if not applicable. -->
+`;
+
+            // Create the draft PR
+            const { data: pr } = await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[Draft] ${issueTitle}`,
+              body: prBody,
+              head: branchName,
+              base: defaultBranch,
+              draft: true,
+            });
+
+            // Post a comment on the issue linking to the draft PR
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: `🤖 A draft PR has been automatically created for this dev-agent task: ${pr.html_url}\n\n**Tech Lead**: please review the PR and provide an initial task breakdown in the PR description or as a comment.`,
+            });
+
+            // Request Tech Lead task breakdown via PR comment
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              body: `## 🧭 Tech Lead — Task Breakdown Request
+
+This draft PR was auto-created from issue #${issueNumber}: [${issueTitle}](${issueUrl}).
+
+**Tech Lead**, please review the linked issue and provide an initial task breakdown:
+
+- What is the suggested scope and implementation approach?
+- Which agents should be involved and what should each one do?
+- Are there any blockers or dependencies to address first?
+
+> Update the "Tech Lead Task Breakdown" section in the PR description with your assessment.
+> Reference: [\`docs/DEV_AGENTS.md\`](../blob/${defaultBranch}/docs/DEV_AGENTS.md)
+`,
+            });

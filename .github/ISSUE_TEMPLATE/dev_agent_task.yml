@@ -15,11 +15,13 @@ body:
       description: Which development agent will lead this task?
       options:
         - PM
+        - Tech Lead
         - Backend
         - Frontend
         - QA
-        - Reviewer
-        - Tech Lead
+        - Security Reviewer
+        - DevOps
+        - Reviewer (general)
     validations:
       required: true
 

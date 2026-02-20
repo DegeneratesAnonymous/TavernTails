@@ -33,13 +33,27 @@ Closes #
 - [ ] No new type errors introduced
 - [ ] Security / RBAC implications considered
 
+## Tech Lead Task Breakdown
+<!-- To be filled in by Tech Lead after initial assessment (see docs/DEV_AGENTS.md) -->
+<!-- When this PR is opened, all agents will be automatically notified via a comment. -->
+_Awaiting Tech Lead assessment._
+
+- **Backend**:
+- **Frontend**:
+- **QA**:
+- **Security Reviewer**:
+- **DevOps**:
+
 ## Dev Agents Referenced
 <!-- Which development agents were involved? (see docs/DEV_AGENTS.md) -->
-- [ ] PM
+<!-- All agents will be automatically notified and should review from their perspective. -->
+- [ ] PM / Docs
+- [ ] Tech Lead
 - [ ] Backend
 - [ ] Frontend
 - [ ] QA
-- [ ] Reviewer
+- [ ] Security Reviewer
+- [ ] DevOps
 
 ## Screenshots / Recordings
 <!-- For UI changes, add screenshots or screen recordings here. -->
