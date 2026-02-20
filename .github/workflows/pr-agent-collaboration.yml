@@ -1,0 +1,113 @@
+name: PR Agent Collaboration
+
+on:
+  pull_request:
+    types: [opened, edited]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  notify-agents:
+    name: Post Agent Collaboration Comment
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post dev-agent collaboration comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const prNumber = pr.number;
+            const prTitle = pr.title;
+            const prBody = pr.body || '_No description provided._';
+            const prAuthor = pr.user.login;
+            const prUrl = pr.html_url;
+            const baseBranch = pr.base.ref;
+            const headBranch = pr.head.ref;
+
+            const comment = `## 🤖 Dev Agent Collaboration Request
+
+**PR:** [#${prNumber} — ${prTitle}](${prUrl})
+**Author:** @${prAuthor}
+**Branch:** \`${headBranch}\` → \`${baseBranch}\`
+
+---
+
+### 📋 PR Summary
+
+${prBody}
+
+---
+
+### 🧭 Tech Lead — Initial Assessment
+
+@DegeneratesAnonymous — **Tech Lead**, please provide an initial assessment of this PR and a suggested task breakdown by agent. Consider:
+
+- Does this PR align with the current roadmap and scope in \`PROJECT_PLAN.md\`?
+- Are there API/contract stability concerns?
+- What is the suggested breakdown of review tasks per agent?
+
+> **Suggested task breakdown template:**
+> - **Backend**: _Review FastAPI endpoints, DB changes, auth/RBAC, pytest coverage_
+> - **Frontend**: _Review React components, TypeScript types, API integration_
+> - **QA**: _Verify test coverage, identify edge cases, check CI gates_
+> - **Security Reviewer**: _Assess auth/RBAC, input validation, secrets handling_
+> - **DevOps**: _Review workflow changes, infra impact, CI/CD pipeline_
+
+---
+
+### 👥 Agent Review Requests
+
+All dev agents are requested to review this PR from their perspective, identify what actions are needed, and comment with their analysis.
+
+#### 🔧 Backend Agent
+Please review this PR and address the following:
+- FastAPI endpoint correctness, route structure, and error handling
+- DB model changes and migration impact
+- Auth/RBAC enforcement (\`Depends(require_auth)\`, host/player roles)
+- pytest coverage for new/changed code
+- Any concerns with data integrity or performance
+
+#### 🖥️ Frontend Agent
+Please review this PR and address the following:
+- React component structure and TypeScript correctness
+- API integration using \`apiFetch\` from \`lib/\`
+- State management and side-effect handling
+- Accessibility and responsive design considerations
+- Jest/RTL test coverage for new/changed components
+
+#### 🧪 QA Agent
+Please review this PR and address the following:
+- Test coverage completeness (backend \`pytest\` + frontend \`npm test\`)
+- Edge cases, error paths, and boundary conditions
+- CI gate compliance (see \`docs/CI_CHECKLIST.md\`)
+- Regression risk assessment
+
+#### 🔐 Security Reviewer Agent
+Please review this PR and address the following:
+- Authentication and authorization enforcement
+- Input validation and sanitization
+- Secret handling and environment variable usage
+- RBAC boundary testing (host vs player permissions)
+- Any potential injection or data-exposure risks
+
+#### ⚙️ DevOps Agent
+Please review this PR and address the following:
+- GitHub Actions workflow changes (correctness, security, permissions)
+- Infrastructure or deployment impact
+- CI/CD pipeline integrity
+- Dependency changes and version pinning
+- Build artifact and environment configuration
+
+---
+
+> 💬 Agents: please reply in this thread with your analysis and any required actions. Coordinate with each other as needed before approving.
+> 📚 Reference: [\`docs/DEV_AGENTS.md\`](../blob/${baseBranch}/docs/DEV_AGENTS.md) | [\`docs/CI_CHECKLIST.md\`](../blob/${baseBranch}/docs/CI_CHECKLIST.md)
+`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: comment,
+            });

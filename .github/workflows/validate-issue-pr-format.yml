@@ -1,0 +1,155 @@
+name: Validate Issue and PR Format
+
+on:
+  issues:
+    types: [opened, edited]
+  pull_request:
+    types: [opened, edited, synchronize]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  validate-issue:
+    name: Validate Issue Format
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issues'
+    steps:
+      - name: Check issue body for required sections
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const body = issue.body || '';
+            const labels = issue.labels.map(l => l.name);
+
+            const warnings = [];
+
+            // Determine issue type from labels
+            const isBug = labels.includes('bug');
+            const isFeature = labels.includes('feature');
+            const isDevAgentTask = labels.includes('dev-agent-task');
+
+            if (isBug) {
+              // Bug report required sections
+              const requiredSections = [
+                'Steps to Reproduce',
+                'Expected Behavior',
+                'Actual Behavior',
+              ];
+              for (const section of requiredSections) {
+                if (!body.includes(section)) {
+                  warnings.push(`Missing required section: **${section}**`);
+                }
+              }
+            } else if (isFeature) {
+              // Feature request required sections
+              const requiredSections = [
+                'Problem Statement',
+                'Proposed Solution',
+                'Acceptance Criteria',
+              ];
+              for (const section of requiredSections) {
+                if (!body.includes(section)) {
+                  warnings.push(`Missing required section: **${section}**`);
+                }
+              }
+            } else if (isDevAgentTask) {
+              // Dev agent task required sections
+              const requiredSections = [
+                'Goal',
+                'Acceptance Criteria',
+              ];
+              for (const section of requiredSections) {
+                if (!body.includes(section)) {
+                  warnings.push(`Missing required section: **${section}**`);
+                }
+              }
+            }
+
+            // General checks for all issues
+            if (!body || body.trim().length < 30) {
+              warnings.push('Issue body is too short. Please provide a meaningful description.');
+            }
+
+            if (warnings.length > 0) {
+              const comment = `## ⚠️ Issue Format Validation
+
+This issue may be missing some required fields. Please review the following:
+
+${warnings.map(w => `- ${w}`).join('\n')}
+
+**Tips:**
+- Use the appropriate issue template (Bug Report, Feature Request, Dev Agent Task) for guidance on required fields.
+- See [\`docs/CONTRIBUTING.md\`](../blob/main/docs/CONTRIBUTING.md) for more information.
+
+_This is an automated check. If you believe this is a false positive, you can ignore this comment._
+`;
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: comment,
+              });
+            }
+
+  validate-pr:
+    name: Validate PR Format
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Check PR body for required sections
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const body = pr.body || '';
+
+            const warnings = [];
+
+            // Required PR template sections
+            const requiredSections = [
+              'Description',
+              'Related Issue',
+              'Type of Change',
+              'Testing',
+            ];
+
+            for (const section of requiredSections) {
+              if (!body.includes(section)) {
+                warnings.push(`Missing required section: **${section}**`);
+              }
+            }
+
+            // Check that "Closes #" is filled in (not just the placeholder)
+            if (/Closes #\s*(?:\r?\n|$)/m.test(body)) {
+              warnings.push('Please link a related issue in the **Related Issue** section (e.g., `Closes #123`).');
+            }
+
+            // Check that at least one "Type of Change" checkbox is checked
+            const typeOfChangeMatch = body.match(/## Type of Change([\s\S]*?)(?=\n##|$)/);
+            if (typeOfChangeMatch && !typeOfChangeMatch[1].includes('- [x]')) {
+              warnings.push('Please check at least one **Type of Change** checkbox.');
+            }
+
+            if (warnings.length > 0) {
+              const comment = `## ⚠️ PR Format Validation
+
+This PR may be missing some required fields. Please review the following:
+
+${warnings.map(w => `- ${w}`).join('\n')}
+
+**Tips:**
+- Fill in all sections from the PR template before requesting review.
+- See [\`docs/CI_CHECKLIST.md\`](../blob/${pr.base.ref}/docs/CI_CHECKLIST.md) for quality gate requirements.
+
+_This is an automated check. Update the PR description to resolve these warnings._
+`;
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body: comment,
+              });
+            }

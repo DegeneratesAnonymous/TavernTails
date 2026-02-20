@@ -82,9 +82,19 @@ Use `docs/WORK_ORDER_TEMPLATE.md`.
 **Prompt**: see `docs/dev-agents/QA.md`.
 
 ### Reviewer Agent
-**Does**: final review for scope, security basics, API contract stability, and “definition of done”.
+**Does**: final holistic review for scope alignment, API contract stability, code quality, and “definition of done”. Complements (does not replace) the Security Reviewer.
 
 **Prompt**: see `docs/dev-agents/REVIEWER.md`.
+
+### Security Reviewer Agent
+**Does**: focused security review — authentication/authorization enforcement, input validation, RBAC boundary testing, secret handling, and data-exposure risks. Distinct from the general Reviewer; this agent specifically checks security implications.
+
+**Prompt**: see `docs/dev-agents/SECURITY.md`.
+
+### DevOps Agent
+**Does**: CI/CD pipeline, GitHub Actions workflows, infrastructure configuration, deployment scripts, dependency management, and environment/secret setup.
+
+**Prompt**: see `docs/dev-agents/DEVOPS.md`.
 
 ## Operating Rules (Important)
 - **No scope changes** without explicit approval.
