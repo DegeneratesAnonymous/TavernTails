@@ -36,6 +36,8 @@ type Props = {
   showRoster?: boolean
   onGoToCharacters?: () => void
   onGoToImport?: () => void
+  /** Called when the player uses a Quick Action in-session */
+  onQuickAction?: (action: {type: 'attack' | 'cast' | 'short_rest' | 'long_rest'; detail?: string}) => void
 }
 
 export default function CharacterPanel({
@@ -49,11 +51,13 @@ export default function CharacterPanel({
   showRoster = true,
   onGoToCharacters,
   onGoToImport,
+  onQuickAction,
 }: Props){
   const [drawerKey, setDrawerKey] = useState<CharacterStripKey | null>(null)
   const containerRef = useRef<HTMLDivElement|null>(null)
   const [rollingCueId, setRollingCueId] = useState<string | null>(null)
   const [cueError, setCueError] = useState<string | null>(null)
+  const [castPickOpen, setCastPickOpen] = useState(false)
 
   const selected = useMemo(() => {
     if(!roster.length) return undefined
@@ -330,6 +334,74 @@ export default function CharacterPanel({
             </div>
           </section>
         ) : null}
+
+        {/* Quick Actions — only in session mode */}
+        {(() => {
+          const weaponKeywords = /sword|axe|bow|dagger|mace|hammer|spear|lance|staff|wand|blade|club|flail|glaive|halberd|maul|pike|rapier|scimitar|shortsword|longbow|crossbow|trident|whip|handaxe|greataxe|battleaxe|greatsword|longsword/i
+          const equippedWeapons = (selected?.inventory || []).filter(name => weaponKeywords.test(name))
+          const hasSpells = (selected?.spells?.length ?? 0) > 0
+          if(!equippedWeapons.length && !hasSpells) return null
+          return (
+            <div className="character-quick-actions" aria-label="Quick Actions">
+              <div className="character-quick-actions-title">Actions</div>
+              <div className="character-quick-actions-row">
+                {equippedWeapons.map(weapon => (
+                  <button
+                    key={weapon}
+                    type="button"
+                    className="btn btn-sm character-quick-action-btn character-quick-action-btn--attack"
+                    onClick={() => onQuickAction?.({ type: 'attack', detail: weapon })}
+                    title={`Attack with ${weapon}`}
+                  >
+                    ⚔ {weapon}
+                  </button>
+                ))}
+                {hasSpells ? (
+                  <div style={{ position: 'relative' }}>
+                    <button
+                      type="button"
+                      className="btn btn-sm character-quick-action-btn character-quick-action-btn--cast"
+                      onClick={() => setCastPickOpen(v => !v)}
+                    >
+                      ✦ Cast Spell
+                    </button>
+                    {castPickOpen ? (
+                      <div className="character-cast-picker">
+                        {(selected?.spells || []).map(spell => (
+                          <button
+                            key={spell}
+                            type="button"
+                            className="character-cast-picker-item"
+                            onClick={() => { onQuickAction?.({ type: 'cast', detail: spell }); setCastPickOpen(false) }}
+                          >
+                            {spell}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+                <button
+                  type="button"
+                  className="btn btn-sm btn-quiet character-quick-action-btn"
+                  onClick={() => onQuickAction?.({ type: 'short_rest' })}
+                  title="Take a short rest"
+                >
+                  Short Rest
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-quiet character-quick-action-btn"
+                  onClick={() => onQuickAction?.({ type: 'long_rest' })}
+                  title="Take a long rest"
+                >
+                  Long Rest
+                </button>
+              </div>
+            </div>
+          )
+        })()}
+
 
         <CharacterIconStrip
           character={selected}
