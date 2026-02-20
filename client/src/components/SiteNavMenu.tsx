@@ -1,9 +1,10 @@
 type Props = {
   onClose?: () => void
   onNavigate?: (key: string) => void
+  isAdmin?: boolean
 }
 
-export default function SiteNavMenu({ onClose, onNavigate }: Props) {
+export default function SiteNavMenu({ onClose, onNavigate, isAdmin }: Props) {
   return (
     <div className="site-menu-panel">
       <header className="site-menu-header">
@@ -37,6 +38,14 @@ export default function SiteNavMenu({ onClose, onNavigate }: Props) {
               <span className="site-menu-item-description">Profile and sign out</span>
             </button>
           </li>
+          {isAdmin && (
+            <li>
+              <button className="site-menu-item" onClick={() => onNavigate?.('admin')}>
+                <span className="site-menu-item-label">Admin</span>
+                <span className="site-menu-item-description">Site administration tools</span>
+              </button>
+            </li>
+          )}
         </ul>
       </section>
 

@@ -836,3 +836,116 @@ def get_user_by_beyond20_relay_token(token: str) -> User | None:
             if relay == token:
                 return user
         return None
+
+
+# ---------------------------------------------------------------------------
+# Admin helpers
+# ---------------------------------------------------------------------------
+
+def admin_list_users(limit: int = 100, offset: int = 0) -> List[User]:
+    """Return all users (admin use only)."""
+    with Session(engine) as session:
+        stmt = select(User).order_by(User.id).offset(offset).limit(max(1, min(int(limit), 200)))
+        return list(session.exec(stmt).all())
+
+
+def admin_get_user(user_id: int) -> User | None:
+    """Return a single user by ID (admin use only)."""
+    with Session(engine) as session:
+        stmt = select(User).where(User.id == user_id)
+        return session.exec(stmt).first()
+
+
+def admin_reset_password(user_id: int, new_password: str) -> bool:
+    """Reset a user's password (admin use only)."""
+    with Session(engine) as session:
+        stmt = select(User).where(User.id == user_id)
+        user = session.exec(stmt).first()
+        if not user:
+            return False
+        user.password_hash = hash_password(new_password)
+        session.add(user)
+        session.commit()
+        return True
+
+
+def admin_send_notification(user_id: int, title: str, body: str | None = None) -> bool:
+    """Append a notification to a user's profile (admin use only)."""
+    with Session(engine) as session:
+        stmt = select(User).where(User.id == user_id)
+        user = session.exec(stmt).first()
+        if not user:
+            return False
+        new_profile = dict(user.profile or {})
+        notifications: List[Dict[str, Any]] = list(new_profile.get("notifications", []) or [])
+        import uuid as _uuid
+        notifications.append({
+            "id": _uuid.uuid4().hex,
+            "title": title,
+            "body": body or "",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "read": False,
+        })
+        new_profile["notifications"] = notifications
+        user.profile = new_profile
+        session.add(user)
+        session.commit()
+        return True
+
+
+def admin_list_all_campaigns(limit: int = 100, offset: int = 0) -> List[Campaign]:
+    """Return all campaigns across all owners (admin use only)."""
+    with Session(engine) as session:
+        stmt = select(Campaign).order_by(desc(Campaign.created_at)).offset(offset).limit(max(1, min(int(limit), 200)))
+        return list(session.exec(stmt).all())
+
+
+def admin_search_campaigns(query: str, limit: int = 10) -> List[Campaign]:
+    """Search campaigns by name or description using DB-level filtering (admin use only)."""
+    q = (query or "").strip()
+    if not q:
+        return []
+    like = f"%{q.lower()}%"
+    with Session(engine) as session:
+        stmt = (
+            select(Campaign)
+            .where(
+                (func.lower(Campaign.name).like(like))
+                | (func.lower(Campaign.description).like(like))
+            )
+            .order_by(desc(Campaign.created_at))
+            .limit(max(1, min(int(limit), 25)))
+        )
+        return list(session.exec(stmt).all())
+
+
+def admin_archive_campaign(campaign_id: str) -> bool:
+    """Archive a campaign by ID regardless of owner (admin use only)."""
+    with Session(engine) as session:
+        stmt = select(Campaign).where(Campaign.id == campaign_id)
+        camp = session.exec(stmt).first()
+        if not camp:
+            return False
+        camp.archived = True
+        session.add(camp)
+        session.commit()
+        return True
+
+
+def admin_site_stats() -> Dict[str, Any]:
+    """Return aggregate site statistics (admin use only)."""
+    with Session(engine) as session:
+        total_users = session.exec(select(func.count()).select_from(User)).one()
+        verified_users = session.exec(select(func.count()).select_from(User).where(User.verified == True)).one()  # noqa: E712
+        total_campaigns = session.exec(select(func.count()).select_from(Campaign)).one()
+        active_campaigns = session.exec(select(func.count()).select_from(Campaign).where(Campaign.archived == False)).one()  # noqa: E712
+        total_characters = session.exec(select(func.count()).select_from(Character)).one()
+        total_messages = session.exec(select(func.count()).select_from(ChatMessage)).one()
+        return {
+            "total_users": int(total_users),
+            "verified_users": int(verified_users),
+            "total_campaigns": int(total_campaigns),
+            "active_campaigns": int(active_campaigns),
+            "total_characters": int(total_characters),
+            "total_messages": int(total_messages),
+        }
