@@ -2,8 +2,9 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import App from './App';
 
-test('renders home hero with Get Started button', () => {
+test('renders home quick actions', () => {
   render(<App />);
-  const btn = screen.getByRole('button', { name: /get started/i });
-  expect(btn).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /start new game/i })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /load a game/i })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
 });

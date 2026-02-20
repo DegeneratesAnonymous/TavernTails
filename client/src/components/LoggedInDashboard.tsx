@@ -31,6 +31,7 @@ type NotificationItem = {
 
 const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [view, setView] = useState<string>('home');
+  const [drawerOpen, setDrawerOpen] = useState(false)
   const [importInitialMode, setImportInitialMode] = useState<'ddb-link' | 'paste' | 'file' | 'pdf' | null>(null)
   const [campaigns, setCampaigns] = useState<Array<any>>([])
   const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null)
@@ -58,7 +59,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [sheetModalCharacter, setSheetModalCharacter] = useState<any | null>(null)
   const [sheetModalLoading, setSheetModalLoading] = useState(false)
   const [characterSettingsOpen, setCharacterSettingsOpen] = useState(false)
-  const [characterPanelMode, setCharacterPanelMode] = useState<'summary' | 'spells' | 'features' | 'journal' | 'sheet'>('summary')
+  const [characterPanelMode, setCharacterPanelMode] = useState<'summary' | 'spells' | 'features' | 'journal' | 'inventory'>('summary')
   const [selectedSpellRow, setSelectedSpellRow] = useState<any | null>(null)
 
   const SettingsIcon = () => (
@@ -85,6 +86,10 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
 
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>([])
+  const [accountEditName, setAccountEditName] = useState<string | null>(null)
+  const [accountEditEmail, setAccountEditEmail] = useState<string | null>(null)
+  const [accountSaving, setAccountSaving] = useState(false)
+  const [accountSaveMsg, setAccountSaveMsg] = useState<{ kind: 'info' | 'error'; text: string } | null>(null)
 
   const notifications: NotificationItem[] = useMemo(() => {
     const raw = Array.isArray(profile?.notifications) ? profile.notifications : []
@@ -901,18 +906,80 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     return sessionMetaById[activeSession]?.name || activeSession
   }, [activeSession, sessionMetaById])
 
+  const navigate = useCallback((v: string) => {
+    setView(v)
+    setDrawerOpen(false)
+  }, [])
+
   return (
     <div className="dashboard-root">
-      <aside className="dashboard-sidebar">
-        <div className="dashboard-brand">Solo TTRPG</div>
+      {/* Global top bar */}
+      <header className="dashboard-topbar">
+        <button
+          className="drawer-toggle"
+          type="button"
+          aria-label="Open navigation menu"
+          onClick={() => setDrawerOpen(true)}
+        >
+          <span className="drawer-toggle-icon" />
+          <span className="drawer-toggle-icon" />
+          <span className="drawer-toggle-icon" />
+        </button>
+        <div className="dashboard-brand">TavernTails</div>
+        <div className="topbar-right">
+          {notificationsPending ? (
+            <button
+              className="topbar-icon-btn topbar-notif-btn"
+              type="button"
+              aria-label="Notifications"
+              onClick={() => setNotificationsOpen(true)}
+            >
+              🔔
+              <span className="notif-badge" />
+            </button>
+          ) : (
+            <button
+              className="topbar-icon-btn"
+              type="button"
+              aria-label="Notifications"
+              onClick={() => setNotificationsOpen(true)}
+            >
+              🔔
+            </button>
+          )}
+          <button
+            className="topbar-icon-btn"
+            type="button"
+            aria-label="Account"
+            onClick={() => navigate('account')}
+            title="Account"
+          >
+            👤
+          </button>
+        </div>
+      </header>
+
+      {/* Drawer overlay */}
+      {drawerOpen && (
+        <div className="drawer-overlay" onClick={() => setDrawerOpen(false)} />
+      )}
+
+      {/* Slide-out drawer */}
+      <aside className={`dashboard-drawer ${drawerOpen ? 'drawer-open' : ''}`}>
+        <div className="drawer-header">
+          <div className="dashboard-brand">TavernTails</div>
+          <button className="drawer-close" type="button" aria-label="Close menu" onClick={() => setDrawerOpen(false)}>✕</button>
+        </div>
         <div className="dashboard-user">{profile?.name}</div>
         <nav className="dashboard-nav">
-          <button className={`nav-btn ${view==='home'?'active':''}`} onClick={() => setView('home')}>Home</button>
-          <button className={`nav-btn ${view==='campaign-setup'?'active':''}`} onClick={() => setView('campaign-setup')}>Manage Campaigns</button>
-          <button className={`nav-btn ${view==='view-characters'?'active':''}`} onClick={() => setView('view-characters')}>Manage Characters</button>
-          <button className={`nav-btn ${view==='account'?'active':''}`} onClick={() => setView('account')}>Account</button>
+          <button className={`nav-btn ${view==='home'?'active':''}`} onClick={() => navigate('home')}>Home</button>
+          <button className={`nav-btn ${view==='campaign-setup'?'active':''}`} onClick={() => navigate('campaign-setup')}>Manage Campaigns</button>
+          <button className={`nav-btn ${view==='view-characters'?'active':''}`} onClick={() => navigate('view-characters')}>Manage Characters</button>
+          <button className={`nav-btn ${view==='explore'?'active':''}`} onClick={() => navigate('explore')}>Explore</button>
+          <button className={`nav-btn ${view==='guides'?'active':''}`} onClick={() => navigate('guides')}>Guides</button>
+          <button className={`nav-btn ${view==='documents'?'active':''}`} onClick={() => navigate('documents')}>Documents</button>
           {isAdmin && (
-            <button className={`nav-btn ${view==='admin'?'active':''}`} onClick={() => setView('admin')}>Admin</button>
+            <button className={`nav-btn ${view==='admin'?'active':''}`} onClick={() => navigate('admin')}>Admin</button>
           )}
         </nav>
         <div className="sidebar-footer">
@@ -975,11 +1042,11 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
           <DashboardHome
             profile={profile}
             lastSessionLabel={lastSessionLabel}
-            onQuickstartNewGame={async () => {
+            onStartNewGame={async () => {
               await quickstartPlaytest()
               setView('gameplay')
             }}
-            onStartLastCampaign={() => {
+            onLoadGame={() => {
               if (typeof window === 'undefined') {
                 setView('gameplay')
                 return
@@ -1001,10 +1068,12 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                   setActiveSession(String(sessions[0].id))
                 }
               }
-              setView('gameplay')
+              setView('campaign-setup')
             }}
             onGoToCampaigns={() => setView('campaign-setup')}
             onGoToCharacters={() => setView('view-characters')}
+            onGoToExplore={() => setView('explore')}
+            onGoToGuides={() => setView('guides')}
             notificationsPending={notificationsPending}
             onNotificationsClick={() => setNotificationsOpen(true)}
           />
@@ -1153,11 +1222,11 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                             Features
                           </button>
                           <button
-                            className={`btn btn-quiet character-tab ${characterPanelMode === 'sheet' ? 'active' : ''}`}
+                            className={`btn btn-quiet character-tab ${characterPanelMode === 'inventory' ? 'active' : ''}`}
                             type="button"
-                            onClick={() => setCharacterPanelMode('sheet')}
+                            onClick={() => setCharacterPanelMode('inventory')}
                           >
-                            Sheet
+                            Inventory
                           </button>
                           <button
                             className="btn btn-secondary btn-icon-only"
@@ -1268,110 +1337,70 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                       ) : null}
                       {characterPanelMode === 'spells' ? (
                         <div className="card card-pad characters-subcard" style={{ marginTop: 12 }}>
-                          <div className="muted" style={{ marginBottom: 6 }}>Spells</div>
+                          <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                            <div className="muted">Spells</div>
+                            <button className="btn btn-secondary btn-sm" type="button" disabled>+ Add Spell</button>
+                          </div>
                           {selectedCharacter ? (
-                            <>
-                              {(() => {
-                                const sheet = (selectedCharacter?.sheet && typeof selectedCharacter.sheet === 'object') ? selectedCharacter.sheet : {}
-                                const spellbook = Array.isArray((sheet as any)?.spellbook) ? (sheet as any).spellbook : []
-                                const spellNames = Array.isArray((sheet as any)?.spells) ? (sheet as any).spells : []
-                                const rows = spellbook.length
-                                  ? spellbook
-                                  : spellNames.map((name: any) => ({ name: String(name) }))
-                                const hasRows = rows.length > 0
-                                if (hasRows) {
-                                  let lastHeader: string | null = null
-                                  let lastSlotHeader: string | null = null
-                                  return (
-                                    <div style={{ overflowX: 'auto' }}>
-                                      <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                                        <thead>
-                                          <tr className="muted" style={{ textAlign: 'left' }}>
-                                            <th style={{ padding: '6px 8px' }}>Name</th>
-                                            <th style={{ padding: '6px 8px' }}>Source</th>
-                                            <th style={{ padding: '6px 8px' }}>Save/Atk</th>
-                                            <th style={{ padding: '6px 8px' }}>Time</th>
-                                            <th style={{ padding: '6px 8px' }}>Range</th>
-                                            <th style={{ padding: '6px 8px' }}>Comp</th>
-                                            <th style={{ padding: '6px 8px' }}>Duration</th>
-                                            <th style={{ padding: '6px 8px' }}>Page</th>
-                                            <th style={{ padding: '6px 8px' }}>Notes</th>
-                                          </tr>
-                                        </thead>
-                                        <tbody>
-                                          {rows.map((row: any, idx: number) => {
-                                            const header = typeof row?.header === 'string' ? row.header.trim() : ''
-                                            const slotHeader = typeof row?.slot_header === 'string' ? row.slot_header.trim() : ''
-                                            const headerRow = header && header !== lastHeader ? header : ''
-                                            const slotRow = slotHeader && slotHeader !== lastSlotHeader ? slotHeader : ''
-                                            if (header) lastHeader = header
-                                            if (slotHeader) lastSlotHeader = slotHeader
-                                            const isSelected = selectedSpellRow && row?.name && selectedSpellRow?.name === row.name
-
-                                            return (
-                                              <React.Fragment key={`${row?.name || 'spell'}-${idx}`}>
-                                                {headerRow ? (
-                                                  <tr>
-                                                    <td colSpan={9} style={{ padding: '6px 8px', fontWeight: 700 }}>{headerRow}</td>
-                                                  </tr>
-                                                ) : null}
-                                                {slotRow ? (
-                                                  <tr>
-                                                    <td colSpan={9} style={{ padding: '4px 8px' }} className="muted">{slotRow}</td>
-                                                  </tr>
-                                                ) : null}
-                                                  <tr
-                                                  style={{ background: isSelected ? 'rgba(173,136,95,0.28)' : 'transparent', cursor: 'pointer' }}
-                                                  onClick={() => setSelectedSpellRow(row)}
-                                                >
-                                                  <td style={{ padding: '4px 8px', fontWeight: 600 }}>{row?.name || '—'}</td>
-                                                  <td style={{ padding: '4px 8px' }}>{row?.source || '—'}</td>
-                                                  <td style={{ padding: '4px 8px' }}>{row?.save_hit || '—'}</td>
-                                                  <td style={{ padding: '4px 8px' }}>{row?.time || '—'}</td>
-                                                  <td style={{ padding: '4px 8px' }}>{row?.range || '—'}</td>
-                                                  <td style={{ padding: '4px 8px' }}>{row?.components || '—'}</td>
-                                                  <td style={{ padding: '4px 8px' }}>{row?.duration || '—'}</td>
-                                                  <td style={{ padding: '4px 8px' }}>{row?.page || '—'}</td>
-                                                  <td style={{ padding: '4px 8px' }}>{row?.notes || '—'}</td>
-                                                </tr>
-                                              </React.Fragment>
-                                            )
-                                          })}
-                                        </tbody>
-                                      </table>
-                                      {selectedSpellRow ? (
-                                        <div className="card card-pad characters-subcard" style={{ marginTop: 12 }}>
-                                          <div style={{ fontWeight: 700, marginBottom: 6 }}>{selectedSpellRow?.name || 'Spell'}</div>
-                                          <div className="row-wrap" style={{ gap: 12 }}>
-                                            <div><span className="muted">Source:</span> {selectedSpellRow?.source || '—'}</div>
-                                            <div><span className="muted">Save/Atk:</span> {selectedSpellRow?.save_hit || '—'}</div>
-                                            <div><span className="muted">Time:</span> {selectedSpellRow?.time || '—'}</div>
-                                            <div><span className="muted">Range:</span> {selectedSpellRow?.range || '—'}</div>
-                                            <div><span className="muted">Comp:</span> {selectedSpellRow?.components || '—'}</div>
-                                            <div><span className="muted">Duration:</span> {selectedSpellRow?.duration || '—'}</div>
-                                            <div><span className="muted">Page:</span> {selectedSpellRow?.page || '—'}</div>
-                                            <div><span className="muted">Notes:</span> {selectedSpellRow?.notes || '—'}</div>
+                            (() => {
+                              const sheet = (selectedCharacter?.sheet && typeof selectedCharacter.sheet === 'object') ? selectedCharacter.sheet : {}
+                              const spellbook = Array.isArray((sheet as any)?.spellbook) ? (sheet as any).spellbook : []
+                              const spellNames = Array.isArray((sheet as any)?.spells) ? (sheet as any).spells : []
+                              const rows = spellbook.length
+                                ? spellbook
+                                : spellNames.map((name: any) => ({ name: String(name) }))
+                              if (!rows.length) return <div className="muted">No spells parsed.</div>
+                              let lastHeader: string | null = null
+                              return (
+                                <div className="stack" style={{ gap: 4 }}>
+                                  {rows.map((row: any, idx: number) => {
+                                    const header = typeof row?.header === 'string' ? row.header.trim() : ''
+                                    const showHeader = header && header !== lastHeader
+                                    if (header) lastHeader = header
+                                    const isExpanded = selectedSpellRow?.name === row?.name
+                                    const hasDetails = row?.source || row?.time || row?.range || row?.components || row?.duration || row?.save_hit || row?.notes || row?.page
+                                    return (
+                                      <React.Fragment key={`${row?.name || 'spell'}-${idx}`}>
+                                        {showHeader ? (
+                                          <div style={{ fontWeight: 700, fontSize: 12, padding: '6px 0 2px', opacity: 0.8 }}>{header}</div>
+                                        ) : null}
+                                        <button
+                                          type="button"
+                                          className="btn btn-quiet"
+                                          style={{
+                                            textAlign: 'left',
+                                            justifyContent: 'space-between',
+                                            background: isExpanded ? 'rgba(173,136,95,0.20)' : undefined,
+                                            borderRadius: 6,
+                                            padding: '6px 10px',
+                                            fontSize: 13,
+                                          }}
+                                          onClick={() => setSelectedSpellRow(isExpanded ? null : row)}
+                                        >
+                                          <span style={{ fontWeight: 600 }}>{row?.name || '—'}</span>
+                                          {row?.slot_header ? <span className="muted" style={{ fontSize: 11 }}>{row.slot_header}</span> : null}
+                                          <span className="muted" style={{ fontSize: 11 }}>{isExpanded ? '▲' : '▼'}</span>
+                                        </button>
+                                        {isExpanded && hasDetails ? (
+                                          <div className="card card-pad" style={{ fontSize: 12, background: 'rgba(0,0,0,0.15)', marginLeft: 8 }}>
+                                            <div className="row-wrap" style={{ gap: 12 }}>
+                                              {row?.source ? <div><span className="muted">Source:</span> {row.source}</div> : null}
+                                              {row?.save_hit ? <div><span className="muted">Save/Atk:</span> {row.save_hit}</div> : null}
+                                              {row?.time ? <div><span className="muted">Cast Time:</span> {row.time}</div> : null}
+                                              {row?.range ? <div><span className="muted">Range:</span> {row.range}</div> : null}
+                                              {row?.components ? <div><span className="muted">Components:</span> {row.components}</div> : null}
+                                              {row?.duration ? <div><span className="muted">Duration:</span> {row.duration}</div> : null}
+                                              {row?.page ? <div><span className="muted">Page:</span> {row.page}</div> : null}
+                                              {row?.notes ? <div><span className="muted">Notes:</span> {row.notes}</div> : null}
+                                            </div>
                                           </div>
-                                        </div>
-                                      ) : null}
-                                    </div>
-                                  )
-                                }
-
-                                return selectedSheetSummary && selectedSheetSummary.spells.items.length ? (
-                                  <>
-                                    <ul style={{ margin: 0, paddingLeft: 18 }}>
-                                      {selectedSheetSummary.spells.items.map((s) => <li key={s}>{s}</li>)}
-                                    </ul>
-                                    {selectedSheetSummary.spells.more ? (
-                                      <div className="muted" style={{ marginTop: 6 }}>+ {selectedSheetSummary.spells.more} more</div>
-                                    ) : null}
-                                  </>
-                                ) : (
-                                  <div className="muted">No spells parsed.</div>
-                                )
-                              })()}
-                            </>
+                                        ) : null}
+                                      </React.Fragment>
+                                    )
+                                  })}
+                                </div>
+                              )
+                            })()
                           ) : (
                             <div className="muted">No spells parsed.</div>
                           )}
@@ -1379,7 +1408,10 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                       ) : null}
                       {characterPanelMode === 'features' ? (
                         <div className="card card-pad characters-subcard" style={{ marginTop: 12 }}>
-                          <div className="muted" style={{ marginBottom: 6 }}>Features</div>
+                          <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                            <div className="muted">Features</div>
+                            <button className="btn btn-secondary btn-sm" type="button" disabled>+ Add Feature</button>
+                          </div>
                           {selectedSheetSummary ? (
                             <>
                               {selectedSheetSummary.features.items.length ? (
@@ -1398,18 +1430,31 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                           )}
                         </div>
                       ) : null}
-                      {characterPanelMode === 'sheet' ? (
-                        <div style={{ marginTop: 12 }}>
-                          <CharacterSheetModal
-                            embedded
-                            open
-                            character={selectedCharacter}
-                            loading={false}
-                            onClose={() => undefined}
-                            onSaved={async () => {
-                              await fetchCharacters()
-                            }}
-                          />
+                      {characterPanelMode === 'inventory' ? (
+                        <div className="card card-pad characters-subcard" style={{ marginTop: 12 }}>
+                          <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                            <div className="muted">Inventory</div>
+                            <button className="btn btn-secondary btn-sm" type="button" disabled>+ Add Item</button>
+                          </div>
+                          {selectedSheetSummary ? (
+                            selectedSheetSummary.inventory.items.length ? (
+                              <div className="stack" style={{ gap: 4 }}>
+                                {selectedSheetSummary.inventory.items.map((item) => (
+                                  <div key={item} className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', padding: '5px 8px', background: 'rgba(0,0,0,0.12)', borderRadius: 6, fontSize: 13 }}>
+                                    <span>{item}</span>
+                                    <button className="btn btn-quiet btn-sm" type="button" disabled style={{ opacity: 0.5, fontSize: 11 }}>✕</button>
+                                  </div>
+                                ))}
+                                {selectedSheetSummary.inventory.more ? (
+                                  <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>+ {selectedSheetSummary.inventory.more} more items</div>
+                                ) : null}
+                              </div>
+                            ) : (
+                              <div className="muted">No inventory items.</div>
+                            )
+                          ) : (
+                            <div className="muted">No inventory data.</div>
+                          )}
                         </div>
                       ) : null}
                     </div>
@@ -1734,6 +1779,106 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
           </section>
         )}
 
+        {view === 'explore' && (
+          <section className="dashboard-panel stack">
+            <PageHeader
+              title="Explore"
+              subtitle="Browse lore and world details revealed through your adventures."
+              notificationsPending={notificationsPending}
+              onNotificationsClick={() => setNotificationsOpen(true)}
+            />
+            <div className="card card-pad" style={{ background: 'var(--surface-dark)' }}>
+              <div className="muted" style={{ marginBottom: 8 }}>Campaign Lore</div>
+              <div className="muted" style={{ fontSize: 13 }}>
+                As you play through campaigns, lore and world details discovered by your characters will appear here.
+                Select a campaign to browse its discovered lore.
+              </div>
+              {campaigns.length > 0 ? (
+                <div className="stack" style={{ gap: 8, marginTop: 12 }}>
+                  {campaigns.map((c) => (
+                    <button
+                      key={c.id}
+                      className={`btn btn-quiet ${String(c.id) === String(activeCampaignId) ? 'active' : ''}`}
+                      type="button"
+                      onClick={() => handleSetActiveCampaignId(String(c.id))}
+                    >
+                      {c.name}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="inline-alert" style={{ marginTop: 12 }}>
+                  No campaigns yet. Start a campaign to begin discovering lore.
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
+        {view === 'guides' && (
+          <section className="dashboard-panel stack">
+            <PageHeader
+              title="Guides"
+              subtitle="Best practices for using TavernTails tools and systems."
+              notificationsPending={notificationsPending}
+              onNotificationsClick={() => setNotificationsOpen(true)}
+            />
+            <div className="stack" style={{ gap: 12 }}>
+              {[
+                { title: 'Getting Started', body: 'Create a campaign, import or create your character, then start your first session.' },
+                { title: 'Importing Characters', body: 'Import characters via D&D Beyond link, PDF, or JSON. Use "Manage Characters → Import" to get started.' },
+                { title: 'AI Game Master', body: 'The AI GM narrates scenes, prompts dice rolls, and tracks NPCs. Use the campaign settings to assign an AI or human GM.' },
+                { title: 'Managing Documents', body: 'Upload campaign PDFs, rule sets, or random tables under Documents. These inform the AI during gameplay.' },
+                { title: 'Player-Run Mode', body: 'Enable player-run mode in campaign settings if a human GM is running the session. AI still handles notes and NPC tracking.' },
+              ].map((guide) => (
+                <div key={guide.title} className="card card-pad" style={{ background: 'var(--surface-dark)' }}>
+                  <div style={{ fontWeight: 700, marginBottom: 6 }}>{guide.title}</div>
+                  <div className="muted" style={{ fontSize: 13 }}>{guide.body}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {view === 'documents' && (
+          <section className="dashboard-panel stack">
+            <PageHeader
+              title="Documents"
+              subtitle="Manage documents for your campaigns and characters."
+              notificationsPending={notificationsPending}
+              onNotificationsClick={() => setNotificationsOpen(true)}
+            />
+            <div className="card card-pad" style={{ background: 'var(--surface-dark)' }}>
+              <div style={{ fontWeight: 700, marginBottom: 8 }}>Reusable Library</div>
+              <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
+                Upload PDFs, campaign modules, random tables, and reference documents. These can be used across campaigns.
+              </div>
+              <div className="row-wrap" style={{ gap: 8 }}>
+                <button className="btn" type="button">Upload Document</button>
+              </div>
+              <div className="inline-alert" style={{ marginTop: 12 }}>
+                No documents uploaded yet.
+              </div>
+            </div>
+            {characters.length > 0 && (
+              <div className="card card-pad" style={{ background: 'var(--surface-dark)' }}>
+                <div style={{ fontWeight: 700, marginBottom: 8 }}>Character Documents</div>
+                <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
+                  Documents associated with your characters.
+                </div>
+                <div className="stack" style={{ gap: 8 }}>
+                  {characters.map((c) => (
+                    <div key={c.id} className="card card-pad" style={{ background: 'rgba(71,66,61,0.5)' }}>
+                      <div style={{ fontWeight: 600 }}>{c.name}</div>
+                      <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>No documents yet.</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
 
         {view === 'account' && (
           <section className="dashboard-panel stack">
@@ -1755,7 +1900,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
 
               const friends = Array.isArray(profile?.friends) ? profile.friends : []
               const friendCount = typeof profile?.friend_count === 'number' ? profile.friend_count : friends.length
-              const hasVerifiedEmail = Boolean(profile?.email_verified || profile?.verified)
               const providers = Array.isArray(profile?.providers) ? profile.providers : []
               const oauth = profile?.oauth && typeof profile.oauth === 'object' ? profile.oauth : {}
               const linkedProviderSet = new Set<string>([
@@ -1777,7 +1921,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                     onNotificationsClick={() => setNotificationsOpen(true)}
                   />
 
-                  <div className="account-grid">
+                   <div className="account-grid">
                     <div className="card card-pad account-card">
                       <div className="account-header">
                         <div className="account-avatar">{initials || 'TT'}</div>
@@ -1803,27 +1947,88 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                     </div>
 
                     <div className="card card-pad account-card">
-                      <div style={{ fontWeight: 750, marginBottom: 8 }}>Emails</div>
-                      <div className="account-kv">
+                      <div style={{ fontWeight: 700, marginBottom: 8 }}>Edit Profile</div>
+                      {accountSaveMsg ? (
+                        <div className={`inline-alert ${accountSaveMsg.kind === 'error' ? 'inline-alert-error' : ''}`} style={{ marginBottom: 10 }}>
+                          {accountSaveMsg.text}
+                        </div>
+                      ) : null}
+                      <div className="stack" style={{ gap: 10 }}>
                         <div>
-                          <div className="muted">Primary email</div>
-                          <div>{email}</div>
+                          <label className="muted" style={{ fontSize: 12 }}>Display Name</label>
+                          <input
+                            className="input"
+                            value={accountEditName !== null ? accountEditName : displayName}
+                            onChange={(e) => setAccountEditName(e.target.value)}
+                            placeholder="Display name"
+                            disabled={accountSaving}
+                          />
                         </div>
                         <div>
-                          <div className="muted">Status</div>
-                          <div>{hasVerifiedEmail ? 'Verified' : 'Unverified'}</div>
+                          <label className="muted" style={{ fontSize: 12 }}>Email</label>
+                          <input
+                            className="input"
+                            type="email"
+                            value={accountEditEmail !== null ? accountEditEmail : (profile?.email || '')}
+                            onChange={(e) => setAccountEditEmail(e.target.value)}
+                            placeholder="Email address"
+                            disabled={accountSaving}
+                          />
                         </div>
-                      </div>
-                      <div className="row-wrap" style={{ marginTop: 10 }}>
-                        <button className="btn btn-secondary" type="button" disabled>
-                          Add email
-                        </button>
-                        <button className="btn btn-secondary" type="button" disabled>
-                          Send verification
-                        </button>
-                      </div>
-                      <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-                        Best practice: require verified email for account recovery and security notifications.
+                        <div className="row-wrap" style={{ gap: 8 }}>
+                          <button
+                            className="btn"
+                            type="button"
+                            disabled={accountSaving}
+                            onClick={async () => {
+                              setAccountSaving(true)
+                              setAccountSaveMsg(null)
+                              try {
+                                const payload: any = {}
+                                if (accountEditName !== null && accountEditName.trim() !== displayName) {
+                                  payload.name = accountEditName.trim()
+                                }
+                                if (accountEditEmail !== null && accountEditEmail.trim() !== (profile?.email || '')) {
+                                  payload.email = accountEditEmail.trim()
+                                }
+                                if (Object.keys(payload).length === 0) {
+                                  setAccountSaveMsg({ kind: 'info', text: 'No changes to save.' })
+                                  return
+                                }
+                                const res = await apiFetch('/player/profile', {
+                                  method: 'PUT',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify(payload),
+                                })
+                                if (!res.ok) {
+                                  const err = await res.json().catch(() => null)
+                                  throw new Error(err?.detail || 'Failed to update profile')
+                                }
+                                setAccountSaveMsg({ kind: 'info', text: 'Profile updated.' })
+                                setAccountEditName(null)
+                                setAccountEditEmail(null)
+                              } catch (e: any) {
+                                setAccountSaveMsg({ kind: 'error', text: e?.message || 'Failed to update profile' })
+                              } finally {
+                                setAccountSaving(false)
+                              }
+                            }}
+                          >
+                            {accountSaving ? 'Saving…' : 'Save Changes'}
+                          </button>
+                          <button
+                            className="btn btn-secondary"
+                            type="button"
+                            disabled={accountSaving}
+                            onClick={() => {
+                              setAccountEditName(null)
+                              setAccountEditEmail(null)
+                              setAccountSaveMsg(null)
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
                       </div>
                     </div>
 
