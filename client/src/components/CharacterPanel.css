@@ -778,3 +778,82 @@
   padding-left: 16px;
   font-size: 12px;
 }
+
+/* ── Quick Actions (session mode only) ───────────────────── */
+.character-quick-actions{
+  padding: 8px 0 10px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.character-quick-actions-title{
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.5;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+}
+
+.character-quick-actions-row{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.character-quick-action-btn{
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+
+.character-quick-action-btn--attack{
+  background: rgba(230,60,60,0.2);
+  border-color: rgba(230,60,60,0.4);
+}
+
+.character-quick-action-btn--attack:hover{
+  background: rgba(230,60,60,0.32);
+}
+
+.character-quick-action-btn--cast{
+  background: rgba(100,60,180,0.22);
+  border-color: rgba(155,89,182,0.45);
+}
+
+.character-quick-action-btn--cast:hover{
+  background: rgba(100,60,180,0.35);
+}
+
+.character-cast-picker{
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 100;
+  background: #1a1a2e;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  padding: 4px;
+  min-width: 180px;
+  max-height: 260px;
+  overflow-y: auto;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+}
+
+.character-cast-picker-item{
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px;
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.character-cast-picker-item:hover{
+  background: rgba(155,89,182,0.18);
+}

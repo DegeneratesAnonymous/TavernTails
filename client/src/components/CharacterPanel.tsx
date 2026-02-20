@@ -3,6 +3,8 @@ import CharacterIconStrip, {CharacterSnapshot, CharacterStripKey} from './Charac
 import EmptyState from './ui/EmptyState'
 import './CharacterPanel.css'
 
+const WEAPON_KEYWORDS = /sword|axe|bow|dagger|mace|hammer|spear|lance|staff|wand|blade|club|flail|glaive|halberd|maul|pike|rapier|scimitar|shortsword|longbow|crossbow|trident|whip|handaxe|greataxe|battleaxe|greatsword|longsword/i
+
 export type SceneCue = {
   id: string
   prompt: string
@@ -36,6 +38,8 @@ type Props = {
   showRoster?: boolean
   onGoToCharacters?: () => void
   onGoToImport?: () => void
+  /** Called when the player uses a Quick Action in-session */
+  onQuickAction?: (action: {type: 'attack' | 'cast' | 'short_rest' | 'long_rest'; detail?: string}) => void
 }
 
 export default function CharacterPanel({
@@ -49,11 +53,13 @@ export default function CharacterPanel({
   showRoster = true,
   onGoToCharacters,
   onGoToImport,
+  onQuickAction,
 }: Props){
   const [drawerKey, setDrawerKey] = useState<CharacterStripKey | null>(null)
   const containerRef = useRef<HTMLDivElement|null>(null)
   const [rollingCueId, setRollingCueId] = useState<string | null>(null)
   const [cueError, setCueError] = useState<string | null>(null)
+  const [castPickOpen, setCastPickOpen] = useState(false)
 
   const selected = useMemo(() => {
     if(!roster.length) return undefined
@@ -112,6 +118,12 @@ export default function CharacterPanel({
       skillsCount,
     }
   }, [abilities, selected])
+
+  const quickActions = useMemo(() => {
+    const equippedWeapons = (selected?.inventory || []).filter(name => WEAPON_KEYWORDS.test(name))
+    const hasSpells = (selected?.spells?.length ?? 0) > 0
+    return { equippedWeapons, hasSpells }
+  }, [selected?.inventory, selected?.spells])
 
   const drawerTitle = useMemo(() => {
     if(drawerKey === 'abilities') return 'Abilities'
@@ -329,6 +341,67 @@ export default function CharacterPanel({
               </div>
             </div>
           </section>
+        ) : null}
+
+        {/* Quick Actions — only in session mode */}
+        {(quickActions.equippedWeapons.length || quickActions.hasSpells) ? (
+          <div className="character-quick-actions" aria-label="Quick Actions">
+            <div className="character-quick-actions-title">Actions</div>
+            <div className="character-quick-actions-row">
+              {quickActions.equippedWeapons.map(weapon => (
+                <button
+                  key={weapon}
+                  type="button"
+                  className="btn btn-sm character-quick-action-btn character-quick-action-btn--attack"
+                  onClick={() => onQuickAction?.({ type: 'attack', detail: weapon })}
+                  title={`Attack with ${weapon}`}
+                >
+                  ⚔ {weapon}
+                </button>
+              ))}
+              {quickActions.hasSpells ? (
+                <div style={{ position: 'relative' }}>
+                  <button
+                    type="button"
+                    className="btn btn-sm character-quick-action-btn character-quick-action-btn--cast"
+                    onClick={() => setCastPickOpen(v => !v)}
+                  >
+                    ✦ Cast Spell
+                  </button>
+                  {castPickOpen ? (
+                    <div className="character-cast-picker">
+                      {(selected?.spells || []).map(spell => (
+                        <button
+                          key={spell}
+                          type="button"
+                          className="character-cast-picker-item"
+                          onClick={() => { onQuickAction?.({ type: 'cast', detail: spell }); setCastPickOpen(false) }}
+                        >
+                          {spell}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              <button
+                type="button"
+                className="btn btn-sm btn-quiet character-quick-action-btn"
+                onClick={() => onQuickAction?.({ type: 'short_rest' })}
+                title="Take a short rest"
+              >
+                Short Rest
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-quiet character-quick-action-btn"
+                onClick={() => onQuickAction?.({ type: 'long_rest' })}
+                title="Take a long rest"
+              >
+                Long Rest
+              </button>
+            </div>
+          </div>
         ) : null}
 
         <CharacterIconStrip

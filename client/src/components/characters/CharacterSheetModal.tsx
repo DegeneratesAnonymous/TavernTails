@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import Modal from '../ui/Modal'
 import { apiFetch, API_BASE } from '../../api'
@@ -502,6 +502,8 @@ function InventoryList({ items }: { items: InventoryItem[] }) {
   )
 }
 
+type SheetTab = 'overview' | 'bio' | 'spells' | 'features'
+
 export default function CharacterSheetModal({ open, character, loading = false, onClose, onSaved, embedded = false }: Props) {
   const [showRaw, setShowRaw] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -513,11 +515,17 @@ export default function CharacterSheetModal({ open, character, loading = false, 
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailTitle, setDetailTitle] = useState<string | null>(null)
   const [detailText, setDetailText] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<SheetTab>('overview')
+  const [localSpellSlots, setLocalSpellSlots] = useState<SpellSlot[]>([])
+  const [preparedSpells, setPreparedSpells] = useState<Set<string>>(new Set())
+  const [dragSpell, setDragSpell] = useState<string | null>(null)
+  const slotSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (!open) return
     // Default to the organized view every time you open a sheet.
     setShowRaw(false)
+    setActiveTab('overview')
   }, [open, character?.id])
 
   const sheet = useMemo(() => {
@@ -654,6 +662,154 @@ export default function CharacterSheetModal({ open, character, loading = false, 
     return () => { try { delete (window as any).tt_setDetail } catch {} }
   }, [])
 
+  // Initialize localSpellSlots and preparedSpells from sheet data
+  useEffect(() => {
+    if (!open || !character) return
+    const slots = derived.spellSlots
+    setLocalSpellSlots(slots.length ? cloneJson(slots) : [])
+    const sheetPrepared: string[] = Array.isArray((sheet as any)?.preparedSpells) ? (sheet as any).preparedSpells : []
+    const derivedPrepared = derived.spellbook
+      .filter((s: any) => {
+        const p = String(s?.prepared || '').toLowerCase()
+        return ['yes', 'true', '1', 'prepared', 'y'].includes(p) || p === 'o' || p === '○'
+      })
+      .map((s: any) => asString(s?.name))
+      .filter(Boolean)
+    const combined = new Set<string>([...sheetPrepared, ...derivedPrepared])
+    setPreparedSpells(combined)
+  }, [open, character?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Bio fields derived from the sheet
+  const bio = useMemo(() => {
+    const story = (sheet as any)?.story && typeof (sheet as any).story === 'object' ? (sheet as any).story : {}
+    const widgetVals = importMeta?.pdf_widgets?.values && typeof importMeta.pdf_widgets.values === 'object' ? importMeta.pdf_widgets.values : {}
+    const alignment = asString((sheet as any)?.alignment || (widgetVals as any)?.Alignment || (widgetVals as any)?.alignment)
+    const species = asString((sheet as any)?.species)
+    const background = asString((sheet as any)?.background)
+    const languages = (sheet as any)?.languages
+    return {
+      species,
+      background,
+      alignment,
+      personality: asString(story?.personality_traits),
+      ideals: asString(story?.ideals),
+      bonds: asString(story?.bonds),
+      flaws: asString(story?.flaws),
+      backstory: asString(story?.backstory),
+      languages: toStringListLoose(languages),
+      armorProficiencies: toStringListLoose((sheet as any)?.armor_proficiencies),
+      weaponProficiencies: toStringListLoose((sheet as any)?.weapon_proficiencies),
+      toolProficiencies: toStringListLoose((sheet as any)?.tool_proficiencies),
+    }
+  }, [sheet, importMeta])
+
+  // Derive saving throws from ability scores + proficiency bonus
+  const savingThrows = useMemo(() => {
+    const profBonus = asNumber((sheet as any)?.proficiency_bonus, 0)
+    const computeMod = (score: number | null) => score != null ? Math.floor((score - 10) / 2) : null
+    const keys: Array<[string, string]> = [['str', 'STR'], ['dex', 'DEX'], ['con', 'CON'], ['int', 'INT'], ['wis', 'WIS'], ['cha', 'CHA']]
+    const abilitiesData = (sheet as any)?.abilities && typeof (sheet as any).abilities === 'object' ? (sheet as any).abilities : {}
+    return keys.map(([k, label]) => {
+      const score = (derived.stats as any)[k] ?? null
+      const baseMod = computeMod(score)
+      // Try to read saving throw modifier directly from abilities dict (DDB import)
+      const abilityEntry = abilitiesData[k]
+      const saveValue = abilityEntry && typeof abilityEntry === 'object'
+        ? asNumber((abilityEntry as any).saving_throw, NaN)
+        : NaN
+      const proficient = abilityEntry && typeof abilityEntry === 'object'
+        ? Boolean((abilityEntry as any).saving_throw_proficient)
+        : false
+      const finalMod = Number.isFinite(saveValue)
+        ? saveValue
+        : baseMod != null
+          ? baseMod + (proficient ? profBonus : 0)
+          : null
+      return { key: k, label, mod: finalMod, proficient }
+    })
+  }, [derived.stats, sheet])
+
+  // Persist spell slot changes to backend (debounced)
+  const persistSpellSlots = useCallback((slots: SpellSlot[]) => {
+    if (!character) return
+    if (slotSaveTimerRef.current) clearTimeout(slotSaveTimerRef.current)
+    slotSaveTimerRef.current = setTimeout(async () => {
+      try {
+        const updatedSheet = { ...(character.sheet || {}), spellSlots: slots }
+        await apiFetch(`/characters/${character.id}`, { method: 'PUT', body: JSON.stringify({ sheet: updatedSheet }) })
+      } catch {}
+    }, 800)
+  }, [character])
+
+  // Toggle a single spell slot pip (used count)
+  const toggleSpellSlotPip = useCallback((level: number, pipIndex: number) => {
+    setLocalSpellSlots(prev => {
+      const next = prev.map(slot => {
+        if (slot.level !== level) return slot
+        const used = slot.used ?? 0
+        const max = slot.max ?? 0
+        // clicking an already-used pip below used count → un-use; clicking above → use
+        const newUsed = pipIndex < used ? pipIndex : Math.min(pipIndex + 1, max)
+        return { ...slot, used: newUsed }
+      })
+      persistSpellSlots(next)
+      return next
+    })
+  }, [persistSpellSlots])
+
+  // Persist prepared spells to backend (debounced)
+  const preparedSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const persistPreparedSpells = useCallback((prepared: Set<string>) => {
+    if (!character) return
+    if (preparedSaveTimerRef.current) clearTimeout(preparedSaveTimerRef.current)
+    preparedSaveTimerRef.current = setTimeout(async () => {
+      try {
+        const updatedSheet = { ...(character.sheet || {}), preparedSpells: Array.from(prepared) }
+        await apiFetch(`/characters/${character.id}`, { method: 'PUT', body: JSON.stringify({ sheet: updatedSheet }) })
+      } catch {}
+    }, 800)
+  }, [character])
+
+  const togglePrepared = useCallback((spellName: string) => {
+    setPreparedSpells(prev => {
+      const next = new Set(prev)
+      if (next.has(spellName)) next.delete(spellName)
+      else next.add(spellName)
+      persistPreparedSpells(next)
+      return next
+    })
+  }, [persistPreparedSpells])
+
+  // Drag handlers for spell tiles
+  const handleSpellDragStart = useCallback((spellName: string) => {
+    setDragSpell(spellName)
+  }, [])
+
+  const handleDropOnPrepared = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    if (!dragSpell) return
+    setPreparedSpells(prev => {
+      const next = new Set(prev)
+      next.add(dragSpell)
+      persistPreparedSpells(next)
+      return next
+    })
+    setDragSpell(null)
+  }, [dragSpell, persistPreparedSpells])
+
+  const handleDropOnKnown = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    if (!dragSpell) return
+    setPreparedSpells(prev => {
+      const next = new Set(prev)
+      next.delete(dragSpell)
+      persistPreparedSpells(next)
+      return next
+    })
+    setDragSpell(null)
+  }, [dragSpell, persistPreparedSpells])
+
+
   function findDetailForFeature(name: string): string | null {
     if (!name) return null
     const lower = name.toLowerCase()
@@ -705,250 +861,463 @@ export default function CharacterSheetModal({ open, character, loading = false, 
   const content = (
     <>
       {loading ? (
-        <div className="inline-alert">Loading…</div>
+        <div className="inline-alert">Loading...</div>
       ) : !character ? (
         <div className="inline-alert inline-alert-error">No character selected.</div>
       ) : (
         <div className="stack">
           <div className="row-wrap tt-sheet-top">
             <div className="muted">
-              {source ? `Source: ${source}` : 'Source: manual'}
-              {importMeta?.imported_at ? ` • Imported: ${asString(importMeta.imported_at)}` : ''}
+              {source ? `Source: ${source}` : "Source: manual"}
+              {importMeta?.imported_at ? ` • Imported: ${asString(importMeta.imported_at)}` : ""}
             </div>
             <button className="btn btn-quiet btn-sm" type="button" onClick={() => setShowRaw((v) => !v)}>
-              {showRaw ? 'Hide raw' : 'Show raw'}
+              {showRaw ? "Hide raw" : "Show raw"}
             </button>
           </div>
 
-          {ddbUrl ? (
-            <div className="card tt-sheet-card">
-              <div className="muted" style={{ marginBottom: 6 }}>D&D Beyond</div>
-              <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                <div className="input input-mono tt-sheet-ddb-url">{ddbUrl}</div>
-                <a className="btn btn-sm btn-secondary" href={ddbUrl} target="_blank" rel="noreferrer">Open</a>
-              </div>
-              <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-                We don’t scrape DDB links; this is a reference URL.
-              </div>
-            </div>
-          ) : null}
+          {/* Tab navigation */}
+          <div className="tt-sheet-tabs" role="tablist">
+            {(["overview", "bio", "spells", "features"] as SheetTab[]).map((tab) => (
+              <button
+                key={tab}
+                role="tab"
+                aria-selected={activeTab === tab}
+                className={`tt-sheet-tab ${activeTab === tab ? "tt-sheet-tab--active" : ""}`}
+                onClick={() => setActiveTab(tab)}
+              >
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </button>
+            ))}
+          </div>
 
-          {pdfMeta ? (
-            <div className="card tt-sheet-card">
-              <div className="muted" style={{ marginBottom: 6 }}>PDF extraction</div>
-              <div className="row-wrap" style={{ gap: 12 }}>
-                <div><strong>Widgets:</strong> {pdfMeta.widgetCount ?? '—'}</div>
-                <div><strong>Text chars:</strong> {pdfMeta.rawTextLen ?? '—'}</div>
-              </div>
-              {(pdfMeta.extracted?.name || pdfMeta.extracted?.level || pdfMeta.extracted?.class_name) ? (
-                <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-                  Extracted: {pdfMeta.extracted?.name ? `Name “${pdfMeta.extracted.name}”` : 'Name —'} •
-                  {pdfMeta.extracted?.level ? ` Level ${pdfMeta.extracted.level}` : ' Level —'} •
-                  {pdfMeta.extracted?.class_name ? ` Class ${pdfMeta.extracted.class_name}` : ' Class —'}
-                </div>
-              ) : null}
-              {(pdfMeta.overrides?.name || pdfMeta.overrides?.level || pdfMeta.overrides?.class_name) ? (
-                <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-                  Overrides: {pdfMeta.overrides?.name ? `Name “${pdfMeta.overrides.name}”` : 'Name —'} •
-                  {pdfMeta.overrides?.level ? ` Level ${pdfMeta.overrides.level}` : ' Level —'} •
-                  {pdfMeta.overrides?.class_name ? ` Class ${pdfMeta.overrides.class_name}` : ' Class —'}
-                </div>
-              ) : null}
-
-              {/* If the import referenced a stored document, render an embedded viewer */}
-              {importMeta?.document_id && importMeta?.document_session_id ? (
-                <div style={{ marginTop: 10 }}>
-                  <div className="muted" style={{ marginBottom: 6 }}>Original PDF</div>
-                  <div style={{ height: 420, border: '1px solid rgba(255,255,255,0.06)' }}>
-                    <iframe
-                      title="character-pdf"
-                      src={`${API_BASE}/documents/${importMeta.document_session_id}/${importMeta.document_id}/raw`}
-                      style={{ width: '100%', height: '100%', border: 0 }}
-                    />
+          {/* OVERVIEW TAB */}
+          {activeTab === "overview" ? (
+            <>
+              {ddbUrl ? (
+                <div className="card tt-sheet-card">
+                  <div className="muted" style={{ marginBottom: 6 }}>D&D Beyond</div>
+                  <div className="row-wrap" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                    <div className="input input-mono tt-sheet-ddb-url">{ddbUrl}</div>
+                    <a className="btn btn-sm btn-secondary" href={ddbUrl} target="_blank" rel="noreferrer">Open</a>
+                  </div>
+                  <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+                    We do not scrape DDB links; this is a reference URL.
                   </div>
                 </div>
               ) : null}
-            </div>
-          ) : null}
 
-          <div className="tt-sheet-grid">
-            <div className="card tt-sheet-card">
-              <div className="muted" style={{ marginBottom: 6 }}>Overview</div>
-              <div><strong>Name:</strong> {character.name}</div>
-              <div><strong>Level:</strong> {character.level}</div>
-              <div><strong>Class:</strong> {character.class_name || '—'}</div>
-            </div>
-            <div className="card tt-sheet-card">
-              <div className="muted" style={{ marginBottom: 6 }}>Combat</div>
-              <div><strong>HP:</strong> {derived.hpCurrent ?? '—'} / {derived.hpMax ?? '—'}</div>
-              <div><strong>AC:</strong> {derived.ac ?? '—'}</div>
-            </div>
-            <div className="card tt-sheet-card">
-              <div className="muted" style={{ marginBottom: 6 }}>Status</div>
-              <div><strong>Death Saves:</strong> {derived.deathSaves.successes ?? '—'} ✓ / {derived.deathSaves.failures ?? '—'} ✗</div>
-              <div><strong>Hit Dice:</strong> {derived.rest.hitDiceUsed ?? '—'} / {derived.rest.hitDiceTotal ?? '—'}</div>
-              <div><strong>Inspiration:</strong> {derived.rest.inspiration === null ? '—' : derived.rest.inspiration ? 'Yes' : 'No'}</div>
-              <div><strong>Exhaustion:</strong> {derived.rest.exhaustion ?? '—'}</div>
-            </div>
-            <div className="card tt-sheet-card">
-              <div className="muted" style={{ marginBottom: 6 }}>Movement</div>
-              <div><strong>Walk:</strong> {derived.movement.walk ?? '—'} ft</div>
-              <div><strong>Fly:</strong> {derived.movement.fly ?? '—'} ft</div>
-              <div><strong>Swim:</strong> {derived.movement.swim ?? '—'} ft</div>
-              <div><strong>Climb:</strong> {derived.movement.climb ?? '—'} ft</div>
-              <div><strong>Burrow:</strong> {derived.movement.burrow ?? '—'} ft</div>
-            </div>
-          </div>
-
-          <div className="card tt-sheet-abilities">
-            <div className="muted" style={{ marginBottom: 6 }}>Ability scores</div>
-            <div className="tt-abilities-grid">
-              {(['str','dex','con','int','wis','cha'] as const).map((k) => (
-                <div key={k} className="input input-mono tt-ability">
-                  <div className="tt-ability-label">{k.toUpperCase()}</div>
-                  <div className="tt-ability-value">{(derived.stats as any)[k] ?? '—'}</div>
+              {pdfMeta ? (
+                <div className="card tt-sheet-card">
+                  <div className="muted" style={{ marginBottom: 6 }}>PDF extraction</div>
+                  <div className="row-wrap" style={{ gap: 12 }}>
+                    <div><strong>Widgets:</strong> {pdfMeta.widgetCount ?? "—"}</div>
+                    <div><strong>Text chars:</strong> {pdfMeta.rawTextLen ?? "—"}</div>
+                  </div>
+                  {(pdfMeta.extracted?.name || pdfMeta.extracted?.level || pdfMeta.extracted?.class_name) ? (
+                    <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+                      Extracted: {pdfMeta.extracted?.name ? `Name "${pdfMeta.extracted.name}"` : "Name —"} ·
+                      {pdfMeta.extracted?.level ? ` Level ${pdfMeta.extracted.level}` : " Level —"} ·
+                      {pdfMeta.extracted?.class_name ? ` Class ${pdfMeta.extracted.class_name}` : " Class —"}
+                    </div>
+                  ) : null}
+                  {importMeta?.document_id && importMeta?.document_session_id ? (
+                    <div style={{ marginTop: 10 }}>
+                      <div className="muted" style={{ marginBottom: 6 }}>Original PDF</div>
+                      <div style={{ height: 420, border: "1px solid rgba(255,255,255,0.06)" }}>
+                        <iframe
+                          title="character-pdf"
+                          src={`${API_BASE}/documents/${importMeta.document_session_id}/${importMeta.document_id}/raw`}
+                          style={{ width: "100%", height: "100%", border: 0 }}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
-              ))}
-            </div>
-          </div>
+              ) : null}
 
-          {derived.inventory.length ? <ListPreview title="Inventory" items={derived.inventory} /> : null}
-          {derived.inventoryItems.length ? <InventoryList items={derived.inventoryItems} /> : null}
+              <div className="tt-sheet-grid">
+                <div className="card tt-sheet-card">
+                  <div className="muted" style={{ marginBottom: 6 }}>Overview</div>
+                  <div><strong>Name:</strong> {character.name}</div>
+                  <div><strong>Level:</strong> {character.level}</div>
+                  <div><strong>Class:</strong> {character.class_name || "—"}</div>
+                  {bio.species ? <div><strong>Species:</strong> {bio.species}</div> : null}
+                  {bio.background ? <div><strong>Background:</strong> {bio.background}</div> : null}
+                  {bio.alignment ? <div><strong>Alignment:</strong> {bio.alignment}</div> : null}
+                </div>
+                <div className="card tt-sheet-card">
+                  <div className="muted" style={{ marginBottom: 6 }}>Combat</div>
+                  <div><strong>HP:</strong> {derived.hpCurrent ?? "—"} / {derived.hpMax ?? "—"}</div>
+                  <div><strong>AC:</strong> {derived.ac ?? "—"}</div>
+                </div>
+                <div className="card tt-sheet-card">
+                  <div className="muted" style={{ marginBottom: 6 }}>Status</div>
+                  <div><strong>Death Saves:</strong> {derived.deathSaves.successes ?? "—"} ✓ / {derived.deathSaves.failures ?? "—"} ✗</div>
+                  <div><strong>Hit Dice:</strong> {derived.rest.hitDiceUsed ?? "—"} / {derived.rest.hitDiceTotal ?? "—"}</div>
+                  <div><strong>Inspiration:</strong> {derived.rest.inspiration === null ? "—" : derived.rest.inspiration ? "Yes" : "No"}</div>
+                  <div><strong>Exhaustion:</strong> {derived.rest.exhaustion ?? "—"}</div>
+                </div>
+                <div className="card tt-sheet-card">
+                  <div className="muted" style={{ marginBottom: 6 }}>Movement</div>
+                  <div><strong>Walk:</strong> {derived.movement.walk ?? "—"} ft</div>
+                  <div><strong>Fly:</strong> {derived.movement.fly ?? "—"} ft</div>
+                  <div><strong>Swim:</strong> {derived.movement.swim ?? "—"} ft</div>
+                  <div><strong>Climb:</strong> {derived.movement.climb ?? "—"} ft</div>
+                  <div><strong>Burrow:</strong> {derived.movement.burrow ?? "—"} ft</div>
+                </div>
+              </div>
 
-          {(derived.spells.length || derived.spellSlots.length) ? (
-            <div className="card tt-sheet-card">
-              <div className="muted" style={{ marginBottom: 6 }}>Spellcasting</div>
-              {derived.spellSlots.length ? (
-                <div className="row-wrap" style={{ gap: 8, marginBottom: derived.spells.length ? 10 : 0 }}>
-                  {derived.spellSlots.map((slot) => (
-                    <div key={slot.level} className="input input-mono" style={{ padding: '6px 8px' }}>
-                      <strong>L{slot.level}:</strong> {slot.used ?? 0}/{slot.max ?? '—'}
+              <div className="card tt-sheet-abilities">
+                <div className="muted" style={{ marginBottom: 6 }}>Ability scores</div>
+                <div className="tt-abilities-grid">
+                  {(["str","dex","con","int","wis","cha"] as const).map((k) => (
+                    <div key={k} className="input input-mono tt-ability">
+                      <div className="tt-ability-label">{k.toUpperCase()}</div>
+                      <div className="tt-ability-value">{(derived.stats as any)[k] ?? "—"}</div>
                     </div>
                   ))}
                 </div>
-              ) : null}
-              {derived.spellbook.length ? (
-                <div style={{ maxHeight: 280, overflow: 'auto' }}>
-                  <table className="spellbook-table">
-                    <thead>
-                      <tr>
-                        <th className="spellbook-col spellbook-col--prep">Prep</th>
-                        <th className="spellbook-col">Spell</th>
-                        <th className="spellbook-col">Source</th>
-                        <th className="spellbook-col">Save/Atk</th>
-                        <th className="spellbook-col">Time</th>
-                        <th className="spellbook-col">Range</th>
-                        <th className="spellbook-col">Comp</th>
-                        <th className="spellbook-col">Duration</th>
-                        <th className="spellbook-col">Page</th>
-                        <th className="spellbook-col">Notes</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(() => {
-                        const rows: any[] = []
-                        let lastHeader: string | null = null
-                        derived.spellbook.slice(0, 120).forEach((spell: any, idx: number) => {
-                          const header = (spell?.header || spell?.slot_header || '').trim()
-                          if (header && header !== lastHeader) {
-                            lastHeader = header
-                            rows.push({ type: 'header', label: header, key: `header-${idx}` })
-                          }
-                          rows.push({ type: 'spell', spell, key: `spellbook-${idx}` })
-                        })
-                        return rows.map((row) => {
-                          if (row.type === 'header') {
-                            return (
-                              <tr key={row.key} className="spellbook-header-row">
-                                <td colSpan={10}>{row.label}</td>
-                              </tr>
-                            )
-                          }
-                          const spell = row.spell
-                          const prepared = String(spell?.prepared || '').toLowerCase()
-                          const isPrepared = ['yes', 'true', '1', 'prepared', 'y'].includes(prepared) || prepared === 'o' || prepared === '○'
-                          return (
-                            <tr key={row.key}>
-                              <td className="spellbook-prep">{isPrepared ? '●' : '○'}</td>
-                              <td className="spellbook-name">{spell?.name || '—'}</td>
-                              <td>{spell?.source || '—'}</td>
-                              <td>{spell?.save_hit || '—'}</td>
-                              <td>{spell?.time || '—'}</td>
-                              <td>{spell?.range || '—'}</td>
-                              <td>{spell?.components || '—'}</td>
-                              <td>{spell?.duration || '—'}</td>
-                              <td>{spell?.page || '—'}</td>
-                              <td>{spell?.notes || '—'}</td>
-                            </tr>
-                          )
-                        })
-                      })()}
-                    </tbody>
-                  </table>
+              </div>
+
+              {/* Saving throws */}
+              <div className="card tt-sheet-card">
+                <div className="muted" style={{ marginBottom: 6 }}>Saving Throws</div>
+                <div className="tt-saving-throws-grid">
+                  {savingThrows.map(({ key, label, mod, proficient }) => (
+                    <div key={key} className={`tt-save-item ${proficient ? "tt-save-item--proficient" : ""}`}>
+                      <span className="tt-save-pip">{proficient ? "●" : "○"}</span>
+                      <span className="tt-save-label">{label}</span>
+                      <span className="tt-save-mod">{mod != null ? (mod >= 0 ? `+${mod}` : String(mod)) : "—"}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {derived.inventory.length ? <ListPreview title="Inventory" items={derived.inventory} /> : null}
+              {derived.inventoryItems.length ? <InventoryList items={derived.inventoryItems} /> : null}
+
+              {derived.actions && derived.actions.length ? (
+                <div className="card tt-sheet-card">
+                  <div className="muted" style={{ marginBottom: 6 }}>Actions</div>
+                  <ul style={{ margin: 0, paddingLeft: 18 }}>
+                    {derived.actions.map((a: any, idx: number) => (
+                      <li key={`action-${idx}`}>
+                        <button className="btn btn-ghost" style={{ padding: 0, textAlign: "left" }} onClick={() => { setDetailTitle(a.name || "Action"); setDetailText(a.detail || ""); setDetailOpen(true) }}>{a.name}</button>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               ) : null}
-              {derived.spells.length ? (
-                <ListPreview title="Spells" items={derived.spells} />
+
+              {derived.bonusActions && derived.bonusActions.length ? (
+                <div className="card tt-sheet-card">
+                  <div className="muted" style={{ marginBottom: 6 }}>Bonus Actions</div>
+                  <ul style={{ margin: 0, paddingLeft: 18 }}>
+                    {derived.bonusActions.map((a: any, idx: number) => (
+                      <li key={`baction-${idx}`}>
+                        <button className="btn btn-ghost" style={{ padding: 0, textAlign: "left" }} onClick={() => { setDetailTitle(a.name || "Bonus Action"); setDetailText(a.detail || ""); setDetailOpen(true) }}>{a.name}</button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ) : null}
-            </div>
+
+              {derived.skills && derived.skills.length ? (
+                <div className="card tt-sheet-card">
+                  <div className="muted" style={{ marginBottom: 6 }}>Skills</div>
+                  <ul style={{ margin: 0, paddingLeft: 18 }}>
+                    {derived.skills.map((s) => <li key={s}>{s}</li>)}
+                  </ul>
+                </div>
+              ) : null}
+
+              {showRaw ? (
+                <div className="card tt-sheet-card">
+                  <div className="muted" style={{ marginBottom: 6 }}>Raw sheet JSON</div>
+                  <pre className="code-block tt-sheet-raw">
+                    {JSON.stringify(sheet, null, 2)}
+                  </pre>
+                </div>
+              ) : null}
+            </>
           ) : null}
 
-          {derived.classFeatures.length ? <ListPreview title="Class Features" items={derived.classFeatures} onItemClick={(it) => { const d = findDetailForFeature(it); setDetailTitle(it); setDetailText(d || it); setDetailOpen(true) }} /> : null}
-          {derived.racialFeatures.length ? <ListPreview title="Racial Features" items={derived.racialFeatures} onItemClick={(it) => { const d = findDetailForFeature(it); setDetailTitle(it); setDetailText(d || it); setDetailOpen(true) }} /> : null}
-          {!derived.classFeatures.length && !derived.racialFeatures.length && derived.features.length ? (
-            <ListPreview title="Features" items={derived.features} onItemClick={(it) => { const d = findDetailForFeature(it); setDetailTitle(it); setDetailText(d || it); setDetailOpen(true) }} />
+          {/* BIO TAB */}
+          {activeTab === "bio" ? (
+            <>
+              <div className="tt-sheet-grid">
+                <div className="card tt-sheet-card">
+                  <div className="muted" style={{ marginBottom: 6 }}>Identity</div>
+                  <div><strong>Species:</strong> {bio.species || "—"}</div>
+                  <div><strong>Background:</strong> {bio.background || "—"}</div>
+                  <div><strong>Alignment:</strong> {bio.alignment || "—"}</div>
+                </div>
+                {bio.languages.length ? (
+                  <div className="card tt-sheet-card">
+                    <div className="muted" style={{ marginBottom: 6 }}>Languages</div>
+                    <ul style={{ margin: 0, paddingLeft: 18 }}>
+                      {bio.languages.map((l) => <li key={l}>{l}</li>)}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+
+              {(bio.personality || bio.ideals || bio.bonds || bio.flaws) ? (
+                <div className="tt-sheet-grid">
+                  {bio.personality ? (
+                    <div className="card tt-sheet-card">
+                      <div className="muted" style={{ marginBottom: 4 }}>Personality Traits</div>
+                      <div style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>{bio.personality}</div>
+                    </div>
+                  ) : null}
+                  {bio.ideals ? (
+                    <div className="card tt-sheet-card">
+                      <div className="muted" style={{ marginBottom: 4 }}>Ideals</div>
+                      <div style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>{bio.ideals}</div>
+                    </div>
+                  ) : null}
+                  {bio.bonds ? (
+                    <div className="card tt-sheet-card">
+                      <div className="muted" style={{ marginBottom: 4 }}>Bonds</div>
+                      <div style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>{bio.bonds}</div>
+                    </div>
+                  ) : null}
+                  {bio.flaws ? (
+                    <div className="card tt-sheet-card">
+                      <div className="muted" style={{ marginBottom: 4 }}>Flaws</div>
+                      <div style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>{bio.flaws}</div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {bio.backstory ? (
+                <div className="card tt-sheet-card">
+                  <div className="muted" style={{ marginBottom: 4 }}>Backstory</div>
+                  <div style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>{bio.backstory}</div>
+                </div>
+              ) : null}
+
+              {(bio.armorProficiencies.length || bio.weaponProficiencies.length || bio.toolProficiencies.length) ? (
+                <div className="tt-sheet-grid">
+                  {bio.armorProficiencies.length ? (
+                    <div className="card tt-sheet-card">
+                      <div className="muted" style={{ marginBottom: 4 }}>Armor Proficiencies</div>
+                      <ul style={{ margin: 0, paddingLeft: 18 }}>
+                        {bio.armorProficiencies.map((p) => <li key={p}>{p}</li>)}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {bio.weaponProficiencies.length ? (
+                    <div className="card tt-sheet-card">
+                      <div className="muted" style={{ marginBottom: 4 }}>Weapon Proficiencies</div>
+                      <ul style={{ margin: 0, paddingLeft: 18 }}>
+                        {bio.weaponProficiencies.map((p) => <li key={p}>{p}</li>)}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {bio.toolProficiencies.length ? (
+                    <div className="card tt-sheet-card">
+                      <div className="muted" style={{ marginBottom: 4 }}>Tool Proficiencies</div>
+                      <ul style={{ margin: 0, paddingLeft: 18 }}>
+                        {bio.toolProficiencies.map((p) => <li key={p}>{p}</li>)}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {!bio.species && !bio.background && !bio.personality && !bio.backstory && !bio.languages.length ? (
+                <div className="muted" style={{ padding: 12 }}>No biography data available. Import a character sheet with filled-in fields to populate this section.</div>
+              ) : null}
+            </>
           ) : null}
 
-          {/* Actions */}
-          {derived.actions && derived.actions.length ? (
-            <div className="card tt-sheet-card">
-              <div className="muted" style={{ marginBottom: 6 }}>Actions</div>
-              <ul style={{ margin: 0, paddingLeft: 18 }}>
-                {derived.actions.map((a: any, idx: number) => (
-                  <li key={`action-${idx}`}>
-                    <button className="btn btn-ghost" style={{ padding: 0, textAlign: 'left' }} onClick={() => { setDetailTitle(a.name || 'Action'); setDetailText(a.detail || ''); setDetailOpen(true) }}>{a.name}</button>
-                  </li>
-                ))}
-              </ul>
-            </div>
+          {/* SPELLS TAB */}
+          {activeTab === "spells" ? (
+            <>
+              {localSpellSlots.length ? (
+                <div className="card tt-sheet-card">
+                  <div className="muted" style={{ marginBottom: 8 }}>Spell Slots <span style={{ fontSize: 11 }}>(click to mark used/unused)</span></div>
+                  <div className="tt-spell-slots">
+                    {localSpellSlots.map((slot) => {
+                      const max = slot.max ?? 0
+                      const used = slot.used ?? 0
+                      return (
+                        <div key={slot.level} className="tt-spell-slot-row">
+                          <span className="tt-spell-slot-label">L{slot.level}</span>
+                          <div className="tt-spell-slot-pips">
+                            {Array.from({ length: max }).map((_, i) => (
+                              <button
+                                key={i}
+                                type="button"
+                                aria-label={`Level ${slot.level} slot ${i + 1} — ${i < used ? "used" : "available"}`}
+                                className={`tt-spell-slot-pip ${i < used ? "tt-spell-slot-pip--used" : ""}`}
+                                onClick={() => toggleSpellSlotPip(slot.level, i)}
+                              />
+                            ))}
+                          </div>
+                          <span className="tt-spell-slot-count">{used}/{max}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
+              {(derived.spells.length || derived.spellbook.length) ? (
+                <div className="tt-spell-columns">
+                  <div
+                    className="tt-spell-col"
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={handleDropOnKnown}
+                  >
+                    <div className="tt-spell-col-header">Known Spells</div>
+                    <div className="tt-spell-tiles">
+                      {(derived.spellbook.length ? derived.spellbook.map((s: any) => asString(s?.name)).filter(Boolean) : derived.spells).map((name: string) => {
+                        const isPrepared = preparedSpells.has(name)
+                        return (
+                          <div
+                            key={name}
+                            draggable
+                            onDragStart={() => handleSpellDragStart(name)}
+                            className={`tt-spell-tile ${isPrepared ? "tt-spell-tile--grayed" : ""}`}
+                            title={isPrepared ? `${name} (prepared)` : name}
+                          >
+                            <span className="tt-spell-tile-name">{name}</span>
+                            <button
+                              type="button"
+                              className="tt-spell-tile-prep-btn"
+                              aria-label={isPrepared ? `Remove ${name} from prepared` : `Prepare ${name}`}
+                              onClick={() => togglePrepared(name)}
+                            >
+                              {isPrepared ? "check" : "+"}
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  <div
+                    className="tt-spell-col tt-spell-col--prepared"
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={handleDropOnPrepared}
+                  >
+                    <div className="tt-spell-col-header">Prepared Spells</div>
+                    <div className="tt-spell-tiles">
+                      {Array.from(preparedSpells).map((name) => (
+                        <div
+                          key={name}
+                          draggable
+                          onDragStart={() => handleSpellDragStart(name)}
+                          className="tt-spell-tile tt-spell-tile--prepared"
+                          title={name}
+                        >
+                          <span className="tt-spell-tile-name">{name}</span>
+                          <button
+                            type="button"
+                            className="tt-spell-tile-prep-btn"
+                            aria-label={`Remove ${name} from prepared`}
+                            onClick={() => togglePrepared(name)}
+                          >
+                            x
+                          </button>
+                        </div>
+                      ))}
+                      {preparedSpells.size === 0 ? (
+                        <div className="tt-spell-col-empty">Drag spells here to prepare them</div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="muted" style={{ padding: 12 }}>No spell data available for this character.</div>
+              )}
+
+              {derived.spellbook.length ? (
+                <div className="card tt-sheet-card" style={{ marginTop: 12 }}>
+                  <div className="muted" style={{ marginBottom: 6 }}>Spellbook Details</div>
+                  <div style={{ maxHeight: 280, overflow: "auto" }}>
+                    <table className="spellbook-table">
+                      <thead>
+                        <tr>
+                          <th className="spellbook-col spellbook-col--prep">Prep</th>
+                          <th className="spellbook-col">Spell</th>
+                          <th className="spellbook-col">Source</th>
+                          <th className="spellbook-col">Save/Atk</th>
+                          <th className="spellbook-col">Time</th>
+                          <th className="spellbook-col">Range</th>
+                          <th className="spellbook-col">Comp</th>
+                          <th className="spellbook-col">Duration</th>
+                          <th className="spellbook-col">Page</th>
+                          <th className="spellbook-col">Notes</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(() => {
+                          const rows: any[] = []
+                          let lastHeader: string | null = null
+                          derived.spellbook.slice(0, 120).forEach((spell: any, idx: number) => {
+                            const header = (spell?.header || spell?.slot_header || "").trim()
+                            if (header && header !== lastHeader) {
+                              lastHeader = header
+                              rows.push({ type: "header", label: header, key: `header-${idx}` })
+                            }
+                            rows.push({ type: "spell", spell, key: `spellbook-${idx}` })
+                          })
+                          return rows.map((row) => {
+                            if (row.type === "header") {
+                              return (
+                                <tr key={row.key} className="spellbook-header-row">
+                                  <td colSpan={10}>{row.label}</td>
+                                </tr>
+                              )
+                            }
+                            const spell = row.spell
+                            const isPrepared = preparedSpells.has(asString(spell?.name))
+                            return (
+                              <tr key={row.key} className={isPrepared ? "spellbook-row--prepared" : ""}>
+                                <td className="spellbook-prep">{isPrepared ? "●" : "○"}</td>
+                                <td className="spellbook-name">{spell?.name || "—"}</td>
+                                <td>{spell?.source || "—"}</td>
+                                <td>{spell?.save_hit || "—"}</td>
+                                <td>{spell?.time || "—"}</td>
+                                <td>{spell?.range || "—"}</td>
+                                <td>{spell?.components || "—"}</td>
+                                <td>{spell?.duration || "—"}</td>
+                                <td>{spell?.page || "—"}</td>
+                                <td>{spell?.notes || "—"}</td>
+                              </tr>
+                            )
+                          })
+                        })()}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : null}
+            </>
           ) : null}
 
-          {/* Bonus actions */}
-          {derived.bonusActions && derived.bonusActions.length ? (
-            <div className="card tt-sheet-card">
-              <div className="muted" style={{ marginBottom: 6 }}>Bonus Actions</div>
-              <ul style={{ margin: 0, paddingLeft: 18 }}>
-                {derived.bonusActions.map((a: any, idx: number) => (
-                  <li key={`baction-${idx}`}>
-                    <button className="btn btn-ghost" style={{ padding: 0, textAlign: 'left' }} onClick={() => { setDetailTitle(a.name || 'Bonus Action'); setDetailText(a.detail || ''); setDetailOpen(true) }}>{a.name}</button>
-                  </li>
-                ))}
-              </ul>
-            </div>
+          {/* FEATURES TAB */}
+          {activeTab === "features" ? (
+            <>
+              {derived.classFeatures.length ? <ListPreview title="Class Features" items={derived.classFeatures} onItemClick={(it) => { const d = findDetailForFeature(it); setDetailTitle(it); setDetailText(d || it); setDetailOpen(true) }} /> : null}
+              {derived.racialFeatures.length ? <ListPreview title="Racial / Species Features" items={derived.racialFeatures} onItemClick={(it) => { const d = findDetailForFeature(it); setDetailTitle(it); setDetailText(d || it); setDetailOpen(true) }} /> : null}
+              {!derived.classFeatures.length && !derived.racialFeatures.length && derived.features.length ? (
+                <ListPreview title="Features" items={derived.features} onItemClick={(it) => { const d = findDetailForFeature(it); setDetailTitle(it); setDetailText(d || it); setDetailOpen(true) }} />
+              ) : null}
+              {!derived.classFeatures.length && !derived.racialFeatures.length && !derived.features.length ? (
+                <div className="muted" style={{ padding: 12 }}>No feature data available for this character.</div>
+              ) : null}
+            </>
           ) : null}
 
-          {/* Skills */}
-          {derived.skills && derived.skills.length ? (
-            <div className="card tt-sheet-card">
-              <div className="muted" style={{ marginBottom: 6 }}>Skills</div>
-              <ul style={{ margin: 0, paddingLeft: 18 }}>
-                {derived.skills.map((s) => <li key={s}>{s}</li>)}
-              </ul>
-            </div>
-          ) : null}
-
-          {showRaw ? (
-            <div className="card tt-sheet-card">
-              <div className="muted" style={{ marginBottom: 6 }}>Raw sheet JSON</div>
-              <pre className="code-block tt-sheet-raw">
-                {JSON.stringify(sheet, null, 2)}
-              </pre>
-            </div>
-          ) : null}
-
-          {/* Simple edit panel to adjust parsed PDF fields (stats, AC, HP, features) */}
+          {/* Edit panel */}
           {!editing ? (
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
               <button className="btn btn-quiet" type="button" onClick={beginEdit}>
                 Edit character
               </button>
@@ -956,7 +1325,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
           ) : null}
 
           {editing ? (
-            <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.02)' }}>
+            <div className="card card-pad stack" style={{ background: "rgba(255,255,255,0.02)" }}>
               <div style={{ fontWeight: 700 }}>Edit character</div>
               <div className="row-wrap" style={{ gap: 10 }}>
                 <div className="stack" style={{ gap: 6, minWidth: 180 }}>
@@ -973,30 +1342,30 @@ export default function CharacterSheetModal({ open, character, loading = false, 
                 </div>
               </div>
               <div className="row-wrap" style={{ gap: 10 }}>
-                {(['str','dex','con','int','wis','cha'] as const).map((k) => (
+                {(["str","dex","con","int","wis","cha"] as const).map((k) => (
                   <div key={k} className="stack" style={{ gap: 6 }}>
                     <label className="muted">{k.toUpperCase()}</label>
-                    <input className="input input-mono" value={String(editSheet?.stats?.[k] ?? '')} onChange={(e) => { setEditSheet((s: any)=>({ ...s, stats: { ...(s?.stats||{}), [k]: parseInt(e.target.value || '0',10) }})) }} />
+                    <input className="input input-mono" value={String(editSheet?.stats?.[k] ?? "")} onChange={(e) => { setEditSheet((s: any)=>({ ...s, stats: { ...(s?.stats||{}), [k]: parseInt(e.target.value || "0",10) }})) }} />
                   </div>
                 ))}
                 <div className="stack" style={{ gap: 6 }}>
                   <label className="muted">AC</label>
-                  <input className="input input-mono" value={String(editSheet?.ac ?? '')} onChange={(e)=>setEditSheet((s:any)=>({ ...s, ac: Number(e.target.value || 0)}))} />
+                  <input className="input input-mono" value={String(editSheet?.ac ?? "")} onChange={(e)=>setEditSheet((s:any)=>({ ...s, ac: Number(e.target.value || 0)}))} />
                 </div>
                 <div className="stack" style={{ gap: 6 }}>
                   <label className="muted">HP max</label>
-                  <input className="input input-mono" value={String(editSheet?.hp?.max ?? '')} onChange={(e)=>setEditSheet((s:any)=>({ ...s, hp: { ...(s?.hp||{}), max: Number(e.target.value || 0)}}))} />
+                  <input className="input input-mono" value={String(editSheet?.hp?.max ?? "")} onChange={(e)=>setEditSheet((s:any)=>({ ...s, hp: { ...(s?.hp||{}), max: Number(e.target.value || 0)}}))} />
                 </div>
                 <div className="stack" style={{ gap: 6 }}>
                   <label className="muted">HP current</label>
-                  <input className="input input-mono" value={String(editSheet?.hp?.current ?? '')} onChange={(e)=>setEditSheet((s:any)=>({ ...s, hp: { ...(s?.hp||{}), current: Number(e.target.value || 0)}}))} />
+                  <input className="input input-mono" value={String(editSheet?.hp?.current ?? "")} onChange={(e)=>setEditSheet((s:any)=>({ ...s, hp: { ...(s?.hp||{}), current: Number(e.target.value || 0)}}))} />
                 </div>
               </div>
               <div style={{ marginTop: 8 }}>
                 <label className="muted">Features (one per line)</label>
-                <textarea className="input" rows={6} value={Array.isArray(editSheet?.features) ? editSheet.features.join('\n') : String(editSheet?.features || '')} onChange={(e)=>setEditSheet((s:any)=>({ ...s, features: e.target.value.split('\n').map((r:string)=>r.trim()).filter(Boolean)}))} />
+                <textarea className="input" rows={6} value={Array.isArray(editSheet?.features) ? editSheet.features.join("\n") : String(editSheet?.features || "")} onChange={(e)=>setEditSheet((s:any)=>({ ...s, features: e.target.value.split("\n").map((r:string)=>r.trim()).filter(Boolean)}))} />
               </div>
-              <div className="row-wrap" style={{ justifyContent: 'flex-end', gap: 8 }}>
+              <div className="row-wrap" style={{ justifyContent: "flex-end", gap: 8 }}>
                 <button className="btn btn-secondary" type="button" onClick={()=>{ setEditing(false); setEditSheet(null); }} disabled={saveBusy}>Cancel</button>
                 <button className="btn" type="button" onClick={async ()=>{
                   if(!character) return
@@ -1010,23 +1379,21 @@ export default function CharacterSheetModal({ open, character, loading = false, 
                       level: safeLevel,
                       class_name: editClassName.trim() || null,
                     }
-                    const res = await apiFetch(`/characters/${character.id}`, { method: 'PUT', body: JSON.stringify(payload) })
-                    if(!res.ok){ const err = await res.json().catch(()=>({})); alert(err?.detail || 'Failed to save'); return }
-                    // refresh: close modal and let parent reload if needed
+                    const res = await apiFetch(`/characters/${character.id}`, { method: "PUT", body: JSON.stringify(payload) })
+                    if(!res.ok){ const err = await res.json().catch(()=>({})); alert(err?.detail || "Failed to save"); return }
                     setEditing(false)
                     setEditSheet(null)
                     if (onSaved) await onSaved()
                     onClose()
-                  }catch(e:any){ alert(e?.message||'Network error') }finally{ setSaveBusy(false) }
+                  }catch(e:any){ alert(e?.message||"Network error") }finally{ setSaveBusy(false) }
                 }}>Save</button>
               </div>
             </div>
           ) : null}
 
-          <Modal open={detailOpen} title={detailTitle || 'Detail'} onClose={() => setDetailOpen(false)}>
+          <Modal open={detailOpen} title={detailTitle || "Detail"} onClose={() => setDetailOpen(false)}>
             <div className="stack" style={{ gap: 8 }}>
-              <div style={{ whiteSpace: 'pre-wrap', fontSize: 14 }}>{detailText || 'No additional details available.'}</div>
-              {/* Show any attached references for this feature/spell */}
+              <div style={{ whiteSpace: "pre-wrap", fontSize: 14 }}>{detailText || "No additional details available."}</div>
               {character?.sheet?.references && detailTitle ? (
                 <div style={{ marginTop: 8 }}>
                   <div className="muted" style={{ marginBottom: 6 }}>References</div>
@@ -1038,9 +1405,9 @@ export default function CharacterSheetModal({ open, character, loading = false, 
                       <ul style={{ margin: 0, paddingLeft: 18 }}>
                         {featRefs.map((r: any, idx: number) => (
                           <li key={`ref-${idx}`} style={{ marginBottom: 6 }}>
-                            <div style={{ fontSize: 13 }}><strong>{String(r.source_id)}</strong> • Page {String(r.page)}</div>
+                            <div style={{ fontSize: 13 }}><strong>{String(r.source_id)}</strong> - Page {String(r.page)}</div>
                             <div className="muted" style={{ fontSize: 13, marginBottom: 6 }}>{r.snippet}</div>
-                            <div style={{ display: 'flex', gap: 8 }}>
+                            <div style={{ display: "flex", gap: 8 }}>
                               <a className="btn btn-quiet btn-sm" target="_blank" rel="noreferrer" href={`${API_BASE}/references/${encodeURIComponent(String(r.source_id))}/raw#page=${encodeURIComponent(String(r.page))}`}>Open source</a>
                             </div>
                           </li>
@@ -1050,16 +1417,15 @@ export default function CharacterSheetModal({ open, character, loading = false, 
                   })()}
                 </div>
               ) : null}
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
                 <button className="btn btn-secondary" type="button" onClick={() => setDetailOpen(false)}>Close</button>
               </div>
             </div>
           </Modal>
-          
 
           {!ddbUrl && !Object.keys(derived.raw || {}).length ? (
             <div className="inline-alert" style={{ marginTop: 6 }}>
-              This character was created from a link and doesn’t have a parsed sheet yet. If you want full stats/spells,
+              This character was created from a link and does not have a parsed sheet yet. If you want full stats/spells,
               import a JSON export.
             </div>
           ) : null}
