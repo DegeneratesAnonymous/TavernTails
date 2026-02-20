@@ -953,7 +953,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
                 </div>
                 <div className="card tt-sheet-card">
                   <div className="muted" style={{ marginBottom: 6 }}>Status</div>
-                  <div><strong>Death Saves:</strong> {derived.deathSaves.successes ?? "—"} / {derived.deathSaves.failures ?? "—"}</div>
+                  <div><strong>Death Saves:</strong> {derived.deathSaves.successes ?? "—"} ✓ / {derived.deathSaves.failures ?? "—"} ✗</div>
                   <div><strong>Hit Dice:</strong> {derived.rest.hitDiceUsed ?? "—"} / {derived.rest.hitDiceTotal ?? "—"}</div>
                   <div><strong>Inspiration:</strong> {derived.rest.inspiration === null ? "—" : derived.rest.inspiration ? "Yes" : "No"}</div>
                   <div><strong>Exhaustion:</strong> {derived.rest.exhaustion ?? "—"}</div>

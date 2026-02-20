@@ -1237,6 +1237,19 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                           >
                             <SettingsIcon />
                           </button>
+                          <button
+                            className="btn btn-quiet btn-sm"
+                            type="button"
+                            title="View full character sheet"
+                            onClick={() => {
+                              if (selectedCharacter) {
+                                setSheetModalCharacter(selectedCharacter)
+                                setSheetModalOpen(true)
+                              }
+                            }}
+                          >
+                            Full Sheet
+                          </button>
                         </div>
                       </div>
                       {selectedSheetSummary && characterPanelMode === 'summary' ? (
