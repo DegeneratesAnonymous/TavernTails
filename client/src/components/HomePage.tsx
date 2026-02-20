@@ -8,7 +8,53 @@ type Props = {
   onSignUp: () => void
 }
 
+type QuickAction = {
+  label: string
+  description: string
+  icon: string
+  onClick: () => void
+}
+
 export default function HomePage({ onGetStarted, onSignIn, onSignUp }: Props) {
+  const quickActions: QuickAction[] = [
+    {
+      label: 'Start New Game',
+      description: 'Create a new campaign and jump into your adventure.',
+      icon: '⚔️',
+      onClick: onGetStarted,
+    },
+    {
+      label: 'Load a Game',
+      description: 'Pick up where you left off in one of your campaigns.',
+      icon: '📖',
+      onClick: onSignIn,
+    },
+    {
+      label: 'Manage Characters',
+      description: 'Create, import, and manage your character roster.',
+      icon: '🧙',
+      onClick: onSignIn,
+    },
+    {
+      label: 'Manage Campaigns',
+      description: 'Configure settings, players, and documents for your campaigns.',
+      icon: '🗺️',
+      onClick: onSignIn,
+    },
+    {
+      label: 'Explore',
+      description: 'Browse the lore and world details revealed through your adventures.',
+      icon: '🔭',
+      onClick: onSignIn,
+    },
+    {
+      label: 'Guides',
+      description: 'Learn best practices for tools and systems in TavernTails.',
+      icon: '📜',
+      onClick: onSignIn,
+    },
+  ]
+
   return (
     <div className="tt-home">
       <div className="tt-home-bg" />
@@ -20,29 +66,25 @@ export default function HomePage({ onGetStarted, onSignIn, onSignUp }: Props) {
             Import characters, spin up campaigns, and keep the session moving with narrative cues,
             dice prompts, and live recap support.
           </p>
-          <div className="tt-home-actions">
-            <button className="btn" type="button" onClick={onGetStarted}>Get Started</button>
+          <div className="tt-home-auth-actions">
             <button className="btn btn-secondary" type="button" onClick={onSignIn}>Sign In</button>
             <button className="btn btn-ghost" type="button" onClick={onSignUp}>Create Account</button>
           </div>
         </div>
 
-        <div className="tt-home-panels">
-          <div className="card card-pad">
-            <div className="muted">Character-first</div>
-            <h3>Bring your characters</h3>
-            <p>Import D&D Beyond PDFs/JSON, review the details, and manage the roster in one place.</p>
-          </div>
-          <div className="card card-pad">
-            <div className="muted">Session-ready</div>
-            <h3>Launch a campaign fast</h3>
-            <p>Create a campaign, auto-generate a session, and start playing in minutes.</p>
-          </div>
-          <div className="card card-pad">
-            <div className="muted">Always in sync</div>
-            <h3>Real-time guidance</h3>
-            <p>Scene cues, roll prompts, and notes recap keep everyone on the same page.</p>
-          </div>
+        <div className="tt-home-quick-actions">
+          {quickActions.map((action) => (
+            <button
+              key={action.label}
+              className="tt-home-qa-card"
+              type="button"
+              onClick={action.onClick}
+            >
+              <div className="tt-home-qa-icon">{action.icon}</div>
+              <div className="tt-home-qa-label">{action.label}</div>
+              <div className="tt-home-qa-desc">{action.description}</div>
+            </button>
+          ))}
         </div>
       </div>
     </div>

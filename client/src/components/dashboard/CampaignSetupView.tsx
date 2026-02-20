@@ -41,12 +41,6 @@ const DocumentsIcon = () => (
   </svg>
 )
 
-const VariablesIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="btn-icon">
-    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 0 1 0 3.75H5.625a1.875 1.875 0 0 1 0-3.75Z" />
-  </svg>
-)
-
 const AddDocumentIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="btn-icon">
     <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
@@ -147,10 +141,6 @@ function asNumber(v: any, fallback: number): number {
   return Number.isFinite(n) ? n : fallback
 }
 
-function parseCommaSeparated(value: string): string[] {
-  return value.split(',').map((t) => t.trim()).filter(Boolean)
-}
-
 export default function CampaignSetupView({
   activeCampaignId,
   activeCampaign,
@@ -165,7 +155,7 @@ export default function CampaignSetupView({
   showAdminControls = false,
   onDeleteTestCampaigns,
 }: Props) {
-  const [viewMode, setViewMode] = useState<'list' | 'settings' | 'documents' | 'players' | 'variables'>('list')
+  const [viewMode, setViewMode] = useState<'list' | 'settings' | 'documents' | 'players'>('list')
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
 
@@ -328,13 +318,11 @@ export default function CampaignSetupView({
         ? 'Settings'
         : viewMode === 'documents'
         ? 'Documents'
-        : viewMode === 'variables'
-        ? 'Variables'
         : 'Players'
     return `Manage Campaigns: ${base} — ${suffix}`
   }, [activeCampaignId, activeCampaign?.name, viewMode])
 
-  const openCampaignView = (campaignId: string, mode: 'settings' | 'documents' | 'players' | 'variables') => {
+  const openCampaignView = (campaignId: string, mode: 'settings' | 'documents' | 'players') => {
     onSelectCampaign(campaignId)
     setViewMode(mode)
   }
@@ -426,35 +414,16 @@ export default function CampaignSetupView({
         throw new Error(err?.detail || 'Failed to save campaign settings')
       }
 
+      // Persist content_rating via variables endpoint
+      await apiFetch(`/campaigns/${activeCampaignId}/variables`, {
+        method: 'PUT',
+        body: JSON.stringify({ content_rating: variables.content_rating }),
+      }).catch(() => { /* non-fatal; variables endpoint may not exist yet */ })
+
       await onCampaignUpdated()
       setMessage({ kind: 'info', text: 'Campaign settings saved.' })
     } catch (e: any) {
       setMessage({ kind: 'error', text: e?.message || 'Failed to save campaign settings' })
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function onSaveVariables() {
-    if (!activeCampaignId) {
-      setMessage({ kind: 'error', text: 'Select or create a campaign first.' })
-      return
-    }
-
-    setSaving(true)
-    setMessage(null)
-    try {
-      const res = await apiFetch(`/campaigns/${activeCampaignId}/variables`, {
-        method: 'PUT',
-        body: JSON.stringify(variables),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => null)
-        throw new Error(err?.detail || 'Failed to save campaign variables')
-      }
-      setMessage({ kind: 'info', text: 'Campaign variables saved.' })
-    } catch (e: any) {
-      setMessage({ kind: 'error', text: e?.message || 'Failed to save campaign variables' })
     } finally {
       setSaving(false)
     }
@@ -524,9 +493,6 @@ export default function CampaignSetupView({
                           <button className="btn btn-secondary btn-sm btn-icon-only" type="button" onClick={() => openCampaignView(String(campaign.id), 'settings')} title="Settings" aria-label="Settings">
                             <SettingsIcon />
                           </button>
-                          <button className="btn btn-secondary btn-sm btn-icon-only" type="button" onClick={() => openCampaignView(String(campaign.id), 'variables')} title="Variables" aria-label="Variables">
-                            <VariablesIcon />
-                          </button>
                           <button className="btn btn-secondary btn-sm btn-icon-only" type="button" onClick={() => openCampaignView(String(campaign.id), 'documents')} title="Documents" aria-label="Documents">
                             <DocumentsIcon />
                           </button>
@@ -579,14 +545,12 @@ export default function CampaignSetupView({
                       </button>
                     ) : null}
                     <button
-                      className="btn btn-icon-only"
+                      className="btn btn-secondary"
                       type="button"
                       disabled={!canEdit || saving}
                       onClick={onSave}
-                      title={saving ? 'Saving…' : 'Save'}
-                      aria-label={saving ? 'Saving…' : 'Save'}
                     >
-                      <SettingsIcon />
+                      {saving ? 'Saving…' : 'Save Settings'}
                     </button>
                   </div>
                 </div>
@@ -606,7 +570,7 @@ export default function CampaignSetupView({
 
               <div className="card card-pad" style={{ opacity: loading ? 0.7 : 1, background: 'var(--surface-dark)' }}>
                 <div className="stack" style={{ gap: 10 }}>
-                  <div className="muted">World & game settings</div>
+                  <div className="muted">Settings</div>
 
                   <div className="stack" style={{ gap: 6 }}>
                     <label className="muted" style={{ fontSize: 13 }}>
@@ -632,62 +596,71 @@ export default function CampaignSetupView({
                     </div>
                   </div>
 
-                  <input
-                    className="input"
-                    value={settings.world_name}
-                    onChange={(e) => setSettings((prev) => ({ ...prev, world_name: e.target.value }))}
-                    placeholder="World name (e.g. Eldervale)"
-                    disabled={!canEdit}
-                  />
+                  <div className="row-wrap" style={{ gap: 8 }}>
+                    <div style={{ flex: 1 }}>
+                      <label className="muted" style={{ fontSize: 13 }}>Tone</label>
+                      <select
+                        className="input"
+                        value={settings.tone}
+                        onChange={(e) => setSettings((prev) => ({ ...prev, tone: e.target.value }))}
+                        disabled={!canEdit}
+                        aria-disabled={!canEdit}
+                      >
+                        <option value="">Tone…</option>
+                        <option value="heroic">Heroic</option>
+                        <option value="grim">Grim</option>
+                        <option value="dark-fantasy">Dark fantasy</option>
+                        <option value="comedy">Comedy</option>
+                        <option value="horror">Horror</option>
+                      </select>
+                    </div>
 
-                  <textarea
-                    className="input"
-                    value={settings.setting_summary}
-                    onChange={(e) => setSettings((prev) => ({ ...prev, setting_summary: e.target.value }))}
-                    placeholder="Setting summary (factions, hooks, vibe)"
-                    rows={4}
-                    disabled={!canEdit}
-                  />
+                    <div style={{ flex: 1 }}>
+                      <label className="muted" style={{ fontSize: 13 }}>Ruleset</label>
+                      <select
+                        className="input"
+                        value={settings.ruleset}
+                        onChange={(e) => setSettings((prev) => ({ ...prev, ruleset: e.target.value }))}
+                        disabled={!canEdit}
+                      >
+                        <option value="5e">D&D 5e</option>
+                        <option value="pathfinder">Pathfinder</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
 
-                  <div className="row-wrap">
-                    <select
-                      className="input"
-                      value={settings.tone}
-                      onChange={(e) => setSettings((prev) => ({ ...prev, tone: e.target.value }))}
-                      disabled={!canEdit}
-                      aria-disabled={!canEdit}
-                    >
-                      <option value="">Tone…</option>
-                      <option value="heroic">Heroic</option>
-                      <option value="grim">Grim</option>
-                      <option value="dark-fantasy">Dark fantasy</option>
-                      <option value="comedy">Comedy</option>
-                      <option value="horror">Horror</option>
-                    </select>
-
-                    <input
-                      className="input"
-                      type="number"
-                      min={1}
-                      max={20}
-                      value={settings.starting_level}
-                      onChange={(e) => setSettings((prev) => ({ ...prev, starting_level: asNumber(e.target.value, 1) }))}
-                      disabled={!canEdit}
-                    />
+                    <div style={{ flex: 1 }}>
+                      <label className="muted" style={{ fontSize: 13 }}>Content Rating</label>
+                      <select
+                        className="input"
+                        value={variables.content_rating}
+                        onChange={(e) => setVariables((prev) => ({ ...prev, content_rating: e.target.value }))}
+                        disabled={!canEdit}
+                      >
+                        <option value="pg">PG (Family-friendly)</option>
+                        <option value="family">PG (Family-friendly)</option>
+                        <option value="pg-13">PG-13</option>
+                        <option value="r">R (Mature)</option>
+                        <option value="mature">R (Mature)</option>
+                      </select>
+                    </div>
                   </div>
-
-                  <textarea
-                    className="input"
-                    value={settings.house_rules}
-                    onChange={(e) => setSettings((prev) => ({ ...prev, house_rules: e.target.value }))}
-                    placeholder="House rules / table rules"
-                    rows={3}
-                    disabled={!canEdit}
-                  />
 
                   <div className="muted" style={{ fontSize: 12 }}>
-                    These settings are stored on the campaign and can be used by agents later to keep narration/rules consistent.
+                    These settings are global preferences. Storytelling details like NPC styles and themes are determined by the AI or via campaign documents.
                   </div>
+                </div>
+              </div>
+
+              <div className="card card-pad" style={{ background: 'var(--surface-dark)' }}>
+                <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                  <div style={{ fontWeight: 700 }}>Campaign Documents</div>
+                  <button className="btn btn-secondary btn-sm" type="button" onClick={() => setViewMode('documents')}>
+                    Manage Documents
+                  </button>
+                </div>
+                <div className="muted" style={{ fontSize: 13 }}>
+                  Upload PDFs, campaign modules, random tables, or instruction sets. The AI uses these during gameplay.
                 </div>
               </div>
 
@@ -777,248 +750,6 @@ export default function CampaignSetupView({
                   </button>
                 </div>
                 <div className="inline-alert">No players listed yet.</div>
-              </div>
-            </>
-          ) : null}
-
-          {viewMode === 'variables' ? (
-            <>
-              <button className="btn btn-secondary btn-sm" type="button" onClick={() => setViewMode('list')}>
-                ← Back to campaigns
-              </button>
-
-              <div className="card card-pad" style={{ opacity: loading ? 0.7 : 1, background: 'var(--surface-dark)' }}>
-                <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                  <div className="muted">Campaign Variables</div>
-                  <button
-                    className="btn btn-sm"
-                    type="button"
-                    disabled={!canEdit || saving}
-                    onClick={onSaveVariables}
-                  >
-                    {saving ? 'Saving…' : 'Save Variables'}
-                  </button>
-                </div>
-                <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
-                  These variables are factored by generative agents when producing story content, NPCs, locations, dialogue, and scenes.
-                </div>
-
-                <div className="stack" style={{ gap: 14 }}>
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>Narrative &amp; Story</div>
-                    <div className="stack" style={{ gap: 8 }}>
-                      <div>
-                        <label className="muted" style={{ fontSize: 12 }}>Themes (comma-separated)</label>
-                        <input
-                          className="input"
-                          value={variables.themes.join(', ')}
-                          onChange={(e) =>
-                            setVariables((prev) => ({
-                              ...prev,
-                              themes: parseCommaSeparated(e.target.value),
-                            }))
-                          }
-                          placeholder="e.g. redemption, betrayal, survival"
-                          disabled={!canEdit}
-                        />
-                      </div>
-                      <div className="row-wrap" style={{ gap: 8 }}>
-                        <div style={{ flex: 1 }}>
-                          <label className="muted" style={{ fontSize: 12 }}>Pacing</label>
-                          <select
-                            className="input"
-                            value={variables.pacing}
-                            onChange={(e) => setVariables((prev) => ({ ...prev, pacing: e.target.value }))}
-                            disabled={!canEdit}
-                          >
-                            <option value="slow">Slow</option>
-                            <option value="moderate">Moderate</option>
-                            <option value="fast">Fast</option>
-                          </select>
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <label className="muted" style={{ fontSize: 12 }}>Narrative Style</label>
-                          <select
-                            className="input"
-                            value={variables.narrative_style}
-                            onChange={(e) => setVariables((prev) => ({ ...prev, narrative_style: e.target.value }))}
-                            disabled={!canEdit}
-                          >
-                            <option value="balanced">Balanced</option>
-                            <option value="epic">Epic</option>
-                            <option value="intimate">Intimate</option>
-                            <option value="gritty">Gritty</option>
-                            <option value="lighthearted">Lighthearted</option>
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>Factions</div>
-                      <button
-                        className="btn btn-secondary btn-sm"
-                        type="button"
-                        disabled={!canEdit}
-                        onClick={() =>
-                          setVariables((prev) => ({
-                            ...prev,
-                            factions: [
-                              ...prev.factions,
-                              { name: '', alignment: '', goals: [], members: [] },
-                            ],
-                          }))
-                        }
-                      >
-                        + Add Faction
-                      </button>
-                    </div>
-                    <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
-                      Factions with alignment, goals, and key members help agents generate NPCs whose motivations align with faction objectives.
-                    </div>
-                    {variables.factions.length === 0 ? (
-                      <div className="muted" style={{ fontSize: 13 }}>No factions yet. Add one above.</div>
-                    ) : (
-                      <div className="stack" style={{ gap: 10 }}>
-                        {variables.factions.map((faction, idx) => (
-                          <div
-                            key={idx}
-                            className="card"
-                            style={{ padding: 10, background: 'rgba(71,66,61,0.6)', borderColor: 'var(--tt-border)' }}
-                          >
-                            <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                              <input
-                                className="input"
-                                style={{ flex: 1, marginRight: 8 }}
-                                value={faction.name}
-                                onChange={(e) => {
-                                  const updated = variables.factions.map((f, i) =>
-                                    i === idx ? { ...f, name: e.target.value } : f
-                                  )
-                                  setVariables((prev) => ({ ...prev, factions: updated }))
-                                }}
-                                placeholder="Faction name"
-                                disabled={!canEdit}
-                              />
-                              <button
-                                className="btn btn-secondary btn-sm"
-                                type="button"
-                                disabled={!canEdit}
-                                onClick={() =>
-                                  setVariables((prev) => ({
-                                    ...prev,
-                                    factions: prev.factions.filter((_, i) => i !== idx),
-                                  }))
-                                }
-                                title="Remove faction"
-                                aria-label="Remove faction"
-                              >
-                                ✕
-                              </button>
-                            </div>
-                            <div className="row-wrap" style={{ gap: 8 }}>
-                              <div style={{ flex: 1 }}>
-                                <label className="muted" style={{ fontSize: 11 }}>Alignment</label>
-                                <input
-                                  className="input"
-                                  value={faction.alignment}
-                                  onChange={(e) => {
-                                    const updated = variables.factions.map((f, i) =>
-                                      i === idx ? { ...f, alignment: e.target.value } : f
-                                    )
-                                    setVariables((prev) => ({ ...prev, factions: updated }))
-                                  }}
-                                  placeholder="e.g. chaotic neutral"
-                                  disabled={!canEdit}
-                                />
-                              </div>
-                            </div>
-                            <div style={{ marginTop: 6 }}>
-                              <label className="muted" style={{ fontSize: 11 }}>Goals (comma-separated)</label>
-                              <input
-                                className="input"
-                                value={faction.goals.join(', ')}
-                                onChange={(e) => {
-                                  const updated = variables.factions.map((f, i) =>
-                                    i === idx ? { ...f, goals: parseCommaSeparated(e.target.value) } : f
-                                  )
-                                  setVariables((prev) => ({ ...prev, factions: updated }))
-                                }}
-                                placeholder="e.g. control the spice trade, overthrow the king"
-                                disabled={!canEdit}
-                              />
-                            </div>
-                            <div style={{ marginTop: 6 }}>
-                              <label className="muted" style={{ fontSize: 11 }}>Key Members (comma-separated)</label>
-                              <input
-                                className="input"
-                                value={faction.members.join(', ')}
-                                onChange={(e) => {
-                                  const updated = variables.factions.map((f, i) =>
-                                    i === idx ? { ...f, members: parseCommaSeparated(e.target.value) } : f
-                                  )
-                                  setVariables((prev) => ({ ...prev, factions: updated }))
-                                }}
-                                placeholder="e.g. Guildmaster Varro, Shade the Informant"
-                                disabled={!canEdit}
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>NPCs &amp; Characters</div>
-                    <div className="stack" style={{ gap: 8 }}>
-                      <div>
-                        <label className="muted" style={{ fontSize: 12 }}>NPC Archetypes (comma-separated)</label>
-                        <input
-                          className="input"
-                          value={variables.npc_archetypes.join(', ')}
-                          onChange={(e) =>
-                            setVariables((prev) => ({
-                              ...prev,
-                              npc_archetypes: parseCommaSeparated(e.target.value),
-                            }))
-                          }
-                          placeholder="e.g. grizzled veteran, cunning spy, wise elder"
-                          disabled={!canEdit}
-                        />
-                      </div>
-                      <div>
-                        <label className="muted" style={{ fontSize: 12 }}>Naming Style</label>
-                        <input
-                          className="input"
-                          value={variables.naming_style}
-                          onChange={(e) => setVariables((prev) => ({ ...prev, naming_style: e.target.value }))}
-                          placeholder="e.g. Norse, Elvish, Latin-inspired"
-                          disabled={!canEdit}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>Content</div>
-                    <div>
-                      <label className="muted" style={{ fontSize: 12 }}>Content Rating</label>
-                      <select
-                        className="input"
-                        value={variables.content_rating}
-                        onChange={(e) => setVariables((prev) => ({ ...prev, content_rating: e.target.value }))}
-                        disabled={!canEdit}
-                      >
-                        <option value="family">Family</option>
-                        <option value="pg-13">PG-13</option>
-                        <option value="mature">Mature</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
               </div>
             </>
           ) : null}

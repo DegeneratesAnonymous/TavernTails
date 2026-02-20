@@ -55,29 +55,52 @@
   opacity: 0.85;
 }
 
-.tt-home-actions {
+.tt-home-auth-actions {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
 }
 
-.tt-home-panels {
+.tt-home-quick-actions {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
 }
 
-.tt-home-panels .card {
+.tt-home-qa-card {
   background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 20px 18px;
   color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, transform 100ms ease;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.tt-home-panels h3 {
-  margin: 6px 0 8px;
+.tt-home-qa-card:hover {
+  background: rgba(94, 92, 230, 0.18);
+  border-color: rgba(94, 92, 230, 0.4);
+  transform: translateY(-2px);
 }
 
-.tt-home-panels p {
-  margin: 0;
-  opacity: 0.8;
+.tt-home-qa-icon {
+  font-size: 28px;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.tt-home-qa-label {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.tt-home-qa-desc {
+  font-size: 13px;
+  opacity: 0.7;
+  line-height: 1.4;
 }

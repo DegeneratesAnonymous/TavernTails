@@ -5,52 +5,96 @@ import PageHeader from '../ui/PageHeader'
 type Props = {
   profile: any
   lastSessionLabel?: string | null
-  onQuickstartNewGame: () => void
-  onStartLastCampaign: () => void
-  onGoToCampaigns: () => void
+  onStartNewGame: () => void
+  onLoadGame: () => void
   onGoToCharacters: () => void
+  onGoToCampaigns: () => void
+  onGoToExplore: () => void
+  onGoToGuides: () => void
   notificationsPending?: boolean
   onNotificationsClick?: () => void
+  // legacy aliases kept for backward compat
+  onQuickstartNewGame?: () => void
+  onStartLastCampaign?: () => void
 }
 
 export default function DashboardHome({
   profile,
-  lastSessionLabel,
-  onQuickstartNewGame,
-  onStartLastCampaign,
-  onGoToCampaigns,
+  onStartNewGame,
+  onLoadGame,
   onGoToCharacters,
+  onGoToCampaigns,
+  onGoToExplore,
+  onGoToGuides,
   notificationsPending,
   onNotificationsClick,
+  onQuickstartNewGame,
+  onStartLastCampaign,
 }: Props) {
+  const handleStartNewGame = onStartNewGame ?? onQuickstartNewGame ?? (() => {})
+  const handleLoadGame = onLoadGame ?? onStartLastCampaign ?? (() => {})
+
+  const quickActions = [
+    {
+      label: 'Start New Game',
+      icon: '⚔️',
+      description: 'Create a new campaign and begin your adventure.',
+      onClick: handleStartNewGame,
+    },
+    {
+      label: 'Load a Game',
+      icon: '📖',
+      description: 'Continue from one of your existing campaigns.',
+      onClick: handleLoadGame,
+    },
+    {
+      label: 'Manage Characters',
+      icon: '🧙',
+      description: 'View, create, and import your characters.',
+      onClick: onGoToCharacters,
+    },
+    {
+      label: 'Manage Campaigns',
+      icon: '🗺️',
+      description: 'Configure campaigns, players, and documents.',
+      onClick: onGoToCampaigns,
+    },
+    {
+      label: 'Explore',
+      icon: '🔭',
+      description: 'Browse lore and world details discovered in your campaigns.',
+      onClick: onGoToExplore,
+    },
+    {
+      label: 'Guides',
+      icon: '📜',
+      description: 'Best practices and help for all TavernTails tools.',
+      onClick: onGoToGuides,
+    },
+  ]
+
   return (
     <section className="dashboard-panel stack home-panel">
       <PageHeader
-        title="Home"
-        subtitle={`Welcome${profile?.name ? `, ${profile.name}` : ''}. Pick up where you left off or jump into prep.`}
+        title={`Welcome${profile?.name ? `, ${profile.name}` : ''}`}
+        subtitle="What would you like to do today?"
         notificationsPending={notificationsPending}
         onNotificationsClick={onNotificationsClick}
       />
 
-      <div className="card card-pad home-card">
-        <div className="home-card-title">Quick actions</div>
-        <div className="row-wrap home-actions">
-          <button className="btn" type="button" onClick={onQuickstartNewGame}>
-            Quickstart New Game
+      <div className="home-quick-grid">
+        {quickActions.map((action) => (
+          <button
+            key={action.label}
+            className="home-qa-card"
+            type="button"
+            onClick={action.onClick}
+          >
+            <div className="home-qa-icon">{action.icon}</div>
+            <div className="home-qa-label">{action.label}</div>
+            <div className="home-qa-desc">{action.description}</div>
           </button>
-          <button className="btn btn-secondary" type="button" onClick={onStartLastCampaign}>
-            Start Last Campaign{lastSessionLabel ? `: ${lastSessionLabel}` : ''}
-          </button>
-          <button className="btn btn-secondary" type="button" onClick={onGoToCampaigns}>Manage Campaigns</button>
-          <button className="btn btn-secondary" type="button" onClick={onGoToCharacters}>Manage Characters</button>
-        </div>
-      </div>
-
-      <div className="card card-pad home-card">
-        <div className="home-card-title">Getting started</div>
-        <div className="muted" style={{ fontSize: 13 }}>
-          Start a campaign, import your characters, and then jump into gameplay. You can always return here from the sidebar.
-        </div>
+        ))}
       </div>
     </section>
   )
