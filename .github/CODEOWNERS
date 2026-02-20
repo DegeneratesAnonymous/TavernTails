@@ -1,0 +1,19 @@
+# CODEOWNERS
+# Each line is a file pattern followed by one or more owners.
+# Owners are automatically requested for review when a PR changes matching files.
+# Reference: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default: all changes require review from a repo maintainer
+* @DegeneratesAnonymous/maintainers
+
+# Backend
+server/ @DegeneratesAnonymous/maintainers
+
+# Frontend
+client/ @DegeneratesAnonymous/maintainers
+
+# CI/CD and GitHub configuration
+.github/ @DegeneratesAnonymous/maintainers
+
+# Database migrations
+alembic/ @DegeneratesAnonymous/maintainers
