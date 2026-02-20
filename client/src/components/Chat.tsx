@@ -405,7 +405,14 @@ export default function Chat({sessionId, variant = 'full', aboveComposer}: Props
           setNpcModalOpen(false)
           const stats: Record<string, number> = {}
           if (typeof payload.initiativeMod === 'number') stats.initiative = payload.initiativeMod
-          window.dispatchEvent(new CustomEvent('npc:profile', { detail: { sessionId, npc: { name: payload.name, stats } } }))
+          // Snapshot modal provides name-only class/spell entries (quick entry path).
+          // Full class/spell details (level, subclass, descriptions, tags) are set
+          // via the NPC manage endpoint directly when using the full NPC editor.
+          const classes = payload.classes.map((name) => ({ name }))
+          const spells = payload.spells.map((name) => ({ name }))
+          window.dispatchEvent(new CustomEvent('npc:profile', {
+            detail: { sessionId, npc: { name: payload.name, stats, classes, spells } },
+          }))
           setToolbarMessage('NPC Snapshot queued.')
         }}
       />

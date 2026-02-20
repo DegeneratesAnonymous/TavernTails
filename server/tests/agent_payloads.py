@@ -31,6 +31,13 @@ NPC_REQUEST: dict[str, Any] = {
     "motivations": ["Protect the vault", "Expose traitors"],
     "stats": {"initiative": 3, "hp": 28},
     "quirks": ["Adjusts monocle when lying"],
+    "classes": [
+        {"name": "Soldier", "level": 5, "subclass": "Veteran"},
+    ],
+    "abilities": [
+        {"name": "Tactical Command", "description": "Grants an ally a bonus action.", "tags": ["support", "combat"]},
+    ],
+    "spells": [],
     "session_id": "npc-session",
 }
 
