@@ -13,6 +13,40 @@ This project is a web application for solo tabletop RPG play, featuring an AI Ga
 - `client/` — React frontend
 - `server/` — FastAPI backend
 
+## Screenshots
+
+> Screenshots are automatically updated whenever code is merged to `main` via the [screenshot-update](.github/workflows/screenshot-update.yml) workflow.
+
+### Landing page
+![Landing page](docs/screenshots/01-landing.png)
+
+### Login
+![Login](docs/screenshots/02-login.png)
+
+### Sign up
+![Sign up](docs/screenshots/03-signup.png)
+
+### Dashboard home
+![Dashboard home](docs/screenshots/04-dashboard.png)
+
+### Characters
+![Characters](docs/screenshots/05-characters.png)
+
+### Import character
+![Import character](docs/screenshots/06-import-character.png)
+
+### Manage campaigns
+![Manage campaigns](docs/screenshots/07-campaigns.png)
+
+### New campaign
+![New campaign](docs/screenshots/08-new-campaign.png)
+
+### Campaign settings
+![Campaign settings](docs/screenshots/09-campaign-settings.png)
+
+### Gameplay / Session view
+![Gameplay](docs/screenshots/10-gameplay.png)
+
 ## Getting Started
 
 ![CI](https://github.com/DegeneratesAnonymous/TavernTails/actions/workflows/ci.yml/badge.svg)
