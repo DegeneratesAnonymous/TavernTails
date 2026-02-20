@@ -37,6 +37,7 @@ type Props = {
 
   notificationsPending?: boolean
   onNotificationsClick?: () => void
+  isAdmin?: boolean
 }
 
 const BellIcon = () => (
@@ -81,6 +82,7 @@ export default function GameplayLayout({
   playerRunMode = false,
   notificationsPending = false,
   onNotificationsClick,
+  isAdmin = false,
 }: Props){
   const [drawerOpen, setDrawerOpen] = useState(false)
   const openDrawer = () => setDrawerOpen(true)
@@ -764,6 +766,7 @@ export default function GameplayLayout({
               closeDrawer()
               onNavigate?.(key)
             }}
+            isAdmin={isAdmin}
           />
         ) : (
           <SiteMenu

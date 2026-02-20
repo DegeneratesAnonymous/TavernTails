@@ -10,6 +10,7 @@ import CreatingCharacterView from './dashboard/CreatingCharacterView'
 import Beyond20View from './dashboard/Beyond20View'
 import CampaignSetupView from './dashboard/CampaignSetupView'
 import DashboardHome from './dashboard/DashboardHome'
+import AdminPanel from './dashboard/AdminPanel'
 import CharacterSheetModal from './characters/CharacterSheetModal'
 import PageHeader from './ui/PageHeader'
 import EmptyState from './ui/EmptyState'
@@ -910,6 +911,9 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
           <button className={`nav-btn ${view==='campaign-setup'?'active':''}`} onClick={() => setView('campaign-setup')}>Manage Campaigns</button>
           <button className={`nav-btn ${view==='view-characters'?'active':''}`} onClick={() => setView('view-characters')}>Manage Characters</button>
           <button className={`nav-btn ${view==='account'?'active':''}`} onClick={() => setView('account')}>Account</button>
+          {isAdmin && (
+            <button className={`nav-btn ${view==='admin'?'active':''}`} onClick={() => setView('admin')}>Admin</button>
+          )}
         </nav>
         <div className="sidebar-footer">
           <button className="btn-logout" onClick={onLogout}>Sign out</button>
@@ -951,8 +955,10 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                     if (key === 'view-characters') setView('view-characters')
                     if (key === 'import-character') setView('import-character')
                     if (key === 'account') setView('account')
+                    if (key === 'admin') setView('admin')
                     if (key === 'logout') onLogout()
                   }}
+                  isAdmin={isAdmin}
                   onLogout={onLogout}
                   onSelectCharId={async (idStr) => {
                     const parsed = Number(idStr)
@@ -1961,6 +1967,11 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
               notificationsPending={notificationsPending}
               onNotificationsClick={() => setNotificationsOpen(true)}
             />
+          </div>
+        )}
+        {view === 'admin' && isAdmin && (
+          <div className="dashboard-panel" style={{ padding: 24 }}>
+            <AdminPanel onBack={() => setView('home')} />
           </div>
         )}
         <Modal

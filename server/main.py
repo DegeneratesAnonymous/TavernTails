@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .agents import references as references_router
 from .agents import ws as ws_router
+from .agents.admin import router as admin_router
 from .agents.campaigns import router as campaigns_router
 from .agents.characters import router as characters_router
 from .agents.chat import router as chat_router
@@ -119,6 +120,7 @@ app.add_middleware(
 
 
 app.include_router(player_router)
+app.include_router(admin_router)
 app.include_router(users_router)
 app.include_router(narrative_router)
 app.include_router(content_router)
