@@ -88,7 +88,7 @@ async def create_message(payload: ChatMessageCreate, current_user=Depends(get_cu
     )
     serialized = _serialize_chat_message(record)
     if payload.session_id:
-        serialized_payload = serialized.model_dump() if hasattr(serialized, "model_dump") else serialized.dict()
+        serialized_payload = serialized.model_dump()
         serialized_payload["mentions"] = serialized.mentions
         await broadcaster.broadcast_json(payload.session_id, {
             "type": "chat.message",
