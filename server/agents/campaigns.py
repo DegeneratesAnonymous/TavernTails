@@ -59,7 +59,7 @@ def create_campaign(req: CampaignCreate, current_user=Depends(get_current_user))
     except Exception:
         # non-fatal: campaign created but session creation failed
         created_session = None
-    out = camp.dict()
+    out = camp.model_dump()
     # Build enriched session list from persisted metadata.
     sessions_list = (camp.metadata_json or {}).get('sessions', [])
     out['sessions'] = [{'id': s, 'meta': f'/sessions/{s}/meta', 'files': f'/sessions/{s}/files'} for s in sessions_list]
@@ -82,7 +82,7 @@ def list_campaigns(current_user=Depends(get_current_user)):
     rows = db.list_campaigns_for_owner(owner_id)
     campaigns = []
     for r in rows:
-        item = r.dict()
+        item = r.model_dump()
         sessions_list = (r.metadata_json or {}).get('sessions', [])
         item['sessions'] = [{'id': s, 'meta': f'/sessions/{s}/meta', 'files': f'/sessions/{s}/files'} for s in sessions_list]
         campaigns.append(item)
@@ -96,7 +96,7 @@ def get_campaign(campaign_id: str, current_user=Depends(get_current_user)):
         raise HTTPException(status_code=404, detail='Campaign not found')
     if c.owner_id != _require_user_id(current_user):
         raise HTTPException(status_code=403, detail='Forbidden')
-    out = c.dict()
+    out = c.model_dump()
     sessions_list = (c.metadata_json or {}).get('sessions', [])
     out['sessions'] = [{'id': s, 'meta': f'/sessions/{s}/meta', 'files': f'/sessions/{s}/files'} for s in sessions_list]
     return {'campaign': out}
@@ -137,11 +137,11 @@ def validate_session_belongs_to_campaign(campaign_id: str, session_id: str, curr
 @router.put('/{campaign_id}')
 def update_campaign(campaign_id: str, req: CampaignUpdate, current_user=Depends(get_current_user)):
     owner_id = _require_user_id(current_user)
-    updates = req.dict(exclude_unset=True)
+    updates = req.model_dump(exclude_unset=True)
     c = db.update_campaign(campaign_id, owner_id, updates)
     if not c:
         raise HTTPException(status_code=404, detail='Campaign not found or forbidden')
-    return {'campaign': c.dict()}
+    return {'campaign': c.model_dump()}
 
 
 @router.delete('/{campaign_id}')

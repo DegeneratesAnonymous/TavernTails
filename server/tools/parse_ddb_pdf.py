@@ -12,7 +12,7 @@ import re
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 # ---------------------------------------------------------------------------
 # Data classes
@@ -64,7 +64,7 @@ class ParsedCharacterSheet:
     player_name: str = ""
     class_name: str = ""
     level: int = 1
-    subclass: Optional[str] = None
+    subclass: str | None = None
     species: str = ""
     background: str = ""
     experience_points: int = 0
@@ -77,7 +77,7 @@ class ParsedCharacterSheet:
     death_save_successes: int = 0
     death_save_failures: int = 0
     proficiency_bonus: int = 2
-    ability_save_dc: Optional[int] = None
+    ability_save_dc: int | None = None
     heroic_inspiration: bool = False
     speed_walking: int = 30
     speed_flying: int = 0
@@ -101,8 +101,8 @@ class ParsedCharacterSheet:
     currencies: dict = field(default_factory=dict)
     multiclass: list = field(default_factory=list)
     story: dict = field(default_factory=dict)
-    ddb_character_id: Optional[str] = None
-    ddb_url: Optional[str] = None
+    ddb_character_id: str | None = None
+    ddb_url: str | None = None
     raw_additional_features: str = ""
     raw_additional_equipment: str = ""
     parse_warnings: list = field(default_factory=list)
@@ -212,14 +212,14 @@ def _build_proficiency_bonus(total_level: int) -> int:
     return math.ceil(total_level / 4) + 1
 
 
-def _build_classes(data: Dict[str, Any]) -> tuple[str, int, Optional[str], list, str]:
+def _build_classes(data: Dict[str, Any]) -> tuple[str, int, str | None, list, str]:
     classes = data.get("classes") or []
     if not classes:
         return "Unknown", 1, None, [], "1d8"
 
     names: list[str] = []
     total_level = 0
-    subclass: Optional[str] = None
+    subclass: str | None = None
     multiclass: list[dict] = []
     primary_hit_die = "1d8"
 

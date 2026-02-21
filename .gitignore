@@ -21,9 +21,18 @@ Thumbs.db
 npm-debug.log*
 client/npm-err.log
 client/npm-out.log
+client/npm-err-*.log
+client/npm-out-*.log
+client/npm-start.log
+npm-build.log
 uvicorn*.log
 uvicorn_*_out.log
 uvicorn_*_err.log
+
+# Root-level debug/scratch scripts (not part of the server test suite)
+/debug_*.py
+/test_reparse_*.py
+/test_spell_*.py
 
 # Local session data (generated at runtime/tests)
 server/sessions/
