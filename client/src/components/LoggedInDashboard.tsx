@@ -27,6 +27,8 @@ type NotificationItem = {
   body?: string
   createdAt?: string | null
   read?: boolean
+  type?: 'friend_invite' | 'campaign_invite' | 'general'
+  actionData?: Record<string, any>
 }
 
 const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
@@ -87,14 +89,26 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
 
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>([])
+  const [pendingFriendRequests, setPendingFriendRequests] = useState<Array<any>>([])
+  const [accountSection, setAccountSection] = useState<'profile' | 'invites' | null>(null)
   const [accountEditName, setAccountEditName] = useState<string | null>(null)
   const [accountEditEmail, setAccountEditEmail] = useState<string | null>(null)
   const [accountSaving, setAccountSaving] = useState(false)
   const [accountSaveMsg, setAccountSaveMsg] = useState<{ kind: 'info' | 'error'; text: string } | null>(null)
+  const [accountEditMode, setAccountEditMode] = useState(false)
+  const invitesCardRef = React.useRef<HTMLDivElement | null>(null)
+
+  // Scroll to invites card when navigated from a notification
+  React.useEffect(() => {
+    if (accountSection === 'invites' && invitesCardRef.current) {
+      invitesCardRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      setAccountSection(null)
+    }
+  }, [accountSection, view])
 
   const notifications: NotificationItem[] = useMemo(() => {
     const raw = Array.isArray(profile?.notifications) ? profile.notifications : []
-    return raw.map((item: any, idx: number) => {
+    const profileNotifs: NotificationItem[] = raw.map((item: any, idx: number) => {
       const id = String(item?.id ?? item?.notification_id ?? `notification-${idx}`)
       return {
         id,
@@ -102,9 +116,26 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
         body: item?.body ? String(item.body) : (item?.detail ? String(item.detail) : undefined),
         createdAt: item?.created_at || item?.createdAt || item?.timestamp || null,
         read: Boolean(item?.read),
+        type: (item?.type as NotificationItem['type']) || 'general',
+        actionData: item?.action_data || undefined,
       }
     })
-  }, [profile?.notifications])
+    // Synthetic notifications for pending friend requests
+    const friendNotifs: NotificationItem[] = pendingFriendRequests.map((req: any) => {
+      const fromProfile = req?.from_profile || {}
+      const fromName = fromProfile?.name || fromProfile?.username || fromProfile?.email || `User ${req?.from_id}`
+      return {
+        id: `friend-invite-${req?.from_id}`,
+        title: `Friend request from ${fromName}`,
+        body: 'Tap to view and accept.',
+        createdAt: null,
+        read: readNotificationIds.includes(`friend-invite-${req?.from_id}`),
+        type: 'friend_invite' as const,
+        actionData: { from_id: req?.from_id, from_profile: fromProfile },
+      }
+    })
+    return [...profileNotifs, ...friendNotifs]
+  }, [profile?.notifications, pendingFriendRequests, readNotificationIds])
 
   const sortedNotifications = useMemo(() => {
     return [...notifications].sort((a, b) => {
@@ -119,7 +150,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     return Boolean(item.read) || readNotificationIds.includes(item.id)
   }
 
-  const notificationsPending = sortedNotifications.some((item) => !isNotificationRead(item))
+  const unreadCount = sortedNotifications.filter((item) => !isNotificationRead(item)).length
 
   const isAdmin = useMemo(() => {
     const roles = Array.isArray(profile?.roles) ? profile.roles : []
@@ -399,6 +430,17 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     }catch(e){/*ignore*/}
   }, [])
 
+  const fetchPendingFriends = useCallback(async () => {
+    try {
+      const res = await apiFetch('/player/friends')
+      if (res.ok) {
+        const data = await res.json()
+        const pending = Array.isArray(data?.pending) ? data.pending : []
+        setPendingFriendRequests(pending)
+      }
+    } catch (e) { /* ignore */ }
+  }, [])
+
   const fetchCharacters = useCallback(async () => {
     try{
       const res = await apiFetch('/characters')
@@ -590,7 +632,8 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   useEffect(()=>{
     fetchCampaigns()
     fetchCharacters()
-  },[fetchCampaigns, fetchCharacters, profile])
+    fetchPendingFriends()
+  },[fetchCampaigns, fetchCharacters, fetchPendingFriends, profile])
 
   // Single source of truth: whenever activeCampaignId or the campaigns list changes,
   // align activeSession to a session that actually belongs to the active campaign.
@@ -957,26 +1000,17 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
         </button>
         <span className="topbar-brand">TavernTails</span>
         <div className="topbar-right">
-          {notificationsPending ? (
-            <button
-              className="topbar-icon-btn topbar-notif-btn"
-              type="button"
-              aria-label="Notifications"
-              onClick={() => setNotificationsOpen(true)}
-            >
-              🔔
-              <span className="notif-badge" />
-            </button>
-          ) : (
-            <button
-              className="topbar-icon-btn"
-              type="button"
-              aria-label="Notifications"
-              onClick={() => setNotificationsOpen(true)}
-            >
-              🔔
-            </button>
-          )}
+          <button
+            className="topbar-icon-btn topbar-notif-btn"
+            type="button"
+            aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
+            onClick={() => setNotificationsOpen(true)}
+          >
+            🔔
+            {unreadCount > 0 && (
+              <span className="notif-badge">{unreadCount > 99 ? '99+' : unreadCount}</span>
+            )}
+          </button>
           <button
             className="topbar-icon-btn"
             type="button"
@@ -1978,12 +2012,22 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                           <div>{String(userId)}</div>
                         </div>
                         <div>
+                          <div className="muted">Email verified</div>
+                          <div>{profile?.verified ? 'Yes' : 'No'}</div>
+                        </div>
+                        <div>
                           <div className="muted">Created</div>
                           <div>{createdAt ? new Date(createdAt).toLocaleString() : '—'}</div>
                         </div>
                       </div>
+                      <div className="row-wrap" style={{ marginTop: 10 }}>
+                        <button className="btn btn-secondary" type="button" onClick={() => { setAccountEditMode(true); setAccountSaveMsg(null) }}>
+                          Edit Profile
+                        </button>
+                      </div>
                     </div>
 
+                    {accountEditMode ? (
                     <div className="card card-pad account-card">
                       <div style={{ fontWeight: 700, marginBottom: 8 }}>Edit Profile</div>
                       {accountSaveMsg ? (
@@ -2053,6 +2097,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                                 setAccountSaveMsg({ kind: 'info', text: 'Profile updated.' })
                                 setAccountEditName(null)
                                 setAccountEditEmail(null)
+                                setAccountEditMode(false)
                               } catch (e: any) {
                                 setAccountSaveMsg({ kind: 'error', text: e?.message || 'Failed to update profile' })
                               } finally {
@@ -2070,6 +2115,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                               setAccountEditName(null)
                               setAccountEditEmail(null)
                               setAccountSaveMsg(null)
+                              setAccountEditMode(false)
                             }}
                           >
                             Cancel
@@ -2077,6 +2123,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                         </div>
                       </div>
                     </div>
+                    ) : null}
 
                     <div className="card card-pad account-card">
                       <div style={{ fontWeight: 750, marginBottom: 8 }}>Friends</div>
@@ -2102,11 +2149,67 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                           Add friends to share campaigns and invite players.
                         </div>
                       )}
-                      <div className="row-wrap" style={{ marginTop: 10 }}>
-                        <button className="btn btn-secondary" type="button" disabled>
-                          Manage friends
-                        </button>
+                    </div>
+
+                    <div
+                      id="account-invites"
+                      ref={invitesCardRef}
+                      className={`card card-pad account-card ${accountSection === 'invites' ? 'account-card--highlight' : ''}`}
+                    >
+                      <div style={{ fontWeight: 750, marginBottom: 8 }}>
+                        Pending Invites
+                        {pendingFriendRequests.length > 0 && (
+                          <span className="notif-badge-inline">{pendingFriendRequests.length}</span>
+                        )}
                       </div>
+                      {pendingFriendRequests.length === 0 ? (
+                        <div className="muted" style={{ fontSize: 13 }}>No pending invites.</div>
+                      ) : (
+                        <div className="stack" style={{ gap: 8 }}>
+                          {pendingFriendRequests.map((req: any) => {
+                            const fromProfile = req?.from_profile || {}
+                            const fromName = fromProfile?.name || fromProfile?.username || fromProfile?.email || `User ${req?.from_id}`
+                            return (
+                              <div key={req?.from_id} className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid var(--tt-border)' }}>
+                                <div>
+                                  <div style={{ fontWeight: 600 }}>{fromName}</div>
+                                  <div className="muted" style={{ fontSize: 12 }}>Friend request</div>
+                                </div>
+                                <div className="row-wrap" style={{ gap: 6 }}>
+                                  <button
+                                    className="btn btn-sm"
+                                    type="button"
+                                    onClick={async () => {
+                                      try {
+                                        const res = await apiFetch('/player/friends/accept', {
+                                          method: 'POST',
+                                          body: JSON.stringify({ from_identifier: fromProfile?.email || fromProfile?.username || String(req?.from_id) }),
+                                        })
+                                        if (res.ok) {
+                                          setPendingFriendRequests((prev) => prev.filter((r: any) => r?.from_id !== req?.from_id))
+                                          setReadNotificationIds((prev) => [...prev, `friend-invite-${req?.from_id}`])
+                                        }
+                                      } catch (e) { /* ignore */ }
+                                    }}
+                                  >
+                                    Accept
+                                  </button>
+                                  <button
+                                    className="btn btn-secondary btn-sm"
+                                    type="button"
+                                    onClick={() => {
+                                      setPendingFriendRequests((prev) => prev.filter((r: any) => r?.from_id !== req?.from_id))
+                                      setReadNotificationIds((prev) => [...prev, `friend-invite-${req?.from_id}`])
+                                    }}
+                                  >
+                                    Dismiss
+                                  </button>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
                     </div>
 
                     <div className="card card-pad account-card">
@@ -2223,14 +2326,19 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             <AdminPanel onBack={() => setView('home')} />
           </div>
         )}
-        <Modal
-          open={notificationsOpen}
-          title="Notifications"
-          onClose={() => setNotificationsOpen(false)}
-        >
-          <div className="stack" style={{ gap: 12 }}>
-            <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-              <div className="muted">Latest first</div>
+        {/* Notification drawer overlay */}
+        {notificationsOpen && (
+          <div className="drawer-overlay" onClick={() => setNotificationsOpen(false)} />
+        )}
+
+        {/* Notification slide-out drawer (right side) */}
+        <aside className={`notif-drawer ${notificationsOpen ? 'notif-drawer-open' : ''}`} aria-label="Notifications">
+          <div className="drawer-header">
+            <div className="dashboard-brand">Notifications</div>
+            <button className="drawer-close" type="button" onClick={() => setNotificationsOpen(false)} aria-label="Close notifications">✕</button>
+          </div>
+          <div className="notif-drawer-body">
+            <div className="row-wrap" style={{ justifyContent: 'flex-end', marginBottom: 8 }}>
               <button className="btn btn-quiet btn-sm" type="button" onClick={handleMarkAllRead} disabled={!sortedNotifications.length}>
                 Mark all read
               </button>
@@ -2242,6 +2350,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
               <div className="notification-list">
                 {sortedNotifications.map((item) => {
                   const isRead = isNotificationRead(item)
+                  const isInvite = item.type === 'friend_invite' || item.type === 'campaign_invite'
                   return (
                     <button
                       key={item.id}
@@ -2251,9 +2360,17 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                         if (!isRead) {
                           setReadNotificationIds((prev) => (prev.includes(item.id) ? prev : [...prev, item.id]))
                         }
+                        if (isInvite) {
+                          setNotificationsOpen(false)
+                          setAccountSection('invites')
+                          navigate('account')
+                        }
                       }}
                     >
-                      <div className="notification-item-title">{item.title}</div>
+                      <div className="notification-item-title">
+                        {isInvite && <span style={{ marginRight: 6 }}>👥</span>}
+                        {item.title}
+                      </div>
                       {item.body ? <div className="notification-item-body">{item.body}</div> : null}
                       <div className="notification-item-time">
                         {item.createdAt ? new Date(item.createdAt).toLocaleString() : 'Just now'}
@@ -2264,7 +2381,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
               </div>
             )}
           </div>
-        </Modal>
+        </aside>
         <Modal
           open={showCreateModal}
           title="Create Campaign"

@@ -23,12 +23,6 @@ const AddPlayerIcon = () => (
   </svg>
 )
 
-const RemovePlayerIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="btn-icon">
-    <path strokeLinecap="round" strokeLinejoin="round" d="M22 10.5h-6m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM4 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 10.374 21c-2.331 0-4.512-.645-6.374-1.766Z" />
-  </svg>
-)
-
 const PlayersIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="btn-icon">
     <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" />
@@ -44,12 +38,6 @@ const DocumentsIcon = () => (
 const AddDocumentIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="btn-icon">
     <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-  </svg>
-)
-
-const RemoveDocumentIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="btn-icon">
-    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m6.75 12H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
   </svg>
 )
 
@@ -163,11 +151,14 @@ export default function CampaignSetupView({
   const [variables, setVariables] = useState<CampaignVariables>(DEFAULT_VARIABLES)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [message, setMessage] = useState<{ kind: 'info' | 'error'; text: string } | null>(null)
   
   const [players, setPlayers] = useState<Player[]>([])
   const [gmAssignment, setGmAssignment] = useState<GMAssignment>({ gm_user_id: null, gm_mode: 'ai' })
   const [loadingGM, setLoadingGM] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviting, setInviting] = useState(false)
 
   const canEdit = Boolean(activeCampaignId)
 
@@ -379,6 +370,56 @@ export default function CampaignSetupView({
     }
   }
 
+  async function handleDeleteCampaign() {
+    if (!activeCampaignId) return
+    if (!window.confirm(`Delete campaign "${activeCampaign?.name ?? activeCampaignId}"? This cannot be undone.`)) return
+    setDeleting(true)
+    setMessage(null)
+    try {
+      const res = await apiFetch(`/campaigns/${activeCampaignId}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(err?.detail || 'Failed to delete campaign')
+      }
+      onSelectCampaign(null)
+      setViewMode('list')
+      await onCampaignUpdated()
+    } catch (e: any) {
+      setMessage({ kind: 'error', text: e?.message || 'Failed to delete campaign' })
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  async function handleInvitePlayer() {
+    const email = inviteEmail.trim().toLowerCase()
+    if (!email || !activeCampaignId) return
+    setInviting(true)
+    setMessage(null)
+    try {
+      const res = await apiFetch(`/campaigns/${activeCampaignId}/players`, {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(err?.detail || 'Failed to invite player')
+      }
+      setInviteEmail('')
+      setMessage({ kind: 'info', text: `Invited ${email} to the campaign.` })
+      // Refresh players list
+      const listRes = await apiFetch(`/campaigns/${activeCampaignId}/players`)
+      if (listRes.ok) {
+        const data = await listRes.json()
+        if (data?.players) setPlayers(data.players)
+      }
+    } catch (e: any) {
+      setMessage({ kind: 'error', text: e?.message || 'Failed to invite player' })
+    } finally {
+      setInviting(false)
+    }
+  }
+
   async function onSave() {
     if (!activeCampaignId) {
       setMessage({ kind: 'error', text: 'Select or create a campaign first.' })
@@ -533,7 +574,7 @@ export default function CampaignSetupView({
                 ← Back to campaigns
               </button>
 
-              <div className="card card-pad" style={{ background: 'var(--surface-dark)' }}>
+              <div className="card card-pad" style={{ background: 'var(--surface-dark)', marginTop: 12 }}>
                 <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
                   <div className="muted">Campaign details</div>
                   <div className="row-wrap" style={{ gap: 8 }}>
@@ -566,7 +607,7 @@ export default function CampaignSetupView({
                 </div>
               </div>
 
-              <div className="card card-pad" style={{ opacity: loading ? 0.7 : 1, background: 'var(--surface-dark)' }}>
+              <div className="card card-pad" style={{ opacity: loading ? 0.7 : 1, background: 'var(--surface-dark)', marginTop: 12 }}>
                 <div className="stack" style={{ gap: 10 }}>
                   <div className="muted">Settings</div>
 
@@ -652,20 +693,8 @@ export default function CampaignSetupView({
                 </div>
               </div>
 
-              <div className="card card-pad" style={{ background: 'var(--surface-dark)' }}>
-                <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                  <div style={{ fontWeight: 700 }}>Campaign Documents</div>
-                  <button className="btn btn-secondary btn-sm" type="button" onClick={() => setViewMode('documents')}>
-                    Manage Documents
-                  </button>
-                </div>
-                <div className="muted" style={{ fontSize: 13 }}>
-                  Upload PDFs, campaign modules, random tables, or instruction sets. The AI uses these during gameplay.
-                </div>
-              </div>
-
               {gmAssignment.gm_mode === 'player' && (
-                <div className="card card-pad" style={{ background: 'var(--surface-dark)' }}>
+                <div className="card card-pad" style={{ background: 'var(--surface-dark)', marginTop: 12 }}>
                   <div className="stack" style={{ gap: 10 }}>
                     <div className="muted">GM Generative Tools</div>
                     <div className="muted" style={{ fontSize: 13 }}>
@@ -700,6 +729,19 @@ export default function CampaignSetupView({
                   </div>
                 </div>
               )}
+
+              <div className="card card-pad" style={{ background: 'var(--surface-dark)', marginTop: 12 }}>
+                <div className="muted" style={{ marginBottom: 8, fontWeight: 700 }}>Danger Zone</div>
+                <button
+                  className="btn btn-quiet"
+                  type="button"
+                  disabled={deleting}
+                  style={{ color: 'var(--tt-error, #c0392b)' }}
+                  onClick={handleDeleteCampaign}
+                >
+                  {deleting ? 'Deleting…' : 'Delete Campaign'}
+                </button>
+              </div>
             </>
           ) : null}
 
@@ -708,20 +750,39 @@ export default function CampaignSetupView({
               <button className="btn btn-secondary btn-sm" type="button" onClick={() => setViewMode('list')}>
                 ← Back to campaigns
               </button>
-              <div className="card card-pad" style={{ background: 'var(--surface-dark)' }}>
-                <div style={{ fontWeight: 700, marginBottom: 6 }}>Shared Documents Library</div>
+              <div className="card card-pad" style={{ background: 'var(--surface-dark)', marginTop: 12 }}>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>Campaign Documents</div>
                 <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
-                  Documents here are shared across campaigns (tables, lore, guides, and system references).
+                  Upload PDFs, campaign modules, random tables, or instruction sets. The AI uses these during gameplay.
                 </div>
-                <div className="row-wrap" style={{ gap: 8 }}>
-                  <button className="btn btn-icon-only" type="button" title="Upload Document" aria-label="Upload Document">
+                <div className="row-wrap" style={{ gap: 8, alignItems: 'center' }}>
+                  <label className="btn" style={{ cursor: 'pointer', margin: 0 }} title="Upload Document" aria-label="Upload Document">
                     <AddDocumentIcon />
-                  </button>
-                  <button className="btn btn-secondary btn-icon-only" type="button" title="Create Folder" aria-label="Create Folder">
+                    <span style={{ marginLeft: 6 }}>Upload Document</span>
+                    <input
+                      type="file"
+                      accept=".pdf,.txt,.md,.json,.doc,.docx"
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        // TODO: wire to server document upload endpoint
+                        if (file) setMessage({ kind: 'info', text: `Selected: ${file.name} (upload coming soon)` })
+                        e.target.value = ''
+                      }}
+                    />
+                  </label>
+                  <button
+                    className="btn btn-secondary"
+                    type="button"
+                    title="Create Folder"
+                    onClick={() => {
+                      // TODO: wire to server folder creation endpoint
+                      const folderName = window.prompt('Folder name:')
+                      if (folderName?.trim()) setMessage({ kind: 'info', text: `Folder "${folderName.trim()}" (folder creation coming soon)` })
+                    }}
+                  >
                     <NewIcon />
-                  </button>
-                  <button className="btn btn-secondary btn-icon-only" type="button" title="Remove Document" aria-label="Remove Document">
-                    <RemoveDocumentIcon />
+                    <span style={{ marginLeft: 6 }}>Create Folder</span>
                   </button>
                 </div>
                 <div className="inline-alert" style={{ marginTop: 12 }}>
@@ -736,20 +797,48 @@ export default function CampaignSetupView({
               <button className="btn btn-secondary btn-sm" type="button" onClick={() => setViewMode('list')}>
                 ← Back to campaigns
               </button>
-              <div className="card card-pad" style={{ background: 'var(--surface-dark)' }}>
+              <div className="card card-pad" style={{ background: 'var(--surface-dark)', marginTop: 12 }}>
                 <div style={{ fontWeight: 700, marginBottom: 6 }}>Players</div>
                 <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
-                  Manage access to this campaign. (Invite and role controls coming next.)
+                  Invite players by email to grant access to this campaign.
                 </div>
-                <div className="row-wrap" style={{ gap: 8, marginBottom: 12 }}>
-                  <button className="btn btn-icon-only" type="button" title="Add Player" aria-label="Add Player">
+                <div className="row-wrap" style={{ gap: 8, marginBottom: 12, alignItems: 'flex-end' }}>
+                  <div style={{ flex: 1 }}>
+                    <label className="muted" style={{ fontSize: 12 }}>Player email</label>
+                    <input
+                      className="input"
+                      type="email"
+                      placeholder="player@example.com"
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleInvitePlayer() } }}
+                      disabled={inviting}
+                    />
+                  </div>
+                  <button
+                    className="btn"
+                    type="button"
+                    disabled={inviting || !inviteEmail.trim()}
+                    onClick={handleInvitePlayer}
+                  >
                     <AddPlayerIcon />
-                  </button>
-                  <button className="btn btn-secondary btn-icon-only" type="button" title="Remove Player" aria-label="Remove Player">
-                    <RemovePlayerIcon />
+                    <span style={{ marginLeft: 6 }}>{inviting ? 'Inviting…' : 'Add Player'}</span>
                   </button>
                 </div>
-                <div className="inline-alert">No players listed yet.</div>
+                {players.length > 0 ? (
+                  <div className="stack" style={{ gap: 6 }}>
+                    {players.map((player) => (
+                      <div key={player.id} className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--tt-border)' }}>
+                        <div>
+                          <div>{player.username || player.email || 'Unnamed Player'}</div>
+                          {player.email && player.username ? <div className="muted" style={{ fontSize: 12 }}>{player.email}</div> : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="inline-alert">No players listed yet.</div>
+                )}
               </div>
             </>
           ) : null}

@@ -16,7 +16,6 @@ const LoginSignupAgent: React.FC<Props> = ({ initialMode = 'login' }) => {
   const [signupName, setSignupName] = useState('');
   const [signupEmail, setSignupEmail] = useState('');
   const [signupPassword, setSignupPassword] = useState('');
-  const [signupAge, setSignupAge] = useState('');
   const [error, setError] = useState('');
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -177,7 +176,7 @@ const LoginSignupAgent: React.FC<Props> = ({ initialMode = 'login' }) => {
       setError('Email and password are required.');
       return;
     }
-    const payload = { email: cleanEmail, password: cleanPassword, name: cleanName || undefined, age: signupAge ? Number(signupAge) : undefined };
+    const payload = { email: cleanEmail, password: cleanPassword, name: cleanName || undefined };
     const { data, errorDetail } = await performAuthRequest('/player/signup', payload);
     setLoading(false);
     if (errorDetail) {
@@ -252,7 +251,6 @@ const LoginSignupAgent: React.FC<Props> = ({ initialMode = 'login' }) => {
     setSignupName('');
     setSignupPassword('');
     setSignupEmail('');
-    setSignupAge('');
     setIsSignup(false);
     setUnverifiedEmail('');
     setVerificationToken('');
@@ -307,7 +305,6 @@ const LoginSignupAgent: React.FC<Props> = ({ initialMode = 'login' }) => {
                   <input className="input" type="email" placeholder="Email" value={signupEmail} onChange={e => setSignupEmail(e.target.value)} />
                   <input className="input" type="text" placeholder="Display Name (optional)" value={signupName} onChange={e => setSignupName(e.target.value)} />
                   <input className="input" type="password" placeholder="Password" value={signupPassword} onChange={e => setSignupPassword(e.target.value)} />
-                  <input className="input" type="number" placeholder="Your age (optional)" value={signupAge} onChange={e => setSignupAge(e.target.value)} />
                   <div className="row" style={{ marginTop: 12 }}>
                     <button className="btn" type="submit">Sign Up</button>
                     <button type="button" className="btn btn-secondary" onClick={() => setIsSignup(false)}>Back to Login</button>
