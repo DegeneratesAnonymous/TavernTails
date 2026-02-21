@@ -91,6 +91,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [accountEditEmail, setAccountEditEmail] = useState<string | null>(null)
   const [accountSaving, setAccountSaving] = useState(false)
   const [accountSaveMsg, setAccountSaveMsg] = useState<{ kind: 'info' | 'error'; text: string } | null>(null)
+  const [accountEditMode, setAccountEditMode] = useState(false)
 
   const notifications: NotificationItem[] = useMemo(() => {
     const raw = Array.isArray(profile?.notifications) ? profile.notifications : []
@@ -1978,12 +1979,22 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                           <div>{String(userId)}</div>
                         </div>
                         <div>
+                          <div className="muted">Email verified</div>
+                          <div>{profile?.verified ? 'Yes' : 'No'}</div>
+                        </div>
+                        <div>
                           <div className="muted">Created</div>
                           <div>{createdAt ? new Date(createdAt).toLocaleString() : '—'}</div>
                         </div>
                       </div>
+                      <div className="row-wrap" style={{ marginTop: 10 }}>
+                        <button className="btn btn-secondary" type="button" onClick={() => { setAccountEditMode(true); setAccountSaveMsg(null) }}>
+                          Edit Profile
+                        </button>
+                      </div>
                     </div>
 
+                    {accountEditMode ? (
                     <div className="card card-pad account-card">
                       <div style={{ fontWeight: 700, marginBottom: 8 }}>Edit Profile</div>
                       {accountSaveMsg ? (
@@ -2053,6 +2064,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                                 setAccountSaveMsg({ kind: 'info', text: 'Profile updated.' })
                                 setAccountEditName(null)
                                 setAccountEditEmail(null)
+                                setAccountEditMode(false)
                               } catch (e: any) {
                                 setAccountSaveMsg({ kind: 'error', text: e?.message || 'Failed to update profile' })
                               } finally {
@@ -2070,6 +2082,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                               setAccountEditName(null)
                               setAccountEditEmail(null)
                               setAccountSaveMsg(null)
+                              setAccountEditMode(false)
                             }}
                           >
                             Cancel
@@ -2077,6 +2090,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                         </div>
                       </div>
                     </div>
+                    ) : null}
 
                     <div className="card card-pad account-card">
                       <div style={{ fontWeight: 750, marginBottom: 8 }}>Friends</div>
@@ -2102,11 +2116,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                           Add friends to share campaigns and invite players.
                         </div>
                       )}
-                      <div className="row-wrap" style={{ marginTop: 10 }}>
-                        <button className="btn btn-secondary" type="button" disabled>
-                          Manage friends
-                        </button>
-                      </div>
                     </div>
 
                     <div className="card card-pad account-card">
