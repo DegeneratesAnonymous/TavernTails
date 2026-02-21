@@ -22,8 +22,6 @@ export default function CreatingCharacterView({
       <PageHeader
         title="Creating a Character"
         subtitle="Use TavernTails with a quick, lightweight character, or import a D&D Beyond PDF/JSON export to populate details."
-        notificationsPending={notificationsPending}
-        onNotificationsClick={onNotificationsClick}
         actions={
           <button className="btn btn-quiet" type="button" onClick={onDone}>
             Done

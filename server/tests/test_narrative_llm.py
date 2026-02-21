@@ -122,3 +122,57 @@ def test_continue_narrative_includes_references(monkeypatch, tmp_path):
             target.rmdir()
         except Exception:
             pass
+
+
+def test_regenerate_narrative_skips_story_history(monkeypatch, tmp_path):
+    """Regenerate should produce a narrative without using recent story history."""
+    session_id = 'regentest456'
+    folder = tmp_path / 'sessions' / session_id
+    folder.mkdir(parents=True)
+    # Write story.json – regenerate should NOT include this in the scene
+    story = [
+        {'type': 'narration', 'text': 'Secret story that must not appear in regeneration.'}
+    ]
+    (folder / 'story.json').write_text(json.dumps(story))
+    (folder / 'meta.json').write_text(json.dumps({
+        'id': session_id,
+        'name': 'Regen Session',
+        'owner': 'hero@example.com',
+        'invites': [],
+        'members': [{'email': 'hero@example.com', 'role': 'owner'}],
+    }))
+    (folder / 'pcs.json').write_text(json.dumps([{'name': 'Arion'}]))
+    (folder / 'npcs.json').write_text(json.dumps([]))
+
+    monkeypatch.setenv('OPENAI_API_KEY', 'test-key')
+    captured = {}
+    fake = make_fake_openai_module(captured)
+    sys.modules['openai'] = fake
+
+    real_sessions_dir = Path(__file__).resolve().parents[1] / 'sessions'
+    target = real_sessions_dir / session_id
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.mkdir(parents=True, exist_ok=True)
+    for f in folder.iterdir():
+        dest = target / f.name
+        dest.write_text(f.read_text())
+
+    try:
+        req = narrative.RegenerateRequest(session_id=session_id, player='Arion')
+        current_user = SimpleNamespace(email='hero@example.com', username='hero')
+        res = narrative.regenerate_narrative(req, current_user=current_user)
+        assert isinstance(res.narrative, str)
+        # Our fake LLM output should be used
+        assert 'FAKE LLM SCENE OUTPUT' in res.narrative
+        # The story history text must NOT be passed to the LLM
+        messages = captured['last']['kwargs'].get('messages')
+        assert messages
+        combined = ' '.join(m.get('content') or '' for m in messages)
+        assert 'Secret story that must not appear in regeneration' not in combined
+    finally:
+        try:
+            for f in target.iterdir():
+                f.unlink()
+            target.rmdir()
+        except Exception:
+            pass

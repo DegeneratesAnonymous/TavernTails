@@ -803,8 +803,6 @@ export default function ImportCharacterView({
       <PageHeader
         title="Import Character"
         subtitle="Import a character from JSON (paste or upload), or store a D&D Beyond link as a reference. We keep your raw data so future parsing improvements can enrich sheets without losing information."
-        notificationsPending={notificationsPending}
-        onNotificationsClick={onNotificationsClick}
         actions={
           <div className="row-wrap" style={{ justifyContent: 'flex-end', gap: 8 }}>
             {activeSessionId ? (

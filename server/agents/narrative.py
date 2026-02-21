@@ -225,3 +225,63 @@ def continue_narrative(payload: ContinueRequest, current_user=Depends(get_curren
     # Reuse generate_narrative logic to produce a short scene and prompt
     req = NarrativeRequest(scene=scene_desc, player=player)
     return generate_narrative(req)
+
+
+class RegenerateRequest(BaseModel):
+    session_id: str
+    player: str | None = None
+
+
+@router.post("/narrative/regenerate", response_model=NarrativeResponse)
+def regenerate_narrative(payload: RegenerateRequest, current_user=Depends(get_current_user)):
+    """Regenerate the current scene from scratch, ignoring recent story history.
+
+    Useful when a player wants a fresh take on the current situation.
+    """
+    session_id = payload.session_id
+    base = Path(__file__).resolve().parents[1] / 'sessions'
+    folder = base / session_id
+    if not folder.exists() or not folder.is_dir():
+        raise HTTPException(status_code=404, detail='Session not found')
+
+    # Ensure caller is a session member.
+    meta_file = folder / 'meta.json'
+    if meta_file.exists():
+        try:
+            meta = json.loads(meta_file.read_text())
+            identifier = sessions_agent._identifier_for_user(current_user)
+            if not sessions_agent._user_is_member(meta, identifier):
+                raise HTTPException(status_code=403, detail='Not a member of this session')
+        except HTTPException:
+            raise
+        except Exception as err:
+            raise HTTPException(status_code=500, detail='Failed to read meta') from err
+
+    # Read PCs/NPCs for context but skip story history (fresh scene)
+    pcs = []
+    npcs = []
+    try:
+        pcs_file = folder / 'pcs.json'
+        if pcs_file.exists():
+            pcs = json.loads(pcs_file.read_text()) or []
+    except Exception:
+        pcs = []
+    try:
+        npcs_file = folder / 'npcs.json'
+        if npcs_file.exists():
+            npcs = json.loads(npcs_file.read_text()) or []
+    except Exception:
+        npcs = []
+
+    pc_names = ', '.join([str(p.get('name') or p.get('character_name') or '') for p in pcs if p])
+    npc_names = ', '.join([str(n.get('name') or '') for n in npcs if n])
+
+    scene_desc = 'The scene opens anew.'
+    if pc_names:
+        scene_desc += f" Players: {pc_names}."
+    if npc_names:
+        scene_desc += f" Notable NPCs: {npc_names}."
+
+    player = payload.player or 'the party'
+    req = NarrativeRequest(scene=scene_desc, player=player)
+    return generate_narrative(req)

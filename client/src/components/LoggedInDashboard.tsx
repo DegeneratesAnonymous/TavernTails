@@ -61,6 +61,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [characterSettingsOpen, setCharacterSettingsOpen] = useState(false)
   const [characterPanelMode, setCharacterPanelMode] = useState<'summary' | 'spells' | 'features' | 'journal' | 'inventory'>('summary')
   const [selectedSpellRow, setSelectedSpellRow] = useState<any | null>(null)
+  const [selectedFeatureRow, setSelectedFeatureRow] = useState<any | null>(null)
 
   const SettingsIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="btn-icon">
@@ -252,6 +253,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     if (!selectedCharacter) {
       setCharacterPanelMode('summary')
       setSelectedSpellRow(null)
+      setSelectedFeatureRow(null)
     }
   }, [selectedCharacter])
 
@@ -277,17 +279,44 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       return value.map((v) => String(v)).map((v) => v.trim()).filter(Boolean)
     }
 
+    const toFeatureList = (value: any): Array<{ name: string; source?: string; description?: string }> => {
+      if (!Array.isArray(value)) return []
+      return value
+        .map((v) => {
+          if (typeof v === 'string') return { name: v.trim() }
+          if (v && typeof v === 'object') {
+            const name = String(v.name || '').trim()
+            if (!name) return null
+            return { name, source: v.source ? String(v.source) : undefined, description: v.description ? String(v.description) : undefined }
+          }
+          return null
+        })
+        .filter(Boolean) as Array<{ name: string; source?: string; description?: string }>
+    }
+
     const uniq = (items: string[]) => Array.from(new Set(items))
+    const uniqFeatures = (items: Array<{ name: string; source?: string; description?: string }>) => {
+      const seen = new Set<string>()
+      return items.filter((f) => {
+        if (seen.has(f.name)) return false
+        seen.add(f.name)
+        return true
+      })
+    }
     const summarize = (items: string[], limit = 8) => ({
       items: items.slice(0, limit),
       more: Math.max(0, items.length - limit),
     })
+    const summarizeFeatures = (items: Array<{ name: string; source?: string; description?: string }>, limit = 20) => ({
+      items: items.slice(0, limit),
+      more: Math.max(0, items.length - limit),
+    })
 
-    const features = uniq([
-      ...toList((sheet as any)?.classFeatures),
-      ...toList((sheet as any)?.racialFeatures),
-      ...toList((sheet as any)?.otherFeatures),
-      ...toList(sheet?.features),
+    const features = uniqFeatures([
+      ...toFeatureList((sheet as any)?.classFeatures),
+      ...toFeatureList((sheet as any)?.racialFeatures),
+      ...toFeatureList((sheet as any)?.otherFeatures),
+      ...toFeatureList(sheet?.features),
     ])
     const spells = uniq(toList(sheet?.spells))
     const inventory = uniq(toList(sheet?.inventory))
@@ -321,7 +350,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       hpMax,
       hpTemp,
       ac,
-      features: summarize(features, 10),
+      features: summarizeFeatures(features),
       spells: summarize(spells, 10),
       inventory: summarize(inventory, 8),
       skills: summarize(skills, 8),
@@ -925,7 +954,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
           <span className="drawer-toggle-icon" />
           <span className="drawer-toggle-icon" />
         </button>
-        <div className="dashboard-brand">TavernTails</div>
+        <span className="topbar-brand">TavernTails</span>
         <div className="topbar-right">
           {notificationsPending ? (
             <button
@@ -975,9 +1004,9 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
           <button className={`nav-btn ${view==='home'?'active':''}`} onClick={() => navigate('home')}>Home</button>
           <button className={`nav-btn ${view==='campaign-setup'?'active':''}`} onClick={() => navigate('campaign-setup')}>Manage Campaigns</button>
           <button className={`nav-btn ${view==='view-characters'?'active':''}`} onClick={() => navigate('view-characters')}>Manage Characters</button>
+          <button className={`nav-btn ${view==='documents'?'active':''}`} onClick={() => navigate('documents')}>Documents</button>
           <button className={`nav-btn ${view==='explore'?'active':''}`} onClick={() => navigate('explore')}>Explore</button>
           <button className={`nav-btn ${view==='guides'?'active':''}`} onClick={() => navigate('guides')}>Guides</button>
-          <button className={`nav-btn ${view==='documents'?'active':''}`} onClick={() => navigate('documents')}>Documents</button>
           {isAdmin && (
             <button className={`nav-btn ${view==='admin'?'active':''}`} onClick={() => navigate('admin')}>Admin</button>
           )}
@@ -1000,8 +1029,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                   activeCampaignId={activeCampaignId}
                   activeCampaign={activeCampaign}
                   playerRunMode={playerRunMode}
-                  notificationsPending={notificationsPending}
-                  onNotificationsClick={() => setNotificationsOpen(true)}
                   onCampaignUpdated={fetchCampaigns}
                   onStartCampaign={startPlaying}
                   startCampaignBusy={startPlayBusy}
@@ -1074,8 +1101,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             onGoToCharacters={() => setView('view-characters')}
             onGoToExplore={() => setView('explore')}
             onGoToGuides={() => setView('guides')}
-            notificationsPending={notificationsPending}
-            onNotificationsClick={() => setNotificationsOpen(true)}
           />
         )}
         {view === 'campaign-setup' && (
@@ -1088,8 +1113,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             onCreateCampaign={() => setShowCreateModal(true)}
             onPlay={startPlaying}
             playBusy={startPlayBusy}
-            notificationsPending={notificationsPending}
-            onNotificationsClick={() => setNotificationsOpen(true)}
             showAdminControls={isAdmin && adminMode}
             onDeleteTestCampaigns={handleDeleteTestCampaigns}
           />
@@ -1100,8 +1123,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             <PageHeader
               title="Characters"
               subtitle="Create or import characters. You can optionally select one for the active session to use during play."
-              notificationsPending={notificationsPending}
-              onNotificationsClick={() => setNotificationsOpen(true)}
               actions={
                 <>
                   {isAdmin && adminMode ? (
@@ -1236,19 +1257,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                             aria-label="Settings"
                           >
                             <SettingsIcon />
-                          </button>
-                          <button
-                            className="btn btn-quiet btn-sm"
-                            type="button"
-                            title="View full character sheet"
-                            onClick={() => {
-                              if (selectedCharacter) {
-                                setSheetModalCharacter(selectedCharacter)
-                                setSheetModalOpen(true)
-                              }
-                            }}
-                          >
-                            Full Sheet
                           </button>
                         </div>
                       </div>
@@ -1428,15 +1436,45 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                           {selectedSheetSummary ? (
                             <>
                               {selectedSheetSummary.features.items.length ? (
-                                <ul style={{ margin: 0, paddingLeft: 18 }}>
-                                  {selectedSheetSummary.features.items.map((f) => <li key={f}>{f}</li>)}
-                                </ul>
+                                <div className="stack" style={{ gap: 4 }}>
+                                  {selectedSheetSummary.features.items.map((f, idx) => {
+                                    const isExpanded = selectedFeatureRow?.name === f.name
+                                    const hasDetails = Boolean(f.description || f.source)
+                                    return (
+                                      <React.Fragment key={`${f.name}-${idx}`}>
+                                        <button
+                                          type="button"
+                                          className="btn btn-quiet"
+                                          style={{
+                                            textAlign: 'left',
+                                            justifyContent: 'space-between',
+                                            background: isExpanded ? 'rgba(173,136,95,0.20)' : undefined,
+                                            borderRadius: 6,
+                                            padding: '6px 10px',
+                                            fontSize: 13,
+                                          }}
+                                          onClick={() => setSelectedFeatureRow(isExpanded ? null : f)}
+                                        >
+                                          <span style={{ fontWeight: 600 }}>{f.name}</span>
+                                          {f.source ? <span className="muted" style={{ fontSize: 11 }}>{f.source}</span> : null}
+                                          {hasDetails ? <span className="muted" style={{ fontSize: 11 }}>{isExpanded ? '▲' : '▼'}</span> : null}
+                                        </button>
+                                        {isExpanded && hasDetails ? (
+                                          <div className="card card-pad" style={{ fontSize: 12, background: 'rgba(0,0,0,0.15)', marginLeft: 8 }}>
+                                            {f.source ? <div><span className="muted">Source:</span> {f.source}</div> : null}
+                                            {f.description ? <div style={{ marginTop: f.source ? 4 : 0, lineHeight: 1.5 }}>{f.description}</div> : null}
+                                          </div>
+                                        ) : null}
+                                      </React.Fragment>
+                                    )
+                                  })}
+                                  {selectedSheetSummary.features.more ? (
+                                    <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>+ {selectedSheetSummary.features.more} more</div>
+                                  ) : null}
+                                </div>
                               ) : (
                                 <div className="muted">No features parsed.</div>
                               )}
-                              {selectedSheetSummary.features.more ? (
-                                <div className="muted" style={{ marginTop: 6 }}>+ {selectedSheetSummary.features.more} more</div>
-                              ) : null}
                             </>
                           ) : (
                             <div className="muted">No features parsed.</div>
@@ -1703,8 +1741,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             <PageHeader
               title="Create Character"
               subtitle="Create a lightweight character. You can enrich it later by importing JSON."
-              notificationsPending={notificationsPending}
-              onNotificationsClick={() => setNotificationsOpen(true)}
             />
             <div style={{maxWidth:520,display:'grid',gap:10}}>
               <input className="input" placeholder="Name" value={newCharacterName} onChange={e=>setNewCharacterName(e.target.value)} />
@@ -1756,8 +1792,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
               setImportInitialMode('pdf')
               setView('import-character')
             }}
-            notificationsPending={notificationsPending}
-            onNotificationsClick={() => setNotificationsOpen(true)}
           />
         )}
 
@@ -1768,8 +1802,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             onAssignCharacterToSession={assignCharacterToSession}
             onSetActiveCharacterId={setActiveCharacterId}
             initialMode={importInitialMode || undefined}
-            notificationsPending={notificationsPending}
-            onNotificationsClick={() => setNotificationsOpen(true)}
             onGoToGameplay={() => {
               setImportInitialMode(null)
               setView('gameplay')
@@ -1797,8 +1829,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             <PageHeader
               title="Explore"
               subtitle="Browse lore and world details revealed through your adventures."
-              notificationsPending={notificationsPending}
-              onNotificationsClick={() => setNotificationsOpen(true)}
             />
             <div className="card card-pad" style={{ background: 'var(--surface-dark)' }}>
               <div className="muted" style={{ marginBottom: 8 }}>Campaign Lore</div>
@@ -1833,8 +1863,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             <PageHeader
               title="Guides"
               subtitle="Best practices for using TavernTails tools and systems."
-              notificationsPending={notificationsPending}
-              onNotificationsClick={() => setNotificationsOpen(true)}
             />
             <div className="stack" style={{ gap: 12 }}>
               {[
@@ -1858,8 +1886,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             <PageHeader
               title="Documents"
               subtitle="Manage documents for your campaigns and characters."
-              notificationsPending={notificationsPending}
-              onNotificationsClick={() => setNotificationsOpen(true)}
             />
             <div className="card card-pad" style={{ background: 'var(--surface-dark)' }}>
               <div style={{ fontWeight: 700, marginBottom: 8 }}>Reusable Library</div>
@@ -1930,8 +1956,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                   <PageHeader
                     title="Account"
                     subtitle="Manage profile, emails, security, and linked accounts."
-                    notificationsPending={notificationsPending}
-                    onNotificationsClick={() => setNotificationsOpen(true)}
                   />
 
                    <div className="account-grid">
@@ -2190,8 +2214,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             <Beyond20View
               activeSessionId={activeSession}
               identifier={profile?.email || profile?.username || null}
-              notificationsPending={notificationsPending}
-              onNotificationsClick={() => setNotificationsOpen(true)}
             />
           </div>
         )}

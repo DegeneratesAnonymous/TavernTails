@@ -163,6 +163,18 @@
   text-transform: uppercase;
 }
 
+.topbar-brand {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  text-transform: uppercase;
+  pointer-events: none;
+  user-select: none;
+}
+
 .dashboard-user {
   font-size: 13px;
   opacity: 0.8;
