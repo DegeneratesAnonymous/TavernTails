@@ -298,8 +298,9 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     const uniqFeatures = (items: Array<{ name: string; source?: string; description?: string }>) => {
       const seen = new Set<string>()
       return items.filter((f) => {
-        if (seen.has(f.name)) return false
-        seen.add(f.name)
+        const key = `${f.name}|${f.source || ''}`
+        if (seen.has(key)) return false
+        seen.add(key)
         return true
       })
     }

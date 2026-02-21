@@ -836,42 +836,47 @@ export default function GameplayLayout({
                   ⚙ Settings
                 </button>
                 {settingsMenuOpen && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: '100%',
-                      right: 0,
-                      marginTop: 4,
-                      background: 'var(--surface-dark)',
-                      border: '1px solid var(--tt-border)',
-                      borderRadius: 8,
-                      boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
-                      minWidth: 180,
-                      zIndex: 500,
-                      padding: '6px 0',
-                    }}
-                    onBlur={() => setSettingsMenuOpen(false)}
-                  >
-                    <button
-                      className="btn btn-quiet"
-                      type="button"
-                      style={{ width: '100%', textAlign: 'left', padding: '8px 14px', borderRadius: 0, fontSize: 13 }}
-                      onClick={async () => {
-                        setSettingsMenuOpen(false)
-                        if (!sessionId) return alert('No active session')
-                        try {
-                          const res = await apiFetch('/narrative/regenerate', { method: 'POST', body: JSON.stringify({ session_id: sessionId }) })
-                          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d?.detail || 'Failed') }
-                          const data = await res.json()
-                          if (data?.narrative) {
-                            window.dispatchEvent(new CustomEvent('narrative:scene', { detail: { scene: data.narrative } }))
-                          }
-                        } catch (err: any) { alert(err?.message || 'Failed to regenerate scene') }
+                  <>
+                    <div
+                      style={{ position: 'fixed', inset: 0, zIndex: 499 }}
+                      onClick={() => setSettingsMenuOpen(false)}
+                    />
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: '100%',
+                        right: 0,
+                        marginTop: 4,
+                        background: 'var(--surface-dark)',
+                        border: '1px solid var(--tt-border)',
+                        borderRadius: 8,
+                        boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+                        minWidth: 180,
+                        zIndex: 500,
+                        padding: '6px 0',
                       }}
                     >
-                      🔄 Regenerate Scene
-                    </button>
-                  </div>
+                      <button
+                        className="btn btn-quiet"
+                        type="button"
+                        style={{ width: '100%', textAlign: 'left', padding: '8px 14px', borderRadius: 0, fontSize: 13 }}
+                        onClick={async () => {
+                          setSettingsMenuOpen(false)
+                          if (!sessionId) return alert('No active session')
+                          try {
+                            const res = await apiFetch('/narrative/regenerate', { method: 'POST', body: JSON.stringify({ session_id: sessionId }) })
+                            if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d?.detail || 'Failed') }
+                            const data = await res.json()
+                            if (data?.narrative) {
+                              window.dispatchEvent(new CustomEvent('narrative:scene', { detail: { scene: data.narrative } }))
+                            }
+                          } catch (err: any) { alert(err?.message || 'Failed to regenerate scene') }
+                        }}
+                      >
+                        🔄 Regenerate Scene
+                      </button>
+                    </div>
+                  </>
                 )}
               </div>
               <button className="btn btn-primary btn-sm" type="button" onClick={async ()=>{

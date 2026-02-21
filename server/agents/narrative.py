@@ -183,8 +183,8 @@ def continue_narrative(payload: ContinueRequest, current_user=Depends(get_curren
     except Exception:
         npcs = []
 
-    pc_names = ', '.join([str(p.get('name') or p.get('character_name') or '') for p in pcs if p])
-    npc_names = ', '.join([str(n.get('name') or '') for n in npcs if n])
+    pc_names = ', '.join([n for n in (str(p.get('name') or p.get('character_name') or '') for p in pcs if p) if n])
+    npc_names = ', '.join([n for n in (str(n_item.get('name') or '') for n_item in npcs if n_item) if n])
 
     scene_desc = 'Recent events: '
     if story_text:
@@ -273,8 +273,8 @@ def regenerate_narrative(payload: RegenerateRequest, current_user=Depends(get_cu
     except Exception:
         npcs = []
 
-    pc_names = ', '.join([str(p.get('name') or p.get('character_name') or '') for p in pcs if p])
-    npc_names = ', '.join([str(n.get('name') or '') for n in npcs if n])
+    pc_names = ', '.join([n for n in (str(p.get('name') or p.get('character_name') or '') for p in pcs if p) if n])
+    npc_names = ', '.join([n for n in (str(n_item.get('name') or '') for n_item in npcs if n_item) if n])
 
     scene_desc = 'The scene opens anew.'
     if pc_names:
