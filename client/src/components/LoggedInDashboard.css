@@ -47,15 +47,79 @@
 
 .notif-badge {
   position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+  top: 2px;
+  right: 2px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
   background: #E09A4F;
+  color: #1a1108;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  pointer-events: none;
 }
 
-/* ─── Hamburger ────────────────────────────────────── */
+.notif-badge-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #E09A4F;
+  color: #1a1108;
+  font-size: 11px;
+  font-weight: 700;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+/* ─── Notification drawer (right side) ───────────── */
+.notif-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 400;
+  width: 320px;
+  max-width: 92vw;
+  background: var(--surface-dark);
+  border-left: 1px solid var(--tt-border);
+  display: flex;
+  flex-direction: column;
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.5);
+  transform: translateX(100%);
+  transition: transform 220ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notif-drawer {
+    transition: none;
+  }
+}
+
+.notif-drawer.notif-drawer-open {
+  transform: translateX(0);
+}
+
+.notif-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px;
+  min-height: 0;
+}
+
+.account-card--highlight {
+  box-shadow: 0 0 0 2px rgba(224, 154, 79, 0.6), inset 0 0 0 1px rgba(224, 154, 79, 0.3);
+}
+
+
 .drawer-toggle {
   background: transparent;
   border: none;
