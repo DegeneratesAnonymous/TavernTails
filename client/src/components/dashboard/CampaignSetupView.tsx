@@ -117,7 +117,7 @@ const DEFAULT_SETTINGS: CampaignSettings = {
   world_name: '',
   setting_summary: '',
   tone: '',
-  ruleset: '5e',
+  ruleset: 'custom',
   starting_level: 1,
   house_rules: '',
 }
@@ -438,8 +438,6 @@ export default function CampaignSetupView({
       <PageHeader
         title={title}
         subtitle="Create, configure, and start/restart scenes."
-        notificationsPending={notificationsPending}
-        onNotificationsClick={onNotificationsClick}
         actions={
           showAdminControls && onDeleteTestCampaigns ? (
             <button className="btn btn-quiet" type="button" onClick={onDeleteTestCampaigns}>
@@ -541,7 +539,7 @@ export default function CampaignSetupView({
                   <div className="row-wrap" style={{ gap: 8 }}>
                     {onPlay && activeCampaignId ? (
                       <button className="btn" type="button" disabled={!canEdit || Boolean(playBusy)} onClick={onPlay}>
-                        {playBusy ? 'Starting…' : 'Start / Restart Scene'}
+                        {playBusy ? 'Starting…' : 'Start Session'}
                       </button>
                     ) : null}
                     <button
@@ -623,8 +621,10 @@ export default function CampaignSetupView({
                         onChange={(e) => setSettings((prev) => ({ ...prev, ruleset: e.target.value }))}
                         disabled={!canEdit}
                       >
-                        <option value="5e">D&D 5e</option>
-                        <option value="pathfinder">Pathfinder</option>
+                        <option value="custom">Custom / Homebrew</option>
+                        <option value="fantasy">Generic Fantasy</option>
+                        <option value="sci-fi">Science Fiction</option>
+                        <option value="horror">Horror</option>
                         <option value="other">Other</option>
                       </select>
                     </div>

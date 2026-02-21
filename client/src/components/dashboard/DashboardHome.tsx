@@ -78,8 +78,6 @@ export default function DashboardHome({
       <PageHeader
         title={`Welcome${profile?.name ? `, ${profile.name}` : ''}`}
         subtitle="What would you like to do today?"
-        notificationsPending={notificationsPending}
-        onNotificationsClick={onNotificationsClick}
       />
 
       <div className="home-quick-grid">

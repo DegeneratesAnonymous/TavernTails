@@ -42,8 +42,6 @@ export default function Beyond20View({ activeSessionId, identifier, notification
         <PageHeader
           title="Beyond20"
           subtitle="Relay Beyond20 roll events into your TavernTails session chat."
-          notificationsPending={notificationsPending}
-          onNotificationsClick={onNotificationsClick}
         />
         <p className="muted" style={{ marginTop: 0 }}>
           Option A relay: run a userscript on D&amp;D Beyond that listens for Beyond20 roll events and forwards them into your TavernTails session chat.
