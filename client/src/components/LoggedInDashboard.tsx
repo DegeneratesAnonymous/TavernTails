@@ -390,9 +390,12 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       ...toFeatureList((sheet as any)?.otherFeatures),
       ...toFeatureList(sheet?.features),
     ])
-    // Deduplicate: remove items already in class/racial
-    const classOrRaceNames = new Set([...classFeatures.map(f => f.name), ...racialFeatures.map(f => f.name)])
-    const otherFeatures = otherFeaturesSrc.filter(f => !classOrRaceNames.has(f.name))
+    // Deduplicate: remove items already in class/racial by name+source composite key
+    const classOrRaceKeys = new Set([
+      ...classFeatures.map(f => `${f.name}::${f.source || ''}`),
+      ...racialFeatures.map(f => `${f.name}::${f.source || ''}`),
+    ])
+    const otherFeatures = otherFeaturesSrc.filter(f => !classOrRaceKeys.has(`${f.name}::${f.source || ''}`))
 
     // Group class features by source (class name) if source info is available
     const classFeatureGroups: Array<{ label: string; items: Array<{ name: string; source?: string; description?: string }> }> = []

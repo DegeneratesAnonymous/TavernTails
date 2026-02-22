@@ -481,7 +481,16 @@ function ListPreview({ title, items, onItemClick }: { title: string; items: stri
 }
 
 function stripHtml(html: string): string {
-  return html.replace(/<[^>]*>/g, ' ').replace(/\s{2,}/g, ' ').trim()
+  return html
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
 }
 
 function InventoryList({ items }: { items: InventoryItem[] }) {
