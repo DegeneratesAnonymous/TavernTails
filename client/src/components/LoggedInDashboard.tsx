@@ -256,6 +256,12 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       const spellbook = Array.isArray(sheet?.spellbook) ? sheet.spellbook : []
       const features = toStringArray(sheet?.features)
       const skills = toSkillArray(sheet?.skills)
+      const exhaustion = typeof sheet?.exhaustion === 'number' ? sheet.exhaustion : 0
+      const rawDs = sheet?.death_saves ?? sheet?.deathSaves
+      const deathSaves = rawDs && typeof rawDs === 'object'
+        ? { successes: toNum(rawDs.successes) ?? 0, failures: toNum(rawDs.failures) ?? 0 }
+        : { successes: 0, failures: 0 }
+      const spellSlots = (sheet?.spell_slots && typeof sheet.spell_slots === 'object') ? sheet.spell_slots : undefined
 
       return {
         id: String(c?.id ?? ''),
@@ -276,6 +282,9 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
         inventory,
         spells,
         spellbook,
+        exhaustion,
+        deathSaves,
+        spellSlots,
       }
     }).filter((c: any) => Boolean(c?.id))
   }, [characters])

@@ -8,7 +8,7 @@ export type CharacterSnapshot = {
   skills?: { name: string; mod: number }[]
 }
 
-export type CharacterStripKey = 'abilities' | 'features' | 'inventory' | 'journal' | 'skills'
+export type CharacterStripKey = 'abilities' | 'features' | 'inventory' | 'journal' | 'skills' | 'spells'
 
 type Props = {
   character?: CharacterSnapshot | null
@@ -49,6 +49,8 @@ export default function CharacterIconStrip({ character, activeKey = null, onSele
       : 0
   const journalEntries = typeof character.journalEntries === 'number' ? character.journalEntries : 0
 
+  const spellCount = Array.isArray((character as any)?.spells) ? (character as any).spells.length : 0
+
   const items = [
     {
       key: 'abilities' as const,
@@ -67,6 +69,12 @@ export default function CharacterIconStrip({ character, activeKey = null, onSele
       badge: 'I',
       label: 'Inventory',
       value: `${inventoryCount} items`,
+    },
+    {
+      key: 'spells' as const,
+      badge: '✦',
+      label: 'Spells',
+      value: `${spellCount} known`,
     },
     {
       key: 'journal' as const,

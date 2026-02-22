@@ -857,3 +857,131 @@
 .character-cast-picker-item:hover{
   background: rgba(155,89,182,0.18);
 }
+
+/* ── Death saves ─────────────────────────────────────────── */
+.player-status-death-saves{
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.death-saves-success,
+.death-saves-failure{
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.death-saves-sep{
+  color: rgba(255,255,255,0.3);
+  margin: 0 2px;
+}
+
+.death-save-pip{
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255,255,255,0.3);
+  background: transparent;
+}
+
+.death-save-pip--success{
+  background: #4caf82;
+  border-color: #4caf82;
+}
+
+.death-save-pip--failure{
+  background: #e05252;
+  border-color: #e05252;
+}
+
+.player-status-temp{
+  font-size: 11px;
+  color: rgba(255,255,255,0.6);
+  margin-left: 2px;
+}
+
+/* ── Spell slots (summary strip under status grid) ───────── */
+.spell-slots-summary{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.spell-slot-mini{
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.spell-slot-mini-label{
+  font-size: 10px;
+  color: rgba(255,255,255,0.55);
+  letter-spacing: 0.04em;
+  min-width: 24px;
+}
+
+.spell-slot-mini-pips{
+  display: flex;
+  gap: 2px;
+}
+
+/* ── Spell slots (drawer view) ───────────────────────────── */
+.spell-slots-grid{
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+.spell-slot-row{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.spell-slot-label{
+  font-size: 11px;
+  color: rgba(255,255,255,0.65);
+  min-width: 50px;
+}
+
+.spell-slot-pips{
+  display: flex;
+  gap: 4px;
+  flex: 1;
+}
+
+.spell-slot-count{
+  font-size: 11px;
+  min-width: 28px;
+  text-align: right;
+}
+
+.spell-slot-pip{
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(155,89,182,0.55);
+  background: rgba(155,89,182,0.18);
+}
+
+.spell-slot-pip--sm{
+  width: 8px;
+  height: 8px;
+}
+
+.spell-slot-pip--used{
+  background: transparent;
+  border-color: rgba(255,255,255,0.15);
+}

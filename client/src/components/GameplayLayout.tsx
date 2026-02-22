@@ -461,6 +461,12 @@ export default function GameplayLayout({
         const spellbook = Array.isArray(sheet?.spellbook) ? sheet.spellbook : []
         const features = toStringArray(sheet?.features)
         const skills = toSkillArray(sheet?.skills)
+        const exhaustion = typeof sheet?.exhaustion === 'number' ? sheet.exhaustion : 0
+        const rawDs = sheet?.death_saves ?? sheet?.deathSaves
+        const deathSaves = rawDs && typeof rawDs === 'object'
+          ? { successes: toNum(rawDs.successes) ?? 0, failures: toNum(rawDs.failures) ?? 0 }
+          : { successes: 0, failures: 0 }
+        const spellSlots = (sheet?.spell_slots && typeof sheet.spell_slots === 'object') ? sheet.spell_slots : undefined
         const id = String(ch?.id ?? '')
         if(!id) return null
         return {
@@ -482,6 +488,9 @@ export default function GameplayLayout({
           inventory,
           spells,
           spellbook,
+          exhaustion,
+          deathSaves,
+          spellSlots,
         } as CharacterSummary
       })
       .filter(Boolean) as CharacterSummary[]

@@ -24,6 +24,28 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _is_character_active_in_sessions(character_id: int) -> bool:
+    """Return True if the character is assigned to any session member."""
+    import pathlib
+    sessions_base = pathlib.Path(__file__).resolve().parents[1] / "sessions"
+    if not sessions_base.exists():
+        return False
+    for session_dir in sessions_base.iterdir():
+        if not session_dir.is_dir():
+            continue
+        meta_path = session_dir / "meta.json"
+        if not meta_path.exists():
+            continue
+        try:
+            meta = json.loads(meta_path.read_text())
+        except Exception:
+            continue
+        for member in meta.get("members") or []:
+            if member.get("character_id") == character_id:
+                return True
+    return False
+
+
 def _guess_character_name_from_filename(filename: str | None) -> str | None:
     if not filename:
         return None
@@ -1812,6 +1834,9 @@ def _build_character_import_sheet_from_ddb(
         "features": [_feature_dict(f) for f in parsed.features_and_traits],
         "classFeatures": [_feature_dict(f) for f in parsed.features_and_traits if f.source not in ("Feat",)],
         "equipment": [_equipment_dict(e) for e in parsed.equipment],
+        # Simple string lists for UI display
+        "inventory": [name for e in parsed.equipment if (name := getattr(e, "name", ""))],
+        "spells": parsed.spells,
         "languages": parsed.languages,
         "armor_proficiencies": parsed.armor_proficiencies,
         "weapon_proficiencies": parsed.weapon_proficiencies,
@@ -1820,6 +1845,13 @@ def _build_character_import_sheet_from_ddb(
         "multiclass": parsed.multiclass,
         "story": parsed.story,
         "portrait_url": None,
+        # Tracking fields
+        "spell_slots": parsed.spell_slots,
+        "exhaustion": parsed.exhaustion,
+        "death_saves": {
+            "successes": parsed.death_save_successes,
+            "failures": parsed.death_save_failures,
+        },
         # Import metadata
         "import": {
             "source": "ddb-api",
@@ -2045,6 +2077,12 @@ def update_character(character_id: int, payload: CharacterUpdate, current_user=D
 
 @router.delete("/{character_id}")
 def delete_character(character_id: int, current_user=Depends(get_current_user)):
+    # Block deletion if character is active in any session
+    if _is_character_active_in_sessions(character_id):
+        raise HTTPException(
+            status_code=409,
+            detail="Character is currently active in one or more sessions and cannot be deleted.",
+        )
     # Try owner delete first, fall back to admin delete if user is admin
     ok = db.delete_character(character_id=character_id, owner_id=current_user.id)
     if not ok and db.is_admin_user(current_user):
