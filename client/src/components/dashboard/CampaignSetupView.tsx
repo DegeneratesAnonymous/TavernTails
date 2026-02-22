@@ -159,6 +159,8 @@ export default function CampaignSetupView({
   const [loadingGM, setLoadingGM] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviting, setInviting] = useState(false)
+  const [inviteMatches, setInviteMatches] = useState<Array<{id?: number; username?: string | null; email?: string | null; name?: string | null}>>([])
+  const [inviteMatchBusy, setInviteMatchBusy] = useState(false)
 
   const canEdit = Boolean(activeCampaignId)
 
@@ -238,6 +240,34 @@ export default function CampaignSetupView({
       canceled = true
     }
   }, [activeCampaignId])
+
+  // Username search for invite autocomplete
+  useEffect(() => {
+    let canceled = false
+    const raw = inviteEmail.trim()
+    if (!raw || raw.includes('@') || raw.length < 2) {
+      setInviteMatches([])
+      return
+    }
+    setInviteMatchBusy(true)
+    const id = window.setTimeout(async () => {
+      try {
+        const res = await apiFetch(`/users/search?q=${encodeURIComponent(raw)}&limit=8`)
+        if (!res.ok) throw new Error('search failed')
+        const data = await res.json().catch(() => null)
+        const results = Array.isArray(data?.results) ? data.results : []
+        if (!canceled) setInviteMatches(results)
+      } catch {
+        if (!canceled) setInviteMatches([])
+      } finally {
+        if (!canceled) setInviteMatchBusy(false)
+      }
+    }, 250)
+    return () => {
+      canceled = true
+      window.clearTimeout(id)
+    }
+  }, [inviteEmail])
 
   // Load GM assignment
   useEffect(() => {
@@ -800,21 +830,47 @@ export default function CampaignSetupView({
               <div className="card card-pad" style={{ background: 'var(--surface-dark)', marginTop: 12 }}>
                 <div style={{ fontWeight: 700, marginBottom: 6 }}>Players</div>
                 <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
-                  Invite players by email to grant access to this campaign.
+                  Invite players by username or email to grant access to this campaign.
                 </div>
-                <div className="row-wrap" style={{ gap: 8, marginBottom: 12, alignItems: 'flex-end' }}>
-                  <div style={{ flex: 1 }}>
-                    <label className="muted" style={{ fontSize: 12 }}>Player email</label>
+                <div style={{ gap: 8, marginBottom: 12 }}>
+                  <div style={{ flex: 1, marginBottom: 6 }}>
+                    <label className="muted" style={{ fontSize: 12 }}>Username or email</label>
                     <input
                       className="input"
-                      type="email"
-                      placeholder="player@example.com"
+                      placeholder="Search by username or enter email"
                       value={inviteEmail}
-                      onChange={(e) => setInviteEmail(e.target.value)}
+                      onChange={(e) => { setInviteEmail(e.target.value) }}
                       onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleInvitePlayer() } }}
                       disabled={inviting}
                     />
                   </div>
+                  {inviteMatchBusy ? (
+                    <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>Searching…</div>
+                  ) : inviteMatches.length > 0 ? (
+                    <div className="card" style={{ padding: 8, marginBottom: 8, display: 'grid', gap: 4 }}>
+                      <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Matches</div>
+                      {inviteMatches.map((m) => {
+                        const key = String(m?.id ?? m?.email ?? m?.username ?? Math.random())
+                        const label = m?.username ? `@${m.username}` : (m?.email || 'user')
+                        const sub = m?.name && m?.name !== m?.username ? String(m.name) : (m?.email || '')
+                        return (
+                          <button
+                            key={key}
+                            className="btn btn-secondary btn-sm"
+                            type="button"
+                            onClick={() => {
+                              setInviteEmail(m?.username || m?.email || '')
+                              setInviteMatches([])
+                            }}
+                            style={{ textAlign: 'left' }}
+                          >
+                            <div style={{ fontWeight: 700 }}>{label}</div>
+                            {sub ? <div className="muted" style={{ fontSize: 12 }}>{sub}</div> : null}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  ) : null}
                   <button
                     className="btn"
                     type="button"

@@ -16,6 +16,10 @@ import PageHeader from './ui/PageHeader'
 import EmptyState from './ui/EmptyState'
 import Modal from './ui/Modal'
 
+// Container category names that should not appear as individual features
+const FEATURE_CATEGORY_PATTERN = /\b(features|abilities|traits|proficiencies)\s*$/i
+const FEATURE_SKIP_NAMES = new Set(['proficiencies', 'features', 'traits', 'abilities', 'other proficiencies & languages', 'other proficiencies and languages'])
+
 type Props = {
   profile: any;
   onLogout: () => void;
@@ -49,6 +53,11 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [quickstartBusy, setQuickstartBusy] = useState(false)
   const [startPlayBusy, setStartPlayBusy] = useState(false)
 
+  const [showQuickstartSetup, setShowQuickstartSetup] = useState(false)
+  const [quickstartCampaignName, setQuickstartCampaignName] = useState('')
+  const [quickstartCampaignNameError, setQuickstartCampaignNameError] = useState<string | null>(null)
+  const [quickstartSelectedCharId, setQuickstartSelectedCharId] = useState<string>('__none__')
+
   const [characters, setCharacters] = useState<Array<any>>([])
   const [activeCharacterId, setActiveCharacterId] = useState<number | null>(null)
   const [selectedCharacterId, setSelectedCharacterId] = useState<number | null>(null)
@@ -63,6 +72,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [characterSettingsOpen, setCharacterSettingsOpen] = useState(false)
   const [characterPanelMode, setCharacterPanelMode] = useState<'summary' | 'spells' | 'features' | 'journal' | 'inventory'>('summary')
   const [selectedSpellRow, setSelectedSpellRow] = useState<any | null>(null)
+  const [showAllFeatures, setShowAllFeatures] = useState(false)
   const [selectedFeatureRow, setSelectedFeatureRow] = useState<any | null>(null)
 
   const SettingsIcon = () => (
@@ -285,6 +295,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       setCharacterPanelMode('summary')
       setSelectedSpellRow(null)
       setSelectedFeatureRow(null)
+      setShowAllFeatures(false)
     }
   }, [selectedCharacter])
 
@@ -314,11 +325,24 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       if (!Array.isArray(value)) return []
       return value
         .map((v) => {
-          if (typeof v === 'string') return { name: v.trim() }
+          if (typeof v === 'string') {
+            const name = v.trim()
+            if (!name) return null
+            const lower = name.toLowerCase()
+            // Skip bare container category names with no real feature info
+            if (FEATURE_SKIP_NAMES.has(lower)) return null
+            if (FEATURE_CATEGORY_PATTERN.test(name) && !name.includes(':')) return null
+            return { name }
+          }
           if (v && typeof v === 'object') {
             const name = String(v.name || '').trim()
             if (!name) return null
-            return { name, source: v.source ? String(v.source) : undefined, description: v.description ? String(v.description) : undefined }
+            const lower = name.toLowerCase()
+            const desc = v.description ? String(v.description) : undefined
+            if (FEATURE_SKIP_NAMES.has(lower)) return null
+            // Filter container category names only when they have no description
+            if (!desc && FEATURE_CATEGORY_PATTERN.test(name) && !name.includes(':')) return null
+            return { name, source: v.source ? String(v.source) : undefined, description: desc }
           }
           return null
         })
@@ -339,9 +363,9 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       items: items.slice(0, limit),
       more: Math.max(0, items.length - limit),
     })
-    const summarizeFeatures = (items: Array<{ name: string; source?: string; description?: string }>, limit = 20) => ({
-      items: items.slice(0, limit),
-      more: Math.max(0, items.length - limit),
+    const summarizeFeatures = (items: Array<{ name: string; source?: string; description?: string }>) => ({
+      items,
+      more: 0,
     })
 
     const features = uniqFeatures([
@@ -726,7 +750,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     loadSessionCharacterSelection()
   },[activeSession])
 
-  const quickstartPlaytest = useCallback(async () => {
+  const quickstartPlaytest = useCallback(async (opts?: { campaignName?: string; charId?: number | null }) => {
     if (quickstartBusy) return
     setQuickstartBusy(true)
     try {
@@ -736,11 +760,12 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       // 1) Ensure a campaign + at least one session
       if (!campaignId) {
         const label = new Date().toLocaleDateString()
+        const campaignNameToUse = opts?.campaignName?.trim() || `Quickstart Campaign (${label})`
         const create = await apiFetch('/campaigns', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            name: `Quickstart Campaign (${label})`,
+            name: campaignNameToUse,
             description: 'Auto-created for playtesting.',
             create_session: true,
           }),
@@ -780,9 +805,9 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
 
       // 2) Ensure a character exists (demo) and is assigned to the session
       if (sessionId) {
-        let myCharId: number | null = activeCharacterId
+        let myCharId: number | null = opts?.charId !== undefined ? opts.charId : activeCharacterId
         const hasAny = characters.length > 0
-        if (!hasAny) {
+        if (myCharId === null && !hasAny) {
           const createChar = await apiFetch('/characters', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1104,9 +1129,11 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
           <DashboardHome
             profile={profile}
             lastSessionLabel={lastSessionLabel}
-            onStartNewGame={async () => {
-              await quickstartPlaytest()
-              setView('gameplay')
+            onStartNewGame={() => {
+              setQuickstartCampaignName('')
+              setQuickstartCampaignNameError(null)
+              setQuickstartSelectedCharId(characters.length > 0 ? String(characters[0].id) : '__none__')
+              setShowQuickstartSetup(true)
             }}
             onLoadGame={() => {
               if (typeof window === 'undefined') {
@@ -1400,61 +1427,116 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                           {selectedCharacter ? (
                             (() => {
                               const sheet = (selectedCharacter?.sheet && typeof selectedCharacter.sheet === 'object') ? selectedCharacter.sheet : {}
+                              const spellSlots: Array<{ level: number; used?: number | null; max?: number | null }> = Array.isArray((sheet as any)?.spellSlots) ? (sheet as any).spellSlots : []
                               const spellbook = Array.isArray((sheet as any)?.spellbook) ? (sheet as any).spellbook : []
                               const spellNames = Array.isArray((sheet as any)?.spells) ? (sheet as any).spells : []
                               const rows = spellbook.length
                                 ? spellbook
                                 : spellNames.map((name: any) => ({ name: String(name) }))
-                              if (!rows.length) return <div className="muted">No spells parsed.</div>
-                              let lastHeader: string | null = null
                               return (
-                                <div className="stack" style={{ gap: 4 }}>
-                                  {rows.map((row: any, idx: number) => {
-                                    const header = typeof row?.header === 'string' ? row.header.trim() : ''
-                                    const showHeader = header && header !== lastHeader
-                                    if (header) lastHeader = header
-                                    const isExpanded = selectedSpellRow?.name === row?.name
-                                    const hasDetails = row?.source || row?.time || row?.range || row?.components || row?.duration || row?.save_hit || row?.notes || row?.page
-                                    return (
-                                      <React.Fragment key={`${row?.name || 'spell'}-${idx}`}>
-                                        {showHeader ? (
-                                          <div style={{ fontWeight: 700, fontSize: 12, padding: '6px 0 2px', opacity: 0.8 }}>{header}</div>
-                                        ) : null}
-                                        <button
-                                          type="button"
-                                          className="btn btn-quiet"
-                                          style={{
-                                            textAlign: 'left',
-                                            justifyContent: 'space-between',
-                                            background: isExpanded ? 'rgba(173,136,95,0.20)' : undefined,
-                                            borderRadius: 6,
-                                            padding: '6px 10px',
-                                            fontSize: 13,
-                                          }}
-                                          onClick={() => setSelectedSpellRow(isExpanded ? null : row)}
-                                        >
-                                          <span style={{ fontWeight: 600 }}>{row?.name || '—'}</span>
-                                          {row?.slot_header ? <span className="muted" style={{ fontSize: 11 }}>{row.slot_header}</span> : null}
-                                          <span className="muted" style={{ fontSize: 11 }}>{isExpanded ? '▲' : '▼'}</span>
-                                        </button>
-                                        {isExpanded && hasDetails ? (
-                                          <div className="card card-pad" style={{ fontSize: 12, background: 'rgba(0,0,0,0.15)', marginLeft: 8 }}>
-                                            <div className="row-wrap" style={{ gap: 12 }}>
-                                              {row?.source ? <div><span className="muted">Source:</span> {row.source}</div> : null}
-                                              {row?.save_hit ? <div><span className="muted">Save/Atk:</span> {row.save_hit}</div> : null}
-                                              {row?.time ? <div><span className="muted">Cast Time:</span> {row.time}</div> : null}
-                                              {row?.range ? <div><span className="muted">Range:</span> {row.range}</div> : null}
-                                              {row?.components ? <div><span className="muted">Components:</span> {row.components}</div> : null}
-                                              {row?.duration ? <div><span className="muted">Duration:</span> {row.duration}</div> : null}
-                                              {row?.page ? <div><span className="muted">Page:</span> {row.page}</div> : null}
-                                              {row?.notes ? <div><span className="muted">Notes:</span> {row.notes}</div> : null}
+                                <>
+                                  {spellSlots.length > 0 && (
+                                    <div style={{ marginBottom: 10 }}>
+                                      <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>Spell Slots</div>
+                                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                        {spellSlots.map((slot) => {
+                                          const max = slot.max ?? 0
+                                          const used = slot.used ?? 0
+                                          return (
+                                            <div key={slot.level} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                              <span className="muted" style={{ fontSize: 11, minWidth: 18 }}>L{slot.level}</span>
+                                              {Array.from({ length: max }).map((_, i) => (
+                                                <span
+                                                  key={i}
+                                                  style={{
+                                                    display: 'inline-block',
+                                                    width: 10,
+                                                    height: 10,
+                                                    borderRadius: '50%',
+                                                    border: '1px solid rgba(255,255,255,0.4)',
+                                                    background: i < used ? 'rgba(255,255,255,0.2)' : 'rgba(173,136,95,0.6)',
+                                                  }}
+                                                  title={`Slot ${i + 1}: ${i < used ? 'used' : 'available'}`}
+                                                />
+                                              ))}
+                                              <span className="muted" style={{ fontSize: 11 }}>{used}/{max}</span>
                                             </div>
-                                          </div>
-                                        ) : null}
-                                      </React.Fragment>
-                                    )
-                                  })}
-                                </div>
+                                          )
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {rows.length === 0 ? (
+                                    <div className="muted">No spells parsed.</div>
+                                  ) : (
+                                    (() => {
+                                      let lastHeader: string | null = null
+                                      const groups: Array<{ header: string | null; rows: typeof rows }> = []
+                                      for (const row of rows) {
+                                        const header = typeof row?.header === 'string' ? row.header.trim() : ''
+                                        if (header && header !== lastHeader) {
+                                          groups.push({ header, rows: [row] })
+                                          lastHeader = header
+                                        } else if (groups.length === 0) {
+                                          groups.push({ header: null, rows: [row] })
+                                        } else {
+                                          groups[groups.length - 1].rows.push(row)
+                                        }
+                                      }
+                                      return (
+                                        <div className="stack" style={{ gap: 6 }}>
+                                          {groups.map((group, gi) => (
+                                            <div key={gi}>
+                                              {group.header ? (
+                                                <div style={{ fontWeight: 700, fontSize: 11, padding: '4px 0 4px', opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{group.header}</div>
+                                              ) : null}
+                                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                                                {group.rows.map((row: any, idx: number) => {
+                                                  const isExpanded = selectedSpellRow?.name === row?.name
+                                                  const hasDetails = row?.source || row?.time || row?.range || row?.components || row?.duration || row?.save_hit || row?.notes || row?.page
+                                                  return (
+                                                    <React.Fragment key={`${row?.name || 'spell'}-${idx}`}>
+                                                      <button
+                                                        type="button"
+                                                        className="btn btn-quiet"
+                                                        style={{
+                                                          textAlign: 'left',
+                                                          background: isExpanded ? 'rgba(173,136,95,0.20)' : 'rgba(0,0,0,0.10)',
+                                                          borderRadius: 6,
+                                                          padding: '5px 8px',
+                                                          fontSize: 12,
+                                                          gridColumn: isExpanded ? 'span 2' : undefined,
+                                                        }}
+                                                        onClick={() => setSelectedSpellRow(isExpanded ? null : row)}
+                                                      >
+                                                        <span style={{ fontWeight: 600, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row?.name || '—'}</span>
+                                                        {row?.slot_header ? <span className="muted" style={{ fontSize: 10 }}>{row.slot_header}</span> : null}
+                                                      </button>
+                                                      {isExpanded && hasDetails ? (
+                                                        <div className="card card-pad" style={{ fontSize: 12, background: 'rgba(0,0,0,0.15)', gridColumn: 'span 2', marginLeft: 0 }}>
+                                                          <div className="row-wrap" style={{ gap: 10, flexWrap: 'wrap' }}>
+                                                            {row?.source ? <div><span className="muted">Source:</span> {row.source}</div> : null}
+                                                            {row?.save_hit ? <div><span className="muted">Save/Atk:</span> {row.save_hit}</div> : null}
+                                                            {row?.time ? <div><span className="muted">Cast Time:</span> {row.time}</div> : null}
+                                                            {row?.range ? <div><span className="muted">Range:</span> {row.range}</div> : null}
+                                                            {row?.components ? <div><span className="muted">Components:</span> {row.components}</div> : null}
+                                                            {row?.duration ? <div><span className="muted">Duration:</span> {row.duration}</div> : null}
+                                                            {row?.page ? <div><span className="muted">Page:</span> {row.page}</div> : null}
+                                                            {row?.notes ? <div style={{ width: '100%' }}><span className="muted">Notes:</span> {row.notes}</div> : null}
+                                                          </div>
+                                                        </div>
+                                                      ) : null}
+                                                    </React.Fragment>
+                                                  )
+                                                })}
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )
+                                    })()
+                                  )}
+                                </>
                               )
                             })()
                           ) : (
@@ -1471,42 +1553,66 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                           {selectedSheetSummary ? (
                             <>
                               {selectedSheetSummary.features.items.length ? (
-                                <div className="stack" style={{ gap: 4 }}>
-                                  {selectedSheetSummary.features.items.map((f, idx) => {
-                                    const isExpanded = selectedFeatureRow?.name === f.name
-                                    const hasDetails = Boolean(f.description || f.source)
-                                    return (
-                                      <React.Fragment key={`${f.name}-${idx}`}>
+                                (() => {
+                                  const FEATURE_LIMIT = 15
+                                  const allItems = selectedSheetSummary.features.items
+                                  const visibleItems = showAllFeatures ? allItems : allItems.slice(0, FEATURE_LIMIT)
+                                  const hiddenCount = allItems.length - visibleItems.length
+                                  return (
+                                    <div className="stack" style={{ gap: 4 }}>
+                                      {visibleItems.map((f, idx) => {
+                                        const isExpanded = selectedFeatureRow?.name === f.name
+                                        const hasDetails = Boolean(f.description || f.source)
+                                        return (
+                                          <React.Fragment key={`${f.name}-${idx}`}>
+                                            <button
+                                              type="button"
+                                              className="btn btn-quiet"
+                                              style={{
+                                                textAlign: 'left',
+                                                justifyContent: 'space-between',
+                                                background: isExpanded ? 'rgba(173,136,95,0.20)' : undefined,
+                                                borderRadius: 6,
+                                                padding: '6px 10px',
+                                                fontSize: 13,
+                                              }}
+                                              onClick={() => setSelectedFeatureRow(isExpanded ? null : f)}
+                                            >
+                                              <span style={{ fontWeight: 600 }}>{f.name}</span>
+                                              {f.source ? <span className="muted" style={{ fontSize: 11 }}>{f.source}</span> : null}
+                                              {hasDetails ? <span className="muted" style={{ fontSize: 11 }}>{isExpanded ? '▲' : '▼'}</span> : null}
+                                            </button>
+                                            {isExpanded && hasDetails ? (
+                                              <div className="card card-pad" style={{ fontSize: 12, background: 'rgba(0,0,0,0.15)', marginLeft: 8 }}>
+                                                {f.source ? <div><span className="muted">Source:</span> {f.source}</div> : null}
+                                                {f.description ? <div style={{ marginTop: f.source ? 4 : 0, lineHeight: 1.5 }}>{f.description}</div> : null}
+                                              </div>
+                                            ) : null}
+                                          </React.Fragment>
+                                        )
+                                      })}
+                                      {hiddenCount > 0 ? (
                                         <button
                                           type="button"
                                           className="btn btn-quiet"
-                                          style={{
-                                            textAlign: 'left',
-                                            justifyContent: 'space-between',
-                                            background: isExpanded ? 'rgba(173,136,95,0.20)' : undefined,
-                                            borderRadius: 6,
-                                            padding: '6px 10px',
-                                            fontSize: 13,
-                                          }}
-                                          onClick={() => setSelectedFeatureRow(isExpanded ? null : f)}
+                                          style={{ fontSize: 12, padding: '4px 10px', color: 'var(--tt-accent, #c084fc)' }}
+                                          onClick={() => setShowAllFeatures(true)}
                                         >
-                                          <span style={{ fontWeight: 600 }}>{f.name}</span>
-                                          {f.source ? <span className="muted" style={{ fontSize: 11 }}>{f.source}</span> : null}
-                                          {hasDetails ? <span className="muted" style={{ fontSize: 11 }}>{isExpanded ? '▲' : '▼'}</span> : null}
+                                          + {hiddenCount} more — Show all
                                         </button>
-                                        {isExpanded && hasDetails ? (
-                                          <div className="card card-pad" style={{ fontSize: 12, background: 'rgba(0,0,0,0.15)', marginLeft: 8 }}>
-                                            {f.source ? <div><span className="muted">Source:</span> {f.source}</div> : null}
-                                            {f.description ? <div style={{ marginTop: f.source ? 4 : 0, lineHeight: 1.5 }}>{f.description}</div> : null}
-                                          </div>
-                                        ) : null}
-                                      </React.Fragment>
-                                    )
-                                  })}
-                                  {selectedSheetSummary.features.more ? (
-                                    <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>+ {selectedSheetSummary.features.more} more</div>
-                                  ) : null}
-                                </div>
+                                      ) : allItems.length > FEATURE_LIMIT ? (
+                                        <button
+                                          type="button"
+                                          className="btn btn-quiet"
+                                          style={{ fontSize: 12, padding: '4px 10px', color: 'var(--tt-accent, #c084fc)' }}
+                                          onClick={() => setShowAllFeatures(false)}
+                                        >
+                                          ▲ Show less
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                  )
+                                })()
                               ) : (
                                 <div className="muted">No features parsed.</div>
                               )}
@@ -1934,6 +2040,41 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                 No documents uploaded yet.
               </div>
             </div>
+            {campaigns.length > 0 && (
+              <div className="card card-pad" style={{ background: 'var(--surface-dark)' }}>
+                <div style={{ fontWeight: 700, marginBottom: 8 }}>Campaign Documents</div>
+                <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
+                  Documents organized by campaign.
+                </div>
+                <div className="stack" style={{ gap: 8 }}>
+                  {campaigns.map((c) => (
+                    <div key={c.id} className="card card-pad" style={{ background: 'rgba(71,66,61,0.5)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontWeight: 600 }}>{c.name}</div>
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          type="button"
+                          onClick={() => {
+                            setActiveCampaignId(String(c.id))
+                            const sessions = Array.isArray(c.sessions) ? c.sessions : []
+                            if (sessions.length > 0) setActiveSession(String(sessions[0].id))
+                            setView('gameplay')
+                            setTimeout(() => {
+                              window.dispatchEvent(new CustomEvent('gameplay:open-documents'))
+                            }, 200)
+                          }}
+                        >
+                          View Docs
+                        </button>
+                      </div>
+                      <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                        {Array.isArray(c.sessions) ? c.sessions.length : 0} session{(Array.isArray(c.sessions) ? c.sessions.length : 0) !== 1 ? 's' : ''}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {characters.length > 0 && (
               <div className="card card-pad" style={{ background: 'var(--surface-dark)' }}>
                 <div style={{ fontWeight: 700, marginBottom: 8 }}>Character Documents</div>
@@ -2484,6 +2625,105 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                 }}
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </Modal>
+        <Modal
+          open={showQuickstartSetup}
+          title="Start New Game"
+          onClose={() => {
+            if (quickstartBusy) return
+            setShowQuickstartSetup(false)
+          }}
+        >
+          <div className="stack" style={{ gap: 12 }}>
+            <div>
+              <label className="muted" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Campaign Name <span style={{ color: 'var(--tt-accent, #c084fc)' }}>*</span></label>
+              <input
+                className="input"
+                placeholder="Enter a campaign name"
+                value={quickstartCampaignName}
+                onChange={(e) => { setQuickstartCampaignName(e.target.value); setQuickstartCampaignNameError(null) }}
+                disabled={quickstartBusy}
+                autoFocus
+              />
+              {quickstartCampaignNameError ? (
+                <div className="inline-alert inline-alert-error" style={{ marginTop: 6 }}>{quickstartCampaignNameError}</div>
+              ) : null}
+            </div>
+
+            <div>
+              <label className="muted" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Character</label>
+              {characters.length > 0 ? (
+                <select
+                  className="input"
+                  value={quickstartSelectedCharId}
+                  onChange={(e) => setQuickstartSelectedCharId(e.target.value)}
+                  disabled={quickstartBusy}
+                >
+                  {characters.map((c: any) => (
+                    <option key={String(c.id)} value={String(c.id)}>
+                      {c.name || 'Unnamed'}{c.class_name ? ` (${c.class_name})` : ''}
+                    </option>
+                  ))}
+                  <option value="__import__">⬆ Import Character</option>
+                  <option value="__new__">✚ Create New Character</option>
+                </select>
+              ) : (
+                <select
+                  className="input"
+                  value={quickstartSelectedCharId}
+                  onChange={(e) => setQuickstartSelectedCharId(e.target.value)}
+                  disabled={quickstartBusy}
+                >
+                  <option value="__none__">No character (demo character will be used)</option>
+                  <option value="__import__">⬆ Import Character</option>
+                  <option value="__new__">✚ Create New Character</option>
+                </select>
+              )}
+            </div>
+
+            <div className="row-wrap" style={{ justifyContent: 'flex-end', gap: 8 }}>
+              <button
+                className="btn btn-secondary"
+                type="button"
+                disabled={quickstartBusy}
+                onClick={() => setShowQuickstartSetup(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn"
+                type="button"
+                disabled={quickstartBusy}
+                onClick={async () => {
+                  const name = quickstartCampaignName.trim()
+                  if (!name) {
+                    setQuickstartCampaignNameError('Campaign name is required.')
+                    return
+                  }
+                  if (quickstartSelectedCharId === '__import__') {
+                    setShowQuickstartSetup(false)
+                    setCharacterCreateOrigin('gameplay')
+                    setView('import-character')
+                    return
+                  }
+                  if (quickstartSelectedCharId === '__new__') {
+                    setShowQuickstartSetup(false)
+                    setCharacterCreateOrigin('gameplay')
+                    setView('create-character')
+                    return
+                  }
+                  const charId = quickstartSelectedCharId && quickstartSelectedCharId !== '__none__'
+                    ? Number(quickstartSelectedCharId)
+                    : null
+                  setShowQuickstartSetup(false)
+                  await quickstartPlaytest({ campaignName: name, charId })
+                  setView('gameplay')
+                }}
+              >
+                {quickstartBusy ? 'Starting…' : 'Start'}
               </button>
             </div>
           </div>
