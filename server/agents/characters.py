@@ -24,12 +24,12 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _is_character_active_in_sessions(character_id: int) -> bool:
-    """Return True if the character is assigned to any session member."""
+def _unassign_character_from_sessions(character_id: int) -> None:
+    """Remove a character assignment from all session meta files (best-effort)."""
     import pathlib
     sessions_base = pathlib.Path(__file__).resolve().parents[1] / "sessions"
     if not sessions_base.exists():
-        return False
+        return
     for session_dir in sessions_base.iterdir():
         if not session_dir.is_dir():
             continue
@@ -40,10 +40,16 @@ def _is_character_active_in_sessions(character_id: int) -> bool:
             meta = json.loads(meta_path.read_text())
         except Exception:
             continue
+        changed = False
         for member in meta.get("members") or []:
             if member.get("character_id") == character_id:
-                return True
-    return False
+                member["character_id"] = None
+                changed = True
+        if changed:
+            try:
+                meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2))
+            except Exception:
+                pass
 
 
 def _guess_character_name_from_filename(filename: str | None) -> str | None:
@@ -2077,12 +2083,8 @@ def update_character(character_id: int, payload: CharacterUpdate, current_user=D
 
 @router.delete("/{character_id}")
 def delete_character(character_id: int, current_user=Depends(get_current_user)):
-    # Block deletion if character is active in any session
-    if _is_character_active_in_sessions(character_id):
-        raise HTTPException(
-            status_code=409,
-            detail="Character is currently active in one or more sessions and cannot be deleted.",
-        )
+    # Unassign from any session files before deleting (best-effort, non-blocking)
+    _unassign_character_from_sessions(character_id)
     # Try owner delete first, fall back to admin delete if user is admin
     ok = db.delete_character(character_id=character_id, owner_id=current_user.id)
     if not ok and db.is_admin_user(current_user):

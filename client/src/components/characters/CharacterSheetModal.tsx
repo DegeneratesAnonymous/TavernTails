@@ -450,8 +450,9 @@ function inferListsFromRaw(raw: any): { inventory: string[]; spells: string[]; f
 
 function ListPreview({ title, items, onItemClick }: { title: string; items: string[]; onItemClick?: (item: string) => void }) {
   const limit = 14
-  const shown = items.slice(0, limit)
-  const remaining = items.length - shown.length
+  const [expanded, setExpanded] = useState(false)
+  const shown = expanded ? items : items.slice(0, limit)
+  const remaining = items.length - limit
   return (
     <div className="card tt-sheet-card">
       <div className="muted" style={{ marginBottom: 6 }}>{title}</div>
@@ -467,15 +468,29 @@ function ListPreview({ title, items, onItemClick }: { title: string; items: stri
         ))}
       </ul>
       {remaining > 0 ? (
-        <details style={{ marginTop: 8 }}>
-          <summary className="muted" style={{ cursor: 'pointer' }}>Show all ({items.length})</summary>
-          <ul style={{ marginTop: 8, marginBottom: 0, paddingLeft: 18 }}>
-            {items.slice(limit).map((item) => <li key={item}>{item}</li>)}
-          </ul>
-        </details>
+        <button
+          className="btn btn-quiet"
+          style={{ marginTop: 8, fontSize: 12, padding: '2px 4px', color: 'var(--tt-accent, #c084fc)' }}
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? '▲ Show less' : `+ ${remaining} more — Show all`}
+        </button>
       ) : null}
     </div>
   )
+}
+
+function stripHtml(html: string): string {
+  return html
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
 }
 
 function InventoryList({ items }: { items: InventoryItem[] }) {
@@ -487,14 +502,15 @@ function InventoryList({ items }: { items: InventoryItem[] }) {
         {items.map((item) => (
           <li key={`${item.name}-${item.type || ''}-${item.cost || ''}`}>
             <button className="btn btn-ghost" style={{ padding: 0, textAlign: 'left' }} onClick={() => {
-              const details = item.notes || `${item.name}${item.quantity ? ` x${item.quantity}` : ''}${item.type ? ` • ${item.type}` : ''}${item.weight ? ` • ${item.weight} lb` : ''}${item.cost ? ` • ${item.cost}` : ''}`
-              ;(window as any).tt_setDetail && (window as any).tt_setDetail(item.name, details)
+              const rawNotes = item.notes || ''
+              const notes = stripHtml(rawNotes) || `${item.name}${item.quantity ? ` x${item.quantity}` : ''}${item.type ? ` • ${item.type}` : ''}${item.weight ? ` • ${item.weight} lb` : ''}${item.cost ? ` • ${item.cost}` : ''}`
+              ;(window as any).tt_setDetail && (window as any).tt_setDetail(item.name, notes)
             }}>{item.name}</button>
             {item.quantity ? ` x${item.quantity}` : ''}
             {item.type ? <span className="muted"> • {item.type}</span> : null}
             {item.weight ? <span className="muted"> • {item.weight} lb</span> : null}
             {item.cost ? <span className="muted"> • {item.cost}</span> : null}
-            {item.notes ? <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>{item.notes}</div> : null}
+            {item.notes ? <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>{stripHtml(item.notes)}</div> : null}
           </li>
         ))}
       </ul>
