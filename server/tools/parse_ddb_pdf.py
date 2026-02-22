@@ -475,14 +475,12 @@ _FULL_CASTER_SLOTS: Dict[int, List[int]] = {
 
 _FULL_CASTERS = {"bard", "cleric", "druid", "sorcerer", "wizard"}
 _HALF_CASTERS = {"paladin", "ranger"}
-_THIRD_CASTERS = {"eldritch knight", "arcane trickster"}
 
 
 def _derive_spell_slots(multiclass: list) -> Dict[str, Any]:
     """Derive spell slots from class/level data using standard 5e rules."""
     full_levels = 0
     half_levels = 0
-    third_levels = 0
     pact_slots_level = 0
     pact_slots_max = 0
 
@@ -503,12 +501,10 @@ def _derive_spell_slots(multiclass: list) -> Dict[str, Any]:
             full_levels += clevel
         elif any(hc in cname for hc in _HALF_CASTERS):
             half_levels += clevel
-        else:
-            # Unknown classes: treat as full casters if they have spells
-            pass
+        # Other classes (e.g. third-casters, non-casters) contribute no slot levels
 
     # Multiclass spell slot formula (PHB p.164)
-    effective_level = full_levels + math.floor(half_levels / 2) + math.floor(third_levels / 3)
+    effective_level = full_levels + math.floor(half_levels / 2)
     effective_level = max(effective_level, 0)
 
     slots: Dict[str, Any] = {}

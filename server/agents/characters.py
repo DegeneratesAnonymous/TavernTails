@@ -1835,7 +1835,7 @@ def _build_character_import_sheet_from_ddb(
         "classFeatures": [_feature_dict(f) for f in parsed.features_and_traits if f.source not in ("Feat",)],
         "equipment": [_equipment_dict(e) for e in parsed.equipment],
         # Simple string lists for UI display
-        "inventory": [getattr(e, "name", "") for e in parsed.equipment if getattr(e, "name", "")],
+        "inventory": [name for e in parsed.equipment if (name := getattr(e, "name", ""))],
         "spells": parsed.spells,
         "languages": parsed.languages,
         "armor_proficiencies": parsed.armor_proficiencies,
