@@ -101,6 +101,9 @@ class ParsedCharacterSheet:
     currencies: dict = field(default_factory=dict)
     multiclass: list = field(default_factory=list)
     story: dict = field(default_factory=dict)
+    spells: list = field(default_factory=list)
+    spell_slots: dict = field(default_factory=dict)
+    exhaustion: int = 0
     ddb_character_id: str | None = None
     ddb_url: str | None = None
     raw_additional_features: str = ""
@@ -446,6 +449,105 @@ def _build_speed(data: Dict[str, Any]) -> Dict[str, int]:
     return speeds
 
 
+# Standard 5e full-caster spell slot table indexed by level (1-20)
+_FULL_CASTER_SLOTS: Dict[int, List[int]] = {
+    1:  [2, 0, 0, 0, 0, 0, 0, 0, 0],
+    2:  [3, 0, 0, 0, 0, 0, 0, 0, 0],
+    3:  [4, 2, 0, 0, 0, 0, 0, 0, 0],
+    4:  [4, 3, 0, 0, 0, 0, 0, 0, 0],
+    5:  [4, 3, 2, 0, 0, 0, 0, 0, 0],
+    6:  [4, 3, 3, 0, 0, 0, 0, 0, 0],
+    7:  [4, 3, 3, 1, 0, 0, 0, 0, 0],
+    8:  [4, 3, 3, 2, 0, 0, 0, 0, 0],
+    9:  [4, 3, 3, 3, 1, 0, 0, 0, 0],
+    10: [4, 3, 3, 3, 2, 0, 0, 0, 0],
+    11: [4, 3, 3, 3, 2, 1, 0, 0, 0],
+    12: [4, 3, 3, 3, 2, 1, 0, 0, 0],
+    13: [4, 3, 3, 3, 2, 1, 1, 0, 0],
+    14: [4, 3, 3, 3, 2, 1, 1, 0, 0],
+    15: [4, 3, 3, 3, 2, 1, 1, 1, 0],
+    16: [4, 3, 3, 3, 2, 1, 1, 1, 0],
+    17: [4, 3, 3, 3, 2, 1, 1, 1, 1],
+    18: [4, 3, 3, 3, 3, 1, 1, 1, 1],
+    19: [4, 3, 3, 3, 3, 2, 1, 1, 1],
+    20: [4, 3, 3, 3, 3, 2, 2, 1, 1],
+}
+
+_FULL_CASTERS = {"bard", "cleric", "druid", "sorcerer", "wizard"}
+_HALF_CASTERS = {"paladin", "ranger"}
+_THIRD_CASTERS = {"eldritch knight", "arcane trickster"}
+
+
+def _derive_spell_slots(multiclass: list) -> Dict[str, Any]:
+    """Derive spell slots from class/level data using standard 5e rules."""
+    full_levels = 0
+    half_levels = 0
+    third_levels = 0
+    pact_slots_level = 0
+    pact_slots_max = 0
+
+    for entry in multiclass:
+        cname = (entry.get("class_name") or "").lower()
+        clevel = int(entry.get("level") or 1)
+        if cname == "warlock":
+            # Warlock uses pact magic: separate slot progression
+            pact_table = {1: 1, 2: 2, 3: 2, 4: 2, 5: 3, 6: 3, 7: 4, 8: 4,
+                          9: 5, 10: 5, 11: 5, 12: 5, 13: 5, 14: 5, 15: 5,
+                          16: 5, 17: 5, 18: 5, 19: 5, 20: 5}
+            pact_level_table = {1: 1, 2: 1, 3: 2, 4: 2, 5: 3, 6: 3, 7: 4,
+                                8: 4, 9: 5, 10: 5, 11: 5, 12: 5, 13: 5, 14: 5,
+                                15: 5, 16: 5, 17: 5, 18: 5, 19: 5, 20: 5}
+            pact_slots_max = pact_table.get(clevel, 0)
+            pact_slots_level = pact_level_table.get(clevel, 0)
+        elif any(fc in cname for fc in _FULL_CASTERS):
+            full_levels += clevel
+        elif any(hc in cname for hc in _HALF_CASTERS):
+            half_levels += clevel
+        else:
+            # Unknown classes: treat as full casters if they have spells
+            pass
+
+    # Multiclass spell slot formula (PHB p.164)
+    effective_level = full_levels + math.floor(half_levels / 2) + math.floor(third_levels / 3)
+    effective_level = max(effective_level, 0)
+
+    slots: Dict[str, Any] = {}
+    if effective_level > 0:
+        row = _FULL_CASTER_SLOTS.get(min(effective_level, 20), [0] * 9)
+        for i, count in enumerate(row):
+            if count > 0:
+                slots[str(i + 1)] = {"max": count, "used": 0}
+    if pact_slots_max > 0:
+        slots["pact"] = {"max": pact_slots_max, "used": 0, "level": pact_slots_level}
+    return slots
+
+
+def _build_spells(data: Dict[str, Any]) -> List[str]:
+    """Extract spell names from DDB API character data."""
+    spell_names: list[str] = []
+    seen: set[str] = set()
+    spells_data = data.get("spells") or {}
+    if isinstance(spells_data, dict):
+        for source_list in spells_data.values():
+            if not isinstance(source_list, list):
+                continue
+            for entry in source_list:
+                defn = entry.get("definition") or {}
+                name = (defn.get("name") or "").strip()
+                if name and name.lower() not in seen:
+                    seen.add(name.lower())
+                    spell_names.append(name)
+    # Also check classSpells which some versions of the API use
+    for cls_spells in (data.get("classSpells") or []):
+        for entry in (cls_spells.get("spells") or []):
+            defn = entry.get("definition") or {}
+            name = (defn.get("name") or "").strip()
+            if name and name.lower() not in seen:
+                seen.add(name.lower())
+                spell_names.append(name)
+    return sorted(spell_names)
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -544,6 +646,21 @@ def import_from_ddb(url_or_id: str) -> ParsedCharacterSheet:
     sheet.equipment = _build_equipment(data)
     sheet.languages = _build_languages(data)
     sheet.armor_proficiencies, sheet.weapon_proficiencies, sheet.tool_proficiencies = _build_proficiencies(data)
+
+    sheet.spells = _build_spells(data)
+    sheet.spell_slots = _derive_spell_slots(sheet.multiclass)
+
+    # Exhaustion is tracked as a condition in the DDB API
+    for condition in (data.get("conditions") or []):
+        defn = condition.get("definition") or {}
+        if (defn.get("name") or "").lower() == "exhaustion":
+            sheet.exhaustion = int(condition.get("level") or condition.get("currentLevel") or 0)
+            break
+
+    # Death saves from DDB API
+    death_saves = data.get("deathSaves") or {}
+    sheet.death_save_successes = int(death_saves.get("successCount") or death_saves.get("successes") or 0)
+    sheet.death_save_failures = int(death_saves.get("failCount") or death_saves.get("failures") or 0)
 
     currencies = data.get("currencies") or {}
     sheet.currencies = {

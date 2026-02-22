@@ -25,6 +25,9 @@ export type CharacterSummary = CharacterSnapshot & {
   inventory: string[]
   spells: string[]
   spellbook?: Array<any>
+  exhaustion?: number
+  deathSaves?: { successes: number; failures: number }
+  spellSlots?: Record<string, { max: number; used: number; level?: number }>
 }
 
 type Props = {
@@ -104,6 +107,9 @@ export default function CharacterPanel({
     const inventoryCount = Array.isArray(selected.inventory) ? selected.inventory.length : 0
     const featuresCount = Array.isArray(selected.features) ? selected.features.length : 0
     const skillsCount = Array.isArray(selected.skills) ? selected.skills.length : 0
+    const exhaustion = typeof selected.exhaustion === 'number' ? selected.exhaustion : 0
+    const deathSaves = selected.deathSaves ?? { successes: 0, failures: 0 }
+    const spellSlots = selected.spellSlots ?? {}
 
     return {
       hpCurrent,
@@ -116,6 +122,9 @@ export default function CharacterPanel({
       inventoryCount,
       featuresCount,
       skillsCount,
+      exhaustion,
+      deathSaves,
+      spellSlots,
     }
   }, [abilities, selected])
 
@@ -131,6 +140,7 @@ export default function CharacterPanel({
     if(drawerKey === 'inventory') return 'Inventory'
     if(drawerKey === 'journal') return 'Journal'
     if(drawerKey === 'skills') return 'Skills'
+    if(drawerKey === 'spells') return 'Spells'
     return 'Overview'
   }, [drawerKey])
 
@@ -199,6 +209,55 @@ export default function CharacterPanel({
             ))}
           </ul>
           {!selected?.skills?.length ? <div className="muted">No skills listed.</div> : null}
+        </div>
+      )
+    }
+
+    if(drawerKey === 'spells'){
+      const spellList = selected?.spells || []
+      const spellSlots = selected?.spellSlots ?? {}
+      const slotLevels = Object.keys(spellSlots).filter(k => k !== 'pact').sort((a,b) => Number(a)-Number(b))
+      const pactSlot = spellSlots['pact']
+      return (
+        <div>
+          {(slotLevels.length > 0 || pactSlot) ? (
+            <div className="spell-slots-grid" aria-label="Spell slots">
+              {slotLevels.map(lvl => {
+                const slot = spellSlots[lvl]
+                return (
+                  <div key={lvl} className="spell-slot-row">
+                    <span className="spell-slot-label">Lvl {lvl}</span>
+                    <span className="spell-slot-pips">
+                      {Array.from({length: slot.max}).map((_, i) => (
+                        <span key={i} className={`spell-slot-pip ${i < slot.used ? 'spell-slot-pip--used' : ''}`} />
+                      ))}
+                    </span>
+                    <span className="spell-slot-count muted">{slot.max - slot.used}/{slot.max}</span>
+                  </div>
+                )
+              })}
+              {pactSlot ? (
+                <div className="spell-slot-row">
+                  <span className="spell-slot-label">Pact (L{pactSlot.level})</span>
+                  <span className="spell-slot-pips">
+                    {Array.from({length: pactSlot.max}).map((_, i) => (
+                      <span key={i} className={`spell-slot-pip ${i < pactSlot.used ? 'spell-slot-pip--used' : ''}`} />
+                    ))}
+                  </span>
+                  <span className="spell-slot-count muted">{pactSlot.max - pactSlot.used}/{pactSlot.max}</span>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          {spellList.length ? (
+            <ul className="character-section-ul" style={{marginTop: slotLevels.length || pactSlot ? 10 : 0}}>
+              {spellList.map(spell => (
+                <li key={spell}>{spell}</li>
+              ))}
+            </ul>
+          ) : (
+            <div className="muted">No spells listed.</div>
+          )}
         </div>
       )
     }
@@ -321,25 +380,54 @@ export default function CharacterPanel({
               </div>
               <div>
                 <div className="player-status-label">Hit Points</div>
-                <div className="player-status-value">{overview.hpCurrent} / {overview.hpMax}</div>
-              </div>
-              <div>
-                <div className="player-status-label">Temp HP</div>
-                <div className="player-status-value">{overview.tempHp}</div>
+                <div className="player-status-value">{overview.hpCurrent} / {overview.hpMax}{overview.tempHp ? <span className="player-status-temp"> +{overview.tempHp}</span> : null}</div>
               </div>
               <div>
                 <div className="player-status-label">Initiative</div>
                 <div className="player-status-value">{overview.initMod >= 0 ? '+' : ''}{overview.initMod}</div>
               </div>
               <div>
-                <div className="player-status-label">Exhaustion</div>
-                <div className="player-status-value">0</div>
-              </div>
-              <div>
                 <div className="player-status-label">Spell Save DC</div>
                 <div className="player-status-value">{overview.spellSave}</div>
               </div>
+              <div>
+                <div className="player-status-label">Exhaustion</div>
+                <div className="player-status-value">{overview.exhaustion} / 6</div>
+              </div>
+              <div>
+                <div className="player-status-label">Death Saves</div>
+                <div className="player-status-value player-status-death-saves">
+                  <span className="death-saves-success" title="Successes">
+                    {Array.from({length: 3}).map((_, i) => (
+                      <span key={i} className={`death-save-pip ${i < overview.deathSaves.successes ? 'death-save-pip--success' : ''}`} aria-label={i < overview.deathSaves.successes ? 'success' : 'empty'} />
+                    ))}
+                  </span>
+                  <span className="death-saves-sep">·</span>
+                  <span className="death-saves-failure" title="Failures">
+                    {Array.from({length: 3}).map((_, i) => (
+                      <span key={i} className={`death-save-pip ${i < overview.deathSaves.failures ? 'death-save-pip--failure' : ''}`} aria-label={i < overview.deathSaves.failures ? 'failure' : 'empty'} />
+                    ))}
+                  </span>
+                </div>
+              </div>
             </div>
+            {/* Spell slots mini-display */}
+            {Object.keys(overview.spellSlots).length > 0 ? (
+              <div className="spell-slots-summary" aria-label="Spell slots">
+                {Object.entries(overview.spellSlots)
+                  .sort(([a],[b]) => a === 'pact' ? 1 : b === 'pact' ? -1 : Number(a) - Number(b))
+                  .map(([lvl, slot]) => (
+                    <div key={lvl} className="spell-slot-mini">
+                      <span className="spell-slot-mini-label">{lvl === 'pact' ? `Pact` : `L${lvl}`}</span>
+                      <span className="spell-slot-mini-pips">
+                        {Array.from({length: slot.max}).map((_, i) => (
+                          <span key={i} className={`spell-slot-pip spell-slot-pip--sm ${i < slot.used ? 'spell-slot-pip--used' : ''}`} />
+                        ))}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            ) : null}
           </section>
         ) : null}
 
@@ -558,79 +646,13 @@ export default function CharacterPanel({
           ) : null}
 
           <div className="character-panel-main">
-            {!showRoster && !drawerKey && overview ? (
+            {!drawerKey && overview ? (
               <div className="character-overview">
                 <div className="character-overview-header">
                   <div>
                     <div className="character-overview-name">{selected?.name}</div>
-                    <div className="character-overview-subtitle muted">Tap a button above for details</div>
+                    <div className="character-overview-subtitle muted">Level {selected?.level} {selected?.features?.length ? `· ${selected.features.length} features` : ''}</div>
                   </div>
-
-            {Array.isArray((selected as any)?.spellbook) && (selected as any).spellbook.length ? (
-              <div className="character-sheet-card" aria-label="Spellbook" style={{ marginTop: 12 }}>
-                <div className="character-sheet-card-header">
-                  <div className="character-sheet-card-title">Spellbook</div>
-                </div>
-                <div style={{ maxHeight: 260, overflow: 'auto' }}>
-                  <table className="spellbook-table">
-                    <thead>
-                      <tr>
-                        <th className="spellbook-col spellbook-col--prep">Prep</th>
-                        <th className="spellbook-col">Spell</th>
-                        <th className="spellbook-col">Source</th>
-                        <th className="spellbook-col">Save/Atk</th>
-                        <th className="spellbook-col">Time</th>
-                        <th className="spellbook-col">Range</th>
-                        <th className="spellbook-col">Comp</th>
-                        <th className="spellbook-col">Duration</th>
-                        <th className="spellbook-col">Page</th>
-                        <th className="spellbook-col">Notes</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(() => {
-                        const rows: any[] = []
-                        let lastHeader: string | null = null
-                        ;(selected as any).spellbook.slice(0, 120).forEach((spell: any, idx: number) => {
-                          const header = (spell?.header || spell?.slot_header || '').trim()
-                          if (header && header !== lastHeader) {
-                            lastHeader = header
-                            rows.push({ type: 'header', label: header, key: `header-${idx}` })
-                          }
-                          rows.push({ type: 'spell', spell, key: `spellbook-${idx}` })
-                        })
-                        return rows.map((row) => {
-                          if (row.type === 'header') {
-                            return (
-                              <tr key={row.key} className="spellbook-header-row">
-                                <td colSpan={10}>{row.label}</td>
-                              </tr>
-                            )
-                          }
-                          const spell = row.spell
-                          const prepared = String(spell?.prepared || '').toLowerCase()
-                          const isPrepared = ['yes', 'true', '1', 'prepared', 'y'].includes(prepared) || prepared === 'o' || prepared === '○'
-                          return (
-                            <tr key={row.key}>
-                              <td className="spellbook-prep">{isPrepared ? '●' : '○'}</td>
-                              <td className="spellbook-name">{spell?.name || '—'}</td>
-                              <td>{spell?.source || '—'}</td>
-                              <td>{spell?.save_hit || '—'}</td>
-                              <td>{spell?.time || '—'}</td>
-                              <td>{spell?.range || '—'}</td>
-                              <td>{spell?.components || '—'}</td>
-                              <td>{spell?.duration || '—'}</td>
-                              <td>{spell?.page || '—'}</td>
-                              <td>{spell?.notes || '—'}</td>
-                            </tr>
-                          )
-                        })
-                      })()}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ) : null}
                 </div>
 
                 <div className="character-overview-grid">
@@ -669,6 +691,9 @@ export default function CharacterPanel({
                   <div className="character-overview-pill">Features: {overview.featuresCount}</div>
                   <div className="character-overview-pill">Inventory: {overview.inventoryCount}</div>
                   <div className="character-overview-pill">Skills: {overview.skillsCount}</div>
+                  {(selected?.spells?.length ?? 0) > 0 ? (
+                    <div className="character-overview-pill">Spells: {selected!.spells!.length}</div>
+                  ) : null}
                 </div>
               </div>
             ) : null}

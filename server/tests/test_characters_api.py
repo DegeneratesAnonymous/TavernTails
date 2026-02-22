@@ -172,3 +172,55 @@ def test_characters_update_requires_ownership():
         json={"name": "Hacked", "level": 5},
     )
     assert resp_update_other.status_code == 404, resp_update_other.text
+
+
+def test_character_delete_blocked_when_active_in_session():
+    """Character cannot be deleted if it is assigned to any session."""
+    import json
+    import pathlib
+    import uuid
+
+    client = _client()
+    owner = "chars-delete-active@example.com"
+    _ensure_user(owner)
+
+    owner_token = create_access_token(owner)
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+
+    # Create a character
+    resp = client.post(
+        "/characters",
+        headers=owner_headers,
+        json={"name": "Active Hero", "level": 1, "class_name": "Fighter"},
+    )
+    assert resp.status_code == 201, resp.text
+    char_id = resp.json()["character"]["id"]
+
+    # Simulate the character being active in a session by writing a meta.json
+    sessions_base = pathlib.Path(__file__).resolve().parents[1] / "sessions"
+    sessions_base.mkdir(exist_ok=True)
+    fake_session_id = f"test-{uuid.uuid4().hex[:6]}"
+    fake_session_dir = sessions_base / fake_session_id
+    fake_session_dir.mkdir()
+    meta = {
+        "id": fake_session_id,
+        "name": "Test Session",
+        "owner": owner,
+        "members": [{"email": owner, "character_id": char_id, "role": "owner"}],
+    }
+    (fake_session_dir / "meta.json").write_text(json.dumps(meta))
+
+    try:
+        # Deletion should be blocked with 409
+        resp_delete = client.delete(f"/characters/{char_id}", headers=owner_headers)
+        assert resp_delete.status_code == 409, resp_delete.text
+        assert "active" in resp_delete.json().get("detail", "").lower()
+    finally:
+        # Cleanup: remove the fake session and then delete the character
+        import shutil
+        shutil.rmtree(fake_session_dir, ignore_errors=True)
+
+    # Now deletion should succeed
+    resp_delete_ok = client.delete(f"/characters/{char_id}", headers=owner_headers)
+    assert resp_delete_ok.status_code == 200, resp_delete_ok.text
+    assert resp_delete_ok.json().get("ok") is True
