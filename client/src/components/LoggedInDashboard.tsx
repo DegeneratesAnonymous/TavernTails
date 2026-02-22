@@ -68,6 +68,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [characterSettingsOpen, setCharacterSettingsOpen] = useState(false)
   const [characterPanelMode, setCharacterPanelMode] = useState<'summary' | 'spells' | 'features' | 'journal' | 'inventory'>('summary')
   const [selectedSpellRow, setSelectedSpellRow] = useState<any | null>(null)
+  const [showAllFeatures, setShowAllFeatures] = useState(false)
   const [selectedFeatureRow, setSelectedFeatureRow] = useState<any | null>(null)
 
   const SettingsIcon = () => (
@@ -290,6 +291,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       setCharacterPanelMode('summary')
       setSelectedSpellRow(null)
       setSelectedFeatureRow(null)
+      setShowAllFeatures(false)
     }
   }, [selectedCharacter])
 
@@ -344,9 +346,9 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       items: items.slice(0, limit),
       more: Math.max(0, items.length - limit),
     })
-    const summarizeFeatures = (items: Array<{ name: string; source?: string; description?: string }>, limit = 20) => ({
-      items: items.slice(0, limit),
-      more: Math.max(0, items.length - limit),
+    const summarizeFeatures = (items: Array<{ name: string; source?: string; description?: string }>) => ({
+      items,
+      more: 0,
     })
 
     const features = uniqFeatures([
@@ -1408,61 +1410,116 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                           {selectedCharacter ? (
                             (() => {
                               const sheet = (selectedCharacter?.sheet && typeof selectedCharacter.sheet === 'object') ? selectedCharacter.sheet : {}
+                              const spellSlots: Array<{ level: number; used?: number | null; max?: number | null }> = Array.isArray((sheet as any)?.spellSlots) ? (sheet as any).spellSlots : []
                               const spellbook = Array.isArray((sheet as any)?.spellbook) ? (sheet as any).spellbook : []
                               const spellNames = Array.isArray((sheet as any)?.spells) ? (sheet as any).spells : []
                               const rows = spellbook.length
                                 ? spellbook
                                 : spellNames.map((name: any) => ({ name: String(name) }))
-                              if (!rows.length) return <div className="muted">No spells parsed.</div>
-                              let lastHeader: string | null = null
                               return (
-                                <div className="stack" style={{ gap: 4 }}>
-                                  {rows.map((row: any, idx: number) => {
-                                    const header = typeof row?.header === 'string' ? row.header.trim() : ''
-                                    const showHeader = header && header !== lastHeader
-                                    if (header) lastHeader = header
-                                    const isExpanded = selectedSpellRow?.name === row?.name
-                                    const hasDetails = row?.source || row?.time || row?.range || row?.components || row?.duration || row?.save_hit || row?.notes || row?.page
-                                    return (
-                                      <React.Fragment key={`${row?.name || 'spell'}-${idx}`}>
-                                        {showHeader ? (
-                                          <div style={{ fontWeight: 700, fontSize: 12, padding: '6px 0 2px', opacity: 0.8 }}>{header}</div>
-                                        ) : null}
-                                        <button
-                                          type="button"
-                                          className="btn btn-quiet"
-                                          style={{
-                                            textAlign: 'left',
-                                            justifyContent: 'space-between',
-                                            background: isExpanded ? 'rgba(173,136,95,0.20)' : undefined,
-                                            borderRadius: 6,
-                                            padding: '6px 10px',
-                                            fontSize: 13,
-                                          }}
-                                          onClick={() => setSelectedSpellRow(isExpanded ? null : row)}
-                                        >
-                                          <span style={{ fontWeight: 600 }}>{row?.name || '—'}</span>
-                                          {row?.slot_header ? <span className="muted" style={{ fontSize: 11 }}>{row.slot_header}</span> : null}
-                                          <span className="muted" style={{ fontSize: 11 }}>{isExpanded ? '▲' : '▼'}</span>
-                                        </button>
-                                        {isExpanded && hasDetails ? (
-                                          <div className="card card-pad" style={{ fontSize: 12, background: 'rgba(0,0,0,0.15)', marginLeft: 8 }}>
-                                            <div className="row-wrap" style={{ gap: 12 }}>
-                                              {row?.source ? <div><span className="muted">Source:</span> {row.source}</div> : null}
-                                              {row?.save_hit ? <div><span className="muted">Save/Atk:</span> {row.save_hit}</div> : null}
-                                              {row?.time ? <div><span className="muted">Cast Time:</span> {row.time}</div> : null}
-                                              {row?.range ? <div><span className="muted">Range:</span> {row.range}</div> : null}
-                                              {row?.components ? <div><span className="muted">Components:</span> {row.components}</div> : null}
-                                              {row?.duration ? <div><span className="muted">Duration:</span> {row.duration}</div> : null}
-                                              {row?.page ? <div><span className="muted">Page:</span> {row.page}</div> : null}
-                                              {row?.notes ? <div><span className="muted">Notes:</span> {row.notes}</div> : null}
+                                <>
+                                  {spellSlots.length > 0 && (
+                                    <div style={{ marginBottom: 10 }}>
+                                      <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>Spell Slots</div>
+                                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                        {spellSlots.map((slot) => {
+                                          const max = slot.max ?? 0
+                                          const used = slot.used ?? 0
+                                          return (
+                                            <div key={slot.level} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                              <span className="muted" style={{ fontSize: 11, minWidth: 18 }}>L{slot.level}</span>
+                                              {Array.from({ length: max }).map((_, i) => (
+                                                <span
+                                                  key={i}
+                                                  style={{
+                                                    display: 'inline-block',
+                                                    width: 10,
+                                                    height: 10,
+                                                    borderRadius: '50%',
+                                                    border: '1px solid rgba(255,255,255,0.4)',
+                                                    background: i < used ? 'rgba(255,255,255,0.2)' : 'rgba(173,136,95,0.6)',
+                                                  }}
+                                                  title={`Slot ${i + 1}: ${i < used ? 'used' : 'available'}`}
+                                                />
+                                              ))}
+                                              <span className="muted" style={{ fontSize: 11 }}>{used}/{max}</span>
                                             </div>
-                                          </div>
-                                        ) : null}
-                                      </React.Fragment>
-                                    )
-                                  })}
-                                </div>
+                                          )
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {rows.length === 0 ? (
+                                    <div className="muted">No spells parsed.</div>
+                                  ) : (
+                                    (() => {
+                                      let lastHeader: string | null = null
+                                      const groups: Array<{ header: string | null; rows: typeof rows }> = []
+                                      for (const row of rows) {
+                                        const header = typeof row?.header === 'string' ? row.header.trim() : ''
+                                        if (header && header !== lastHeader) {
+                                          groups.push({ header, rows: [row] })
+                                          lastHeader = header
+                                        } else if (groups.length === 0) {
+                                          groups.push({ header: null, rows: [row] })
+                                        } else {
+                                          groups[groups.length - 1].rows.push(row)
+                                        }
+                                      }
+                                      return (
+                                        <div className="stack" style={{ gap: 6 }}>
+                                          {groups.map((group, gi) => (
+                                            <div key={gi}>
+                                              {group.header ? (
+                                                <div style={{ fontWeight: 700, fontSize: 11, padding: '4px 0 4px', opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{group.header}</div>
+                                              ) : null}
+                                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                                                {group.rows.map((row: any, idx: number) => {
+                                                  const isExpanded = selectedSpellRow?.name === row?.name
+                                                  const hasDetails = row?.source || row?.time || row?.range || row?.components || row?.duration || row?.save_hit || row?.notes || row?.page
+                                                  return (
+                                                    <React.Fragment key={`${row?.name || 'spell'}-${idx}`}>
+                                                      <button
+                                                        type="button"
+                                                        className="btn btn-quiet"
+                                                        style={{
+                                                          textAlign: 'left',
+                                                          background: isExpanded ? 'rgba(173,136,95,0.20)' : 'rgba(0,0,0,0.10)',
+                                                          borderRadius: 6,
+                                                          padding: '5px 8px',
+                                                          fontSize: 12,
+                                                          gridColumn: isExpanded ? 'span 2' : undefined,
+                                                        }}
+                                                        onClick={() => setSelectedSpellRow(isExpanded ? null : row)}
+                                                      >
+                                                        <span style={{ fontWeight: 600, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row?.name || '—'}</span>
+                                                        {row?.slot_header ? <span className="muted" style={{ fontSize: 10 }}>{row.slot_header}</span> : null}
+                                                      </button>
+                                                      {isExpanded && hasDetails ? (
+                                                        <div className="card card-pad" style={{ fontSize: 12, background: 'rgba(0,0,0,0.15)', gridColumn: 'span 2', marginLeft: 0 }}>
+                                                          <div className="row-wrap" style={{ gap: 10, flexWrap: 'wrap' }}>
+                                                            {row?.source ? <div><span className="muted">Source:</span> {row.source}</div> : null}
+                                                            {row?.save_hit ? <div><span className="muted">Save/Atk:</span> {row.save_hit}</div> : null}
+                                                            {row?.time ? <div><span className="muted">Cast Time:</span> {row.time}</div> : null}
+                                                            {row?.range ? <div><span className="muted">Range:</span> {row.range}</div> : null}
+                                                            {row?.components ? <div><span className="muted">Components:</span> {row.components}</div> : null}
+                                                            {row?.duration ? <div><span className="muted">Duration:</span> {row.duration}</div> : null}
+                                                            {row?.page ? <div><span className="muted">Page:</span> {row.page}</div> : null}
+                                                            {row?.notes ? <div style={{ width: '100%' }}><span className="muted">Notes:</span> {row.notes}</div> : null}
+                                                          </div>
+                                                        </div>
+                                                      ) : null}
+                                                    </React.Fragment>
+                                                  )
+                                                })}
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )
+                                    })()
+                                  )}
+                                </>
                               )
                             })()
                           ) : (
@@ -1479,42 +1536,66 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                           {selectedSheetSummary ? (
                             <>
                               {selectedSheetSummary.features.items.length ? (
-                                <div className="stack" style={{ gap: 4 }}>
-                                  {selectedSheetSummary.features.items.map((f, idx) => {
-                                    const isExpanded = selectedFeatureRow?.name === f.name
-                                    const hasDetails = Boolean(f.description || f.source)
-                                    return (
-                                      <React.Fragment key={`${f.name}-${idx}`}>
+                                (() => {
+                                  const FEATURE_LIMIT = 15
+                                  const allItems = selectedSheetSummary.features.items
+                                  const visibleItems = showAllFeatures ? allItems : allItems.slice(0, FEATURE_LIMIT)
+                                  const hiddenCount = allItems.length - visibleItems.length
+                                  return (
+                                    <div className="stack" style={{ gap: 4 }}>
+                                      {visibleItems.map((f, idx) => {
+                                        const isExpanded = selectedFeatureRow?.name === f.name
+                                        const hasDetails = Boolean(f.description || f.source)
+                                        return (
+                                          <React.Fragment key={`${f.name}-${idx}`}>
+                                            <button
+                                              type="button"
+                                              className="btn btn-quiet"
+                                              style={{
+                                                textAlign: 'left',
+                                                justifyContent: 'space-between',
+                                                background: isExpanded ? 'rgba(173,136,95,0.20)' : undefined,
+                                                borderRadius: 6,
+                                                padding: '6px 10px',
+                                                fontSize: 13,
+                                              }}
+                                              onClick={() => setSelectedFeatureRow(isExpanded ? null : f)}
+                                            >
+                                              <span style={{ fontWeight: 600 }}>{f.name}</span>
+                                              {f.source ? <span className="muted" style={{ fontSize: 11 }}>{f.source}</span> : null}
+                                              {hasDetails ? <span className="muted" style={{ fontSize: 11 }}>{isExpanded ? '▲' : '▼'}</span> : null}
+                                            </button>
+                                            {isExpanded && hasDetails ? (
+                                              <div className="card card-pad" style={{ fontSize: 12, background: 'rgba(0,0,0,0.15)', marginLeft: 8 }}>
+                                                {f.source ? <div><span className="muted">Source:</span> {f.source}</div> : null}
+                                                {f.description ? <div style={{ marginTop: f.source ? 4 : 0, lineHeight: 1.5 }}>{f.description}</div> : null}
+                                              </div>
+                                            ) : null}
+                                          </React.Fragment>
+                                        )
+                                      })}
+                                      {hiddenCount > 0 ? (
                                         <button
                                           type="button"
                                           className="btn btn-quiet"
-                                          style={{
-                                            textAlign: 'left',
-                                            justifyContent: 'space-between',
-                                            background: isExpanded ? 'rgba(173,136,95,0.20)' : undefined,
-                                            borderRadius: 6,
-                                            padding: '6px 10px',
-                                            fontSize: 13,
-                                          }}
-                                          onClick={() => setSelectedFeatureRow(isExpanded ? null : f)}
+                                          style={{ fontSize: 12, padding: '4px 10px', color: 'var(--tt-accent, #c084fc)' }}
+                                          onClick={() => setShowAllFeatures(true)}
                                         >
-                                          <span style={{ fontWeight: 600 }}>{f.name}</span>
-                                          {f.source ? <span className="muted" style={{ fontSize: 11 }}>{f.source}</span> : null}
-                                          {hasDetails ? <span className="muted" style={{ fontSize: 11 }}>{isExpanded ? '▲' : '▼'}</span> : null}
+                                          + {hiddenCount} more — Show all
                                         </button>
-                                        {isExpanded && hasDetails ? (
-                                          <div className="card card-pad" style={{ fontSize: 12, background: 'rgba(0,0,0,0.15)', marginLeft: 8 }}>
-                                            {f.source ? <div><span className="muted">Source:</span> {f.source}</div> : null}
-                                            {f.description ? <div style={{ marginTop: f.source ? 4 : 0, lineHeight: 1.5 }}>{f.description}</div> : null}
-                                          </div>
-                                        ) : null}
-                                      </React.Fragment>
-                                    )
-                                  })}
-                                  {selectedSheetSummary.features.more ? (
-                                    <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>+ {selectedSheetSummary.features.more} more</div>
-                                  ) : null}
-                                </div>
+                                      ) : allItems.length > FEATURE_LIMIT ? (
+                                        <button
+                                          type="button"
+                                          className="btn btn-quiet"
+                                          style={{ fontSize: 12, padding: '4px 10px', color: 'var(--tt-accent, #c084fc)' }}
+                                          onClick={() => setShowAllFeatures(false)}
+                                        >
+                                          ▲ Show less
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                  )
+                                })()
                               ) : (
                                 <div className="muted">No features parsed.</div>
                               )}
