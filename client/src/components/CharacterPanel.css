@@ -192,11 +192,11 @@
   border-radius: 12px;
   background: rgba(71,66,61,0.45);
   border: 1px solid var(--tt-border);
-  display: grid;
-  grid-template-columns: 1fr auto;
-  grid-template-rows: auto auto;
-  gap: 6px 8px;
-  align-items: baseline;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -251,15 +251,16 @@
 }
 
 .character-ability-tile .character-ability-mod{
-  justify-self: end;
   padding: 2px 8px;
+  width: 100%;
+  text-align: center;
 }
 
 .character-ability-tile .character-ability-score{
-  grid-column: 1 / -1;
   font-size: 12px;
   font-weight: 750;
   color: rgba(255,255,255,0.72);
+  text-align: center;
 }
 
 .character-sheet-grid{
