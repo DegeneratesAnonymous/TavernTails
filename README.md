@@ -50,6 +50,33 @@ This project is a web application for solo tabletop RPG play, featuring an AI Ga
 ## Getting Started
 
 ![CI](https://github.com/DegeneratesAnonymous/TavernTails/actions/workflows/ci.yml/badge.svg)
+![Staging](https://github.com/DegeneratesAnonymous/TavernTails/actions/workflows/deploy-staging.yml/badge.svg)
+
+### Live staging / preview (Docker)
+
+Every merge to `main` or `develop` automatically builds a Docker image and
+pushes it to GitHub Container Registry. You can pull and run it anywhere:
+
+```bash
+# Run the latest main-branch build
+docker run -d \
+  --name taverntails-staging \
+  -p 8000:8000 \
+  -v taverntails_data:/app/data \
+  -e TAVERNTAILS_SECRET="change-me" \
+  ghcr.io/degeneratesanonymous/taverntails:latest
+# → open http://localhost:8000  (login: test@example.com / secret)
+```
+
+Or use Docker Compose (builds from source):
+
+```bash
+export TAVERNTAILS_SECRET="change-me"
+docker compose up --build
+```
+
+For full instructions — including how to enable automatic SSH re-deploys to a
+staging server — see **[docs/STAGING.md](docs/STAGING.md)**.
 
 ### Quick Start (Recommended)
 
