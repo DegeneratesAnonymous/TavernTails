@@ -16,6 +16,10 @@ import PageHeader from './ui/PageHeader'
 import EmptyState from './ui/EmptyState'
 import Modal from './ui/Modal'
 
+// Container category names that should not appear as individual features
+const FEATURE_CATEGORY_PATTERN = /\b(features|abilities|traits|proficiencies)\s*$/i
+const FEATURE_SKIP_NAMES = new Set(['proficiencies', 'features', 'traits', 'abilities', 'other proficiencies & languages', 'other proficiencies and languages'])
+
 type Props = {
   profile: any;
   onLogout: () => void;
@@ -321,11 +325,24 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       if (!Array.isArray(value)) return []
       return value
         .map((v) => {
-          if (typeof v === 'string') return { name: v.trim() }
+          if (typeof v === 'string') {
+            const name = v.trim()
+            if (!name) return null
+            const lower = name.toLowerCase()
+            // Skip bare container category names with no real feature info
+            if (FEATURE_SKIP_NAMES.has(lower)) return null
+            if (FEATURE_CATEGORY_PATTERN.test(name) && !name.includes(':')) return null
+            return { name }
+          }
           if (v && typeof v === 'object') {
             const name = String(v.name || '').trim()
             if (!name) return null
-            return { name, source: v.source ? String(v.source) : undefined, description: v.description ? String(v.description) : undefined }
+            const lower = name.toLowerCase()
+            const desc = v.description ? String(v.description) : undefined
+            if (FEATURE_SKIP_NAMES.has(lower)) return null
+            // Filter container category names only when they have no description
+            if (!desc && FEATURE_CATEGORY_PATTERN.test(name) && !name.includes(':')) return null
+            return { name, source: v.source ? String(v.source) : undefined, description: desc }
           }
           return null
         })
@@ -2023,6 +2040,41 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                 No documents uploaded yet.
               </div>
             </div>
+            {campaigns.length > 0 && (
+              <div className="card card-pad" style={{ background: 'var(--surface-dark)' }}>
+                <div style={{ fontWeight: 700, marginBottom: 8 }}>Campaign Documents</div>
+                <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
+                  Documents organized by campaign.
+                </div>
+                <div className="stack" style={{ gap: 8 }}>
+                  {campaigns.map((c) => (
+                    <div key={c.id} className="card card-pad" style={{ background: 'rgba(71,66,61,0.5)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontWeight: 600 }}>{c.name}</div>
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          type="button"
+                          onClick={() => {
+                            setActiveCampaignId(String(c.id))
+                            const sessions = Array.isArray(c.sessions) ? c.sessions : []
+                            if (sessions.length > 0) setActiveSession(String(sessions[0].id))
+                            setView('gameplay')
+                            setTimeout(() => {
+                              window.dispatchEvent(new CustomEvent('gameplay:open-documents'))
+                            }, 200)
+                          }}
+                        >
+                          View Docs
+                        </button>
+                      </div>
+                      <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                        {Array.isArray(c.sessions) ? c.sessions.length : 0} session{(Array.isArray(c.sessions) ? c.sessions.length : 0) !== 1 ? 's' : ''}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {characters.length > 0 && (
               <div className="card card-pad" style={{ background: 'var(--surface-dark)' }}>
                 <div style={{ fontWeight: 700, marginBottom: 8 }}>Character Documents</div>
@@ -2667,7 +2719,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                     ? Number(quickstartSelectedCharId)
                     : null
                   setShowQuickstartSetup(false)
-                  await quickstartPlaytest({ campaignName: name, charId: Number.isFinite(charId) ? charId : null })
+                  await quickstartPlaytest({ campaignName: name, charId })
                   setView('gameplay')
                 }}
               >
