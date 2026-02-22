@@ -12,7 +12,7 @@ from sqlmodel import Field, Session, SQLModel, create_engine, select
 # If you want bcrypt/argon2 in production, add those schemes and verify backend availability.
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
-DATABASE_URL = "sqlite:///./taverntails.db"
+DATABASE_URL = os.environ.get("TAVERNTAILS_DATABASE_URL", "sqlite:///./taverntails.db")
 engine = create_engine(DATABASE_URL, echo=False)
 
 class User(SQLModel, table=True):

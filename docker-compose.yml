@@ -1,0 +1,44 @@
+version: "3.9"
+
+# ── TavernTAIls — local / staging stack ──────────────────────────────────────
+# Usage:
+#   docker compose up --build          # build image from source and start
+#   docker compose up                  # start with cached image
+#   docker compose down -v             # stop and wipe persistent data
+#
+# Required environment variables (set in a .env file or export before running):
+#   TAVERNTAILS_SECRET  — JWT signing secret (required for auth; any random string)
+#
+# Optional environment variables:
+#   OPENAI_API_KEY      — enables AI agent features
+#   TAVERNTAILS_SEED_DEV_USER=0  — disable the default test@example.com seed user
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: taverntails:local
+    ports:
+      - "8000:8000"
+    environment:
+      # Persist data between restarts in the named volume below
+      TAVERNTAILS_DATABASE_URL: sqlite:////app/data/taverntails.db
+      # Override the default dev-only JWT secret in real deployments
+      TAVERNTAILS_SECRET: ${TAVERNTAILS_SECRET:-dev-secret-change-me}
+      # Optional: provide your OpenAI key to enable AI agent features
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      # Persist the SQLite database across container restarts
+      - app_data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  app_data:
+    driver: local
