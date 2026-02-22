@@ -47,6 +47,14 @@ type Campaign = {
   description?: string | null
 }
 
+type Character = {
+  id: number
+  name: string
+  class_name?: string | null
+  level?: number
+  sheet?: any
+}
+
 type CampaignSettings = {
   world_name: string
   setting_summary: string
@@ -88,6 +96,7 @@ type Props = {
   activeCampaignId: string | null
   activeCampaign: Campaign | null
   campaigns: Campaign[]
+  characters?: Character[]
   onSelectCampaign: (id: string | null) => void
   onCampaignUpdated: () => Promise<void> | void
   onCreateCampaign: () => void
@@ -133,6 +142,7 @@ export default function CampaignSetupView({
   activeCampaignId,
   activeCampaign,
   campaigns,
+  characters = [],
   onSelectCampaign,
   onCampaignUpdated,
   onCreateCampaign,
@@ -536,6 +546,9 @@ export default function CampaignSetupView({
               <div className="stack" style={{ gap: 10 }}>
                 {sortedCampaigns.map((campaign) => {
                   const isActive = String(campaign.id) === String(activeCampaignId)
+                  const associatedChars = characters.filter(
+                    (c) => c?.sheet?.associations?.campaign_id === String(campaign.id)
+                  )
                   return (
                     <div
                       key={campaign.id}
@@ -554,6 +567,15 @@ export default function CampaignSetupView({
                           {campaign.description ? (
                             <div className="muted" style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {campaign.description}
+                            </div>
+                          ) : null}
+                          {associatedChars.length > 0 ? (
+                            <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                              {associatedChars.map((c) => (
+                                <span key={c.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginRight: 8 }}>
+                                  🧙 {c.name}{c.class_name ? ` (${c.class_name})` : ''}{c.level ? ` L${c.level}` : ''}
+                                </span>
+                              ))}
                             </div>
                           ) : null}
                           {isActive ? <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>Selected</div> : null}

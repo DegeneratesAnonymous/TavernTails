@@ -74,6 +74,9 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [selectedSpellRow, setSelectedSpellRow] = useState<any | null>(null)
   const [showAllFeatures, setShowAllFeatures] = useState(false)
   const [selectedFeatureRow, setSelectedFeatureRow] = useState<any | null>(null)
+  const [showAllSummaryInventory, setShowAllSummaryInventory] = useState(false)
+  const [showAllSummarySkills, setShowAllSummarySkills] = useState(false)
+  const [showAllInventoryPanel, setShowAllInventoryPanel] = useState(false)
 
   const SettingsIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="btn-icon">
@@ -305,6 +308,9 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       setSelectedSpellRow(null)
       setSelectedFeatureRow(null)
       setShowAllFeatures(false)
+      setShowAllSummaryInventory(false)
+      setShowAllSummarySkills(false)
+      setShowAllInventoryPanel(false)
     }
   }, [selectedCharacter])
 
@@ -370,6 +376,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     }
     const summarize = (items: string[], limit = 8) => ({
       items: items.slice(0, limit),
+      all: items,
       more: Math.max(0, items.length - limit),
     })
     const summarizeFeatures = (items: Array<{ name: string; source?: string; description?: string }>) => ({
@@ -377,12 +384,37 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       more: 0,
     })
 
-    const features = uniqFeatures([
-      ...toFeatureList((sheet as any)?.classFeatures),
-      ...toFeatureList((sheet as any)?.racialFeatures),
+    const classFeatures = uniqFeatures(toFeatureList((sheet as any)?.classFeatures))
+    const racialFeatures = uniqFeatures(toFeatureList((sheet as any)?.racialFeatures))
+    const otherFeaturesSrc = uniqFeatures([
       ...toFeatureList((sheet as any)?.otherFeatures),
       ...toFeatureList(sheet?.features),
     ])
+    // Deduplicate: remove items already in class/racial
+    const classOrRaceNames = new Set([...classFeatures.map(f => f.name), ...racialFeatures.map(f => f.name)])
+    const otherFeatures = otherFeaturesSrc.filter(f => !classOrRaceNames.has(f.name))
+
+    // Group class features by source (class name) if source info is available
+    const classFeatureGroups: Array<{ label: string; items: Array<{ name: string; source?: string; description?: string }> }> = []
+    const classFeaturesBySource = new Map<string, Array<{ name: string; source?: string; description?: string }>>()
+    for (const f of classFeatures) {
+      const src = f.source || 'Class Features'
+      if (!classFeaturesBySource.has(src)) classFeaturesBySource.set(src, [])
+      classFeaturesBySource.get(src)!.push(f)
+    }
+    if (classFeaturesBySource.size > 1) {
+      classFeaturesBySource.forEach((items, label) => classFeatureGroups.push({ label, items }))
+    } else if (classFeatures.length) {
+      classFeatureGroups.push({ label: 'Class Features', items: classFeatures })
+    }
+
+    const featureGroups: Array<{ label: string; items: Array<{ name: string; source?: string; description?: string }> }> = [
+      ...classFeatureGroups,
+      ...(racialFeatures.length ? [{ label: 'Racial / Species Features', items: racialFeatures }] : []),
+      ...(otherFeatures.length ? [{ label: 'Other Features', items: otherFeatures }] : []),
+    ]
+    const allFeaturesFlat = uniqFeatures([...classFeatures, ...racialFeatures, ...otherFeatures])
+
     const spells = uniq(toList(sheet?.spells))
     const inventory = uniq(toList(sheet?.inventory))
     const skills = uniq(toList(sheet?.skills))
@@ -415,7 +447,8 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       hpMax,
       hpTemp,
       ac,
-      features: summarizeFeatures(features),
+      features: summarizeFeatures(allFeaturesFlat),
+      featureGroups,
       spells: summarize(spells, 10),
       inventory: summarize(inventory, 8),
       skills: summarize(skills, 8),
@@ -1179,6 +1212,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             activeCampaignId={activeCampaignId}
             activeCampaign={activeCampaign}
             campaigns={campaigns}
+            characters={characters}
             onSelectCampaign={handleSetActiveCampaignId}
             onCampaignUpdated={fetchCampaigns}
             onCreateCampaign={() => setShowCreateModal(true)}
@@ -1388,26 +1422,38 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                                 <div className="muted" style={{ marginBottom: 6 }}>Inventory</div>
                                 {selectedSheetSummary.inventory.items.length ? (
                                   <ul style={{ margin: 0, paddingLeft: 18 }}>
-                                    {selectedSheetSummary.inventory.items.map((i) => <li key={i}>{i}</li>)}
+                                    {(showAllSummaryInventory ? selectedSheetSummary.inventory.all : selectedSheetSummary.inventory.items).map((i) => <li key={i}>{i}</li>)}
                                   </ul>
                                 ) : (
                                   <div className="muted">No inventory listed.</div>
                                 )}
-                                {selectedSheetSummary.inventory.more ? (
-                                  <div className="muted" style={{ marginTop: 6 }}>+ {selectedSheetSummary.inventory.more} more</div>
+                                {!showAllSummaryInventory && selectedSheetSummary.inventory.more > 0 ? (
+                                  <button className="btn btn-quiet" style={{ fontSize: 12, marginTop: 6, padding: '2px 0', color: 'var(--tt-accent, #c084fc)' }} onClick={() => setShowAllSummaryInventory(true)}>
+                                    + {selectedSheetSummary.inventory.more} more — Show all
+                                  </button>
+                                ) : showAllSummaryInventory && selectedSheetSummary.inventory.more > 0 ? (
+                                  <button className="btn btn-quiet" style={{ fontSize: 12, marginTop: 6, padding: '2px 0', color: 'var(--tt-accent, #c084fc)' }} onClick={() => setShowAllSummaryInventory(false)}>
+                                    ▲ Show less
+                                  </button>
                                 ) : null}
                               </div>
                               <div className="card card-pad characters-subcard" style={{ flex: '1 1 220px' }}>
                                 <div className="muted" style={{ marginBottom: 6 }}>Skills</div>
                                 {selectedSheetSummary.skills.items.length ? (
                                   <ul style={{ margin: 0, paddingLeft: 18 }}>
-                                    {selectedSheetSummary.skills.items.map((s) => <li key={s}>{s}</li>)}
+                                    {(showAllSummarySkills ? selectedSheetSummary.skills.all : selectedSheetSummary.skills.items).map((s) => <li key={s}>{s}</li>)}
                                   </ul>
                                 ) : (
                                   <div className="muted">No skills listed.</div>
                                 )}
-                                {selectedSheetSummary.skills.more ? (
-                                  <div className="muted" style={{ marginTop: 6 }}>+ {selectedSheetSummary.skills.more} more</div>
+                                {!showAllSummarySkills && selectedSheetSummary.skills.more > 0 ? (
+                                  <button className="btn btn-quiet" style={{ fontSize: 12, marginTop: 6, padding: '2px 0', color: 'var(--tt-accent, #c084fc)' }} onClick={() => setShowAllSummarySkills(true)}>
+                                    + {selectedSheetSummary.skills.more} more — Show all
+                                  </button>
+                                ) : showAllSummarySkills && selectedSheetSummary.skills.more > 0 ? (
+                                  <button className="btn btn-quiet" style={{ fontSize: 12, marginTop: 6, padding: '2px 0', color: 'var(--tt-accent, #c084fc)' }} onClick={() => setShowAllSummarySkills(false)}>
+                                    ▲ Show less
+                                  </button>
                                 ) : null}
                               </div>
                             </div>
@@ -1561,43 +1607,55 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                           </div>
                           {selectedSheetSummary ? (
                             <>
-                              {selectedSheetSummary.features.items.length ? (
+                              {selectedSheetSummary.featureGroups.length > 0 ? (
                                 (() => {
                                   const FEATURE_LIMIT = 15
                                   const allItems = selectedSheetSummary.features.items
                                   const visibleItems = showAllFeatures ? allItems : allItems.slice(0, FEATURE_LIMIT)
                                   const hiddenCount = allItems.length - visibleItems.length
+                                  const visibleNames = new Set(visibleItems.map(f => f.name))
                                   return (
-                                    <div className="stack" style={{ gap: 4 }}>
-                                      {visibleItems.map((f, idx) => {
-                                        const isExpanded = selectedFeatureRow?.name === f.name
-                                        const hasDetails = Boolean(f.description || f.source)
+                                    <div className="stack" style={{ gap: 8 }}>
+                                      {selectedSheetSummary.featureGroups.map((group, gi) => {
+                                        const groupItems = showAllFeatures
+                                          ? group.items
+                                          : group.items.filter(f => visibleNames.has(f.name))
+                                        if (!groupItems.length) return null
                                         return (
-                                          <React.Fragment key={`${f.name}-${idx}`}>
-                                            <button
-                                              type="button"
-                                              className="btn btn-quiet"
-                                              style={{
-                                                textAlign: 'left',
-                                                justifyContent: 'space-between',
-                                                background: isExpanded ? 'rgba(173,136,95,0.20)' : undefined,
-                                                borderRadius: 6,
-                                                padding: '6px 10px',
-                                                fontSize: 13,
-                                              }}
-                                              onClick={() => setSelectedFeatureRow(isExpanded ? null : f)}
-                                            >
-                                              <span style={{ fontWeight: 600 }}>{f.name}</span>
-                                              {f.source ? <span className="muted" style={{ fontSize: 11 }}>{f.source}</span> : null}
-                                              {hasDetails ? <span className="muted" style={{ fontSize: 11 }}>{isExpanded ? '▲' : '▼'}</span> : null}
-                                            </button>
-                                            {isExpanded && hasDetails ? (
-                                              <div className="card card-pad" style={{ fontSize: 12, background: 'rgba(0,0,0,0.15)', marginLeft: 8 }}>
-                                                {f.source ? <div><span className="muted">Source:</span> {f.source}</div> : null}
-                                                {f.description ? <div style={{ marginTop: f.source ? 4 : 0, lineHeight: 1.5 }}>{f.description}</div> : null}
-                                              </div>
-                                            ) : null}
-                                          </React.Fragment>
+                                          <div key={`group-${gi}`}>
+                                            <div style={{ fontWeight: 700, fontSize: 11, padding: '4px 0 4px', opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{group.label}</div>
+                                            <div className="stack" style={{ gap: 4 }}>
+                                              {groupItems.map((f, idx) => {
+                                                const isExpanded = selectedFeatureRow?.name === f.name
+                                                const hasDetails = Boolean(f.description || f.source)
+                                                return (
+                                                  <React.Fragment key={`${f.name}-${idx}`}>
+                                                    <button
+                                                      type="button"
+                                                      className="btn btn-quiet"
+                                                      style={{
+                                                        textAlign: 'left',
+                                                        justifyContent: 'space-between',
+                                                        background: isExpanded ? 'rgba(173,136,95,0.20)' : undefined,
+                                                        borderRadius: 6,
+                                                        padding: '6px 10px',
+                                                        fontSize: 13,
+                                                      }}
+                                                      onClick={() => setSelectedFeatureRow(isExpanded ? null : f)}
+                                                    >
+                                                      <span style={{ fontWeight: 600 }}>{f.name}</span>
+                                                      {hasDetails ? <span className="muted" style={{ fontSize: 11 }}>{isExpanded ? '▲' : '▼'}</span> : null}
+                                                    </button>
+                                                    {isExpanded && hasDetails ? (
+                                                      <div className="card card-pad" style={{ fontSize: 12, background: 'rgba(0,0,0,0.15)', marginLeft: 8 }}>
+                                                        {f.description ? <div style={{ lineHeight: 1.5 }}>{f.description}</div> : null}
+                                                      </div>
+                                                    ) : null}
+                                                  </React.Fragment>
+                                                )
+                                              })}
+                                            </div>
+                                          </div>
                                         )
                                       })}
                                       {hiddenCount > 0 ? (
@@ -1638,16 +1696,22 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                             <button className="btn btn-secondary btn-sm" type="button" disabled>+ Add Item</button>
                           </div>
                           {selectedSheetSummary ? (
-                            selectedSheetSummary.inventory.items.length ? (
+                            selectedSheetSummary.inventory.all.length ? (
                               <div className="stack" style={{ gap: 4 }}>
-                                {selectedSheetSummary.inventory.items.map((item) => (
+                                {(showAllInventoryPanel ? selectedSheetSummary.inventory.all : selectedSheetSummary.inventory.items).map((item) => (
                                   <div key={item} className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', padding: '5px 8px', background: 'rgba(0,0,0,0.12)', borderRadius: 6, fontSize: 13 }}>
                                     <span>{item}</span>
                                     <button className="btn btn-quiet btn-sm" type="button" disabled style={{ opacity: 0.5, fontSize: 11 }}>✕</button>
                                   </div>
                                 ))}
-                                {selectedSheetSummary.inventory.more ? (
-                                  <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>+ {selectedSheetSummary.inventory.more} more items</div>
+                                {!showAllInventoryPanel && selectedSheetSummary.inventory.more > 0 ? (
+                                  <button className="btn btn-quiet" style={{ fontSize: 12, padding: '4px 10px', color: 'var(--tt-accent, #c084fc)' }} onClick={() => setShowAllInventoryPanel(true)}>
+                                    + {selectedSheetSummary.inventory.more} more items — Show all
+                                  </button>
+                                ) : showAllInventoryPanel && selectedSheetSummary.inventory.more > 0 ? (
+                                  <button className="btn btn-quiet" style={{ fontSize: 12, padding: '4px 10px', color: 'var(--tt-accent, #c084fc)' }} onClick={() => setShowAllInventoryPanel(false)}>
+                                    ▲ Show less
+                                  </button>
                                 ) : null}
                               </div>
                             ) : (

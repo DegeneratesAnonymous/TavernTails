@@ -174,8 +174,8 @@ def test_characters_update_requires_ownership():
     assert resp_update_other.status_code == 404, resp_update_other.text
 
 
-def test_character_delete_blocked_when_active_in_session():
-    """Character cannot be deleted if it is assigned to any session."""
+def test_character_delete_unassigns_from_session():
+    """Deleting a character automatically removes it from active sessions."""
     import json
     import pathlib
     import uuid
@@ -211,16 +211,14 @@ def test_character_delete_blocked_when_active_in_session():
     (fake_session_dir / "meta.json").write_text(json.dumps(meta))
 
     try:
-        # Deletion should be blocked with 409
+        # Deletion should now succeed — character is unassigned from sessions first
         resp_delete = client.delete(f"/characters/{char_id}", headers=owner_headers)
-        assert resp_delete.status_code == 409, resp_delete.text
-        assert "active" in resp_delete.json().get("detail", "").lower()
+        assert resp_delete.status_code == 200, resp_delete.text
+        assert resp_delete.json().get("ok") is True
+
+        # The session meta should have the character_id cleared
+        updated_meta = json.loads((fake_session_dir / "meta.json").read_text())
+        assert updated_meta["members"][0]["character_id"] is None
     finally:
-        # Cleanup: remove the fake session and then delete the character
         import shutil
         shutil.rmtree(fake_session_dir, ignore_errors=True)
-
-    # Now deletion should succeed
-    resp_delete_ok = client.delete(f"/characters/{char_id}", headers=owner_headers)
-    assert resp_delete_ok.status_code == 200, resp_delete_ok.text
-    assert resp_delete_ok.json().get("ok") is True
