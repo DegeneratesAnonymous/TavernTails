@@ -1,56 +1,156 @@
 # TavernTAIls — AI GM Web App
 
-This project is a web application for solo tabletop RPG play, featuring an AI Game Master. It uses React (TypeScript) for the frontend and FastAPI (Python) for the backend. The app is designed to support agent-based AI modules for:
+![CI](https://github.com/DegeneratesAnonymous/TavernTails/actions/workflows/ci.yml/badge.svg)
+![Staging](https://github.com/DegeneratesAnonymous/TavernTails/actions/workflows/deploy-staging.yml/badge.svg)
 
-- Scene analysis (dice rolls)
-- Scene image generation
-- Campaign storyboard management
-- Narrative generation
-- Session note-taking
-- NPC/enemy management
+## What is TavernTAIls?
 
-## Structure
-- `client/` — React frontend
-- `server/` — FastAPI backend
+**TavernTAIls** is a web-based AI Game Master companion for tabletop RPGs. It is designed for solo players, small async groups, and GM-builders who want a persistent, organized play environment — with or without AI narration.
 
-## Screenshots
+When you open TavernTAIls you get a full campaign hub: create characters, spin up campaigns, upload session documents, invite friends, and then actually play — all from your browser. During a session the app keeps a live chat log, handles inline dice rolls (type `1d20+3` right in the chat), displays an AI-generated scene image, and surfaces your character sheet and journal without switching tabs.
+
+**AI is additive, not required.** A group can run their own session while TavernTAIls automatically organizes notes, tracks NPCs, and logs every roll. When AI is enabled a suite of cooperating agents handles narration, scene analysis, NPC profiles, storyboard continuity, session recaps, and scene imagery.
+
+### Who is it for?
+
+| Persona | How they use TavernTAIls |
+|---|---|
+| **Solo Adventurer** | Guided journaling + AI narration for one player |
+| **Async Party** | 2–4 friends across time zones; persistent chat & session logs keep everyone in sync |
+| **GM-Builder** | Hosts who customize prompts, upload documents, and manage NPCs without running everything manually |
+| **Group DM** | A player-run table that wants automated notes and NPC tracking without AI narration |
+
+### The AI agents (background)
+
+Behind the scenes, six AI agents collaborate to run a session:
+
+| Agent | What it does |
+|---|---|
+| **Narrative** | Drives gameplay, generates scene narration, manages turn order |
+| **Scene Analysis** | Detects when dice rolls are needed, enforces rules, prompts for player actions |
+| **NPC / Enemy Manager** | Profiles NPCs and enemies, tracks stats, motivations, and initiative |
+| **Storyboard** | Tracks campaign progress, scene branching paths, and unresolved threads |
+| **Notes** | Logs session notes and recaps; responds to `!notes` in chat |
+| **Image Generation** | Creates AI-generated scene images for immersion |
+
+---
+
+## How It Works — User Flow
+
+Here is the typical journey from first visit to active play:
+
+1. **Landing page** → Read what the app does; click **Sign In** or **Create Account**.
+2. **Sign up / Login** → Create a free account with email and password, or use the dev shortcut locally.
+3. **Dashboard** → Your home base after login. Pick an action: start a new game, load a saved campaign, manage characters, configure campaigns, explore world lore, or read guides.
+4. **Characters** → Create your character from scratch or import one from a JSON export / D&D Beyond link. Characters travel with you across campaigns.
+5. **Campaigns** → Create and manage campaigns. Each campaign stores its own players, uploaded documents, NPC index, and session history.
+6. **Campaign Settings** → As a host, configure who can join, attach reference documents, and set AI options.
+7. **Gameplay / Session View** → The main play screen. The left panel shows the current scene image and scene title. The right panel gives you **Chat** (messages + dice rolls), **Character** (your sheet), and **Journal** (session notes). Type a message or roll dice inline, then press Send.
+
+---
+
+## App Pages — Screenshot Tour
 
 > Screenshots are automatically updated whenever code is merged to `main` via the [screenshot-update](.github/workflows/screenshot-update.yml) workflow.
 
-### Landing page
+### 1 · Landing Page
+
 ![Landing page](docs/screenshots/01-landing.png)
 
-### Login
+The public home page — the first thing any visitor sees. The headline ("Story-first AI GM, built for real tables") explains the product pitch. Below it are six shortcut tiles so returning users can jump directly to **Start New Game**, **Load a Game**, **Manage Characters**, **Manage Campaigns**, **Explore**, or **Guides**. The **Sign In** and **Create Account** buttons in the hero area are the primary call-to-action for new visitors.
+
+---
+
+### 2 · Login
+
 ![Login](docs/screenshots/02-login.png)
 
-### Sign up
+A minimal login form with Email and Password fields. The **Sign up** button takes you to account creation. In local development a **"Use dev login"** button auto-fills `test@example.com / secret` so you can get into the app without typing credentials every time.
+
+---
+
+### 3 · Sign Up
+
 ![Sign up](docs/screenshots/03-signup.png)
 
-### Dashboard home
+Account creation form. Enter a username, email address, and password to register. After sign-up, email verification is required before full access is granted. In dev mode both email verification and credential entry are bypassed automatically.
+
+---
+
+### 4 · Dashboard
+
 ![Dashboard home](docs/screenshots/04-dashboard.png)
 
-### Characters
+The authenticated home screen. Greets you by name ("Welcome, tester") and presents the same six quick-action tiles as the landing page, but now scoped to your account data:
+
+- **Start New Game** – Create a fresh campaign and jump into your adventure.
+- **Load a Game** – Continue from one of your existing campaigns.
+- **Manage Characters** – View, create, and import characters.
+- **Manage Campaigns** – Configure campaigns, players, and documents.
+- **Explore** – Browse lore and world details discovered in your campaigns.
+- **Guides** – Best practices and help for all TavernTAIls tools.
+
+---
+
+### 5 · Characters
+
 ![Characters](docs/screenshots/05-characters.png)
 
-### Import character
+Your character roster. The page lists every character attached to your account with options to **Create Character** (build from scratch) or **Import** (from a JSON export or D&D Beyond link). When you have characters, each card shows the character's key stats and lets you select one as the active character for an upcoming session.
+
+---
+
+### 6 · Import Character
+
 ![Import character](docs/screenshots/06-import-character.png)
 
-### Manage campaigns
+The character import wizard. Paste in a D&D Beyond character URL or upload a JSON export from your preferred VTT or character builder. TavernTAIls parses the data and creates a local character record that stays in sync with the campaign.
+
+---
+
+### 7 · Manage Campaigns
+
 ![Manage campaigns](docs/screenshots/07-campaigns.png)
 
-### New campaign
+A list of every campaign you own or have joined. Each entry shows the campaign name, its current status, and quick links to open or configure it. The **New Campaign** button starts the creation flow.
+
+---
+
+### 8 · New Campaign
+
 ![New campaign](docs/screenshots/08-new-campaign.png)
 
-### Campaign settings
+The campaign creation form. Give your campaign a name and description, choose an initial setting, and optionally attach reference documents (rule books, homebrew PDFs, world lore). Once saved, you're taken to Campaign Settings to finish configuration before the first session.
+
+---
+
+### 9 · Campaign Settings
+
 ![Campaign settings](docs/screenshots/09-campaign-settings.png)
 
-### Gameplay / Session view
+The host-only configuration panel for an existing campaign. From here you can manage players and invites, upload or remove session documents, configure which AI agents are active, and adjust narrative style options. Only the campaign host sees this page — players are directed to the session view.
+
+---
+
+### 10 · Gameplay / Session View
+
 ![Gameplay](docs/screenshots/10-gameplay.png)
 
-## Getting Started
+The main play screen — where the actual game happens. The layout is split into two panels:
 
-![CI](https://github.com/DegeneratesAnonymous/TavernTails/actions/workflows/ci.yml/badge.svg)
-![Staging](https://github.com/DegeneratesAnonymous/TavernTails/actions/workflows/deploy-staging.yml/badge.svg)
+**Left panel — Scene area**
+- Displays the current scene image (AI-generated when the Image agent is active).
+- Shows the scene title (e.g., "Quickstart Campaign — Opening Scene") so everyone knows where in the story they are.
+- The **Continue** button in the header advances the narrative when using AI.
+
+**Right panel — Tools**
+- **Chat tab**: The primary input. Type messages, commands, or dice rolls like `1d20+3` directly in the text box and press **Send**. Roll results are logged inline with the chat history. Type `!notes` to request a session recap from the Notes agent (available with or without full AI enabled).
+- **Character tab**: Your full character sheet, always one click away without leaving the session.
+- **Journal tab**: Auto-generated and manually added session notes so nothing gets lost.
+
+---
+
+## Getting Started
 
 ### Live staging / preview (Docker)
 
@@ -189,6 +289,22 @@ npm run check-port
 
 The command prints the port status so you can free it before starting the dev server again.
 
+## Tech Stack (for contributors)
+
+| Layer | Technology |
+|---|---|
+| **Frontend** | React 18 + TypeScript (Create React App), CSS modules |
+| **Backend** | Python 3.11 + FastAPI + SQLModel (SQLAlchemy) |
+| **Database** | SQLite in development → PostgreSQL in production |
+| **Migrations** | Alembic |
+| **Auth** | JWT tokens |
+| **Real-time** | WebSockets (FastAPI) |
+| **Storage** | Local filesystem (default) or S3-compatible object store |
+| **Testing** | Jest + React Testing Library (frontend); pytest + TestClient (backend) |
+| **Linting** | ESLint (frontend); Ruff + mypy (backend) |
+
+The `client/` directory is the React SPA and `server/` is the FastAPI application. See `PROJECT_PLAN.md` for the full architecture reference.
+
 ## Dev Automation & Tasks
 - Run `start-app.ps1` from the repo root (or the **Start Dev Stack** VS Code task) to kill stray processes, boot uvicorn on port 8000, and start the CRA dev server with logs under `logs/` and `client/`.
 - Individual VS Code tasks exist for "Start Backend (uvicorn dev)" and "Start Frontend (npm start)" if you prefer separate terminals; see `.vscode/tasks.json`.
@@ -211,4 +327,9 @@ The command prints the port status so you can free it before starting the dev se
 - Expand CI with lint/typecheck + minimal E2E smoke
 
 ---
-For more details, see `.github/copilot-instructions.md`.
+
+**New here?** The best places to continue reading are:
+- `PROJECT_PLAN.md` — full architecture, roadmap, and product vision
+- `AGENTS.md` — how the six AI agents are designed to cooperate during a session
+- `docs/LOCAL_DEV.md` — detailed local development setup and troubleshooting
+- `docs/CONTRIBUTING.md` — how to contribute to the project
