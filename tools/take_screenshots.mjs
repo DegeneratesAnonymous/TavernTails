@@ -114,11 +114,12 @@ async function main() {
     await page.locator('[aria-label="New Campaign"]').first().click();
     await page.waitForTimeout(500);
     await shot(page, '08-new-campaign');
-    const cancelCount = await page.locator('button:has-text("Cancel"), button:has-text("Close")').count();
-    if (cancelCount > 0) {
-      await page.locator('button:has-text("Cancel"), button:has-text("Close")').first().click();
-      await page.waitForTimeout(400);
-    }
+    // Fill in a campaign name and create it so the Settings and gameplay screenshots work.
+    await page.locator('input[placeholder="Campaign name"]').fill('Screenshot Campaign');
+    await page.locator('.modal button:has-text("Create")').click();
+    // Wait for the modal to close and the campaign list to refresh.
+    await page.waitForSelector('.modal', { state: 'hidden', timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(800);
   } else {
     console.log('  ⚠ No "New Campaign" button found – skipping');
   }
@@ -136,14 +137,12 @@ async function main() {
 
   // ── 10. Gameplay / Session view ───────────────────────────────────────────
   console.log('Capturing: gameplay / session');
-  const startSceneCount = await page.locator(
-    'button:has-text("Start / Restart Scene"), button:has-text("Start Scene"), button:has-text("Start Play")'
-  ).count();
-  if (startSceneCount > 0) {
-    await page.locator(
-      'button:has-text("Start / Restart Scene"), button:has-text("Start Scene"), button:has-text("Start Play")'
-    ).first().click();
-    await page.waitForSelector('.gameplay-root, [class*="gameplay"]', { timeout: NAV_TIMEOUT });
+  // Dismiss any alert dialog that may appear during session start.
+  page.once('dialog', dialog => dialog.dismiss().catch(() => {}));
+  const startSessionCount = await page.locator('button:has-text("Start Session")').count();
+  if (startSessionCount > 0) {
+    await page.locator('button:has-text("Start Session")').first().click();
+    await page.waitForSelector('.gameplay-root, .gameplay-panel', { timeout: NAV_TIMEOUT });
     await page.waitForTimeout(800);
     await shot(page, '10-gameplay');
   } else {
