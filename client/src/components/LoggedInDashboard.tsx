@@ -49,6 +49,11 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [quickstartBusy, setQuickstartBusy] = useState(false)
   const [startPlayBusy, setStartPlayBusy] = useState(false)
 
+  const [showQuickstartSetup, setShowQuickstartSetup] = useState(false)
+  const [quickstartCampaignName, setQuickstartCampaignName] = useState('')
+  const [quickstartCampaignNameError, setQuickstartCampaignNameError] = useState<string | null>(null)
+  const [quickstartSelectedCharId, setQuickstartSelectedCharId] = useState<string>('__none__')
+
   const [characters, setCharacters] = useState<Array<any>>([])
   const [activeCharacterId, setActiveCharacterId] = useState<number | null>(null)
   const [selectedCharacterId, setSelectedCharacterId] = useState<number | null>(null)
@@ -726,7 +731,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     loadSessionCharacterSelection()
   },[activeSession])
 
-  const quickstartPlaytest = useCallback(async () => {
+  const quickstartPlaytest = useCallback(async (opts?: { campaignName?: string; charId?: number | null }) => {
     if (quickstartBusy) return
     setQuickstartBusy(true)
     try {
@@ -736,11 +741,12 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       // 1) Ensure a campaign + at least one session
       if (!campaignId) {
         const label = new Date().toLocaleDateString()
+        const campaignNameToUse = opts?.campaignName?.trim() || `Quickstart Campaign (${label})`
         const create = await apiFetch('/campaigns', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            name: `Quickstart Campaign (${label})`,
+            name: campaignNameToUse,
             description: 'Auto-created for playtesting.',
             create_session: true,
           }),
@@ -780,9 +786,9 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
 
       // 2) Ensure a character exists (demo) and is assigned to the session
       if (sessionId) {
-        let myCharId: number | null = activeCharacterId
+        let myCharId: number | null = opts?.charId !== undefined ? opts.charId : activeCharacterId
         const hasAny = characters.length > 0
-        if (!hasAny) {
+        if (myCharId === null && !hasAny) {
           const createChar = await apiFetch('/characters', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1104,9 +1110,11 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
           <DashboardHome
             profile={profile}
             lastSessionLabel={lastSessionLabel}
-            onStartNewGame={async () => {
-              await quickstartPlaytest()
-              setView('gameplay')
+            onStartNewGame={() => {
+              setQuickstartCampaignName('')
+              setQuickstartCampaignNameError(null)
+              setQuickstartSelectedCharId(characters.length > 0 ? String(characters[0].id) : '__none__')
+              setShowQuickstartSetup(true)
             }}
             onLoadGame={() => {
               if (typeof window === 'undefined') {
@@ -2484,6 +2492,105 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                 }}
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </Modal>
+        <Modal
+          open={showQuickstartSetup}
+          title="Start New Game"
+          onClose={() => {
+            if (quickstartBusy) return
+            setShowQuickstartSetup(false)
+          }}
+        >
+          <div className="stack" style={{ gap: 12 }}>
+            <div>
+              <label className="muted" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Campaign Name <span style={{ color: 'var(--tt-accent, #c084fc)' }}>*</span></label>
+              <input
+                className="input"
+                placeholder="Enter a campaign name"
+                value={quickstartCampaignName}
+                onChange={(e) => { setQuickstartCampaignName(e.target.value); setQuickstartCampaignNameError(null) }}
+                disabled={quickstartBusy}
+                autoFocus
+              />
+              {quickstartCampaignNameError ? (
+                <div className="inline-alert inline-alert-error" style={{ marginTop: 6 }}>{quickstartCampaignNameError}</div>
+              ) : null}
+            </div>
+
+            <div>
+              <label className="muted" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Character</label>
+              {characters.length > 0 ? (
+                <select
+                  className="input"
+                  value={quickstartSelectedCharId}
+                  onChange={(e) => setQuickstartSelectedCharId(e.target.value)}
+                  disabled={quickstartBusy}
+                >
+                  {characters.map((c: any) => (
+                    <option key={String(c.id)} value={String(c.id)}>
+                      {c.name || 'Unnamed'}{c.class_name ? ` (${c.class_name})` : ''}
+                    </option>
+                  ))}
+                  <option value="__import__">⬆ Import Character</option>
+                  <option value="__new__">✚ Create New Character</option>
+                </select>
+              ) : (
+                <select
+                  className="input"
+                  value={quickstartSelectedCharId}
+                  onChange={(e) => setQuickstartSelectedCharId(e.target.value)}
+                  disabled={quickstartBusy}
+                >
+                  <option value="__none__">No character (demo character will be used)</option>
+                  <option value="__import__">⬆ Import Character</option>
+                  <option value="__new__">✚ Create New Character</option>
+                </select>
+              )}
+            </div>
+
+            <div className="row-wrap" style={{ justifyContent: 'flex-end', gap: 8 }}>
+              <button
+                className="btn btn-secondary"
+                type="button"
+                disabled={quickstartBusy}
+                onClick={() => setShowQuickstartSetup(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn"
+                type="button"
+                disabled={quickstartBusy}
+                onClick={async () => {
+                  const name = quickstartCampaignName.trim()
+                  if (!name) {
+                    setQuickstartCampaignNameError('Campaign name is required.')
+                    return
+                  }
+                  if (quickstartSelectedCharId === '__import__') {
+                    setShowQuickstartSetup(false)
+                    setCharacterCreateOrigin('gameplay')
+                    setView('import-character')
+                    return
+                  }
+                  if (quickstartSelectedCharId === '__new__') {
+                    setShowQuickstartSetup(false)
+                    setCharacterCreateOrigin('gameplay')
+                    setView('create-character')
+                    return
+                  }
+                  const charId = quickstartSelectedCharId && quickstartSelectedCharId !== '__none__'
+                    ? Number(quickstartSelectedCharId)
+                    : null
+                  setShowQuickstartSetup(false)
+                  await quickstartPlaytest({ campaignName: name, charId: Number.isFinite(charId) ? charId : null })
+                  setView('gameplay')
+                }}
+              >
+                {quickstartBusy ? 'Starting…' : 'Start'}
               </button>
             </div>
           </div>

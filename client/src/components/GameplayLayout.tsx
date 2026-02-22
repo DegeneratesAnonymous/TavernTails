@@ -783,32 +783,6 @@ export default function GameplayLayout({
       <main className="gameplay-main">
         <section className="session-banner" aria-live="polite">
           <div className="session-banner-row">
-            <button
-              className="drawer-toggle-inline"
-              type="button"
-              aria-label="Open site navigation"
-              aria-expanded={drawerOpen}
-              onClick={() => {
-                setDrawerView('site')
-                openDrawer()
-              }}
-            >
-              Site
-            </button>
-
-            <button
-              className="drawer-toggle-inline"
-              type="button"
-              aria-label="Open gameplay panels"
-              aria-expanded={drawerOpen}
-              onClick={() => {
-                setDrawerView('panels')
-                openDrawer()
-              }}
-            >
-              Panels
-            </button>
-
             <div style={{ minWidth: 0 }}>
               <div className="session-banner-title">{activeCampaign?.name || activeBanner?.title}</div>
               <div className="session-banner-subtitle">
@@ -851,11 +825,36 @@ export default function GameplayLayout({
                         border: '1px solid var(--tt-border)',
                         borderRadius: 8,
                         boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
-                        minWidth: 180,
+                        minWidth: 200,
                         zIndex: 500,
                         padding: '6px 0',
                       }}
                     >
+                      <button
+                        className="btn btn-quiet"
+                        type="button"
+                        style={{ width: '100%', textAlign: 'left', padding: '8px 14px', borderRadius: 0, fontSize: 13 }}
+                        onClick={() => {
+                          setSettingsMenuOpen(false)
+                          setDrawerView('documents')
+                          openDrawer()
+                        }}
+                      >
+                        📄 Manage Session Documents
+                      </button>
+                      <button
+                        className="btn btn-quiet"
+                        type="button"
+                        style={{ width: '100%', textAlign: 'left', padding: '8px 14px', borderRadius: 0, fontSize: 13 }}
+                        onClick={() => {
+                          setSettingsMenuOpen(false)
+                          setDrawerView('party')
+                          openDrawer()
+                        }}
+                      >
+                        👥 Manage Session Characters
+                      </button>
+                      <div style={{ borderTop: '1px solid var(--tt-border)', margin: '4px 0' }} />
                       <button
                         className="btn btn-quiet"
                         type="button"
