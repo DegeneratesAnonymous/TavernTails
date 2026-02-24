@@ -33,7 +33,7 @@ const DEFAULT_SETTINGS: CampaignSettings = {
   world_name: '',
   setting_summary: '',
   tone: '',
-  ruleset: '5e',
+  ruleset: '',
   starting_level: 1,
   house_rules: '',
 }
@@ -256,18 +256,14 @@ export default function CampaignSetupWizard({
             />
 
             <div className="row-wrap">
-              <select
+              <input
                 className="input"
                 value={settings.ruleset}
                 onChange={(e) => setSettings((prev) => ({ ...prev, ruleset: e.target.value }))}
+                placeholder="e.g. 5th Edition SRD, OSR, custom homebrew"
                 disabled={!canEdit}
                 aria-disabled={!canEdit}
-              >
-                <option value="5e">D&D 5e</option>
-                <option value="pf2">Pathfinder 2e</option>
-                <option value="osr">OSR</option>
-                <option value="other">Other</option>
-              </select>
+              />
 
               <select
                 className="input"

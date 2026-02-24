@@ -781,21 +781,13 @@ export default function CampaignSetupView({
                   <div className="row-wrap" style={{ gap: 8 }}>
                     <div style={{ flex: 1 }}>
                       <label className="muted" style={{ fontSize: 13 }}>Ruleset</label>
-                      <select
+                      <input
                         className="input"
                         value={settings.ruleset}
                         onChange={(e) => setSettings((prev) => ({ ...prev, ruleset: e.target.value }))}
+                        placeholder="e.g. 5th Edition SRD, OSR, custom homebrew"
                         disabled={!canEdit}
-                      >
-                        <option value="custom">Custom / Homebrew</option>
-                        <option value="dnd5e">D&amp;D 5e</option>
-                        <option value="pathfinder2e">Pathfinder 2e</option>
-                        <option value="shadowrun">Shadowrun</option>
-                        <option value="call-of-cthulhu">Call of Cthulhu</option>
-                        <option value="fantasy">Generic Fantasy</option>
-                        <option value="sci-fi">Science Fiction</option>
-                        <option value="other">Other</option>
-                      </select>
+                      />
                     </div>
 
                     <div style={{ flex: '0 0 120px' }}>
