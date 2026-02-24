@@ -295,3 +295,156 @@ def test_no_gm_response_without_mention():
     assert msgs.status_code == 200
     roles = [m["role"] for m in msgs.json()]
     assert "gm" not in roles
+
+
+# ---------------------------------------------------------------------------
+# CampaignSettings typed model — agent data flow
+# ---------------------------------------------------------------------------
+
+def test_campaign_settings_typed_fields_roundtrip():
+    """PUT /campaigns/{id}/settings accepts and persists all agent-relevant typed fields."""
+    client = _client()
+    owner = "settings-typed-owner@example.com"
+    _ensure_user(owner)
+    user = db.get_user_by_identifier(owner)
+    campaign = db.create_campaign(owner_id=user.id, name="Typed Settings Campaign")
+    headers = {"Authorization": f"Bearer {create_access_token(owner)}"}
+
+    payload = {
+        "genre": "horror",
+        "tone": "gritty realism",
+        "setting_summary": "A crumbling Victorian city haunted by ancient evils.",
+        "world_name": "Grimhaven",
+        "ruleset": "Call of Cthulhu 7e",
+        "starting_level": 1,
+        "house_rules": "Sanity loss is doubled.",
+        "player_run_mode": False,
+    }
+    put = client.put(f"/campaigns/{campaign.id}/settings", headers=headers, json=payload)
+    assert put.status_code == 200, put.text
+    settings = put.json()["settings"]
+    assert settings["genre"] == "horror"
+    assert settings["tone"] == "gritty realism"
+    assert settings["setting_summary"] == "A crumbling Victorian city haunted by ancient evils."
+    assert settings["world_name"] == "Grimhaven"
+    assert settings["ruleset"] == "Call of Cthulhu 7e"
+    assert settings["starting_level"] == 1
+    assert settings["house_rules"] == "Sanity loss is doubled."
+    assert settings["player_run_mode"] is False
+
+    get = client.get(f"/campaigns/{campaign.id}/settings", headers=headers)
+    assert get.status_code == 200
+    assert get.json()["settings"]["genre"] == "horror"
+
+
+def test_campaign_settings_extra_fields_preserved():
+    """Extra/custom fields beyond the typed schema are still persisted (backward compat)."""
+    client = _client()
+    owner = "settings-extra-owner@example.com"
+    _ensure_user(owner)
+    user = db.get_user_by_identifier(owner)
+    campaign = db.create_campaign(owner_id=user.id, name="Extra Fields Campaign")
+    headers = {"Authorization": f"Bearer {create_access_token(owner)}"}
+
+    payload = {"world_name": "Eldervale", "custom_key": "custom_value", "starting_level": 3}
+    put = client.put(f"/campaigns/{campaign.id}/settings", headers=headers, json=payload)
+    assert put.status_code == 200, put.text
+    settings = put.json()["settings"]
+    assert settings["world_name"] == "Eldervale"
+    assert settings["custom_key"] == "custom_value"
+    assert settings["starting_level"] == 3
+
+
+def test_storyboard_variables_themes_become_hooks():
+    """Campaign variables themes flow into storyboard hooks."""
+    client = _client()
+    resp = client.post("/storyboard/generate", json={
+        "players": ["Theron"],
+        "campaign_settings": {"genre": "western", "world_name": "Dustfield"},
+        "campaign_variables": {
+            "themes": ["revenge", "survival"],
+            "narrative_style": "gritty realism",
+            "pacing": "fast",
+        },
+    })
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    # themes from campaign_variables must appear as hooks
+    assert "revenge" in data["hooks"]
+    assert "survival" in data["hooks"]
+    # genre and world_name appear in the plot
+    assert "western" in data["plot"]
+    assert "Dustfield" in data["plot"]
+    # narrative_style is used as tone
+    assert "gritty realism" in data["plot"]
+
+
+def test_storyboard_variables_factions_appear_in_plot():
+    """Faction goals from campaign variables are woven into the plot text."""
+    client = _client()
+    resp = client.post("/storyboard/generate", json={
+        "campaign_variables": {
+            "factions": [
+                {
+                    "name": "Iron Council",
+                    "alignment": "lawful evil",
+                    "goals": ["seize the mines"],
+                    "members": ["Warden Krix"],
+                }
+            ],
+        },
+    })
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert "Iron Council" in data["plot"]
+    # Faction goal must also appear in the plot
+    assert "seize the mines" in data["plot"]
+    # Faction member should appear in npcs_mentioned
+    assert "Warden Krix" in data["npcs_mentioned"]
+
+
+def test_storyboard_variables_tone_fallback():
+    """narrative_style from campaign_variables is used as tone when settings.tone is absent."""
+    client = _client()
+    resp = client.post("/storyboard/generate", json={
+        "campaign_settings": {"genre": "fantasy"},
+        "campaign_variables": {"narrative_style": "cinematic heroism"},
+    })
+    assert resp.status_code == 200, resp.text
+    assert "cinematic heroism" in resp.json()["plot"]
+
+
+def test_start_session_reads_campaign_variables():
+    """start_session derives narrative style from campaign variables and passes it to storyboard."""
+    client = _client()
+    owner = "start-vars-owner@example.com"
+    _ensure_user(owner)
+    user = db.get_user_by_identifier(owner)
+    campaign = db.create_campaign(owner_id=user.id, name="Variables Session Campaign")
+
+    # Set campaign settings + variables
+    db.set_campaign_settings(campaign.id, campaign.owner_id, {
+        "genre": "space opera",
+        "tone": "cinematic heroism",
+        "world_name": "Starfall Nexus",
+    })
+    db.set_campaign_variables(campaign.id, campaign.owner_id, {
+        "themes": ["sacrifice", "exploration"],
+        "narrative_style": "cinematic heroism",
+        "factions": [
+            {"name": "Void Syndicate", "goals": ["control the jump gates"], "members": ["Admiral Ryn"]},
+        ],
+    })
+
+    sid, _ = sessions_module.create_session_folder("Variables Session", owner, campaign_id=campaign.id)
+    headers = {"Authorization": f"Bearer {create_access_token(owner)}"}
+
+    resp = client.post(f"/sessions/{sid}/start", headers=headers, json={})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["ok"] is True
+    # The plot and hooks from storyboard should include campaign context
+    assert isinstance(body["hooks"], list)
+    # Faction member Admiral Ryn should surface as an NPC profile
+    npc_names = [p.get("name") for p in body["npc_profiles"]]
+    assert "Admiral Ryn" in npc_names

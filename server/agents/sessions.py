@@ -691,6 +691,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
             players.append(name)
 
     campaign_settings: dict = {}
+    campaign_variables: dict = {}
     campaign_docs: list[str] = []
     campaign_id = meta.get('campaign_id')
     if campaign_id:
@@ -700,6 +701,9 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
                 campaign_settings = campaign.metadata_json.get('settings') or {}
                 if not isinstance(campaign_settings, dict):
                     campaign_settings = {}
+                campaign_variables = campaign.metadata_json.get('variables') or {}
+                if not isinstance(campaign_variables, dict):
+                    campaign_variables = {}
         except Exception:
             pass
         try:
@@ -711,10 +715,19 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         except Exception:
             pass
 
+    # Derive narrative style: campaign_variables.narrative_style →
+    # campaign_settings.tone → request payload style → default 'balanced'
+    derived_style = (
+        str(campaign_variables.get('narrative_style') or '').strip()
+        or str(campaign_settings.get('tone') or '').strip()
+        or style
+    )
+
     plot_result = storyboard_agent.generate_plot(storyboard_agent.StoryboardPlotRequest(
         session_id=session_id,
         players=players,
         campaign_settings=campaign_settings,
+        campaign_variables=campaign_variables,
         campaign_docs=campaign_docs,
     ))
 
@@ -722,7 +735,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     narrative = narrative_agent.generate_narrative(narrative_agent.NarrativeRequest(
         scene=plot_result.plot,
         player='party',
-        style=style,
+        style=derived_style,
         weather=weather,
         time_of_day=time_of_day,
     ))
