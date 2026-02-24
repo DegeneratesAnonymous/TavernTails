@@ -1,5 +1,5 @@
 """Tests for TTRPG system detection from character sheet data."""
-from server.agents.system_detect import SYSTEM_SIGNATURES, infer_ttrpg_system
+from server.agents.system_detect import SYSTEM_SIGNATURES, describe_mechanic_profile, infer_ttrpg_system
 
 _KNOWN_SYSTEM_NAMES = {s["name"] for s in SYSTEM_SIGNATURES} | {"Unknown"}
 
@@ -136,3 +136,96 @@ def test_detect_from_import_ddb_url():
     result = infer_ttrpg_system(sheet)
     assert result["system_name"] == "D&D 5e"
     assert any("keyword:dndbeyond" in e or "keyword:d&d beyond" in e for e in result["evidence"])
+
+
+# ---------------------------------------------------------------------------
+# mechanic_profile tests — ensure AI-safe mechanical descriptors are returned
+# without any trademarked system name needing to be inspected.
+# ---------------------------------------------------------------------------
+
+def test_every_signature_has_mechanic_profile():
+    """All system signatures must declare a mechanic_profile."""
+    for sig in SYSTEM_SIGNATURES:
+        assert "mechanic_profile" in sig, f"{sig['name']} missing mechanic_profile"
+        profile = sig["mechanic_profile"]
+        assert "resolution" in profile, f"{sig['name']} mechanic_profile missing 'resolution'"
+        assert "genre" in profile, f"{sig['name']} mechanic_profile missing 'genre'"
+
+
+def test_infer_returns_mechanic_profile():
+    """infer_ttrpg_system always includes a mechanic_profile key."""
+    sheet = {"class_name": "Wizard", "stats": {"str": 10, "dex": 14, "wis": 16}}
+    result = infer_ttrpg_system(sheet)
+    assert "mechanic_profile" in result
+    profile = result["mechanic_profile"]
+    assert isinstance(profile, dict)
+    assert profile.get("resolution") == "d20-check"
+    assert profile.get("genre") == "heroic-fantasy"
+
+
+def test_unknown_result_has_empty_mechanic_profile():
+    """Unknown detection returns an empty mechanic_profile, not absent."""
+    result = infer_ttrpg_system({})
+    assert "mechanic_profile" in result
+    assert result["mechanic_profile"] == {}
+
+
+def test_mechanic_profile_does_not_contain_system_name():
+    """mechanic_profile must not contain any trademarked system name."""
+    trademarked = {s["name"].lower() for s in SYSTEM_SIGNATURES}
+    for sig in SYSTEM_SIGNATURES:
+        profile = sig.get("mechanic_profile", {})
+        profile_text = " ".join(
+            " ".join(v) if isinstance(v, list) else str(v)
+            for v in profile.values()
+            if isinstance(v, (str, list))
+        )
+        for tm in trademarked:
+            assert tm not in profile_text.lower(), (
+                f"{sig['name']} mechanic_profile contains trademarked name '{tm}'"
+            )
+
+
+def test_coc_mechanic_profile_uses_percentile():
+    """Call of Cthulhu should report percentile resolution, not d20."""
+    sheet = {
+        "class_name": "Private Investigator",
+        "stats": {"str": 50, "dex": 60, "pow": 55, "edu": 75},
+        "raw_text": "Call of Cthulhu 7th Edition investigator sheet",
+    }
+    result = infer_ttrpg_system(sheet)
+    assert result["mechanic_profile"].get("resolution") == "percentile-skill-check"
+
+
+def test_shadowrun_mechanic_profile_uses_dice_pool():
+    """Shadowrun should report dice-pool resolution."""
+    sheet = {
+        "class_name": "Street Samurai",
+        "stats": {"body": 6, "agility": 8, "essence": 3.5},
+        "raw_text": "Shadowrun 6th World runner sheet",
+    }
+    result = infer_ttrpg_system(sheet)
+    assert result["mechanic_profile"].get("resolution") == "dice-pool-d6"
+
+
+def test_describe_mechanic_profile_no_system_name():
+    """describe_mechanic_profile output must not contain any trademarked name."""
+    trademarked = {s["name"].lower() for s in SYSTEM_SIGNATURES}
+    sheet = {"class_name": "Wizard", "stats": {"str": 10, "wis": 16}}
+    description = describe_mechanic_profile(sheet)
+    assert description  # non-empty for a detected sheet
+    for tm in trademarked:
+        assert tm not in description.lower(), f"description contains trademarked name '{tm}'"
+
+
+def test_describe_mechanic_profile_empty_sheet():
+    """describe_mechanic_profile returns empty string for an undetectable sheet."""
+    description = describe_mechanic_profile({})
+    assert description == ""
+
+
+def test_describe_mechanic_profile_contains_resolution():
+    """describe_mechanic_profile includes the resolution mechanism."""
+    sheet = {"class_name": "Rogue", "stats": {"str": 10, "dex": 18, "cha": 14}}
+    description = describe_mechanic_profile(sheet)
+    assert "d20-check" in description

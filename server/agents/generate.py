@@ -68,8 +68,11 @@ def generate_npc(req: GenerateNPCRequest, current_user=Depends(get_current_user)
         if char and char.sheet:
             detected = (char.sheet or {}).get('detected_system') or {}
             character_system = {
-                'detected_system': detected.get('system_name', 'Unknown'),
-                'system_publisher': detected.get('publisher', ''),
+                # Use system-agnostic mechanic descriptors inferred from the player's
+                # own sheet data.  These do not name any trademarked system, so the
+                # AI can tailor output to the character's mechanics without reproducing
+                # copyrighted rules text.
+                'mechanic_profile': detected.get('mechanic_profile', {}),
                 'system_confidence': detected.get('confidence', 0.0),
                 'player_skills': [
                     s.get('name') for s in ((char.sheet or {}).get('skills') or [])
@@ -84,7 +87,7 @@ def generate_npc(req: GenerateNPCRequest, current_user=Depends(get_current_user)
         'world_name': settings.get('world_name', ''),
         'setting_summary': settings.get('setting_summary', ''),
         'tone': settings.get('tone', ''),
-        'ruleset': settings.get('ruleset', '5e'),
+        'ruleset': settings.get('ruleset', ''),
         'npc_type': req.npc_type or 'generic',
         'setting': req.setting or '',
         # campaign variables
@@ -110,7 +113,9 @@ def generate_npc(req: GenerateNPCRequest, current_user=Depends(get_current_user)
         'context': context,
         'stats': {
             'level': settings.get('starting_level', 1),
-            'ruleset': context.get('detected_system') or settings.get('ruleset') or 'Unknown',
+            # User-entered free-text ruleset label (not a trademarked system name).
+            # Mechanic behaviour for AI prompts lives in context['mechanic_profile'].
+            'ruleset': settings.get('ruleset') or '',
         },
     }
 
@@ -184,7 +189,7 @@ def generate_loot(req: GenerateLootRequest, current_user=Depends(get_current_use
     context = {
         'world_name': settings.get('world_name', ''),
         'setting_summary': settings.get('setting_summary', ''),
-        'ruleset': settings.get('ruleset', '5e'),
+        'ruleset': settings.get('ruleset', ''),
         'starting_level': settings.get('starting_level', 1),
         'challenge_rating': req.challenge_rating or settings.get('starting_level', 1),
         'loot_type': req.loot_type or 'treasure',
@@ -205,7 +210,7 @@ def generate_loot(req: GenerateLootRequest, current_user=Depends(get_current_use
             {'name': 'Magic item', 'quantity': 1, 'type': 'magic'},
         ],
         'context': context,
-        'ruleset': settings.get('ruleset', '5e'),
+        'ruleset': settings.get('ruleset', ''),
     }
 
     return {'loot': loot, 'campaign_id': req.campaign_id}
