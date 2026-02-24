@@ -52,7 +52,7 @@ class CampaignSettings(BaseModel):
     # ── Rules context (Scene Analysis + NPC agents) ────────────────────────
     ruleset: str = Field(
         default="",
-        description="TTRPG ruleset, e.g. '5e', 'Pathfinder 2e', 'Shadowrun 6e'",
+        description="TTRPG ruleset; users enter their own system name, e.g. '5th Edition SRD', 'OSR', 'custom homebrew'",
     )
     starting_level: int = Field(
         default=1,

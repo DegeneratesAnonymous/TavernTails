@@ -32,6 +32,16 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
     {
         "name": "D&D 5e",
         "publisher": "Wizards of the Coast",
+        # Mechanical fingerprint inferred purely from observable character-sheet evidence
+        # (resolution die, stat structure, resource tracks, genre).  These descriptors
+        # are system-agnostic and do not reproduce any copyrighted rules text.
+        "mechanic_profile": {
+            "resolution": "d20-check",
+            "stat_model": "six-ability-scores-with-modifiers",
+            "resources": ["hit-points", "spell-slots", "hit-dice"],
+            "key_mechanics": ["proficiency-bonus", "advantage-disadvantage", "saving-throws", "action-bonus-action-reaction"],
+            "genre": "heroic-fantasy",
+        },
         "classes": {
             "artificer", "barbarian", "bard", "cleric", "druid", "fighter",
             "monk", "paladin", "ranger", "rogue", "sorcerer", "warlock", "wizard",
@@ -56,6 +66,13 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
     {
         "name": "Pathfinder 2e",
         "publisher": "Paizo",
+        "mechanic_profile": {
+            "resolution": "d20-check",
+            "stat_model": "six-ability-scores-with-modifiers",
+            "resources": ["hit-points", "spell-slots", "focus-points"],
+            "key_mechanics": ["proficiency-ranks", "three-action-economy", "degrees-of-success", "reactions"],
+            "genre": "heroic-fantasy",
+        },
         "classes": {
             "alchemist", "barbarian", "bard", "champion", "cleric", "druid",
             "fighter", "investigator", "magus", "monk", "oracle", "psychic",
@@ -80,6 +97,13 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
     {
         "name": "Pathfinder 1e",
         "publisher": "Paizo",
+        "mechanic_profile": {
+            "resolution": "d20-check",
+            "stat_model": "six-ability-scores-with-modifiers",
+            "resources": ["hit-points", "spell-slots", "daily-abilities"],
+            "key_mechanics": ["base-attack-bonus", "cmb-cmd", "feat-chains", "skill-ranks-per-level"],
+            "genre": "heroic-fantasy",
+        },
         "classes": {
             "alchemist", "barbarian", "bard", "cavalier", "cleric",
             "druid", "fighter", "gunslinger", "inquisitor", "magus",
@@ -105,6 +129,13 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
     {
         "name": "Starfinder",
         "publisher": "Paizo",
+        "mechanic_profile": {
+            "resolution": "d20-check",
+            "stat_model": "six-ability-scores-with-modifiers",
+            "resources": ["hit-points", "stamina-points", "resolve-points", "spell-slots"],
+            "key_mechanics": ["bulk-encumbrance", "eac-kac-armor-class", "starship-combat", "tech-items"],
+            "genre": "science-fantasy",
+        },
         "classes": {
             "biohacker", "envoy", "evolutionist", "mechanic", "mystic",
             "nanocyte", "operative", "precog", "solarian", "soldier",
@@ -128,6 +159,13 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
     {
         "name": "Call of Cthulhu",
         "publisher": "Chaosium",
+        "mechanic_profile": {
+            "resolution": "percentile-skill-check",
+            "stat_model": "eight-attributes-percentile-range",
+            "resources": ["hit-points", "magic-points", "sanity", "luck"],
+            "key_mechanics": ["skill-improvement-on-success", "sanity-loss", "push-roll", "occupation-skills"],
+            "genre": "investigative-horror",
+        },
         "classes": {
             "accountant", "artist", "author", "clergyman", "criminal",
             "dilettante", "doctor of medicine", "engineer", "entertainer",
@@ -165,6 +203,13 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
     {
         "name": "Star Trek Adventures",
         "publisher": "Modiphius Entertainment",
+        "mechanic_profile": {
+            "resolution": "2d20-check",
+            "stat_model": "six-attributes-plus-six-disciplines",
+            "resources": ["stress", "determination", "momentum"],
+            "key_mechanics": ["momentum-pool", "complication-threat", "talents", "values"],
+            "genre": "science-fiction",
+        },
         "classes": {
             "command", "conn", "engineering", "medical", "operations",
             "science", "security", "tactical",
@@ -187,6 +232,13 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
     {
         "name": "Shadow of the Demon Lord",
         "publisher": "Schwalb Entertainment",
+        "mechanic_profile": {
+            "resolution": "d20-check",
+            "stat_model": "four-attributes-with-modifiers",
+            "resources": ["health", "insanity", "corruption"],
+            "key_mechanics": ["boons-banes", "traditions", "path-levels", "fortune"],
+            "genre": "dark-fantasy",
+        },
         "classes": {
             "warrior", "priest", "rogue", "magician",
         },
@@ -200,6 +252,13 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
     {
         "name": "Warhammer Fantasy Roleplay",
         "publisher": "Cubicle 7",
+        "mechanic_profile": {
+            "resolution": "percentile-skill-check",
+            "stat_model": "ten-characteristics-percentile-range",
+            "resources": ["wounds", "fate-fortune", "corruption", "resilience"],
+            "key_mechanics": ["career-advances", "talents", "opposed-checks", "critical-wounds"],
+            "genre": "dark-fantasy",
+        },
         "classes": {
             "apprentice wizard", "burgher", "cavalryman", "courtier",
             "entertainer", "innkeeper", "investigator", "knight",
@@ -230,6 +289,13 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
     {
         "name": "Alien RPG",
         "publisher": "Free League Publishing",
+        "mechanic_profile": {
+            "resolution": "dice-pool-d6",
+            "stat_model": "four-attributes-with-skill-ratings",
+            "resources": ["health", "stress", "ammo"],
+            "key_mechanics": ["stress-dice", "push-rolls", "panic-check", "critical-injuries"],
+            "genre": "science-fiction-horror",
+        },
         "classes": {
             "colonial marine", "company agent", "kid", "medic",
             "officer", "pilot", "roughneck", "scientist",
@@ -250,6 +316,13 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
     {
         "name": "Shadowrun",
         "publisher": "Catalyst Game Labs",
+        "mechanic_profile": {
+            "resolution": "dice-pool-d6",
+            "stat_model": "nine-attributes-with-dice-ratings",
+            "resources": ["physical-condition-monitor", "stun-condition-monitor", "essence", "edge"],
+            "key_mechanics": ["threshold-hits", "glitch-critical-glitch", "initiative-passes", "matrix-actions"],
+            "genre": "cyberpunk-fantasy",
+        },
         "classes": {
             "adept", "decker", "face", "gunslinger", "mage", "rigger",
             "samurai", "shaman", "smuggler", "soldier", "spy",
@@ -383,14 +456,20 @@ def infer_ttrpg_system(sheet: Dict[str, Any]) -> Dict[str, Any]:
     Returns a dict with::
 
         {
-          "system_name":   str,   # detected system name, or "Unknown"
-          "publisher":     str,   # publisher name, or ""
-          "confidence":    float, # 0.0 – 1.0 relative confidence
-          "evidence":      list,  # list of signals that fired
-          "all_scores":    dict,  # {system_name: score} for debugging/UI
+          "system_name":     str,   # detected system name, or "Unknown"
+          "publisher":       str,   # publisher name, or ""
+          "confidence":      float, # 0.0 – 1.0 relative confidence
+          "evidence":        list,  # list of signals that fired
+          "all_scores":      dict,  # {system_name: score} for debugging/UI
+          "mechanic_profile": dict, # system-agnostic mechanical descriptors
+                                    # safe to pass to AI without naming the system
         }
 
     The caller should store this on the character sheet so agents can use it.
+    ``mechanic_profile`` describes observable mechanics (resolution die, stat model,
+    resource tracks, genre) inferred from the player's own sheet data — not from any
+    copyrighted rules text — so agents can tailor output without referencing a
+    trademarked system name.
     """
     if not isinstance(sheet, dict):
         return _unknown_result()
@@ -414,10 +493,12 @@ def infer_ttrpg_system(sheet: Dict[str, Any]) -> Dict[str, Any]:
     max_score = max(top_score + second_score, 1)
     confidence = round(min(1.0, top_score / max_score), 3)
 
-    publisher = next(
-        (sig["publisher"] for sig in SYSTEM_SIGNATURES if sig["name"] == top_name),
-        "",
+    matched_sig = next(
+        (sig for sig in SYSTEM_SIGNATURES if sig["name"] == top_name),
+        None,
     )
+    publisher = matched_sig["publisher"] if matched_sig else ""
+    mechanic_profile = matched_sig.get("mechanic_profile", {}) if matched_sig else {}
 
     return {
         "system_name": top_name,
@@ -425,7 +506,41 @@ def infer_ttrpg_system(sheet: Dict[str, Any]) -> Dict[str, Any]:
         "confidence": confidence,
         "evidence": top_evidence,
         "all_scores": {name: s for s, name, _ in scored},
+        "mechanic_profile": mechanic_profile,
     }
+
+
+def describe_mechanic_profile(sheet: Dict[str, Any]) -> str:
+    """Return a concise, AI-safe plain-text description of the mechanical
+    patterns observed on *sheet*, without naming any trademarked system.
+
+    Example output::
+
+        "d20-check resolution · six-ability-scores-with-modifiers stats · \
+heroic-fantasy genre · key mechanics: proficiency-bonus, advantage-disadvantage"
+
+    This string can be injected into LLM prompts so the model can tailor
+    output to the character's mechanics without reproducing copyrighted rules.
+    """
+    result = infer_ttrpg_system(sheet)
+    profile = result.get("mechanic_profile") or {}
+    if not profile:
+        return ""
+
+    parts: List[str] = []
+    if profile.get("resolution"):
+        parts.append(f"{profile['resolution']} resolution")
+    if profile.get("stat_model"):
+        parts.append(f"{profile['stat_model']} stats")
+    if profile.get("genre"):
+        parts.append(f"{profile['genre']} genre")
+    key_mechs = profile.get("key_mechanics") or []
+    if key_mechs:
+        parts.append("key mechanics: " + ", ".join(key_mechs))
+    resources = profile.get("resources") or []
+    if resources:
+        parts.append("resources: " + ", ".join(resources))
+    return " · ".join(parts)
 
 
 def _unknown_result() -> Dict[str, Any]:
@@ -435,4 +550,5 @@ def _unknown_result() -> Dict[str, Any]:
         "confidence": 0.0,
         "evidence": [],
         "all_scores": {sig["name"]: 0 for sig in SYSTEM_SIGNATURES},
+        "mechanic_profile": {},
     }

@@ -58,10 +58,12 @@ type Character = {
 type CampaignSettings = {
   world_name: string
   setting_summary: string
+  genre: string
   tone: string
   ruleset: string
   starting_level: number
   house_rules: string
+  player_run_mode: boolean
 }
 
 type CampaignVariables = {
@@ -113,10 +115,12 @@ type Props = {
 const DEFAULT_SETTINGS: CampaignSettings = {
   world_name: '',
   setting_summary: '',
+  genre: 'fantasy',
   tone: '',
   ruleset: 'custom',
   starting_level: 1,
   house_rules: '',
+  player_run_mode: false,
 }
 
 const DEFAULT_VARIABLES: CampaignVariables = {
@@ -136,6 +140,10 @@ function asString(v: any): string {
 function asNumber(v: any, fallback: number): number {
   const n = typeof v === 'number' ? v : Number(v)
   return Number.isFinite(n) ? n : fallback
+}
+
+function parseThemesInput(raw: string): string[] {
+  return raw.split(',').map((t) => t.trim()).filter(Boolean)
 }
 
 export default function CampaignSetupView({
@@ -205,10 +213,12 @@ export default function CampaignSetupView({
         const next: CampaignSettings = {
           world_name: asString(s?.world_name),
           setting_summary: asString(s?.setting_summary),
+          genre: asString(s?.genre) || DEFAULT_SETTINGS.genre,
           tone: asString(s?.tone),
           ruleset: asString(s?.ruleset) || DEFAULT_SETTINGS.ruleset,
           starting_level: Math.max(1, Math.min(20, asNumber(s?.starting_level, DEFAULT_SETTINGS.starting_level))),
           house_rules: asString(s?.house_rules),
+          player_run_mode: Boolean(s?.player_run_mode),
         }
         if (!canceled) setSettings(next)
       } catch (e: any) {
@@ -495,11 +505,15 @@ export default function CampaignSetupView({
         throw new Error(err?.detail || 'Failed to save campaign settings')
       }
 
-      // Persist content_rating via variables endpoint
-      await apiFetch(`/campaigns/${activeCampaignId}/variables`, {
+      // Persist all campaign variables
+      const res3 = await apiFetch(`/campaigns/${activeCampaignId}/variables`, {
         method: 'PUT',
-        body: JSON.stringify({ content_rating: variables.content_rating }),
-      }).catch(() => { /* non-fatal; variables endpoint may not exist yet */ })
+        body: JSON.stringify(variables),
+      })
+      if (!res3.ok) {
+        const err = await res3.json().catch(() => null)
+        throw new Error(err?.detail || `Failed to save campaign variables (HTTP ${res3.status})`)
+      }
 
       await onCampaignUpdated()
       setMessage({ kind: 'info', text: 'Campaign settings saved.' })
@@ -687,7 +701,49 @@ export default function CampaignSetupView({
                     </div>
                   </div>
 
+                  <div className="stack" style={{ gap: 6 }}>
+                    <label className="muted" style={{ fontSize: 13 }}>World Name</label>
+                    <input
+                      className="input"
+                      value={settings.world_name}
+                      onChange={(e) => setSettings((prev) => ({ ...prev, world_name: e.target.value }))}
+                      placeholder="e.g. Faerûn, The Shattered Isles"
+                      disabled={!canEdit}
+                    />
+                  </div>
+
+                  <div className="stack" style={{ gap: 6 }}>
+                    <label className="muted" style={{ fontSize: 13 }}>Setting Summary</label>
+                    <textarea
+                      className="input"
+                      value={settings.setting_summary}
+                      onChange={(e) => setSettings((prev) => ({ ...prev, setting_summary: e.target.value }))}
+                      placeholder="Describe the campaign world, its history, and key locations…"
+                      rows={3}
+                      disabled={!canEdit}
+                    />
+                  </div>
+
                   <div className="row-wrap" style={{ gap: 8 }}>
+                    <div style={{ flex: 1 }}>
+                      <label className="muted" style={{ fontSize: 13 }}>Genre</label>
+                      <select
+                        className="input"
+                        value={settings.genre}
+                        onChange={(e) => setSettings((prev) => ({ ...prev, genre: e.target.value }))}
+                        disabled={!canEdit}
+                      >
+                        <option value="fantasy">Fantasy</option>
+                        <option value="sci-fi">Sci-Fi</option>
+                        <option value="horror">Horror</option>
+                        <option value="western">Western</option>
+                        <option value="steampunk">Steampunk</option>
+                        <option value="modern">Modern</option>
+                        <option value="post-apocalyptic">Post-Apocalyptic</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+
                     <div style={{ flex: 1 }}>
                       <label className="muted" style={{ fontSize: 13 }}>Tone</label>
                       <select
@@ -700,25 +756,10 @@ export default function CampaignSetupView({
                         <option value="">Tone…</option>
                         <option value="heroic">Heroic</option>
                         <option value="grim">Grim</option>
-                        <option value="dark-fantasy">Dark fantasy</option>
+                        <option value="dark-fantasy">Dark Fantasy</option>
                         <option value="comedy">Comedy</option>
                         <option value="horror">Horror</option>
-                      </select>
-                    </div>
-
-                    <div style={{ flex: 1 }}>
-                      <label className="muted" style={{ fontSize: 13 }}>Ruleset</label>
-                      <select
-                        className="input"
-                        value={settings.ruleset}
-                        onChange={(e) => setSettings((prev) => ({ ...prev, ruleset: e.target.value }))}
-                        disabled={!canEdit}
-                      >
-                        <option value="custom">Custom / Homebrew</option>
-                        <option value="fantasy">Generic Fantasy</option>
-                        <option value="sci-fi">Science Fiction</option>
-                        <option value="horror">Horror</option>
-                        <option value="other">Other</option>
+                        <option value="balanced">Balanced</option>
                       </select>
                     </div>
 
@@ -730,17 +771,121 @@ export default function CampaignSetupView({
                         onChange={(e) => setVariables((prev) => ({ ...prev, content_rating: e.target.value }))}
                         disabled={!canEdit}
                       >
-                        <option value="pg">PG (Family-friendly)</option>
                         <option value="family">PG (Family-friendly)</option>
                         <option value="pg-13">PG-13</option>
-                        <option value="r">R (Mature)</option>
                         <option value="mature">R (Mature)</option>
                       </select>
                     </div>
                   </div>
 
-                  <div className="muted" style={{ fontSize: 12 }}>
-                    These settings are global preferences. Storytelling details like NPC styles and themes are determined by the AI or via campaign documents.
+                  <div className="row-wrap" style={{ gap: 8 }}>
+                    <div style={{ flex: 1 }}>
+                      <label className="muted" style={{ fontSize: 13 }}>Ruleset</label>
+                      <input
+                        className="input"
+                        value={settings.ruleset}
+                        onChange={(e) => setSettings((prev) => ({ ...prev, ruleset: e.target.value }))}
+                        placeholder="e.g. 5th Edition SRD, OSR, custom homebrew"
+                        disabled={!canEdit}
+                      />
+                    </div>
+
+                    <div style={{ flex: '0 0 120px' }}>
+                      <label className="muted" style={{ fontSize: 13 }}>Starting Level</label>
+                      <input
+                        className="input"
+                        type="number"
+                        min={1}
+                        max={20}
+                        value={settings.starting_level}
+                        onChange={(e) => setSettings((prev) => ({ ...prev, starting_level: Math.max(1, Math.min(20, Number(e.target.value) || 1)) }))}
+                        disabled={!canEdit}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="row-wrap" style={{ gap: 8 }}>
+                    <div style={{ flex: 1 }}>
+                      <label className="muted" style={{ fontSize: 13 }}>Pacing</label>
+                      <select
+                        className="input"
+                        value={variables.pacing}
+                        onChange={(e) => setVariables((prev) => ({ ...prev, pacing: e.target.value }))}
+                        disabled={!canEdit}
+                      >
+                        <option value="slow">Slow</option>
+                        <option value="moderate">Moderate</option>
+                        <option value="fast">Fast</option>
+                      </select>
+                    </div>
+
+                    <div style={{ flex: 1 }}>
+                      <label className="muted" style={{ fontSize: 13 }}>Narrative Style</label>
+                      <select
+                        className="input"
+                        value={variables.narrative_style}
+                        onChange={(e) => setVariables((prev) => ({ ...prev, narrative_style: e.target.value }))}
+                        disabled={!canEdit}
+                      >
+                        <option value="balanced">Balanced</option>
+                        <option value="epic">Epic</option>
+                        <option value="intimate">Intimate</option>
+                        <option value="gritty">Gritty</option>
+                        <option value="lighthearted">Lighthearted</option>
+                      </select>
+                    </div>
+
+                    <div style={{ flex: 1 }}>
+                      <label className="muted" style={{ fontSize: 13 }}>Naming Style</label>
+                      <input
+                        className="input"
+                        value={variables.naming_style}
+                        onChange={(e) => setVariables((prev) => ({ ...prev, naming_style: e.target.value }))}
+                        placeholder="e.g. Norse, Elvish, Latin"
+                        disabled={!canEdit}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="stack" style={{ gap: 6 }}>
+                    <label className="muted" style={{ fontSize: 13 }}>Themes <span className="muted" style={{ fontWeight: 400 }}>(comma-separated)</span></label>
+                    <input
+                      className="input"
+                      value={variables.themes.join(', ')}
+                      onChange={(e) => {
+                        setVariables((prev) => ({ ...prev, themes: parseThemesInput(e.target.value) }))
+                      }}
+                      placeholder="e.g. redemption, betrayal, survival"
+                      disabled={!canEdit}
+                    />
+                  </div>
+
+                  <div className="stack" style={{ gap: 6 }}>
+                    <label className="muted" style={{ fontSize: 13 }}>House Rules</label>
+                    <textarea
+                      className="input"
+                      value={settings.house_rules}
+                      onChange={(e) => setSettings((prev) => ({ ...prev, house_rules: e.target.value }))}
+                      placeholder="Any custom rules the AI should follow…"
+                      rows={3}
+                      disabled={!canEdit}
+                    />
+                  </div>
+
+                  <div className="stack" style={{ gap: 6 }}>
+                    <label className="muted" style={{ fontSize: 13 }}>Player-run Mode</label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: canEdit ? 'pointer' : 'default' }}>
+                      <input
+                        type="checkbox"
+                        checked={settings.player_run_mode}
+                        onChange={(e) => setSettings((prev) => ({ ...prev, player_run_mode: e.target.checked }))}
+                        disabled={!canEdit}
+                      />
+                      <span style={{ fontSize: 13 }}>Disable AI narration — players run the session manually</span>
+                    </label>
+                    <div className="muted" style={{ fontSize: 12 }}>
+                      When enabled, AI agents are disabled for narration but note-taking, NPC tracking, and dice rolls remain active.
+                    </div>
                   </div>
                 </div>
               </div>
