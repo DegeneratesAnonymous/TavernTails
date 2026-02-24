@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from ..agents import sessions as session_module
 from ..realtime import broadcaster
+from .entity_schemas import AttitudeRank
 
 router = APIRouter(tags=["npc"])
 
@@ -41,11 +42,31 @@ class NPCSpell(BaseModel):
 
 
 class NPCManageRequest(BaseModel):
+    # ---- Identity ----------------------------------------------------------
     name: str = Field(..., description="NPC/Enemy name")
-    traits: dict[str, Any] = Field(default_factory=dict)
+    factions: list[str] = Field(
+        default_factory=list,
+        description="Factions, guilds, or groups the NPC belongs to",
+    )
+
+    # ---- Psychology --------------------------------------------------------
     motivations: list[str] = Field(default_factory=list)
+    personality: str = Field(
+        default="",
+        description="Core personality traits, speech patterns, and how the NPC behaves under pressure",
+    )
+    attitude: list[AttitudeRank] = Field(
+        default_factory=list,
+        description="Attitude ranks toward player characters, factions, or other NPCs",
+    )
+    secrets: list[str] = Field(
+        default_factory=list,
+        description="Things the NPC knows but hides — used by the Narrative Agent for dramatic reveals",
+    )
+    quirks: list[str] = Field(default_factory=list, description="Short memorable quirks or tics")
+
+    # ---- Mechanics ---------------------------------------------------------
     stats: dict[str, Any] = Field(default_factory=dict)
-    quirks: list[str] = Field(default_factory=list)
     classes: list[NPCClassEntry] = Field(
         default_factory=list,
         description="System-agnostic class/role entries. Works across any TTRPG.",
@@ -58,6 +79,31 @@ class NPCManageRequest(BaseModel):
         default_factory=list,
         description="Spells or magical powers, free-form for any system.",
     )
+    gear: list[str] = Field(
+        default_factory=list,
+        description="Notable equipment, weapons, or items the NPC carries",
+    )
+
+    # ---- Presentation ------------------------------------------------------
+    appearance: str = Field(
+        default="",
+        description="Physical description: height, build, distinguishing features, clothing",
+    )
+    backstory: str = Field(
+        default="",
+        description="Origin story and history — GM context, never shared with players",
+    )
+
+    # ---- Legacy / freeform bag (kept for backward compatibility) -----------
+    traits: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Freeform trait bag — legacy field.  Prefer the typed canonical fields above. "
+            "If 'appearance' is set here AND in the top-level field, the top-level field wins."
+        ),
+    )
+
+    # ---- Session context ---------------------------------------------------
     session_id: str | None = Field(default=None, description="Session to broadcast NPC cues to")
 
 
@@ -70,15 +116,27 @@ class NPCManageResponse(BaseModel):
 async def manage_npc(payload: NPCManageRequest) -> NPCManageResponse:
     initiative = payload.stats.get("initiative") or payload.stats.get("init")
     initiative_hint = f"Roll d20 + {initiative}" if initiative is not None else "Assign initiative when combat starts."
+
+    # Canonical appearance: top-level field wins over the legacy traits bag.
+    appearance = payload.appearance or (payload.traits.get('appearance', '') if isinstance(payload.traits, dict) else '')
+
     profile = {
         "name": payload.name,
-        "traits": payload.traits,
+        "factions": payload.factions,
         "motivations": payload.motivations,
-        "stats": payload.stats,
+        "personality": payload.personality,
+        "attitude": [a.model_dump() for a in payload.attitude],
+        "secrets": payload.secrets,
         "quirks": payload.quirks,
+        "stats": payload.stats,
         "classes": [c.model_dump(exclude_none=True) for c in payload.classes],
         "abilities": [a.model_dump(exclude_none=True) for a in payload.abilities],
         "spells": [s.model_dump(exclude_none=True) for s in payload.spells],
+        "gear": payload.gear,
+        "appearance": appearance,
+        "backstory": payload.backstory,
+        # Keep the legacy traits dict for any callers that read it directly.
+        "traits": payload.traits,
     }
     response = NPCManageResponse(npc_profile=profile, initiative_hint=initiative_hint)
     if payload.session_id:

@@ -1,13 +1,76 @@
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, Body, Depends, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, ConfigDict, Field
 
 from .. import db
 from ..auth import get_current_user
 from . import sessions as sessions_agent
 
 router = APIRouter(prefix="/campaigns", tags=["campaigns"])
+
+
+class CampaignSettings(BaseModel):
+    """Structured settings that generative agents read when producing story content.
+
+    These are the inputs users provide when creating or configuring a campaign.
+    Each field is consumed by at least one Session Agent:
+
+    - genre / tone / setting_summary / world_name → Storyboard Agent (plot seed),
+      Narrative Agent (style hint)
+    - ruleset / starting_level / house_rules → Scene Analysis Agent (rule checks),
+      NPC Manager (stat scaling)
+    - player_run_mode → all agents (disables AI narration when True)
+
+    Extra / unknown fields are preserved for forward-compatibility.
+    """
+
+    # ── Story framing (Storyboard + Narrative agents) ─────────────────────
+    genre: str = Field(
+        default="fantasy",
+        description="Campaign genre, e.g. 'fantasy', 'sci-fi', 'horror', 'western'",
+    )
+    tone: str = Field(
+        default="balanced",
+        description=(
+            "Narrative tone used by the Narrative Agent: "
+            "'gritty realism' | 'cinematic heroism' | 'balanced'"
+        ),
+    )
+    setting_summary: str = Field(
+        default="",
+        description=(
+            "Short paragraph describing the campaign world/setting. "
+            "Storyboard Agent weaves this into the opening plot."
+        ),
+    )
+    world_name: str = Field(
+        default="",
+        description="Name of the campaign world or region, e.g. 'Faerûn', 'The Shattered Isles'",
+    )
+
+    # ── Rules context (Scene Analysis + NPC agents) ────────────────────────
+    ruleset: str = Field(
+        default="",
+        description="TTRPG ruleset, e.g. '5e', 'Pathfinder 2e', 'Shadowrun 6e'",
+    )
+    starting_level: int = Field(
+        default=1,
+        ge=1,
+        description="Starting character level; NPC Manager uses this for stat scaling",
+    )
+    house_rules: str = Field(
+        default="",
+        description="Free-text house rules that Scene Analysis should respect",
+    )
+
+    # ── AI control ────────────────────────────────────────────────────────
+    player_run_mode: bool = Field(
+        default=False,
+        description="When True, AI narration is disabled; players run the session manually",
+    )
+
+    model_config = ConfigDict(extra="allow")  # preserve any additional free-form fields
 
 
 def _require_user_id(current_user) -> int:
@@ -165,7 +228,7 @@ def purge_campaigns(name_like: str | None = None, current_user=Depends(get_curre
     return {'deleted': deleted}
 
 
-@router.get('/{campaign_id}/settings')
+@router.get('/{campaign_id}/settings', response_model=Dict[str, Any])
 def get_campaign_settings(campaign_id: str, current_user=Depends(get_current_user)):
     owner_id = _require_user_id(current_user)
     c = db.get_campaign_by_id(campaign_id)
@@ -179,21 +242,29 @@ def get_campaign_settings(campaign_id: str, current_user=Depends(get_current_use
     return {'settings': settings}
 
 
-@router.put('/{campaign_id}/settings')
+@router.put('/{campaign_id}/settings', response_model=Dict[str, Any])
 def put_campaign_settings(
     campaign_id: str,
-    settings: Dict[str, Any] = Body(...),
+    settings: CampaignSettings,
     current_user=Depends(get_current_user),
 ):
+    """Save campaign settings.
+
+    Accepts all :class:`CampaignSettings` fields plus any additional free-form
+    keys (e.g. ``world_name``, ``house_rules``).  The values stored here are
+    read by the Session Agents during gameplay:
+
+    - ``genre`` / ``tone`` / ``setting_summary`` → Storyboard + Narrative
+    - ``ruleset`` / ``starting_level`` / ``house_rules`` → Scene Analysis + NPC Manager
+    - ``player_run_mode`` → disables AI narration across all agents
+    """
     owner_id = _require_user_id(current_user)
     c = db.get_campaign_by_id(campaign_id)
     if not c:
         raise HTTPException(status_code=404, detail='Campaign not found')
     if c.owner_id != owner_id:
         raise HTTPException(status_code=403, detail='Forbidden')
-    if not isinstance(settings, dict):
-        raise HTTPException(status_code=400, detail='Settings must be an object')
-    updated = db.set_campaign_settings(campaign_id, owner_id, settings)
+    updated = db.set_campaign_settings(campaign_id, owner_id, settings.model_dump())
     if not updated:
         raise HTTPException(status_code=404, detail='Campaign not found or forbidden')
     meta = updated.metadata_json or {}

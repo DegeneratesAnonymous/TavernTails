@@ -232,3 +232,131 @@ def test_audit_endpoint_non_member_forbidden():
     stranger_headers = {"Authorization": f"Bearer {create_access_token(stranger)}"}
     resp = client.get(f"/documents/{sid}/audit", headers=stranger_headers)
     assert resp.status_code == 403, resp.text
+
+
+# ---------------------------------------------------------------------------
+# Category-driven default visibility (player information isolation model)
+# ---------------------------------------------------------------------------
+
+def test_gm_category_auto_hidden_without_explicit_visibility():
+    """GM document categories must default to hidden even when visibility is not supplied."""
+    client = _client()
+    owner = "cat-gm-owner@example.com"
+    _ensure_user(owner)
+    sid, _ = sessions_module.create_session_folder("Cat GM Session", owner)
+    headers = {"Authorization": f"Bearer {create_access_token(owner)}"}
+
+    for cat in ("gm_plot", "gm_npc", "gm_location", "gm_quest", "gm_notes"):
+        resp = client.post(
+            f"/documents/{sid}",
+            headers=headers,
+            json={"name": f"Test {cat}", "content": "secret", "category": cat},
+            # NOTE: visibility is deliberately omitted — must auto-infer "hidden"
+        )
+        assert resp.status_code == 201, f"create {cat}: {resp.text}"
+        assert resp.json()["visibility"] == "hidden", (
+            f"Category '{cat}' should default to hidden, got {resp.json()['visibility']}"
+        )
+
+
+def test_player_category_auto_shared_without_explicit_visibility():
+    """Player and world document categories must default to shared."""
+    client = _client()
+    owner = "cat-player-owner@example.com"
+    _ensure_user(owner)
+    sid, _ = sessions_module.create_session_folder("Cat Player Session", owner)
+    headers = {"Authorization": f"Bearer {create_access_token(owner)}"}
+
+    for cat in ("player_npc", "player_location", "player_quest_log", "player_journal", "world_lore", "core"):
+        resp = client.post(
+            f"/documents/{sid}",
+            headers=headers,
+            json={"name": f"Test {cat}", "content": "visible", "category": cat},
+        )
+        assert resp.status_code == 201, f"create {cat}: {resp.text}"
+        assert resp.json()["visibility"] == "shared", (
+            f"Category '{cat}' should default to shared, got {resp.json()['visibility']}"
+        )
+
+
+def test_player_cannot_read_gm_category_docs():
+    """Non-host players cannot read documents in GM categories, even without explicit hidden flag."""
+    import json as _json
+
+    client = _client()
+    host = "isolation-host@example.com"
+    player = "isolation-player@example.com"
+    _ensure_user(host)
+    _ensure_user(player)
+
+    sid, _ = sessions_module.create_session_folder("Isolation Session", host)
+    meta_path = sessions_module.BASE / sid / "meta.json"
+    data = _json.loads(meta_path.read_text())
+    data["invites"] = [player]
+    meta_path.write_text(_json.dumps(data))
+
+    host_headers = {"Authorization": f"Bearer {create_access_token(host)}"}
+    player_headers = {"Authorization": f"Bearer {create_access_token(player)}"}
+
+    # Host creates a full NPC profile (gm_npc — should auto-hide)
+    resp = client.post(
+        f"/documents/{sid}",
+        headers=host_headers,
+        json={"name": "Warlord Vrak — Full Profile", "content": "HP:120, motivation:revenge", "category": "gm_npc"},
+    )
+    assert resp.status_code == 201, resp.text
+    gm_doc_id = resp.json()["id"]
+    assert resp.json()["visibility"] == "hidden"
+
+    # Host also creates a player-facing NPC card (player_npc — shared)
+    resp = client.post(
+        f"/documents/{sid}",
+        headers=host_headers,
+        json={"name": "Warlord Vrak — Appearance", "content": "Tall, scarred face, speaks in riddles.", "category": "player_npc"},
+    )
+    assert resp.status_code == 201, resp.text
+    player_doc_id = resp.json()["id"]
+    assert resp.json()["visibility"] == "shared"
+
+    # Player can list documents — gm_npc is absent, player_npc is present
+    list_resp = client.get(f"/documents/{sid}", headers=player_headers)
+    assert list_resp.status_code == 200
+    ids = [d["id"] for d in list_resp.json()]
+    assert gm_doc_id not in ids, "Player should NOT see gm_npc document in list"
+    assert player_doc_id in ids, "Player SHOULD see player_npc document in list"
+
+    # Player cannot read the gm_npc document directly
+    read_resp = client.get(f"/documents/{sid}/{gm_doc_id}", headers=player_headers)
+    assert read_resp.status_code == 403, "Player must be denied reading gm_npc document"
+
+    # Player can read the player_npc document
+    read_resp = client.get(f"/documents/{sid}/{player_doc_id}", headers=player_headers)
+    assert read_resp.status_code == 200
+    assert "HP:120" not in read_resp.json()["content"], "Player NPC card must NOT contain GM stats"
+
+
+def test_explicit_visibility_overrides_category_default():
+    """Callers can explicitly override the category default in either direction."""
+    client = _client()
+    owner = "override-vis-owner@example.com"
+    _ensure_user(owner)
+    sid, _ = sessions_module.create_session_folder("Override Vis Session", owner)
+    headers = {"Authorization": f"Bearer {create_access_token(owner)}"}
+
+    # Force a core (normally shared) document to be hidden
+    resp = client.post(
+        f"/documents/{sid}",
+        headers=headers,
+        json={"name": "Private Core Doc", "content": "x", "category": "core", "visibility": "hidden"},
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["visibility"] == "hidden"
+
+    # Force a gm_notes (normally hidden) document to be shared
+    resp = client.post(
+        f"/documents/{sid}",
+        headers=headers,
+        json={"name": "Public GM Note", "content": "y", "category": "gm_notes", "visibility": "shared"},
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["visibility"] == "shared"
