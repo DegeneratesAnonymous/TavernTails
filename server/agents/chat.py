@@ -30,6 +30,11 @@ class ChatMessageOut(BaseModel):
 
 MENTION_REGEX = re.compile(r"@([A-Za-z0-9_\-]{2,32})")
 
+# Keywords used to produce contextual GM acknowledgements for @GM mentions.
+_QUESTION_KEYWORDS = ("can i", "can we", "is it", "does", "do i", "am i", "are we")
+_COMBAT_KEYWORDS = ("attack", "strike", "hit", "fight")
+_INVESTIGATION_KEYWORDS = ("search", "look", "investigate", "examine", "check")
+
 
 def _extract_mentions(text: str) -> list[str]:
     seen: list[str] = []
@@ -95,4 +100,40 @@ async def create_message(payload: ChatMessageCreate, current_user=Depends(get_cu
             "session_id": payload.session_id,
             "message": serialized_payload,
         })
+
+    # If the player tagged @GM, the Narrator acknowledges the question in-chat.
+    if payload.session_id and "gm" in [m.lower() for m in serialized.mentions]:
+        gm_text = _gm_acknowledge(payload.message)
+        gm_record = db.log_chat_message(
+            message=gm_text,
+            session_id=payload.session_id,
+            campaign_id=payload.campaign_id,
+            sender_id=None,
+            sender_name="GM",
+            role="gm",
+            metadata=None,
+        )
+        gm_serialized = _serialize_chat_message(gm_record).model_dump()
+        await broadcaster.broadcast_json(payload.session_id, {
+            "type": "chat.message",
+            "session_id": payload.session_id,
+            "message": gm_serialized,
+        })
+
     return serialized
+
+
+def _gm_acknowledge(player_message: str) -> str:
+    """Generate a brief, deterministic GM acknowledgement for an @GM mention.
+
+    This is intentionally simple so it works without an LLM.  A richer
+    LLM-backed response can replace this body when an API key is configured.
+    """
+    lower = player_message.lower()
+    if any(word in lower for word in _QUESTION_KEYWORDS):
+        return "[GM] That's a fair question. Let me consider the situation — I'll rule on it shortly."
+    if any(word in lower for word in _COMBAT_KEYWORDS):
+        return "[GM] Roll for initiative! Describe your action and we'll resolve it."
+    if any(word in lower for word in _INVESTIGATION_KEYWORDS):
+        return "[GM] Roll Perception or Investigation and tell me what you're searching for."
+    return "[GM] Noted. The GM is watching — carry on or describe your action."

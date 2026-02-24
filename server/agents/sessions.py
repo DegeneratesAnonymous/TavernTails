@@ -10,8 +10,12 @@ from .. import db
 from ..auth import get_current_user
 from ..realtime import broadcaster
 from ..storage import documents as doc_storage
+from . import image as image_agent
 from . import narrative as narrative_agent
+from . import notes as notes_agent
+from . import npc as npc_agent
 from . import scene as scene_agent
+from . import storyboard as storyboard_agent
 from . import suggestions as suggestions_agent
 
 router = APIRouter(prefix="/sessions")
@@ -617,3 +621,395 @@ async def bootstrap_session(session_id: str, payload: BootstrapRequest, current_
         pass
 
     return {'ok': True, 'scene': scene, 'owner': owner}
+
+
+# ---------------------------------------------------------------------------
+# New Session Workflow (Steps 1–5)
+# ---------------------------------------------------------------------------
+
+class StartSessionRequest(BaseModel):
+    style: str | None = None
+    weather: str | None = None
+    time_of_day: str | None = None
+
+
+@router.post('/{session_id}/start')
+async def start_session(session_id: str, payload: StartSessionRequest, current_user=Depends(get_current_user)):
+    """Orchestrate the New Session Workflow (Steps 1–5).
+
+    Step 1 – Storyboard Agent builds a story plot from players, campaign settings, and docs.
+    Step 2 – Narrative Agent creates the opening scene from the storyboard output.
+    Step 3 – Scene Analysis Agent checks for dice-roll opportunities.
+    Step 4 – NPC Manager initialises profiles for NPCs mentioned in the plot.
+    Step 5 – Scene is broadcast to all session members.
+    """
+    folder = BASE / session_id
+    if not folder.exists():
+        raise HTTPException(status_code=404, detail='Session not found')
+    meta_path = folder / 'meta.json'
+    if not meta_path.exists():
+        raise HTTPException(status_code=404, detail='Meta not found')
+    try:
+        meta = json.loads(meta_path.read_text())
+    except Exception as err:
+        raise HTTPException(status_code=500, detail='Failed to read meta') from err
+
+    identifier = _identifier_for_user(current_user)
+    if not _user_is_member(meta, identifier):
+        raise HTTPException(status_code=403, detail='Not a member of this session')
+
+    session_name = meta.get('name') or session_id
+    style = payload.style or 'balanced'
+    weather = payload.weather or 'clear'
+    time_of_day = payload.time_of_day or 'day'
+
+    if is_player_run_mode(session_id):
+        scene = {
+            'id': 'opening',
+            'title': f"{session_name} — Player-Run Session",
+            'image': None,
+            'text': "Player-run mode is enabled. Use chat, notes, and documents to run the session without AI narration.",
+            'choices': [],
+        }
+        (folder / 'scene.json').write_text(json.dumps(scene))
+        await broadcaster.broadcast_json(session_id, {'type': 'narrative.scene', 'session_id': session_id, 'scene': scene})
+        return {'ok': True, 'scene': scene}
+
+    # --- Step 1: Storyboard Agent ---
+    players: list[str] = []
+    try:
+        pcs_file = folder / 'pcs.json'
+        if pcs_file.exists():
+            pcs = json.loads(pcs_file.read_text()) or []
+            players = [str(p.get('name') or p.get('character_name') or '') for p in pcs if p]
+            players = [n for n in players if n]
+    except Exception:
+        players = []
+    for member in meta.get('members', []) or []:
+        name = member.get('character_name') or member.get('email') or ''
+        if name and name not in players:
+            players.append(name)
+
+    campaign_settings: dict = {}
+    campaign_docs: list[str] = []
+    campaign_id = meta.get('campaign_id')
+    if campaign_id:
+        try:
+            campaign = db.get_campaign_by_id(str(campaign_id))
+            if campaign and isinstance(campaign.metadata_json, dict):
+                campaign_settings = campaign.metadata_json.get('settings') or {}
+                if not isinstance(campaign_settings, dict):
+                    campaign_settings = {}
+        except Exception:
+            pass
+        try:
+            docs = _doc_store.list_documents(session_id=session_id)
+            for doc in docs or []:
+                content = doc.get('content') or ''
+                if content:
+                    campaign_docs.append(content)
+        except Exception:
+            pass
+
+    plot_result = storyboard_agent.generate_plot(storyboard_agent.StoryboardPlotRequest(
+        session_id=session_id,
+        players=players,
+        campaign_settings=campaign_settings,
+        campaign_docs=campaign_docs,
+    ))
+
+    # --- Step 2: Narrative Agent creates the opening scene ---
+    narrative = narrative_agent.generate_narrative(narrative_agent.NarrativeRequest(
+        scene=plot_result.plot,
+        player='party',
+        style=style,
+        weather=weather,
+        time_of_day=time_of_day,
+    ))
+
+    scene = {
+        'id': 'opening',
+        'title': f"{session_name} — Opening Scene",
+        'image': None,
+        'text': f"{narrative.narrative}\n\n{narrative.prompt}",
+        'choices': [
+            {'id': 'investigate', 'label': 'Investigate the most immediate clue'},
+            {'id': 'talk', 'label': 'Talk to someone nearby'},
+            {'id': 'press_on', 'label': 'Press on toward the obvious destination'},
+            {'id': 'plan', 'label': 'Huddle and make a plan'},
+        ],
+        'hooks': plot_result.hooks,
+    }
+    (folder / 'scene.json').write_text(json.dumps(scene))
+
+    story_path = folder / 'story.json'
+    try:
+        cur = json.loads(story_path.read_text()) if story_path.exists() else []
+    except Exception:
+        cur = []
+    if not isinstance(cur, list):
+        cur = [cur]
+    cur.append({'type': 'narration', 'ts': datetime.now(timezone.utc).isoformat(), 'text': scene['text']})
+    story_path.write_text(json.dumps(cur))
+
+    # --- Step 3: Scene Analysis ---
+    dice_rolls: list[dict] = []
+    try:
+        cues = await scene_agent.analyze_scene(scene_agent.SceneAnalysisRequest(
+            scene=scene['text'],
+            actions=[c.get('label', '') for c in scene.get('choices', []) if isinstance(c, dict)],
+            session_id=session_id,
+        ))
+        dice_rolls = [r.model_dump() for r in cues.dice_rolls]
+    except Exception:
+        pass
+
+    # --- Step 4: NPC Manager initialises profiles for mentioned NPCs ---
+    npc_profiles: list[dict] = []
+    for npc_name in plot_result.npcs_mentioned:
+        try:
+            result = await npc_agent.manage_npc(npc_agent.NPCManageRequest(
+                name=npc_name,
+                session_id=session_id,
+            ))
+            npc_profiles.append(result.npc_profile)
+        except Exception:
+            pass
+
+    # --- Step 5: Broadcast scene to players ---
+    await broadcaster.broadcast_json(session_id, {
+        'type': 'narrative.scene',
+        'session_id': session_id,
+        'scene': scene,
+    })
+
+    # Reset player-ready state for the new session
+    ready_path = folder / 'ready.json'
+    ready_path.write_text(json.dumps({}))
+
+    return {
+        'ok': True,
+        'scene': scene,
+        'plot': plot_result.plot,
+        'hooks': plot_result.hooks,
+        'dice_rolls': dice_rolls,
+        'npc_profiles': npc_profiles,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Returning Session Workflow – Step 1: Player "Done" Signal
+# ---------------------------------------------------------------------------
+
+class PlayerReadyRequest(BaseModel):
+    done: bool = True
+
+
+@router.post('/{session_id}/player-ready')
+async def player_ready(session_id: str, payload: PlayerReadyRequest, current_user=Depends(get_current_user)):
+    """Mark the current player as done contributing to chat (Returning Session Workflow, Step 1).
+
+    When all session members have signalled ready, the response includes
+    ``all_ready: true`` so the frontend knows it can trigger ``/advance-scene``.
+    """
+    folder = BASE / session_id
+    if not folder.exists():
+        raise HTTPException(status_code=404, detail='Session not found')
+    meta_path = folder / 'meta.json'
+    if not meta_path.exists():
+        raise HTTPException(status_code=404, detail='Meta not found')
+    try:
+        meta = json.loads(meta_path.read_text())
+    except Exception as err:
+        raise HTTPException(status_code=500, detail='Failed to read meta') from err
+
+    identifier = _identifier_for_user(current_user)
+    if not _user_is_member(meta, identifier):
+        raise HTTPException(status_code=403, detail='Not a member of this session')
+
+    # Load/update ready state
+    ready_path = folder / 'ready.json'
+    try:
+        ready: dict = json.loads(ready_path.read_text()) if ready_path.exists() else {}
+    except Exception:
+        ready = {}
+
+    ready[identifier] = payload.done
+    ready_path.write_text(json.dumps(ready))
+
+    # Determine all_ready: every member who has an entry must be done.
+    members = meta.get('members', []) or []
+    member_ids = [_normalize_email(m.get('email')) for m in members if m.get('email')]
+    if not member_ids:
+        member_ids = [_normalize_email(meta.get('owner') or '')]
+    all_ready = bool(member_ids) and all(ready.get(mid) for mid in member_ids)
+
+    await broadcaster.broadcast_json(session_id, {
+        'type': 'player.ready',
+        'session_id': session_id,
+        'player': identifier,
+        'done': payload.done,
+        'all_ready': all_ready,
+    })
+
+    return {'ok': True, 'player': identifier, 'done': payload.done, 'all_ready': all_ready}
+
+
+# ---------------------------------------------------------------------------
+# Returning Session Workflow – Steps 2–5: Advance Scene
+# ---------------------------------------------------------------------------
+
+class AdvanceSceneRequest(BaseModel):
+    style: str | None = None
+    weather: str | None = None
+    time_of_day: str | None = None
+
+
+@router.post('/{session_id}/advance-scene')
+async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_user=Depends(get_current_user)):
+    """Orchestrate the Returning Session Workflow (Steps 2–5).
+
+    Step 2 – Narrative Agent analyses recent chat; Scene Analysis checks for dice rolls.
+    Step 3 – Notes Agent logs session notes; Storyboard is updated with player choices.
+    Step 4 – Narrative Agent creates the new scene; Image Generation kicks off.
+    Step 5 – New scene is broadcast to all session members.
+    """
+    folder = BASE / session_id
+    if not folder.exists():
+        raise HTTPException(status_code=404, detail='Session not found')
+    meta_path = folder / 'meta.json'
+    if not meta_path.exists():
+        raise HTTPException(status_code=404, detail='Meta not found')
+    try:
+        meta = json.loads(meta_path.read_text())
+    except Exception as err:
+        raise HTTPException(status_code=500, detail='Failed to read meta') from err
+
+    identifier = _identifier_for_user(current_user)
+    if not _user_is_member(meta, identifier):
+        raise HTTPException(status_code=403, detail='Not a member of this session')
+
+    style = payload.style or 'balanced'
+    weather = payload.weather or 'clear'
+    time_of_day = payload.time_of_day or 'day'
+
+    if is_player_run_mode(session_id):
+        raise HTTPException(status_code=400, detail='advance-scene is not available in player-run mode')
+
+    # --- Step 2: Collect recent player chat and analyse for dice rolls ---
+    recent_messages = db.list_chat_messages(session_id=session_id, limit=20)
+    player_actions = [
+        m.message for m in recent_messages
+        if m.role not in ('gm', 'narrator', 'system') and m.message
+    ]
+
+    # Load current scene for context
+    scene_text = ''
+    try:
+        scene_path = folder / 'scene.json'
+        if scene_path.exists():
+            scene_text = json.loads(scene_path.read_text()).get('text', '')
+    except Exception:
+        pass
+
+    dice_rolls: list[dict] = []
+    try:
+        cues = await scene_agent.analyze_scene(scene_agent.SceneAnalysisRequest(
+            scene=scene_text,
+            actions=player_actions,
+            session_id=session_id,
+        ))
+        dice_rolls = [r.model_dump() for r in cues.dice_rolls]
+    except Exception:
+        pass
+
+    # --- Step 3: Notes Agent logs the interaction; Storyboard is updated ---
+    notes_to_log = [f"[player] {a}" for a in player_actions[:10]]
+    try:
+        notes_agent._ensure_notes_member(session_id, current_user)
+        notes_agent._append_to_session_notes(
+            session_id,
+            notes_to_log,
+            notes_agent._generate_recap(notes_to_log),
+        )
+    except Exception:
+        pass
+
+    # Update storyboard with player choices as new story beats
+    storyboard_choices = player_actions[:5]
+    try:
+        storyboard_agent.update_storyboard(storyboard_agent.StoryboardRequest(
+            scene=scene_text,
+            choices=storyboard_choices,
+            unresolved=[],
+            completed=[],
+        ))
+    except Exception:
+        pass
+
+    # --- Step 4: Narrative Agent creates the new scene ---
+    scene_summary = ' '.join(player_actions[:3]) if player_actions else 'The party deliberates their next move.'
+    narrative = narrative_agent.generate_narrative(narrative_agent.NarrativeRequest(
+        scene=scene_summary,
+        player='party',
+        style=style,
+        weather=weather,
+        time_of_day=time_of_day,
+    ))
+
+    now = datetime.now(timezone.utc)
+    scene_index = f"scene-{uuid.uuid4().hex[:8]}"
+    new_scene = {
+        'id': scene_index,
+        'title': f"Scene — {now.strftime('%Y-%m-%d %H:%M')} UTC",
+        'image': None,
+        'text': f"{narrative.narrative}\n\n{narrative.prompt}",
+        'choices': [
+            {'id': 'investigate', 'label': 'Investigate the most immediate clue'},
+            {'id': 'talk', 'label': 'Talk to someone nearby'},
+            {'id': 'press_on', 'label': 'Press on toward the obvious destination'},
+            {'id': 'plan', 'label': 'Huddle and make a plan'},
+        ],
+    }
+
+    # Kick off image generation for the new scene (best-effort)
+    image_url = None
+    try:
+        img = image_agent.generate_image(image_agent.ImageRequest(
+            prompt=narrative.narrative[:200],
+            style='realistic',
+        ))
+        image_url = img.image_url
+        new_scene['image'] = image_url
+    except Exception:
+        pass
+
+    (folder / 'scene.json').write_text(json.dumps(new_scene))
+
+    story_path = folder / 'story.json'
+    try:
+        cur = json.loads(story_path.read_text()) if story_path.exists() else []
+    except Exception:
+        cur = []
+    if not isinstance(cur, list):
+        cur = [cur]
+    cur.append({'type': 'narration', 'ts': now.isoformat(), 'text': new_scene['text']})
+    story_path.write_text(json.dumps(cur))
+
+    # Reset player-ready state for the next round
+    ready_path = folder / 'ready.json'
+    ready_path.write_text(json.dumps({}))
+
+    # --- Step 5: Broadcast the new scene ---
+    await broadcaster.broadcast_json(session_id, {
+        'type': 'narrative.scene',
+        'session_id': session_id,
+        'scene': new_scene,
+    })
+
+    return {
+        'ok': True,
+        'scene': new_scene,
+        'dice_rolls': dice_rolls,
+        'image_url': image_url,
+    }
