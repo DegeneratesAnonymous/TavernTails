@@ -109,6 +109,7 @@ def create_session_folder(name: str, owner_email: str, invites=None, campaign_id
     (folder / 'notes.md').write_text(f'# Notes for {name}\n')
     (folder / 'npcs.json').write_text('[]')
     (folder / 'pcs.json').write_text('[]')
+    (folder / 'associations.json').write_text('[]')
     (folder / 'story.json').write_text(json.dumps([{'type': 'meta', 'text': 'The session begins.'}]))
     (folder / 'scene.json').write_text(json.dumps({
         'id': 'opening',
@@ -1146,6 +1147,20 @@ def get_entity_card(session_id: str, entity_name: str, current_user=Depends(get_
 
     name_lower = entity_name.strip().lower()
 
+    # Load associations once; reused by all branches below.
+    assoc = _load_associations(session_id)
+
+    def _known_for(name_lc: str) -> list[str]:
+        return [
+            f"{a['entity_b']} ({a.get('relationship', '')})"
+            for a in assoc
+            if (a.get('entity_a') or '').strip().lower() == name_lc
+        ] + [
+            f"{a['entity_a']} ({a.get('relationship', '')})"
+            for a in assoc
+            if (a.get('entity_b') or '').strip().lower() == name_lc
+        ]
+
     # --- 1. Try the session npcs.json (player-visible NPC profiles) ---
     npcs_path = folder / 'npcs.json'
     if npcs_path.exists():
@@ -1153,27 +1168,20 @@ def get_entity_card(session_id: str, entity_name: str, current_user=Depends(get_
             npcs = json.loads(npcs_path.read_text()) or []
             for npc in npcs:
                 if (npc.get('name') or '').strip().lower() == name_lower:
-                    # Build a PlayerEntityCard from the NPC profile.
-                    # Only expose appearance + traits that are player-safe.
-                    traits = npc.get('traits') or {}
-                    appearance = traits.get('appearance', '') if isinstance(traits, dict) else ''
-                    assoc = _load_associations(session_id)
-                    known = [
-                        f"{a['entity_b']} ({a.get('relationship', '')})"
-                        for a in assoc
-                        if (a.get('entity_a') or '').strip().lower() == name_lower
-                    ] + [
-                        f"{a['entity_a']} ({a.get('relationship', '')})"
-                        for a in assoc
-                        if (a.get('entity_b') or '').strip().lower() == name_lower
-                    ]
+                    # Canonical appearance lives at the top level (written by the updated
+                    # manage_npc endpoint).  Fall back to traits['appearance'] for profiles
+                    # written by older code.
+                    appearance = npc.get('appearance') or ''
+                    if not appearance:
+                        traits = npc.get('traits') or {}
+                        appearance = traits.get('appearance', '') if isinstance(traits, dict) else ''
                     return PlayerEntityCard(
                         name=npc.get('name', entity_name),
                         entity_type='npc',
                         summary=appearance or f"You have encountered {npc.get('name', entity_name)}.",
                         appearance=appearance,
-                        relationship_notes=', '.join(npc.get('quirks') or []),
-                        known_associations=known,
+                        relationship_notes=npc.get('personality', '') or ', '.join(npc.get('quirks') or []),
+                        known_associations=_known_for(name_lower),
                     )
         except Exception:
             pass
@@ -1197,21 +1205,11 @@ def get_entity_card(session_id: str, entity_name: str, current_user=Depends(get_
             'player_location': 'location',
             'player_quest_log': 'quest',
         }
-        assoc = _load_associations(session_id)
-        known = [
-            f"{a['entity_b']} ({a.get('relationship', '')})"
-            for a in assoc
-            if (a.get('entity_a') or '').strip().lower() == name_lower
-        ] + [
-            f"{a['entity_a']} ({a.get('relationship', '')})"
-            for a in assoc
-            if (a.get('entity_b') or '').strip().lower() == name_lower
-        ]
         return PlayerEntityCard(
             name=doc_meta.name,
             entity_type=entity_type_map.get(doc_meta.category, 'npc'),  # type: ignore[arg-type]
             summary=content[:500] if content else '',
-            known_associations=known,
+            known_associations=_known_for(name_lower),
         )
 
     raise HTTPException(status_code=404, detail=f"No player-visible information found for '{entity_name}'")

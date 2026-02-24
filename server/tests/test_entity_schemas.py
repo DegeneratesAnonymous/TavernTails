@@ -255,7 +255,7 @@ def test_association_upsert():
 
 
 def test_entity_card_lookup_from_npcs_json():
-    """GET /sessions/{id}/entity/{name} resolves an NPC from npcs.json."""
+    """GET /sessions/{id}/entity/{name} resolves an NPC from npcs.json using the canonical schema."""
     client = _client()
     owner = "entity-lookup-owner@example.com"
     _ensure_user(owner)
@@ -263,17 +263,24 @@ def test_entity_card_lookup_from_npcs_json():
     token = create_access_token(owner)
     headers = {"Authorization": f"Bearer {token}"}
 
-    # Seed the session npcs.json directly (as NPC Manager does)
+    # Seed npcs.json with the canonical schema produced by the updated manage_npc endpoint
+    # (appearance is a top-level field, personality replaces the old quirks-as-personality pattern).
     npcs_path = sessions_module.BASE / sid / "npcs.json"
     npcs_path.write_text(json.dumps([{
         "name": "Warlord Vrak",
-        "traits": {"appearance": "Tall figure in black armour, scarred face."},
+        "appearance": "Tall figure in black armour, scarred face.",
+        "personality": "Cold and calculating.",
+        "factions": ["The Iron Fist"],
         "motivations": ["conquer the north"],
+        "secrets": ["actually a reformed paladin"],
         "stats": {},
         "quirks": ["Speaks in riddles"],
         "classes": [],
         "abilities": [],
         "spells": [],
+        "gear": [],
+        "backstory": "Born in the slums of Dur'Khal.",
+        "traits": {},
     }]))
 
     resp = client.get(f"/sessions/{sid}/entity/Warlord Vrak", headers=headers)
@@ -284,8 +291,39 @@ def test_entity_card_lookup_from_npcs_json():
     # Must NOT expose GM-only fields
     assert "motivations" not in card
     assert "secrets" not in card
-    # Appearance is player-safe
-    assert "black armour" in card["appearance"] or "black armour" in card["summary"]
+    assert "backstory" not in card
+    # Appearance comes from the canonical top-level field → always in card['appearance']
+    assert "black armour" in card["appearance"]
+
+
+def test_entity_card_lookup_from_npcs_json_legacy_traits_compat():
+    """GET /sessions/{id}/entity/{name} falls back to traits['appearance'] for older profiles."""
+    client = _client()
+    owner = "entity-legacy-owner@example.com"
+    _ensure_user(owner)
+    sid = _make_session(owner)
+    token = create_access_token(owner)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Seed with the OLD schema shape (appearance buried in traits dict, no top-level appearance)
+    npcs_path = sessions_module.BASE / sid / "npcs.json"
+    npcs_path.write_text(json.dumps([{
+        "name": "Old NPC",
+        "traits": {"appearance": "Weathered and grey."},
+        "motivations": ["survive"],
+        "stats": {},
+        "quirks": [],
+        "classes": [],
+        "abilities": [],
+        "spells": [],
+    }]))
+
+    resp = client.get(f"/sessions/{sid}/entity/Old NPC", headers=headers)
+    assert resp.status_code == 200, resp.text
+    card = resp.json()
+    assert card["entity_type"] == "npc"
+    # Appearance comes from the traits fallback → still lands in card['appearance']
+    assert "Weathered" in card["appearance"]
 
 
 def test_entity_card_lookup_from_player_document():
@@ -347,3 +385,83 @@ def test_entity_lookup_non_member_forbidden():
         headers=stranger_headers,
         json={"entity_a": "A", "entity_a_type": "npc", "entity_b": "B", "entity_b_type": "location"},
     ).status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Session init creates associations.json
+# ---------------------------------------------------------------------------
+
+
+def test_session_init_creates_associations_file():
+    """create_session_folder must initialize associations.json as an empty list."""
+    sid, _ = sessions_module.create_session_folder("Assoc Init Test", "assoc-init-owner@example.com")
+    assoc_path = sessions_module.BASE / sid / "associations.json"
+    assert assoc_path.exists(), "associations.json was not created during session init"
+    assert json.loads(assoc_path.read_text()) == []
+
+
+# ---------------------------------------------------------------------------
+# NPCManageRequest canonical field alignment
+# ---------------------------------------------------------------------------
+
+
+def test_manage_npc_canonical_fields_stored_in_profile():
+    """POST /npc/manage persists all canonical GMNPCDocument fields at the top level."""
+    client = _client()
+    resp = client.post("/npc/manage", json={
+        "name": "Elder Mirra",
+        "factions": ["Council of Five"],
+        "motivations": ["protect the city"],
+        "personality": "Warm but firm. Never breaks eye contact.",
+        "attitude": [{"target": "party", "rank": "like", "notes": "grateful for past help"}],
+        "secrets": ["knows the location of the lost vault"],
+        "gear": ["Staff of Verdancy", "Council signet ring"],
+        "appearance": "Elderly woman with silver-streaked hair and keen amber eyes.",
+        "backstory": "Former adventurer who retired to city council after the Great War.",
+        "quirks": ["Always speaks in a whisper when stressed"],
+        "classes": [{"name": "Wizard", "level": 8}],
+        "stats": {"initiative": 2},
+    })
+    assert resp.status_code == 200, resp.text
+    profile = resp.json()["npc_profile"]
+
+    # Canonical fields at top level
+    assert profile["factions"] == ["Council of Five"]
+    assert profile["personality"] == "Warm but firm. Never breaks eye contact."
+    assert profile["secrets"] == ["knows the location of the lost vault"]
+    assert profile["gear"] == ["Staff of Verdancy", "Council signet ring"]
+    assert profile["appearance"] == "Elderly woman with silver-streaked hair and keen amber eyes."
+    assert profile["backstory"] == "Former adventurer who retired to city council after the Great War."
+
+    # Attitude is serialised
+    assert len(profile["attitude"]) == 1
+    assert profile["attitude"][0]["rank"] == "like"
+    assert profile["attitude"][0]["target"] == "party"
+
+    # Backward-compat fields still present
+    assert "quirks" in profile
+    assert "classes" in profile
+
+
+def test_manage_npc_appearance_top_level_wins_over_traits():
+    """When both top-level 'appearance' and traits['appearance'] are supplied,
+    the top-level field wins."""
+    client = _client()
+    resp = client.post("/npc/manage", json={
+        "name": "Dual Appearance NPC",
+        "appearance": "Canonical appearance text.",
+        "traits": {"appearance": "Old traits bag appearance."},
+    })
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["npc_profile"]["appearance"] == "Canonical appearance text."
+
+
+def test_manage_npc_traits_appearance_fallback():
+    """When top-level 'appearance' is empty, traits['appearance'] is used as fallback."""
+    client = _client()
+    resp = client.post("/npc/manage", json={
+        "name": "Legacy NPC",
+        "traits": {"appearance": "Fallback from traits."},
+    })
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["npc_profile"]["appearance"] == "Fallback from traits."
