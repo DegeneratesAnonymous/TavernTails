@@ -128,7 +128,16 @@ The campaign creation form. Give your campaign a name and description, choose an
 
 ![Campaign settings](docs/screenshots/09-campaign-settings.png)
 
-The host-only configuration panel for an existing campaign. From here you can manage players and invites, upload or remove session documents, configure which AI agents are active, and adjust narrative style options. Only the campaign host sees this page — players are directed to the session view.
+The host-only configuration panel for an existing campaign. From here you can:
+
+- **World & Story** — set the world name, write a setting summary, choose genre (Fantasy, Sci-Fi, Horror, etc.), and pick a tone (Heroic, Grim, Dark Fantasy, etc.).
+- **Rules** — select the ruleset (D&D 5e, Pathfinder 2e, Shadowrun, etc.) and configure the starting character level.
+- **Narrative Variables** — tune pacing (Slow / Moderate / Fast), narrative style (Epic, Intimate, Gritty, etc.), naming style hint, recurring story themes, and content rating.
+- **House Rules** — free-text rules the AI agents must respect during the session.
+- **Game Master** — assign the AI as GM or designate a player as GM (AI shifts to note-taking / organization mode).
+- **Player-run Mode** — toggle to disable all AI narration while keeping dice rolls, notes, and NPC tracking active.
+
+Only the campaign host sees this panel — players are directed to the session view.
 
 ---
 
