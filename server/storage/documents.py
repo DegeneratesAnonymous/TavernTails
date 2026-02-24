@@ -9,14 +9,102 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+# ---------------------------------------------------------------------------
+# Document category & visibility model
+# ---------------------------------------------------------------------------
+#
+# Documents in TavernTAIls carry two orthogonal metadata attributes:
+#
+# category   — *what type of information* the document contains
+# visibility — *who may read* the document ("hidden" = host/GM only; "shared" = all members)
+#
+# The category drives the **default** visibility.  Callers may override the
+# default, but the rules below represent the intended design:
+#
+# ┌────────────────────┬───────────────────┬───────────────────────────────────────────────────────────────┐
+# │ Category           │ Default visibility│ Description & agent(s) that write / read it                   │
+# ├────────────────────┼───────────────────┼───────────────────────────────────────────────────────────────┤
+# │ gm_plot            │ hidden            │ Full storyline, arcs, unresolved threads, major secrets.       │
+# │                    │                   │ Written by Storyboard Agent; read only by GM/host.             │
+# ├────────────────────┼───────────────────┼───────────────────────────────────────────────────────────────┤
+# │ gm_npc             │ hidden            │ Full NPC profile: stats, motivations, secrets, loyalties.      │
+# │                    │                   │ Written by NPC Manager Agent; never visible to players.        │
+# ├────────────────────┼───────────────────┼───────────────────────────────────────────────────────────────┤
+# │ gm_location        │ hidden            │ Full location detail: traps, hidden areas, true history.       │
+# │                    │                   │ Written by Storyboard / GM; players only see player_location.  │
+# ├────────────────────┼───────────────────┼───────────────────────────────────────────────────────────────┤
+# │ gm_notes           │ hidden            │ Miscellaneous GM notes, reminders, session prep.               │
+# │                    │                   │ Written by GM directly; inaccessible to players.               │
+# ├────────────────────┼───────────────────┼───────────────────────────────────────────────────────────────┤
+# │ player_npc         │ shared            │ Player-perspective NPC entry: only physical appearance,        │
+# │                    │                   │ dialogue heard, and relationship status.  Stats/secrets omitted.│
+# │                    │                   │ Written by NPC Manager when an NPC is first encountered.       │
+# ├────────────────────┼───────────────────┼───────────────────────────────────────────────────────────────┤
+# │ player_location    │ shared            │ Player-discovered location notes: shops, contacts, layout       │
+# │                    │                   │ as the party has explored it.  Written by Notes Agent.          │
+# ├────────────────────┼───────────────────┼───────────────────────────────────────────────────────────────┤
+# │ player_quest_log   │ shared            │ Living quest log from the players' perspective.                  │
+# │                    │                   │ Appended by Notes Agent after each scene transition.            │
+# ├────────────────────┼───────────────────┼───────────────────────────────────────────────────────────────┤
+# │ player_journal     │ shared            │ Free-text player notes / in-character journal entries.          │
+# │                    │                   │ Written directly by players; never auto-generated.              │
+# ├────────────────────┼───────────────────┼───────────────────────────────────────────────────────────────┤
+# │ world_lore         │ shared            │ Publicly known world lore: history, religions, factions.        │
+# │                    │                   │ Written by GM / Storyboard; readable by everyone.               │
+# ├────────────────────┼───────────────────┼───────────────────────────────────────────────────────────────┤
+# │ core               │ shared            │ General campaign documents (default / catch-all).               │
+# └────────────────────┴───────────────────┴───────────────────────────────────────────────────────────────┘
+#
+# Summary of player information isolation:
+#   - Players NEVER see gm_plot, gm_npc, gm_location, gm_notes (visibility=hidden enforced in API).
+#   - Players see player_npc documents which contain ONLY the information their character has
+#     gathered (appearance, dialogue, relationship) — no stats, motivations, or secrets.
+#   - Each NPC encounter creates/updates player_npc alongside the hidden gm_npc.
+#   - Quest log (player_quest_log) and journals (player_journal) are player-visible and grow
+#     as the campaign progresses; they never contain GM-reserved information.
+#   - The GM can always read all categories regardless of visibility setting.
+#
+
+#: Categories whose default visibility is "hidden" (GM / host only).
+_GM_CATEGORIES: frozenset[str] = frozenset({"gm_plot", "gm_npc", "gm_location", "gm_notes"})
+
+#: Categories whose default visibility is "shared" (all session members).
+_PLAYER_CATEGORIES: frozenset[str] = frozenset({
+    "player_npc",
+    "player_location",
+    "player_quest_log",
+    "player_journal",
+    "world_lore",
+    "core",
+})
+
+#: All recognised category strings.
+KNOWN_CATEGORIES: frozenset[str] = _GM_CATEGORIES | _PLAYER_CATEGORIES
+
+#: Default visibility per category.  Anything not listed here falls back to "shared".
+CATEGORY_DEFAULT_VISIBILITY: dict[str, str] = {
+    **{cat: "hidden" for cat in _GM_CATEGORIES},
+    **{cat: "shared" for cat in _PLAYER_CATEGORIES},
+}
+
+
+def default_visibility_for_category(category: str) -> str:
+    """Return the default visibility for *category*.
+
+    GM categories default to ``"hidden"``; all player / world / core categories
+    default to ``"shared"``.  Unknown categories fall back to ``"shared"`` so
+    that forward-compatibility is maintained for custom category names.
+    """
+    return CATEGORY_DEFAULT_VISIBILITY.get(category, "shared")
+
 
 @dataclass
 class DocumentMeta:
     id: str
     session_id: str
     name: str
-    category: str = "core"
-    visibility: str = "shared"  # shared|hidden
+    category: str = "core"       # see KNOWN_CATEGORIES for valid values
+    visibility: str = "shared"   # "shared" = all members | "hidden" = host/GM only
     filename: str = ""
     size: int = 0
     created_at: str = ""

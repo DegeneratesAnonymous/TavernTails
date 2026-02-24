@@ -1,9 +1,46 @@
 """Session document endpoints backed by the storage abstraction.
 
-MVP requirements:
-- Session members can access shared documents.
-- Only session hosts can access documents with visibility=hidden.
-- Sensitive document access is audited to a per-session jsonl file.
+## Document visibility & category model
+
+Every document has two attributes that together govern access:
+
+- **category** — *what* the document contains.  See
+  :data:`~server.storage.documents.KNOWN_CATEGORIES` for the full list.
+  The category drives the **default visibility** (GM categories are
+  ``hidden`` by default; player and world categories are ``shared``).
+
+- **visibility** — *who* may read the document:
+  - ``"shared"`` — all session members (players + host)
+  - ``"hidden"`` — host / GM only
+
+### Recognised categories and their defaults
+
+| Category           | Default visibility | Written by / purpose |
+|--------------------|-------------------|--------------------------------------|
+| ``gm_plot``        | hidden            | Storyboard Agent — storyline, arcs, secrets |
+| ``gm_npc``         | hidden            | NPC Manager — full NPC stats, motivations, secrets |
+| ``gm_location``    | hidden            | GM / Storyboard — full location details, traps |
+| ``gm_notes``       | hidden            | GM — miscellaneous session prep notes |
+| ``player_npc``     | shared            | NPC Manager — appearance + dialogue only (no stats) |
+| ``player_location``| shared            | Notes Agent — shops, contacts, explored layout |
+| ``player_quest_log``| shared           | Notes Agent — quests as discovered by players |
+| ``player_journal`` | shared            | Players — free-text in-character notes |
+| ``world_lore``     | shared            | GM / Storyboard — publicly known lore |
+| ``core``           | shared            | General campaign docs (catch-all / default) |
+
+### Player information isolation
+
+Players **never** see ``gm_*`` documents (``visibility=hidden`` is enforced
+by the API for all read/list/download operations).
+
+When an NPC is encountered the NPC Manager Agent creates **two** documents:
+
+1. ``gm_npc`` (hidden) — full profile with stats, motivation, secrets.
+2. ``player_npc`` (shared) — player-visible card with only the information
+   the party has gathered: physical appearance, dialogue, relationship status.
+
+Quest log and player journals grow as the campaign progresses and only ever
+contain information the players themselves have learned.
 """
 
 from __future__ import annotations
@@ -28,10 +65,38 @@ store = doc_storage.get_document_store()
 
 
 class DocumentCreate(BaseModel):
+    """Create a new session document.
+
+    If ``visibility`` is omitted the server infers the correct default from
+    ``category`` (GM categories are hidden; player/world categories are shared).
+    Callers may always explicitly override with ``"hidden"`` or ``"shared"``.
+
+    **GM-only categories** (default ``hidden``):
+    ``gm_plot``, ``gm_npc``, ``gm_location``, ``gm_notes``
+
+    **Player-visible categories** (default ``shared``):
+    ``player_npc``, ``player_location``, ``player_quest_log``,
+    ``player_journal``, ``world_lore``, ``core``
+    """
+
     name: str
     content: str = Field(default="")
-    category: str = Field(default="core")
-    visibility: str = Field(default="shared")
+    category: str = Field(
+        default="core",
+        description=(
+            "Document category.  Determines default visibility.  "
+            "One of: gm_plot, gm_npc, gm_location, gm_notes (default hidden), "
+            "or player_npc, player_location, player_quest_log, player_journal, "
+            "world_lore, core (default shared)."
+        ),
+    )
+    visibility: str | None = Field(
+        default=None,
+        description=(
+            "Override visibility: 'hidden' (host only) or 'shared' (all members). "
+            "When omitted, the default for the chosen category is used."
+        ),
+    )
 
 
 class DocumentResponse(BaseModel):
@@ -64,7 +129,10 @@ class RegisterRequest(BaseModel):
     name: str
     size: int
     category: str = Field(default="core")
-    visibility: str = Field(default="shared")
+    visibility: str | None = Field(
+        default=None,
+        description="Visibility override.  When omitted, defaults are inferred from category.",
+    )
 
 
 def _normalize_visibility(value: str | None) -> str:
@@ -75,6 +143,19 @@ def _normalize_visibility(value: str | None) -> str:
 def _normalize_category(value: str | None) -> str:
     lowered = (value or "").strip().lower()
     return lowered or "core"
+
+
+def _resolve_visibility(category: str, visibility: str | None) -> str:
+    """Return the effective visibility for a document.
+
+    If *visibility* is explicitly provided it is always respected (after
+    normalisation).  When *visibility* is ``None`` (caller omitted it), the
+    default for *category* is applied — GM categories become ``"hidden"`` and
+    player/world categories become ``"shared"``.
+    """
+    if visibility is not None:
+        return _normalize_visibility(visibility)
+    return doc_storage.default_visibility_for_category(category)
 
 
 def _session_meta_path(session_id: str) -> Path:
@@ -166,8 +247,8 @@ async def list_documents(session_id: str, current_user=Depends(get_current_user)
 @router.post("/{session_id}", response_model=DocumentResponse, status_code=201)
 async def create_document(session_id: str, payload: DocumentCreate, current_user=Depends(get_current_user)):
     _, identifier, is_host = _ensure_session_member(session_id, current_user)
-    visibility = _normalize_visibility(payload.visibility)
     category = _normalize_category(payload.category)
+    visibility = _resolve_visibility(category, payload.visibility)
     if visibility == "hidden":
         _require_host_for_hidden(session_id, identifier, is_host)
     saved = store.save_document(
@@ -243,8 +324,8 @@ async def upload_document(
 ):
     """Upload a binary file for the session. Returns stored document metadata."""
     _, identifier, is_host = _ensure_session_member(session_id, current_user)
-    normalized_visibility = _normalize_visibility(visibility)
     normalized_category = _normalize_category(category)
+    normalized_visibility = _resolve_visibility(normalized_category, visibility)
     if normalized_visibility == "hidden":
         _require_host_for_hidden(session_id, identifier, is_host)
     data = await file.read()
@@ -315,8 +396,8 @@ async def presign_upload(session_id: str, payload: PresignRequest, current_user=
 @router.post("/{session_id}/register", response_model=DocumentResponse)
 async def register_document(session_id: str, payload: RegisterRequest, current_user=Depends(get_current_user)):
     _, identifier, is_host = _ensure_session_member(session_id, current_user)
-    visibility = _normalize_visibility(payload.visibility)
     category = _normalize_category(payload.category)
+    visibility = _resolve_visibility(category, payload.visibility)
     if visibility == "hidden":
         _require_host_for_hidden(session_id, identifier, is_host)
     if hasattr(store, 'register_existing_object'):
