@@ -246,7 +246,7 @@ def test_gm_category_auto_hidden_without_explicit_visibility():
     sid, _ = sessions_module.create_session_folder("Cat GM Session", owner)
     headers = {"Authorization": f"Bearer {create_access_token(owner)}"}
 
-    for cat in ("gm_plot", "gm_npc", "gm_location", "gm_notes"):
+    for cat in ("gm_plot", "gm_npc", "gm_location", "gm_quest", "gm_notes"):
         resp = client.post(
             f"/documents/{sid}",
             headers=headers,

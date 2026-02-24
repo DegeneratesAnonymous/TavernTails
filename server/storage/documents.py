@@ -27,11 +27,17 @@ from pathlib import Path
 # │ gm_plot            │ hidden            │ Full storyline, arcs, unresolved threads, major secrets.       │
 # │                    │                   │ Written by Storyboard Agent; read only by GM/host.             │
 # ├────────────────────┼───────────────────┼───────────────────────────────────────────────────────────────┤
-# │ gm_npc             │ hidden            │ Full NPC profile: stats, motivations, secrets, loyalties.      │
+# │ gm_npc             │ hidden            │ Full NPC profile: name, factions, motivations, personality,    │
+# │                    │                   │ attitude ranks, secrets, class, gear, appearance, backstory.   │
 # │                    │                   │ Written by NPC Manager Agent; never visible to players.        │
 # ├────────────────────┼───────────────────┼───────────────────────────────────────────────────────────────┤
-# │ gm_location        │ hidden            │ Full location detail: traps, hidden areas, true history.       │
+# │ gm_location        │ hidden            │ Full location detail: description, type, key_npcs, connected   │
+# │                    │                   │ locations, known_to_players, hidden areas, traps, true history. │
 # │                    │                   │ Written by Storyboard / GM; players only see player_location.  │
+# ├────────────────────┼───────────────────┼───────────────────────────────────────────────────────────────┤
+# │ gm_quest           │ hidden            │ Full quest outline: title, giver, objective, stakes, stages,   │
+# │                    │                   │ rewards, complications, linked_npcs, linked_locations, secrets. │
+# │                    │                   │ Written by Storyboard Agent; read only by GM/host.             │
 # ├────────────────────┼───────────────────┼───────────────────────────────────────────────────────────────┤
 # │ gm_notes           │ hidden            │ Miscellaneous GM notes, reminders, session prep.               │
 # │                    │                   │ Written by GM directly; inaccessible to players.               │
@@ -66,7 +72,7 @@ from pathlib import Path
 #
 
 #: Categories whose default visibility is "hidden" (GM / host only).
-_GM_CATEGORIES: frozenset[str] = frozenset({"gm_plot", "gm_npc", "gm_location", "gm_notes"})
+_GM_CATEGORIES: frozenset[str] = frozenset({"gm_plot", "gm_npc", "gm_location", "gm_quest", "gm_notes"})
 
 #: Categories whose default visibility is "shared" (all session members).
 _PLAYER_CATEGORIES: frozenset[str] = frozenset({

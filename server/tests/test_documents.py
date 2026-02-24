@@ -30,7 +30,7 @@ def test_local_store_round_trip(tmp_path):
 
 def test_gm_categories_default_to_hidden():
     """GM document categories must default to hidden so players never see them."""
-    for cat in ("gm_plot", "gm_npc", "gm_location", "gm_notes"):
+    for cat in ("gm_plot", "gm_npc", "gm_location", "gm_quest", "gm_notes"):
         assert CATEGORY_DEFAULT_VISIBILITY[cat] == "hidden", (
             f"Expected gm category '{cat}' to default to hidden"
         )
@@ -55,7 +55,7 @@ def test_unknown_category_defaults_to_shared():
 def test_known_categories_contains_all_expected():
     """KNOWN_CATEGORIES covers all documented category strings."""
     expected = {
-        "gm_plot", "gm_npc", "gm_location", "gm_notes",
+        "gm_plot", "gm_npc", "gm_location", "gm_quest", "gm_notes",
         "player_npc", "player_location", "player_quest_log", "player_journal",
         "world_lore", "core",
     }

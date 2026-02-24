@@ -17,6 +17,7 @@ from . import npc as npc_agent
 from . import scene as scene_agent
 from . import storyboard as storyboard_agent
 from . import suggestions as suggestions_agent
+from .entity_schemas import EntityAssociation, PlayerEntityCard
 
 router = APIRouter(prefix="/sessions")
 
@@ -1026,3 +1027,191 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         'dice_rolls': dice_rolls,
         'image_url': image_url,
     }
+
+
+# ---------------------------------------------------------------------------
+# Entity associations + in-chat hyperlink lookup
+# ---------------------------------------------------------------------------
+
+def _associations_path(session_id: str) -> Path:
+    return BASE / session_id / 'associations.json'
+
+
+def _load_associations(session_id: str) -> list[dict]:
+    path = _associations_path(session_id)
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text())
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def _save_associations(session_id: str, associations: list[dict]) -> None:
+    path = _associations_path(session_id)
+    path.write_text(json.dumps(associations, indent=2))
+
+
+@router.post('/{session_id}/entities/associate', status_code=201)
+def add_association(session_id: str, payload: EntityAssociation, current_user=Depends(get_current_user)):
+    """Record a link between two entities (NPC ↔ Location, NPC ↔ Quest, etc.).
+
+    Associations are stored in ``associations.json`` inside the session folder.
+    They power in-chat hyperlinks: when a player clicks an entity name in the
+    chat transcript the UI resolves it to the player-visible card via
+    ``GET /sessions/{id}/entity/{name}``.
+
+    Only session members may call this endpoint.
+    """
+    folder = BASE / session_id
+    if not folder.exists():
+        raise HTTPException(status_code=404, detail='Session not found')
+    meta_path = folder / 'meta.json'
+    if not meta_path.exists():
+        raise HTTPException(status_code=404, detail='Meta not found')
+    try:
+        meta = json.loads(meta_path.read_text())
+    except Exception as err:
+        raise HTTPException(status_code=500, detail='Failed to read meta') from err
+    identifier = _identifier_for_user(current_user)
+    if not _user_is_member(meta, identifier):
+        raise HTTPException(status_code=403, detail='Not a member of this session')
+
+    existing = _load_associations(session_id)
+    # Upsert: replace any existing link that shares the same ordered (entity_a, entity_b) pair.
+    # Associations are directional by default — "NPC guards Location" and "Location is guarded
+    # by NPC" are treated as distinct entries.  If you want to replace in both directions,
+    # submit a second association with the entities swapped.
+    new_entry = payload.model_dump()
+    updated = [
+        e for e in existing
+        if not (
+            e.get('entity_a') == payload.entity_a and e.get('entity_b') == payload.entity_b
+        )
+    ]
+    updated.append(new_entry)
+    _save_associations(session_id, updated)
+    return {'ok': True, 'association': new_entry}
+
+
+@router.get('/{session_id}/entities/associations')
+def list_associations(session_id: str, current_user=Depends(get_current_user)):
+    """Return all entity associations for the session.  All session members may read."""
+    folder = BASE / session_id
+    if not folder.exists():
+        raise HTTPException(status_code=404, detail='Session not found')
+    meta_path = folder / 'meta.json'
+    if not meta_path.exists():
+        raise HTTPException(status_code=404, detail='Meta not found')
+    try:
+        meta = json.loads(meta_path.read_text())
+    except Exception as err:
+        raise HTTPException(status_code=500, detail='Failed to read meta') from err
+    identifier = _identifier_for_user(current_user)
+    if not _user_is_member(meta, identifier):
+        raise HTTPException(status_code=403, detail='Not a member of this session')
+    return {'session_id': session_id, 'associations': _load_associations(session_id)}
+
+
+@router.get('/{session_id}/entity/{entity_name}', response_model=PlayerEntityCard)
+def get_entity_card(session_id: str, entity_name: str, current_user=Depends(get_current_user)):
+    """Return the player-visible card for a named entity (NPC, location, or quest).
+
+    This endpoint powers in-chat hyperlinks.  When a player clicks an entity
+    name in the chat transcript the frontend calls this endpoint and displays
+    the returned card in a pop-up.
+
+    The card contains **only** information the players have gathered:
+    - For NPCs: appearance, observable attitude, dialogue/relationships —
+      never stats, motivations, or secrets.
+    - For locations: shops, contacts, explored layout — never hidden areas or traps.
+    - For quests: current objective, completed stages — never hidden complications.
+
+    Returns ``404`` if no player-visible information exists for the name yet.
+    """
+    folder = BASE / session_id
+    if not folder.exists():
+        raise HTTPException(status_code=404, detail='Session not found')
+    meta_path = folder / 'meta.json'
+    if not meta_path.exists():
+        raise HTTPException(status_code=404, detail='Meta not found')
+    try:
+        meta = json.loads(meta_path.read_text())
+    except Exception as err:
+        raise HTTPException(status_code=500, detail='Failed to read meta') from err
+    identifier = _identifier_for_user(current_user)
+    if not _user_is_member(meta, identifier):
+        raise HTTPException(status_code=403, detail='Not a member of this session')
+
+    name_lower = entity_name.strip().lower()
+
+    # --- 1. Try the session npcs.json (player-visible NPC profiles) ---
+    npcs_path = folder / 'npcs.json'
+    if npcs_path.exists():
+        try:
+            npcs = json.loads(npcs_path.read_text()) or []
+            for npc in npcs:
+                if (npc.get('name') or '').strip().lower() == name_lower:
+                    # Build a PlayerEntityCard from the NPC profile.
+                    # Only expose appearance + traits that are player-safe.
+                    traits = npc.get('traits') or {}
+                    appearance = traits.get('appearance', '') if isinstance(traits, dict) else ''
+                    assoc = _load_associations(session_id)
+                    known = [
+                        f"{a['entity_b']} ({a.get('relationship', '')})"
+                        for a in assoc
+                        if (a.get('entity_a') or '').strip().lower() == name_lower
+                    ] + [
+                        f"{a['entity_a']} ({a.get('relationship', '')})"
+                        for a in assoc
+                        if (a.get('entity_b') or '').strip().lower() == name_lower
+                    ]
+                    return PlayerEntityCard(
+                        name=npc.get('name', entity_name),
+                        entity_type='npc',
+                        summary=appearance or f"You have encountered {npc.get('name', entity_name)}.",
+                        appearance=appearance,
+                        relationship_notes=', '.join(npc.get('quirks') or []),
+                        known_associations=known,
+                    )
+        except Exception:
+            pass
+
+    # --- 2. Try player-visible documents (player_npc, player_location, player_quest_log) ---
+    docs = _doc_store.list_documents(session_id)
+    player_cats = {'player_npc', 'player_location', 'player_quest_log'}
+    for doc_meta in docs:
+        if doc_meta.visibility == 'hidden':
+            continue
+        if doc_meta.category not in player_cats:
+            continue
+        if (doc_meta.name or '').strip().lower() != name_lower:
+            continue
+        record = _doc_store.read_document(session_id, doc_meta.id)
+        if not record:
+            continue
+        _, content = record
+        entity_type_map = {
+            'player_npc': 'npc',
+            'player_location': 'location',
+            'player_quest_log': 'quest',
+        }
+        assoc = _load_associations(session_id)
+        known = [
+            f"{a['entity_b']} ({a.get('relationship', '')})"
+            for a in assoc
+            if (a.get('entity_a') or '').strip().lower() == name_lower
+        ] + [
+            f"{a['entity_a']} ({a.get('relationship', '')})"
+            for a in assoc
+            if (a.get('entity_b') or '').strip().lower() == name_lower
+        ]
+        return PlayerEntityCard(
+            name=doc_meta.name,
+            entity_type=entity_type_map.get(doc_meta.category, 'npc'),  # type: ignore[arg-type]
+            summary=content[:500] if content else '',
+            known_associations=known,
+        )
+
+    raise HTTPException(status_code=404, detail=f"No player-visible information found for '{entity_name}'")
