@@ -20,6 +20,7 @@ from .agents.content import router as content_router
 from .agents.documents import router as documents_router
 from .agents.generate import router as generate_router
 from .agents.image import router as image_router
+from .agents.moderation import router as moderation_router
 from .agents.narrative import router as narrative_router
 from .agents.notes import router as notes_router
 from .agents.npc import router as npc_router
@@ -124,6 +125,7 @@ app.include_router(player_router)
 app.include_router(admin_router)
 app.include_router(users_router)
 app.include_router(support_router)
+app.include_router(moderation_router)
 app.include_router(narrative_router)
 app.include_router(content_router)
 app.include_router(sessions_router)

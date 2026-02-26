@@ -13,6 +13,7 @@ import DashboardHome from './dashboard/DashboardHome'
 import AdminPanel from './dashboard/AdminPanel'
 import CharacterSheetModal from './characters/CharacterSheetModal'
 import ContactModal from './ui/ContactModal'
+import BlockReportModal from './ui/BlockReportModal'
 import PageHeader from './ui/PageHeader'
 import EmptyState from './ui/EmptyState'
 import Modal from './ui/Modal'
@@ -40,6 +41,12 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [view, setView] = useState<string>('home');
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [contactModalOpen, setContactModalOpen] = useState(false)
+  const [blockReportModalOpen, setBlockReportModalOpen] = useState(false)
+  const [blockReportTarget, setBlockReportTarget] = useState<{ id: number; name: string } | null>(null)
+  const [blockReportMode, setBlockReportMode] = useState<'block' | 'report'>('report')
+  const [moderationSearchQuery, setModerationSearchQuery] = useState('')
+  const [moderationSearchResults, setModerationSearchResults] = useState<Array<any>>([])
+  const [moderationSearchBusy, setModerationSearchBusy] = useState(false)
   const [importInitialMode, setImportInitialMode] = useState<'ddb-link' | 'paste' | 'file' | 'pdf' | null>(null)
   const [campaigns, setCampaigns] = useState<Array<any>>([])
   const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null)
@@ -1056,6 +1063,19 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     setDrawerOpen(false)
   }, [])
 
+  const performModerationSearch = useCallback(async (q: string) => {
+    if (q.trim().length < 2) return
+    setModerationSearchBusy(true)
+    try {
+      const res = await apiFetch('/users/search?q=' + encodeURIComponent(q.trim()) + '&limit=5')
+      if (res.ok) {
+        const data = await res.json()
+        setModerationSearchResults(data.results || [])
+      }
+    } catch { /* ignore */ }
+    setModerationSearchBusy(false)
+  }, [])
+
   return (
     <div className="dashboard-root">
       {/* Global top bar */}
@@ -1751,6 +1771,14 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
         />
 
         <ContactModal open={contactModalOpen} onClose={() => setContactModalOpen(false)} />
+
+        <BlockReportModal
+          open={blockReportModalOpen}
+          targetUser={blockReportTarget}
+          initialMode={blockReportMode}
+          onClose={() => setBlockReportModalOpen(false)}
+          onBlocked={() => setModerationSearchResults([])}
+        />
 
         <Modal
           open={npcModalOpen}
@@ -2523,6 +2551,65 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                         Beyond20 settings
                       </button>
                     </div>
+                  </div>
+
+                  <div className="card card-pad account-card">
+                    <div style={{ fontWeight: 750, marginBottom: 8 }}>Block / Report a User</div>
+                    <div className="muted" style={{ fontSize: 13, marginBottom: 10 }}>
+                      Search for a player by name or email, then block or report them.
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="Search by name or email…"
+                        value={moderationSearchQuery}
+                        onChange={(e) => setModerationSearchQuery(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') performModerationSearch(moderationSearchQuery) }}
+                        style={{ flex: 1 }}
+                      />
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        type="button"
+                        disabled={moderationSearchBusy || moderationSearchQuery.trim().length < 2}
+                        onClick={() => performModerationSearch(moderationSearchQuery)}
+                      >
+                        {moderationSearchBusy ? '…' : 'Search'}
+                      </button>
+                    </div>
+                    {moderationSearchResults.length > 0 && (
+                      <div className="stack" style={{ gap: 6 }}>
+                        {moderationSearchResults.map((u: any) => (
+                          <div key={u.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--tt-border)' }}>
+                            <span style={{ fontSize: 14 }}>{u.name || u.username || u.email}</span>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button
+                                className="btn btn-sm btn-secondary"
+                                type="button"
+                                onClick={() => {
+                                  setBlockReportTarget({ id: u.id, name: u.name || u.username || u.email })
+                                  setBlockReportMode('report')
+                                  setBlockReportModalOpen(true)
+                                }}
+                              >
+                                Report
+                              </button>
+                              <button
+                                className="btn btn-sm btn-danger"
+                                type="button"
+                                onClick={() => {
+                                  setBlockReportTarget({ id: u.id, name: u.name || u.username || u.email })
+                                  setBlockReportMode('block')
+                                  setBlockReportModalOpen(true)
+                                }}
+                              >
+                                Block
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <details className="account-debug">

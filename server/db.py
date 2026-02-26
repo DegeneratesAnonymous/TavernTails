@@ -120,6 +120,28 @@ class SupportTicket(SQLModel, table=True):
     updated_at: datetime | None = None
 
 
+class UserBlock(SQLModel, table=True):
+    """Records that `blocker_id` has blocked `blocked_id`."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    blocker_id: int = Field(foreign_key="user.id", index=True)
+    blocked_id: int = Field(foreign_key="user.id", index=True)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class UserReport(SQLModel, table=True):
+    """A user report filed against another user."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    reporter_id: int = Field(foreign_key="user.id", index=True)
+    reported_id: int = Field(foreign_key="user.id", index=True)
+    reason: str  # harassment | spam | hate_speech | cheating | other
+    details: str = Field(default="")
+    status: str = Field(default="open")  # open | reviewed | dismissed
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    reviewed_at: datetime | None = None
+
+
 def _profile_with_identity(user: User) -> dict[str, Any]:
     data = dict(user.profile or {})
     if user.email:
@@ -1015,3 +1037,113 @@ def list_user_support_tickets(user_id: int) -> List[SupportTicket]:
     with Session(engine) as session:
         stmt = select(SupportTicket).where(SupportTicket.user_id == user_id).order_by(desc(SupportTicket.created_at))
         return list(session.exec(stmt).all())
+
+
+# ---------------------------------------------------------------------------
+# User blocking
+# ---------------------------------------------------------------------------
+
+_VALID_REPORT_REASONS = {"harassment", "spam", "hate_speech", "cheating", "other"}
+_VALID_REPORT_STATUSES = {"open", "reviewed", "dismissed"}
+
+
+def block_user(blocker_id: int, blocked_id: int) -> UserBlock:
+    """Block a user. Idempotent — returns existing block if already present."""
+    with Session(engine) as session:
+        existing = session.exec(
+            select(UserBlock).where(UserBlock.blocker_id == blocker_id, UserBlock.blocked_id == blocked_id)
+        ).first()
+        if existing:
+            return existing
+        block = UserBlock(blocker_id=blocker_id, blocked_id=blocked_id)
+        session.add(block)
+        session.commit()
+        session.refresh(block)
+    return block
+
+
+def unblock_user(blocker_id: int, blocked_id: int) -> bool:
+    """Remove a block. Returns True if a block was removed, False if none existed."""
+    with Session(engine) as session:
+        existing = session.exec(
+            select(UserBlock).where(UserBlock.blocker_id == blocker_id, UserBlock.blocked_id == blocked_id)
+        ).first()
+        if not existing:
+            return False
+        session.delete(existing)
+        session.commit()
+    return True
+
+
+def is_blocked(blocker_id: int, blocked_id: int) -> bool:
+    """Return True if blocker_id has blocked blocked_id."""
+    with Session(engine) as session:
+        row = session.exec(
+            select(UserBlock).where(UserBlock.blocker_id == blocker_id, UserBlock.blocked_id == blocked_id)
+        ).first()
+    return row is not None
+
+
+def list_blocks(blocker_id: int) -> List[UserBlock]:
+    """Return all blocks created by the given user."""
+    with Session(engine) as session:
+        return list(
+            session.exec(select(UserBlock).where(UserBlock.blocker_id == blocker_id).order_by(desc(UserBlock.created_at))).all()
+        )
+
+
+# ---------------------------------------------------------------------------
+# User reporting
+# ---------------------------------------------------------------------------
+
+
+def create_user_report(reporter_id: int, reported_id: int, reason: str, details: str = "") -> UserReport:
+    """File a report against reported_id. One report per (reporter, reported, reason) triple."""
+    with Session(engine) as session:
+        existing = session.exec(
+            select(UserReport).where(
+                UserReport.reporter_id == reporter_id,
+                UserReport.reported_id == reported_id,
+                UserReport.reason == reason,
+                UserReport.status == "open",
+            )
+        ).first()
+        if existing:
+            return existing
+        report = UserReport(reporter_id=reporter_id, reported_id=reported_id, reason=reason, details=details.strip())
+        session.add(report)
+        session.commit()
+        session.refresh(report)
+    return report
+
+
+def list_user_reports(status: str | None = None, limit: int = 100, offset: int = 0) -> List[UserReport]:
+    """List all user reports (admin use), optionally filtered by status."""
+    with Session(engine) as session:
+        stmt = select(UserReport)
+        if status:
+            stmt = stmt.where(UserReport.status == status)
+        stmt = stmt.order_by(desc(UserReport.created_at)).offset(offset).limit(limit)
+        return list(session.exec(stmt).all())
+
+
+def get_user_report(report_id: int) -> UserReport | None:
+    """Fetch a single user report by ID."""
+    with Session(engine) as session:
+        return session.exec(select(UserReport).where(UserReport.id == report_id)).first()
+
+
+def update_report_status(report_id: int, status: str) -> UserReport | None:
+    """Update the status of a user report (admin use)."""
+    if status not in _VALID_REPORT_STATUSES:
+        raise ValueError(f"Invalid status '{status}'. Must be one of {_VALID_REPORT_STATUSES}")
+    with Session(engine) as session:
+        report = session.exec(select(UserReport).where(UserReport.id == report_id)).first()
+        if not report:
+            return None
+        report.status = status
+        report.reviewed_at = datetime.now(timezone.utc)
+        session.add(report)
+        session.commit()
+        session.refresh(report)
+    return report
