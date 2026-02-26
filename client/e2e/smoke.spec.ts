@@ -6,10 +6,11 @@ import { test, expect } from '@playwright/test';
  * dashboard is shown.
  *
  * These run against a live stack (backend on :8000, frontend on :3000) and
- * use the dev seed user created by the backend startup sequence.
+ * use the bilbo seed user created by the backend startup sequence
+ * (TAVERNTAILS_SEED_USERS=1, which is the default).
  */
 
-const DEV_EMAIL = 'test@example.com';
+const DEV_EMAIL = 'bilbo@example.com';
 const DEV_PASSWORD = 'secret';
 
 test.describe('Smoke: Login flow', () => {
