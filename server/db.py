@@ -901,6 +901,55 @@ def admin_reset_password(user_id: int, new_password: str) -> bool:
         return True
 
 
+def update_user_self(user_id: int, *, name: str | None = None, email: str | None = None, username: str | None = None) -> User | None:
+    """Update the calling user's own display name, email, and/or username."""
+    with Session(engine) as session:
+        stmt = select(User).where(User.id == user_id)
+        user = session.exec(stmt).first()
+        if not user:
+            return None
+        if email is not None:
+            clean_email = email.strip().lower()
+            # uniqueness check — compare lowercased on both sides
+            conflict = session.exec(select(User).where(func.lower(User.email) == clean_email, User.id != user_id)).first()
+            if conflict:
+                raise ValueError("Email already in use by another account.")
+            user.email = clean_email
+        if username is not None:
+            clean_username = _normalize_username(username)
+            if clean_username:
+                # uniqueness check — normalise the candidate before comparing
+                conflict = session.exec(
+                    select(User).where(func.lower(User.username) == clean_username.lower(), User.id != user_id)
+                ).first()
+                if conflict:
+                    raise ValueError("Username already taken.")
+            user.username = clean_username
+        if name is not None:
+            new_profile = dict(user.profile or {})
+            new_profile["name"] = name.strip()
+            user.profile = new_profile
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+        return user
+
+
+def change_user_password(user_id: int, current_password: str, new_password: str) -> bool:
+    """Verify current_password then set new_password for user_id.  Returns False if current_password is wrong."""
+    with Session(engine) as session:
+        stmt = select(User).where(User.id == user_id)
+        user = session.exec(stmt).first()
+        if not user:
+            return False
+        if not verify_password(current_password, user.password_hash or ""):
+            return False
+        user.password_hash = hash_password(new_password)
+        session.add(user)
+        session.commit()
+        return True
+
+
 def admin_send_notification(user_id: int, title: str, body: str | None = None) -> bool:
     """Append a notification to a user's profile (admin use only)."""
     with Session(engine) as session:

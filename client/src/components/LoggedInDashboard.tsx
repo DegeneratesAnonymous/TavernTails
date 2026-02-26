@@ -115,9 +115,16 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [accountSection, setAccountSection] = useState<'profile' | 'invites' | null>(null)
   const [accountEditName, setAccountEditName] = useState<string | null>(null)
   const [accountEditEmail, setAccountEditEmail] = useState<string | null>(null)
+  const [accountEditUsername, setAccountEditUsername] = useState<string | null>(null)
   const [accountSaving, setAccountSaving] = useState(false)
   const [accountSaveMsg, setAccountSaveMsg] = useState<{ kind: 'info' | 'error'; text: string } | null>(null)
   const [accountEditMode, setAccountEditMode] = useState(false)
+  const [changePwOpen, setChangePwOpen] = useState(false)
+  const [changePwCurrent, setChangePwCurrent] = useState('')
+  const [changePwNew, setChangePwNew] = useState('')
+  const [changePwConfirm, setChangePwConfirm] = useState('')
+  const [changePwBusy, setChangePwBusy] = useState(false)
+  const [changePwMsg, setChangePwMsg] = useState<{ kind: 'info' | 'error'; text: string } | null>(null)
   const invitesCardRef = React.useRef<HTMLDivElement | null>(null)
 
   // Scroll to invites card when navigated from a notification
@@ -2297,6 +2304,16 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                           />
                         </div>
                         <div>
+                          <label className="muted" style={{ fontSize: 12 }}>Username</label>
+                          <input
+                            className="input"
+                            value={accountEditUsername !== null ? accountEditUsername : (profile?.username || '')}
+                            onChange={(e) => setAccountEditUsername(e.target.value)}
+                            placeholder="Username (optional)"
+                            disabled={accountSaving}
+                          />
+                        </div>
+                        <div>
                           <label className="muted" style={{ fontSize: 12 }}>Email</label>
                           <input
                             className="input"
@@ -2319,6 +2336,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                                 const payload: any = {}
                                 const newName = (accountEditName !== null ? accountEditName : displayName).trim()
                                 const newEmail = (accountEditEmail !== null ? accountEditEmail : (profile?.email || '')).trim()
+                                const newUsername = (accountEditUsername !== null ? accountEditUsername : (profile?.username || '')).trim()
                                 if (!newName) {
                                   throw new Error('Display name cannot be empty.')
                                 }
@@ -2331,11 +2349,14 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                                 if (accountEditEmail !== null && newEmail !== (profile?.email || '')) {
                                   payload.email = newEmail
                                 }
+                                if (accountEditUsername !== null && newUsername !== (profile?.username || '') && newUsername) {
+                                  payload.username = newUsername
+                                }
                                 if (Object.keys(payload).length === 0) {
                                   setAccountSaveMsg({ kind: 'info', text: 'No changes to save.' })
                                   return
                                 }
-                                const res = await apiFetch('/player/profile', {
+                                const res = await apiFetch('/player/me', {
                                   method: 'PUT',
                                   headers: { 'Content-Type': 'application/json' },
                                   body: JSON.stringify(payload),
@@ -2344,9 +2365,15 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                                   const err = await res.json().catch(() => null)
                                   throw new Error(err?.detail || 'Failed to update profile')
                                 }
+                                const data = await res.json()
+                                // If the server issued a fresh token (email changed), persist it.
+                                if (data.access_token) {
+                                  localStorage.setItem('access_token', data.access_token)
+                                }
                                 setAccountSaveMsg({ kind: 'info', text: 'Profile updated.' })
                                 setAccountEditName(null)
                                 setAccountEditEmail(null)
+                                setAccountEditUsername(null)
                                 setAccountEditMode(false)
                               } catch (e: any) {
                                 setAccountSaveMsg({ kind: 'error', text: e?.message || 'Failed to update profile' })
@@ -2364,6 +2391,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                             onClick={() => {
                               setAccountEditName(null)
                               setAccountEditEmail(null)
+                              setAccountEditUsername(null)
                               setAccountSaveMsg(null)
                               setAccountEditMode(false)
                             }}
@@ -2467,17 +2495,106 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                       <div className="muted" style={{ fontSize: 13 }}>
                         Keep your account secure with verified email, strong passwords, and linked providers.
                       </div>
-                      <div className="row-wrap" style={{ marginTop: 10 }}>
-                        <button className="btn btn-secondary" type="button" disabled>
-                          Change password
-                        </button>
-                        <button className="btn btn-secondary" type="button" disabled>
-                          Send reset link
-                        </button>
-                      </div>
-                      <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-                        Best practice: enforce rate limits and require recent login to change credentials.
-                      </div>
+                      {!changePwOpen ? (
+                        <div className="row-wrap" style={{ marginTop: 10 }}>
+                          <button className="btn btn-secondary" type="button" onClick={() => { setChangePwOpen(true); setChangePwMsg(null) }}>
+                            Change password
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="stack" style={{ gap: 10, marginTop: 10 }}>
+                          {changePwMsg && (
+                            <div className={`inline-alert ${changePwMsg.kind === 'error' ? 'inline-alert-error' : ''}`}>
+                              {changePwMsg.text}
+                            </div>
+                          )}
+                          <div>
+                            <label className="muted" style={{ fontSize: 12 }}>Current password</label>
+                            <input
+                              className="input"
+                              type="password"
+                              value={changePwCurrent}
+                              onChange={(e) => setChangePwCurrent(e.target.value)}
+                              placeholder="Current password"
+                              disabled={changePwBusy}
+                            />
+                          </div>
+                          <div>
+                            <label className="muted" style={{ fontSize: 12 }}>New password (min 8 characters)</label>
+                            <input
+                              className="input"
+                              type="password"
+                              value={changePwNew}
+                              onChange={(e) => setChangePwNew(e.target.value)}
+                              placeholder="New password"
+                              disabled={changePwBusy}
+                            />
+                          </div>
+                          <div>
+                            <label className="muted" style={{ fontSize: 12 }}>Confirm new password</label>
+                            <input
+                              className="input"
+                              type="password"
+                              value={changePwConfirm}
+                              onChange={(e) => setChangePwConfirm(e.target.value)}
+                              placeholder="Confirm new password"
+                              disabled={changePwBusy}
+                            />
+                          </div>
+                          <div className="row-wrap" style={{ gap: 8 }}>
+                            <button
+                              className="btn"
+                              type="button"
+                              disabled={changePwBusy}
+                              onClick={async () => {
+                                setChangePwMsg(null)
+                                if (!changePwCurrent) {
+                                  setChangePwMsg({ kind: 'error', text: 'Current password is required.' })
+                                  return
+                                }
+                                if (changePwNew.length < 8) {
+                                  setChangePwMsg({ kind: 'error', text: 'New password must be at least 8 characters.' })
+                                  return
+                                }
+                                if (changePwNew !== changePwConfirm) {
+                                  setChangePwMsg({ kind: 'error', text: 'Passwords do not match.' })
+                                  return
+                                }
+                                setChangePwBusy(true)
+                                try {
+                                  const res = await apiFetch('/player/me/change-password', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ current_password: changePwCurrent, new_password: changePwNew }),
+                                  })
+                                  if (!res.ok) {
+                                    const err = await res.json().catch(() => null)
+                                    throw new Error(err?.detail || 'Failed to change password.')
+                                  }
+                                  setChangePwMsg({ kind: 'info', text: 'Password changed successfully.' })
+                                  setChangePwCurrent('')
+                                  setChangePwNew('')
+                                  setChangePwConfirm('')
+                                } catch (e: any) {
+                                  setChangePwMsg({ kind: 'error', text: e?.message || 'Failed to change password.' })
+                                } finally {
+                                  setChangePwBusy(false)
+                                }
+                              }}
+                            >
+                              {changePwBusy ? 'Saving…' : 'Update password'}
+                            </button>
+                            <button
+                              className="btn btn-secondary"
+                              type="button"
+                              disabled={changePwBusy}
+                              onClick={() => { setChangePwOpen(false); setChangePwCurrent(''); setChangePwNew(''); setChangePwConfirm(''); setChangePwMsg(null) }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {isAdmin ? (
