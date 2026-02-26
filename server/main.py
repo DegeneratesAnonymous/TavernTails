@@ -29,6 +29,7 @@ from .agents.scene import router as scene_router
 from .agents.sessions import router as sessions_router
 from .agents.storyboard import router as storyboard_router
 from .agents.suggestions import router as suggestions_router
+from .agents.support import router as support_router
 from .agents.turns import router as turns_router
 from .agents.users import router as users_router
 
@@ -122,6 +123,7 @@ app.add_middleware(
 app.include_router(player_router)
 app.include_router(admin_router)
 app.include_router(users_router)
+app.include_router(support_router)
 app.include_router(narrative_router)
 app.include_router(content_router)
 app.include_router(sessions_router)

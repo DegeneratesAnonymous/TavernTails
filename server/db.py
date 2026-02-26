@@ -110,6 +110,16 @@ class FriendRequest(SQLModel, table=True):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class SupportTicket(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    subject: str
+    body: str
+    status: str = Field(default="open")  # open | in_progress | resolved | closed
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime | None = None
+
+
 def _profile_with_identity(user: User) -> dict[str, Any]:
     data = dict(user.profile or {})
     if user.email:
@@ -949,3 +959,59 @@ def admin_site_stats() -> Dict[str, Any]:
             "total_characters": int(total_characters),
             "total_messages": int(total_messages),
         }
+
+
+# ---------------------------------------------------------------------------
+# Support tickets
+# ---------------------------------------------------------------------------
+
+_VALID_TICKET_STATUSES = {"open", "in_progress", "resolved", "closed"}
+
+
+def create_support_ticket(user_id: int, subject: str, body: str) -> SupportTicket:
+    """Create a new support ticket submitted by the given user."""
+    ticket = SupportTicket(user_id=user_id, subject=subject.strip(), body=body.strip())
+    with Session(engine) as session:
+        session.add(ticket)
+        session.commit()
+        session.refresh(ticket)
+    return ticket
+
+
+def list_support_tickets(status: str | None = None, limit: int = 100, offset: int = 0) -> List[SupportTicket]:
+    """List all support tickets, optionally filtered by status (admin use)."""
+    with Session(engine) as session:
+        stmt = select(SupportTicket)
+        if status:
+            stmt = stmt.where(SupportTicket.status == status)
+        stmt = stmt.order_by(desc(SupportTicket.created_at)).offset(offset).limit(limit)
+        return list(session.exec(stmt).all())
+
+
+def get_support_ticket(ticket_id: int) -> SupportTicket | None:
+    """Fetch a single support ticket by ID."""
+    with Session(engine) as session:
+        return session.exec(select(SupportTicket).where(SupportTicket.id == ticket_id)).first()
+
+
+def update_ticket_status(ticket_id: int, status: str) -> SupportTicket | None:
+    """Update the status of a support ticket (admin use)."""
+    if status not in _VALID_TICKET_STATUSES:
+        raise ValueError(f"Invalid status '{status}'. Must be one of {_VALID_TICKET_STATUSES}")
+    with Session(engine) as session:
+        ticket = session.exec(select(SupportTicket).where(SupportTicket.id == ticket_id)).first()
+        if not ticket:
+            return None
+        ticket.status = status
+        ticket.updated_at = datetime.now(timezone.utc)
+        session.add(ticket)
+        session.commit()
+        session.refresh(ticket)
+    return ticket
+
+
+def list_user_support_tickets(user_id: int) -> List[SupportTicket]:
+    """Return all tickets submitted by a specific user."""
+    with Session(engine) as session:
+        stmt = select(SupportTicket).where(SupportTicket.user_id == user_id).order_by(desc(SupportTicket.created_at))
+        return list(session.exec(stmt).all())

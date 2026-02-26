@@ -12,6 +12,7 @@ import CampaignSetupView from './dashboard/CampaignSetupView'
 import DashboardHome from './dashboard/DashboardHome'
 import AdminPanel from './dashboard/AdminPanel'
 import CharacterSheetModal from './characters/CharacterSheetModal'
+import ContactModal from './ui/ContactModal'
 import PageHeader from './ui/PageHeader'
 import EmptyState from './ui/EmptyState'
 import Modal from './ui/Modal'
@@ -38,6 +39,7 @@ type NotificationItem = {
 const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [view, setView] = useState<string>('home');
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [contactModalOpen, setContactModalOpen] = useState(false)
   const [importInitialMode, setImportInitialMode] = useState<'ddb-link' | 'paste' | 'file' | 'pdf' | null>(null)
   const [campaigns, setCampaigns] = useState<Array<any>>([])
   const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null)
@@ -1155,6 +1157,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                     if (key === 'import-character') setView('import-character')
                     if (key === 'account') setView('account')
                     if (key === 'admin') setView('admin')
+                    if (key === 'contact') setContactModalOpen(true)
                     if (key === 'logout') onLogout()
                   }}
                   isAdmin={isAdmin}
@@ -1746,6 +1749,8 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             await fetchCharacters()
           }}
         />
+
+        <ContactModal open={contactModalOpen} onClose={() => setContactModalOpen(false)} />
 
         <Modal
           open={npcModalOpen}
