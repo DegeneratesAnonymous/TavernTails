@@ -1,6 +1,6 @@
 import os
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, cast
 
 from passlib.context import CryptContext
@@ -150,6 +150,29 @@ class UserReport(SQLModel, table=True):
     status: str = Field(default="open")  # open | reviewed | dismissed
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     reviewed_at: datetime | None = None
+
+
+class DirectMessage(SQLModel, table=True):
+    """A private message sent from one user to another (outside of sessions)."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    sender_id: int = Field(foreign_key="user.id", index=True)
+    recipient_id: int = Field(foreign_key="user.id", index=True)
+    body: str
+    read: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class BannedEmail(SQLModel, table=True):
+    """A banned or suspended email / email pattern."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    email: str = Field(index=True)  # exact email or @domain.com pattern
+    reason: str = Field(default="")
+    ban_type: str = Field(default="ban")  # ban | suspend
+    suspended_until: datetime | None = None  # for suspensions; None = permanent
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_by_id: int | None = Field(default=None, foreign_key="user.id")
 
 
 def _profile_with_identity(user: User) -> dict[str, Any]:
@@ -1276,3 +1299,228 @@ def update_report_status(report_id: int, status: str) -> UserReport | None:
         session.commit()
         session.refresh(report)
     return report
+
+
+# ---------------------------------------------------------------------------
+# Direct messages
+# ---------------------------------------------------------------------------
+
+
+def send_direct_message(sender_id: int, recipient_id: int, body: str) -> DirectMessage:
+    """Send a private message from sender to recipient and create a notification for the recipient."""
+    msg = DirectMessage(sender_id=sender_id, recipient_id=recipient_id, body=body.strip())
+    with Session(engine) as session:
+        session.add(msg)
+        session.commit()
+        session.refresh(msg)
+
+    # Notify recipient
+    sender = admin_get_user(sender_id)
+    sender_name = (sender.profile or {}).get("name") or (sender.username if sender else None) or "Someone"
+    admin_send_notification(
+        recipient_id,
+        title=f"📨 New message from {sender_name}",
+        body=body[:200] if body else "",
+    )
+    return msg
+
+
+def get_inbox(user_id: int, limit: int = 50, offset: int = 0) -> List[DirectMessage]:
+    """Return messages received by user_id, newest first."""
+    with Session(engine) as session:
+        stmt = (
+            select(DirectMessage)
+            .where(DirectMessage.recipient_id == user_id)
+            .order_by(desc(DirectMessage.created_at))
+            .offset(offset)
+            .limit(limit)
+        )
+        return list(session.exec(stmt).all())
+
+
+def get_sent_messages(user_id: int, limit: int = 50, offset: int = 0) -> List[DirectMessage]:
+    """Return messages sent by user_id, newest first."""
+    with Session(engine) as session:
+        stmt = (
+            select(DirectMessage)
+            .where(DirectMessage.sender_id == user_id)
+            .order_by(desc(DirectMessage.created_at))
+            .offset(offset)
+            .limit(limit)
+        )
+        return list(session.exec(stmt).all())
+
+
+def mark_message_read(message_id: int, recipient_id: int) -> bool:
+    """Mark a message as read.  Returns False if not found / not the recipient."""
+    with Session(engine) as session:
+        msg = session.exec(
+            select(DirectMessage).where(DirectMessage.id == message_id, DirectMessage.recipient_id == recipient_id)
+        ).first()
+        if not msg:
+            return False
+        msg.read = True
+        session.add(msg)
+        session.commit()
+    return True
+
+
+def count_unread_messages(user_id: int) -> int:
+    """Return the number of unread messages in the user's inbox."""
+    with Session(engine) as session:
+        return int(session.exec(select(func.count()).select_from(DirectMessage).where(
+            DirectMessage.recipient_id == user_id, DirectMessage.read.is_(False)
+        )).one())
+
+
+def delete_direct_message(message_id: int, user_id: int) -> bool:
+    """Delete a DM if the caller is the sender or recipient."""
+    with Session(engine) as session:
+        msg = session.exec(select(DirectMessage).where(DirectMessage.id == message_id)).first()
+        if not msg:
+            return False
+        if msg.sender_id != user_id and msg.recipient_id != user_id:
+            return False
+        session.delete(msg)
+        session.commit()
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Email bans / suspensions
+# ---------------------------------------------------------------------------
+
+
+def _email_is_banned_or_suspended(email: str) -> "BannedEmail | None":
+    """Return the first active ban/suspension record that matches the email, or None."""
+    email_lower = email.lower().strip()
+    domain = "@" + email_lower.split("@")[-1] if "@" in email_lower else None
+    now = datetime.now(timezone.utc)
+    with Session(engine) as session:
+        rows = session.exec(select(BannedEmail)).all()
+        for row in rows:
+            pattern = (row.email or "").lower().strip()
+            if pattern == email_lower or (domain and pattern == domain):
+                if row.ban_type == "ban":
+                    return row
+                if row.ban_type == "suspend":
+                    su = row.suspended_until
+                    # Normalize to timezone-aware for comparison
+                    if su is not None and su.tzinfo is None:
+                        su = su.replace(tzinfo=timezone.utc)
+                    if su is None or su > now:
+                        return row
+    return None
+
+
+def ban_email(email: str, reason: str = "", ban_type: str = "ban", suspended_until: "datetime | None" = None, created_by_id: int | None = None) -> BannedEmail:
+    """Create or update a ban/suspension record."""
+    email_lower = email.lower().strip()
+    with Session(engine) as session:
+        existing = session.exec(select(BannedEmail).where(BannedEmail.email == email_lower)).first()
+        if existing:
+            existing.reason = reason
+            existing.ban_type = ban_type
+            existing.suspended_until = suspended_until
+            if created_by_id:
+                existing.created_by_id = created_by_id
+            session.add(existing)
+            session.commit()
+            session.refresh(existing)
+            return existing
+        record = BannedEmail(
+            email=email_lower,
+            reason=reason,
+            ban_type=ban_type,
+            suspended_until=suspended_until,
+            created_by_id=created_by_id,
+        )
+        session.add(record)
+        session.commit()
+        session.refresh(record)
+    return record
+
+
+def unban_email(email: str) -> bool:
+    """Remove a ban/suspension record for the given email."""
+    email_lower = email.lower().strip()
+    with Session(engine) as session:
+        existing = session.exec(select(BannedEmail).where(BannedEmail.email == email_lower)).first()
+        if not existing:
+            return False
+        session.delete(existing)
+        session.commit()
+    return True
+
+
+def list_banned_emails(limit: int = 100, offset: int = 0) -> "List[BannedEmail]":
+    """List all ban/suspension records."""
+    with Session(engine) as session:
+        return list(session.exec(select(BannedEmail).order_by(desc(BannedEmail.created_at)).offset(offset).limit(limit)).all())
+
+
+# ---------------------------------------------------------------------------
+# Admin: reports and tickets per user
+# ---------------------------------------------------------------------------
+
+
+def list_reports_about_user(reported_id: int, limit: int = 100) -> List[UserReport]:
+    """Return all reports filed against a specific user (admin use)."""
+    with Session(engine) as session:
+        return list(
+            session.exec(
+                select(UserReport).where(UserReport.reported_id == reported_id).order_by(desc(UserReport.created_at)).limit(limit)
+            ).all()
+        )
+
+
+def list_tickets_by_user(user_id: int, limit: int = 100) -> List[SupportTicket]:
+    """Return all support tickets submitted by a specific user (admin use)."""
+    with Session(engine) as session:
+        return list(
+            session.exec(
+                select(SupportTicket).where(SupportTicket.user_id == user_id).order_by(desc(SupportTicket.created_at)).limit(limit)
+            ).all()
+        )
+
+
+# ---------------------------------------------------------------------------
+# Admin impersonation
+# ---------------------------------------------------------------------------
+
+
+def admin_get_impersonation_token(admin_user: "User", target_user_id: int) -> "str | None":
+    """Return a short-lived JWT for impersonating target_user_id (admin only).
+
+    Import here to avoid circular import; auth module depends on db.
+    """
+    from .auth import create_access_token
+
+    target = admin_get_user(target_user_id)
+    if not target:
+        return None
+    subject = target.email or target.username or str(target.id)
+    # 15-minute window so accidental tabs don't stay open long.
+    token = create_access_token(subject, expires_delta=timedelta(minutes=15))
+    return token
+
+
+# ---------------------------------------------------------------------------
+# Document sharing with friends
+# ---------------------------------------------------------------------------
+
+
+def are_friends(user_id_a: int, user_id_b: int) -> bool:
+    """Return True if the two users are confirmed friends."""
+    with Session(engine) as session:
+        row = session.exec(
+            select(FriendRequest).where(
+                FriendRequest.status == "accepted",
+            ).where(
+                or_(
+                    (FriendRequest.from_user_id == user_id_a) & (FriendRequest.to_user_id == user_id_b),
+                    (FriendRequest.from_user_id == user_id_b) & (FriendRequest.to_user_id == user_id_a),
+                )
+            )
+        ).first()
+    return row is not None

@@ -4,6 +4,7 @@ Minimal, single implementation of the player router. Supports signup, login
 and profile updates. Login returns a dev JWT in `access_token`.
 """
 
+from datetime import timezone
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
@@ -73,6 +74,18 @@ def player_login(email: str | None = Body(None), name: str | None = Body(None), 
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not user.verified:
         raise HTTPException(status_code=403, detail="Email not verified")
+    # Check for active email ban / suspension
+    user_email = (user.email or "").lower().strip()
+    if user_email:
+        ban = db._email_is_banned_or_suspended(user_email)
+        if ban:
+            if ban.ban_type == "suspend":
+                su = ban.suspended_until
+                if su is not None and su.tzinfo is None:
+                    su = su.replace(tzinfo=timezone.utc)
+                until = su.strftime("%Y-%m-%d") if su else "an unspecified date"
+                raise HTTPException(status_code=403, detail=f"Account suspended until {until}.")
+            raise HTTPException(status_code=403, detail="Account banned. Contact support if you believe this is an error.")
     subject = user.email or user.username or identifier
     token = create_access_token(subject)
     return {"profile": user.profile, "access_token": token, "token_type": "bearer"}

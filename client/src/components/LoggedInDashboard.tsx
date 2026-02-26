@@ -14,6 +14,8 @@ import AdminPanel from './dashboard/AdminPanel'
 import CharacterSheetModal from './characters/CharacterSheetModal'
 import ContactModal from './ui/ContactModal'
 import BlockReportModal from './ui/BlockReportModal'
+import InboxPanel from './dashboard/InboxPanel'
+import MyTicketsPanel from './dashboard/MyTicketsPanel'
 import PageHeader from './ui/PageHeader'
 import EmptyState from './ui/EmptyState'
 import Modal from './ui/Modal'
@@ -113,6 +115,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>([])
   const [pendingFriendRequests, setPendingFriendRequests] = useState<Array<any>>([])
   const [accountSection, setAccountSection] = useState<'profile' | 'invites' | null>(null)
+  const [accountTab, setAccountTab] = useState<'profile' | 'inbox' | 'tickets'>('profile')
   const [accountEditName, setAccountEditName] = useState<string | null>(null)
   const [accountEditEmail, setAccountEditEmail] = useState<string | null>(null)
   const [accountEditUsername, setAccountEditUsername] = useState<string | null>(null)
@@ -2250,6 +2253,25 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                     subtitle="Manage profile, emails, security, and linked accounts."
                   />
 
+                  <div className="account-tabs" style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+                    {(['profile', 'inbox', 'tickets'] as const).map(t => (
+                      <button
+                        key={t}
+                        type="button"
+                        className={`btn btn-sm${accountTab === t ? '' : ' btn-secondary'}`}
+                        onClick={() => setAccountTab(t)}
+                      >
+                        {t === 'profile' ? 'Profile' : t === 'inbox' ? '📨 Inbox' : '🎫 My Issues'}
+                      </button>
+                    ))}
+                  </div>
+
+                  {accountTab === 'inbox' ? (
+                    <InboxPanel profile={profile} visible={accountTab === 'inbox'} />
+                  ) : accountTab === 'tickets' ? (
+                    <MyTicketsPanel visible={accountTab === 'tickets'} onContact={() => setContactModalOpen(true)} />
+                  ) : (
+                   <>
                    <div className="account-grid">
                     <div className="card card-pad account-card">
                       <div className="account-header">
@@ -2728,6 +2750,8 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                       </div>
                     )}
                   </div>
+                   </>
+                  )}
 
                   <details className="account-debug">
                     <summary>Debug profile payload</summary>

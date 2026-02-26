@@ -20,6 +20,7 @@ from .agents.content import router as content_router
 from .agents.documents import router as documents_router
 from .agents.generate import router as generate_router
 from .agents.image import router as image_router
+from .agents.messages import router as messages_router
 from .agents.moderation import router as moderation_router
 from .agents.narrative import router as narrative_router
 from .agents.notes import router as notes_router
@@ -64,9 +65,9 @@ def _init_db_if_needed():
     try:
         logger.info('Initializing database...')
         _db.create_db_and_tables()
-        if os.environ.get('TAVERNTAILS_SEED_DEV_USER', '1') == '1':
+        if os.environ.get('TAVERNTAILS_SEED_DEV_USER', '0') == '1':
             _db.ensure_dev_user()
-            logger.info('Dev user ensured (test@example.com / secret)')
+            logger.info('Dev user ensured (test@example.com / secret) — set TAVERNTAILS_SEED_DEV_USER=0 in production')
         if os.environ.get('TAVERNTAILS_SEED_USERS', '1') == '1':
             _db.ensure_seed_users()
             logger.info('Seed users ensured (admin + bilbo)')
@@ -126,6 +127,7 @@ app.include_router(admin_router)
 app.include_router(users_router)
 app.include_router(support_router)
 app.include_router(moderation_router)
+app.include_router(messages_router)
 app.include_router(narrative_router)
 app.include_router(content_router)
 app.include_router(sessions_router)

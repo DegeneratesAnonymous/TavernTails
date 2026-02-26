@@ -60,7 +60,7 @@ const TICKET_STATUSES = ['open', 'in_progress', 'resolved', 'closed'] as const
 const REPORT_STATUSES = ['open', 'reviewed', 'dismissed'] as const
 const MODERATION_LIST_LIMIT = 100
 
-type Tab = 'stats' | 'users' | 'campaigns' | 'search' | 'tickets' | 'reports'
+type Tab = 'stats' | 'users' | 'campaigns' | 'search' | 'tickets' | 'reports' | 'bans'
 
 type Props = {
   onBack?: () => void
@@ -92,7 +92,7 @@ export default function AdminPanel({ onBack }: Props) {
 
   // User action modals
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null)
-  const [actionModal, setActionModal] = useState<'warn' | 'message' | 'reset-password' | null>(null)
+  const [actionModal, setActionModal] = useState<'warn' | 'message' | 'reset-password' | 'impersonate' | null>(null)
   const [actionInput, setActionInput] = useState('')
   const [actionInput2, setActionInput2] = useState('')
   const [actionBusy, setActionBusy] = useState(false)
@@ -116,6 +116,18 @@ export default function AdminPanel({ onBack }: Props) {
   const [expandedReportId, setExpandedReportId] = useState<number | null>(null)
   const [reportActionBusy, setReportActionBusy] = useState(false)
   const [reportActionError, setReportActionError] = useState<string | null>(null)
+
+  // Bans
+  type BanRecord = { id: number; email: string; reason: string; ban_type: string; suspended_until: string | null; created_at: string | null }
+  const [bans, setBans] = useState<BanRecord[]>([])
+  const [bansLoading, setBansLoading] = useState(false)
+  const [bansError, setBansError] = useState<string | null>(null)
+  const [banEmail, setBanEmail] = useState('')
+  const [banReason, setBanReason] = useState('')
+  const [banType, setBanType] = useState<'ban' | 'suspend'>('ban')
+  const [banUntil, setBanUntil] = useState('')
+  const [banBusy, setBanBusy] = useState(false)
+  const [banMsg, setBanMsg] = useState<string | null>(null)
 
   const loadStats = useCallback(async () => {
     setStatsLoading(true)
@@ -213,13 +225,51 @@ export default function AdminPanel({ onBack }: Props) {
     }
   }, [])
 
+  const loadBans = useCallback(async () => {
+    setBansLoading(true)
+    setBansError(null)
+    try {
+      const res = await apiFetch('/admin/bans')
+      if (!res.ok) { const d = await res.json().catch(() => null); setBansError(d?.detail || `Error ${res.status}`); return }
+      const data = await res.json()
+      setBans(data.bans || [])
+    } catch { setBansError('Network error loading bans.') }
+    finally { setBansLoading(false) }
+  }, [])
+
+  const removeBan = async (email: string) => {
+    if (!window.confirm(`Remove ban for ${email}?`)) return
+    try {
+      const r = await apiFetch(`/admin/bans/${encodeURIComponent(email)}`, { method: 'DELETE' })
+      if (!r.ok) { const d = await r.json().catch(() => null); alert(d?.detail || `Error ${r.status}`); return }
+      setBans(prev => prev.filter(b => b.email !== email))
+    } catch { alert('Network error.') }
+  }
+
+  const submitBan = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setBanBusy(true)
+    setBanMsg(null)
+    try {
+      const body: Record<string, string> = { email: banEmail.trim(), reason: banReason.trim(), ban_type: banType }
+      if (banType === 'suspend' && banUntil) body.suspended_until = new Date(banUntil).toISOString()
+      const r = await apiFetch('/admin/bans', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      if (!r.ok) { const d = await r.json().catch(() => null); setBanMsg(d?.detail || `Error ${r.status}`); return }
+      setBanMsg('Saved.')
+      setBanEmail(''); setBanReason(''); setBanType('ban'); setBanUntil('')
+      loadBans()
+    } catch { setBanMsg('Network error.') }
+    finally { setBanBusy(false) }
+  }
+
   useEffect(() => {
     if (tab === 'stats') loadStats()
     else if (tab === 'users') loadUsers()
     else if (tab === 'campaigns') loadCampaigns()
     else if (tab === 'tickets') loadTickets()
     else if (tab === 'reports') loadReports()
-  }, [tab, loadStats, loadUsers, loadCampaigns, loadTickets, loadReports])
+    else if (tab === 'bans') loadBans()
+  }, [tab, loadStats, loadUsers, loadCampaigns, loadTickets, loadReports, loadBans])
 
   const updateTicketStatus = async (ticketId: number, status: string) => {
     setTicketActionBusy(true)
@@ -324,15 +374,27 @@ export default function AdminPanel({ onBack }: Props) {
       } else if (actionModal === 'reset-password') {
         endpoint = `/admin/users/${selectedUser.id}/reset-password`
         body = { new_password: actionInput }
+      } else if (actionModal === 'impersonate') {
+        endpoint = `/admin/users/${selectedUser.id}/impersonate`
       }
       const res = await apiFetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: actionModal === 'impersonate' ? undefined : JSON.stringify(body),
       })
       if (!res.ok) {
         const d = await res.json().catch(() => null)
         setActionError(d?.detail || `Error ${res.status}`)
+        return
+      }
+      if (actionModal === 'impersonate') {
+        const d = await res.json()
+        const token = d.access_token
+        if (token) {
+          localStorage.setItem('access_token', token)
+          setActionSuccess(`Logged in as ${selectedUser.name || selectedUser.email}. Reloading…`)
+          setTimeout(() => window.location.reload(), 1200)
+        }
         return
       }
       setActionSuccess('Action completed successfully.')
@@ -373,7 +435,7 @@ export default function AdminPanel({ onBack }: Props) {
       />
 
       <div className="tab-bar" role="tablist">
-        {(['stats', 'users', 'campaigns', 'search', 'tickets', 'reports'] as Tab[]).map((t) => (
+        {(['stats', 'users', 'campaigns', 'search', 'tickets', 'reports', 'bans'] as Tab[]).map((t) => (
           <button
             key={t}
             role="tab"
@@ -388,6 +450,7 @@ export default function AdminPanel({ onBack }: Props) {
             {t === 'search' && 'Global Search'}
             {t === 'tickets' && 'Support Tickets'}
             {t === 'reports' && 'User Reports'}
+            {t === 'bans' && '🚫 Bans'}
           </button>
         ))}
       </div>
@@ -441,6 +504,7 @@ export default function AdminPanel({ onBack }: Props) {
                       <button className="btn btn-sm btn-secondary" type="button" onClick={() => openAction(u, 'warn')}>Warn</button>
                       <button className="btn btn-sm btn-secondary" type="button" onClick={() => openAction(u, 'message')}>Message</button>
                       <button className="btn btn-sm btn-secondary" type="button" onClick={() => openAction(u, 'reset-password')}>Reset PW</button>
+                      <button className="btn btn-sm btn-secondary" type="button" onClick={() => openAction(u, 'impersonate')}>Login As</button>
                     </td>
                   </tr>
                 ))}
@@ -725,6 +789,73 @@ export default function AdminPanel({ onBack }: Props) {
         </div>
       )}
 
+      {/* ── Bans / Suspensions ── */}
+      {tab === 'bans' && (
+        <div className="card card-pad">
+          <div className="section-title">Email Bans &amp; Suspensions</div>
+          <form className="stack" style={{ gap: 10, marginBottom: 16 }} onSubmit={submitBan}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <input
+                className="input"
+                style={{ flex: 2, minWidth: 160 }}
+                placeholder="email or @domain.com"
+                value={banEmail}
+                onChange={e => setBanEmail(e.target.value)}
+                required
+              />
+              <input
+                className="input"
+                style={{ flex: 2, minWidth: 120 }}
+                placeholder="Reason"
+                value={banReason}
+                onChange={e => setBanReason(e.target.value)}
+              />
+              <select className="input" style={{ flex: 1, minWidth: 100 }} value={banType} onChange={e => setBanType(e.target.value as 'ban' | 'suspend')}>
+                <option value="ban">Ban</option>
+                <option value="suspend">Suspend</option>
+              </select>
+              {banType === 'suspend' ? (
+                <input
+                  className="input"
+                  type="datetime-local"
+                  style={{ flex: 1, minWidth: 140 }}
+                  placeholder="Suspend until"
+                  value={banUntil}
+                  onChange={e => setBanUntil(e.target.value)}
+                />
+              ) : null}
+              <button className="btn btn-sm" type="submit" disabled={banBusy || !banEmail.trim()}>
+                {banBusy ? '…' : 'Add'}
+              </button>
+            </div>
+            {banMsg ? <div className={`inline-alert${banMsg === 'Saved.' ? '' : ' inline-alert-error'}`}>{banMsg}</div> : null}
+          </form>
+
+          {bansLoading ? <div className="loading-text">Loading…</div> : null}
+          {bansError ? <div className="error-text">{bansError}</div> : null}
+          {!bansLoading && bans.length === 0 ? <div className="empty-text">No active bans or suspensions.</div> : null}
+          {bans.length > 0 && (
+            <table className="admin-table">
+              <thead><tr><th>Email</th><th>Type</th><th>Reason</th><th>Until</th><th>Created</th><th></th></tr></thead>
+              <tbody>
+                {bans.map(b => (
+                  <tr key={b.id}>
+                    <td>{b.email}</td>
+                    <td>{b.ban_type}</td>
+                    <td>{b.reason || '—'}</td>
+                    <td>{b.suspended_until ? new Date(b.suspended_until).toLocaleDateString() : '∞'}</td>
+                    <td>{b.created_at ? new Date(b.created_at).toLocaleDateString() : '—'}</td>
+                    <td>
+                      <button className="btn btn-sm btn-secondary" type="button" onClick={() => removeBan(b.email)}>Remove</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
       {/* ── User action modal ── */}
       {actionModal && selectedUser && (
         <div className="modal-backdrop" role="dialog" aria-modal="true">
@@ -734,6 +865,7 @@ export default function AdminPanel({ onBack }: Props) {
                 {actionModal === 'warn' && `Warn: ${selectedUser.name || selectedUser.email}`}
                 {actionModal === 'message' && `Message: ${selectedUser.name || selectedUser.email}`}
                 {actionModal === 'reset-password' && `Reset Password: ${selectedUser.name || selectedUser.email}`}
+                {actionModal === 'impersonate' && `Login As: ${selectedUser.name || selectedUser.email}`}
               </div>
               <button className="modal-close" type="button" onClick={closeAction} aria-label="Close">✕</button>
             </div>
@@ -761,6 +893,11 @@ export default function AdminPanel({ onBack }: Props) {
                   New password (min 8 characters)
                   <input className="input" type="text" value={actionInput} onChange={(e) => setActionInput(e.target.value)} placeholder="New password" />
                 </label>
+              )}
+              {actionModal === 'impersonate' && (
+                <div className="muted" style={{ fontSize: 13 }}>
+                  This will issue a 15-minute session token for <strong>{selectedUser.name || selectedUser.email}</strong>. Your current session will be replaced. Refresh the page after confirming.
+                </div>
               )}
               {actionError && <div className="error-text">{actionError}</div>}
               {actionSuccess && <div className="success-text">{actionSuccess}</div>}

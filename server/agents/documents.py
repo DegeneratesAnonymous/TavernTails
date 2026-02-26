@@ -51,7 +51,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
@@ -409,3 +409,65 @@ async def register_document(session_id: str, payload: RegisterRequest, current_u
             _audit(session_id, identifier, action="documents.register", ok=False)
             raise HTTPException(status_code=500, detail='Failed to register uploaded file') from err
     raise HTTPException(status_code=501, detail='Register not supported for current storage')
+
+
+# ---------------------------------------------------------------------------
+# Document sharing with friends
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{session_id}/{doc_id}/share")
+async def share_document_with_friend(
+    session_id: str,
+    doc_id: str,
+    friend_user_id: int = Body(..., embed=True),
+    current_user=Depends(get_current_user),
+):
+    """Share a document with a friend user.
+
+    * The caller must be the session host or a member.
+    * The target must be a confirmed friend.
+    * The document must be 'shared' visibility (hidden GM docs are not shareable).
+
+    Sharing is recorded in the session audit log.  The actual content is not
+    copied — the recipient can request access via ``GET /documents/{session_id}``
+    once added to the session.  This endpoint simply validates friendship and
+    notifies the friend.
+    """
+    from .. import db as _db
+
+    meta, identifier, is_host = _ensure_session_member(session_id, current_user)
+
+    docs = store.list_documents(session_id)
+    doc = next((d for d in docs if d.id == doc_id), None)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if doc.visibility == "hidden":
+        raise HTTPException(status_code=403, detail="Hidden documents cannot be shared with friends")
+
+    if friend_user_id == current_user.id:
+        raise HTTPException(status_code=400, detail="Cannot share a document with yourself")
+
+    friend = _db.admin_get_user(friend_user_id)
+    if not friend:
+        raise HTTPException(status_code=404, detail="Friend not found")
+
+    if not _db.are_friends(current_user.id, friend_user_id):
+        raise HTTPException(status_code=403, detail="You can only share documents with friends")
+
+    # Notify the friend
+    sharer_name = (current_user.profile or {}).get("name") or current_user.username or current_user.email or "Someone"
+    _db.admin_send_notification(
+        friend_user_id,
+        title=f"📄 {sharer_name} shared a document with you",
+        body=f'"{doc.name}" from session {session_id}',
+    )
+
+    _audit(session_id, identifier, action="documents.share", ok=True, doc_id=doc_id, detail=f"shared_with:{friend_user_id}")
+    return {
+        "shared": True,
+        "doc_id": doc_id,
+        "doc_name": doc.name,
+        "shared_with_user_id": friend_user_id,
+    }
