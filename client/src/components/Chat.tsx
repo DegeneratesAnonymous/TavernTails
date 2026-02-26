@@ -4,6 +4,7 @@ import { apiFetch, buildWsUrl } from '../api'
 import ChatToolbar from './chat/ChatToolbar'
 import InvitePanel from './chat/InvitePanel'
 import AdvancedToolsPanel from './chat/AdvancedToolsPanel'
+import ImageGallery from './chat/ImageGallery'
 import MessageList from './chat/MessageList'
 import PinnedBar from './chat/PinnedBar'
 import Composer from './chat/Composer'
@@ -98,6 +99,7 @@ export default function Chat({sessionId, variant = 'full', aboveComposer, curren
   const [toolbarMessage, setToolbarMessage] = useState<string|null>(null)
   const [showInviteForm, setShowInviteForm] = useState(false)
   const [showToolsPanel, setShowToolsPanel] = useState(false)
+  const [showImageGallery, setShowImageGallery] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteNote, setInviteNote] = useState('')
   const [inviteBusy, setInviteBusy] = useState(false)
@@ -407,6 +409,10 @@ export default function Chat({sessionId, variant = 'full', aboveComposer, curren
       setNpcModalOpen(true)
       return
     }
+    if(tool.id === 'image'){
+      setShowImageGallery(v => !v)
+      return
+    }
     if(tool.command){
       await handleSend(tool.command)
     }
@@ -575,6 +581,16 @@ export default function Chat({sessionId, variant = 'full', aboveComposer, curren
               runAdvancedTool(tool)
             }}
           />
+        ) : null}
+
+        {showImageGallery ? (
+          <div className="chat-panel stack">
+            <div className="chat-panel-title" style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              Scene Images
+              <button className="btn btn-sm btn-quiet" type="button" onClick={() => setShowImageGallery(false)} aria-label="Close gallery">✕</button>
+            </div>
+            <ImageGallery sessionId={sessionId} visible={showImageGallery} />
+          </div>
         ) : null}
       </div>
 

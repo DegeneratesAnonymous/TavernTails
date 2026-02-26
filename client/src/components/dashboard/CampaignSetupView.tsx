@@ -642,7 +642,7 @@ export default function CampaignSetupView({
 
               <div className="card card-pad" style={{ background: 'var(--surface-dark)', marginTop: 12 }}>
                 <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-                  <div className="muted">Campaign details</div>
+                  <div className="muted">Adventure details</div>
                   <div className="row-wrap" style={{ gap: 8 }}>
                     {onPlay && activeCampaignId ? (
                       <button className="btn" type="button" disabled={!canEdit || Boolean(playBusy)} onClick={onPlay}>

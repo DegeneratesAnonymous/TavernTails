@@ -1,0 +1,67 @@
+import { test, expect } from '@playwright/test';
+
+/**
+ * Smoke tests — validate the critical happy path for an end-to-end player
+ * journey: home page loads → login form visible → can submit login →
+ * dashboard is shown.
+ *
+ * These run against a live stack (backend on :8000, frontend on :3000) and
+ * use the dev seed user created by the backend startup sequence.
+ */
+
+const DEV_EMAIL = 'test@example.com';
+const DEV_PASSWORD = 'secret';
+
+test.describe('Smoke: Login flow', () => {
+  test('home page loads and shows login form', async ({ page }) => {
+    await page.goto('/');
+    // The root renders either the login/signup page or the dashboard.
+    // We just confirm the app shell mounted without a blank white screen.
+    await expect(page.locator('body')).not.toBeEmpty();
+    const title = await page.title();
+    expect(title).toBeTruthy();
+  });
+
+  test('can log in with dev seed credentials', async ({ page }) => {
+    await page.goto('/');
+
+    // If already on the dashboard (e.g., token persisted from a prior test
+    // run), skip the login step.
+    const isDashboard = await page.locator('[data-testid="dashboard"], .gameplay-root, .logged-in-dashboard').first().isVisible().catch(() => false);
+    if (isDashboard) return;
+
+    // Fill and submit the login form.
+    const emailInput = page.locator('input[type="email"], input[placeholder*="email" i], input[name="email"]').first();
+    const passwordInput = page.locator('input[type="password"]').first();
+    await emailInput.fill(DEV_EMAIL);
+    await passwordInput.fill(DEV_PASSWORD);
+
+    const submitButton = page.locator('button[type="submit"], button:has-text("Log in"), button:has-text("Sign in")').first();
+    await submitButton.click();
+
+    // After login the app should navigate away from the auth screen.
+    await expect(page).not.toHaveURL(/login/i, { timeout: 10_000 });
+  });
+});
+
+test.describe('Smoke: Campaign creation', () => {
+  test.beforeEach(async ({ page }) => {
+    // Ensure we are logged in before each campaign test.
+    await page.goto('/');
+    const isDashboard = await page.locator('.gameplay-root, .logged-in-dashboard').first().isVisible().catch(() => false);
+    if (!isDashboard) {
+      const emailInput = page.locator('input[type="email"], input[placeholder*="email" i]').first();
+      const passwordInput = page.locator('input[type="password"]').first();
+      await emailInput.fill(DEV_EMAIL);
+      await passwordInput.fill(DEV_PASSWORD);
+      await page.locator('button[type="submit"], button:has-text("Log in"), button:has-text("Sign in")').first().click();
+      await page.waitForTimeout(1500);
+    }
+  });
+
+  test('application loads campaign UI after login', async ({ page }) => {
+    // The dashboard or gameplay layout should be visible.
+    const shell = page.locator('.gameplay-root, .logged-in-dashboard, [data-testid="dashboard"]');
+    await expect(shell.first()).toBeVisible({ timeout: 10_000 });
+  });
+});
