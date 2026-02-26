@@ -102,6 +102,16 @@ class ChatMessage(SQLModel, table=True):
     metadata_json: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
 
 
+class PinnedMessage(SQLModel, table=True):
+    """Records that a chat message has been pinned in a session."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    session_id: str = Field(index=True)
+    message_id: int = Field(foreign_key="chatmessage.id")
+    pinned_by_id: int | None = Field(default=None, foreign_key="user.id")
+    pinned_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class FriendRequest(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     from_user_id: int = Field(foreign_key="user.id")
@@ -320,6 +330,76 @@ def list_chat_messages(
             stmt = stmt.where(ChatMessage.campaign_id == campaign_id)
         stmt = stmt.order_by(desc(cast(Any, ChatMessage.created_at))).limit(limit)
         return list(reversed(list(session.exec(stmt).all())))
+
+
+def delete_chat_message(message_id: int, sender_id: int) -> bool:
+    """Delete a chat message. Only the original sender may delete their own messages."""
+    with Session(engine) as session:
+        msg = session.exec(select(ChatMessage).where(ChatMessage.id == message_id)).first()
+        if not msg:
+            return False
+        if msg.sender_id != sender_id:
+            return False
+        session.delete(msg)
+        # Clean up any pin record for this message
+        pin = session.exec(select(PinnedMessage).where(PinnedMessage.message_id == message_id)).first()
+        if pin:
+            session.delete(pin)
+        session.commit()
+        return True
+
+
+def pin_message(session_id: str, message_id: int, pinned_by_id: int | None = None) -> PinnedMessage | None:
+    """Pin a message in a session. Idempotent — returns the existing record if already pinned."""
+    with Session(engine) as session:
+        msg = session.exec(
+            select(ChatMessage).where(ChatMessage.id == message_id, ChatMessage.session_id == session_id)
+        ).first()
+        if not msg:
+            return None
+        existing = session.exec(
+            select(PinnedMessage).where(PinnedMessage.session_id == session_id, PinnedMessage.message_id == message_id)
+        ).first()
+        if existing:
+            return existing
+        pin = PinnedMessage(session_id=session_id, message_id=message_id, pinned_by_id=pinned_by_id)
+        session.add(pin)
+        session.commit()
+        session.refresh(pin)
+        return pin
+
+
+def unpin_message(session_id: str, message_id: int) -> bool:
+    """Remove a pin from a message. Returns True if a pin was removed."""
+    with Session(engine) as session:
+        pin = session.exec(
+            select(PinnedMessage).where(PinnedMessage.session_id == session_id, PinnedMessage.message_id == message_id)
+        ).first()
+        if not pin:
+            return False
+        session.delete(pin)
+        session.commit()
+        return True
+
+
+def list_pinned_messages(session_id: str) -> list[ChatMessage]:
+    """Return ChatMessage records that are pinned in session_id, ordered oldest-pin first."""
+    with Session(engine) as session:
+        pins = list(
+            session.exec(
+                select(PinnedMessage)
+                .where(PinnedMessage.session_id == session_id)
+                .order_by(cast(Any, PinnedMessage.pinned_at))
+            ).all()
+        )
+        if not pins:
+            return []
+        ids = [p.message_id for p in pins]
+        # SQLModel's Column type doesn't expose .in_() to mypy, but it is valid at runtime.
+        msgs = list(session.exec(select(ChatMessage).where(ChatMessage.id.in_(ids))).all())  # type: ignore[attr-defined]
+        msg_map = {m.id: m for m in msgs}
+        return [msg_map[i] for i in ids if i in msg_map]
+
 
 def send_friend_request(from_identifier: str, to_identifier: str) -> FriendRequest:
     from_user = get_user_by_identifier(from_identifier)
