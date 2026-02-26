@@ -31,7 +31,36 @@ type AdminCampaign = {
   owner_name: string | null
 }
 
-type Tab = 'stats' | 'users' | 'campaigns' | 'search'
+type AdminTicket = {
+  id: number
+  user_id: number
+  user_email?: string | null
+  user_name?: string | null
+  subject: string
+  body: string
+  status: string
+  created_at: string | null
+  updated_at: string | null
+}
+
+type AdminReport = {
+  id: number
+  reporter_id: number
+  reported_id: number
+  reporter_name?: string | null
+  reported_name?: string | null
+  reason: string
+  details: string
+  status: string
+  created_at: string | null
+  reviewed_at: string | null
+}
+
+const TICKET_STATUSES = ['open', 'in_progress', 'resolved', 'closed'] as const
+const REPORT_STATUSES = ['open', 'reviewed', 'dismissed'] as const
+const MODERATION_LIST_LIMIT = 100
+
+type Tab = 'stats' | 'users' | 'campaigns' | 'search' | 'tickets' | 'reports'
 
 type Props = {
   onBack?: () => void
@@ -69,6 +98,24 @@ export default function AdminPanel({ onBack }: Props) {
   const [actionBusy, setActionBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionSuccess, setActionSuccess] = useState<string | null>(null)
+
+  // Tickets
+  const [tickets, setTickets] = useState<AdminTicket[]>([])
+  const [ticketsLoading, setTicketsLoading] = useState(false)
+  const [ticketsError, setTicketsError] = useState<string | null>(null)
+  const [ticketStatusFilter, setTicketStatusFilter] = useState<string>('')
+  const [expandedTicketId, setExpandedTicketId] = useState<number | null>(null)
+  const [ticketActionBusy, setTicketActionBusy] = useState(false)
+  const [ticketActionError, setTicketActionError] = useState<string | null>(null)
+
+  // Reports
+  const [reports, setReports] = useState<AdminReport[]>([])
+  const [reportsLoading, setReportsLoading] = useState(false)
+  const [reportsError, setReportsError] = useState<string | null>(null)
+  const [reportStatusFilter, setReportStatusFilter] = useState<string>('')
+  const [expandedReportId, setExpandedReportId] = useState<number | null>(null)
+  const [reportActionBusy, setReportActionBusy] = useState(false)
+  const [reportActionError, setReportActionError] = useState<string | null>(null)
 
   const loadStats = useCallback(async () => {
     setStatsLoading(true)
@@ -126,11 +173,99 @@ export default function AdminPanel({ onBack }: Props) {
     }
   }, [])
 
+  const loadTickets = useCallback(async (statusFilter?: string) => {
+    setTicketsLoading(true)
+    setTicketsError(null)
+    try {
+      const qs = statusFilter ? `?status=${encodeURIComponent(statusFilter)}&limit=${MODERATION_LIST_LIMIT}` : `?limit=${MODERATION_LIST_LIMIT}`
+      const res = await apiFetch('/support/tickets' + qs)
+      if (!res.ok) {
+        const d = await res.json().catch(() => null)
+        setTicketsError(d?.detail || `Error ${res.status}`)
+        return
+      }
+      const data = await res.json()
+      setTickets(data.tickets || [])
+    } catch {
+      setTicketsError('Network error loading tickets.')
+    } finally {
+      setTicketsLoading(false)
+    }
+  }, [])
+
+  const loadReports = useCallback(async (statusFilter?: string) => {
+    setReportsLoading(true)
+    setReportsError(null)
+    try {
+      const qs = statusFilter ? `?status=${encodeURIComponent(statusFilter)}&limit=${MODERATION_LIST_LIMIT}` : `?limit=${MODERATION_LIST_LIMIT}`
+      const res = await apiFetch('/moderation/reports' + qs)
+      if (!res.ok) {
+        const d = await res.json().catch(() => null)
+        setReportsError(d?.detail || `Error ${res.status}`)
+        return
+      }
+      const data = await res.json()
+      setReports(data.reports || [])
+    } catch {
+      setReportsError('Network error loading reports.')
+    } finally {
+      setReportsLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     if (tab === 'stats') loadStats()
     else if (tab === 'users') loadUsers()
     else if (tab === 'campaigns') loadCampaigns()
-  }, [tab, loadStats, loadUsers, loadCampaigns])
+    else if (tab === 'tickets') loadTickets()
+    else if (tab === 'reports') loadReports()
+  }, [tab, loadStats, loadUsers, loadCampaigns, loadTickets, loadReports])
+
+  const updateTicketStatus = async (ticketId: number, status: string) => {
+    setTicketActionBusy(true)
+    setTicketActionError(null)
+    try {
+      const res = await apiFetch(`/support/tickets/${ticketId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => null)
+        setTicketActionError(d?.detail || `Error ${res.status}`)
+        return
+      }
+      const data = await res.json()
+      setTickets((prev) => prev.map((t) => (t.id === ticketId ? { ...t, ...data.ticket } : t)))
+    } catch {
+      setTicketActionError('Network error updating ticket.')
+    } finally {
+      setTicketActionBusy(false)
+    }
+  }
+
+  const updateReportStatus = async (reportId: number, status: string) => {
+    setReportActionBusy(true)
+    setReportActionError(null)
+    try {
+      const res = await apiFetch(`/moderation/reports/${reportId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => null)
+        setReportActionError(d?.detail || `Error ${res.status}`)
+        return
+      }
+      const data = await res.json()
+      setReports((prev) => prev.map((r) => (r.id === reportId ? { ...r, ...data.report } : r)))
+    } catch {
+      setReportActionError('Network error updating report.')
+    } finally {
+      setReportActionBusy(false)
+    }
+  }
 
   const handleSearch = useCallback(async () => {
     if (searchQuery.trim().length < 2) {
@@ -238,7 +373,7 @@ export default function AdminPanel({ onBack }: Props) {
       />
 
       <div className="tab-bar" role="tablist">
-        {(['stats', 'users', 'campaigns', 'search'] as Tab[]).map((t) => (
+        {(['stats', 'users', 'campaigns', 'search', 'tickets', 'reports'] as Tab[]).map((t) => (
           <button
             key={t}
             role="tab"
@@ -251,6 +386,8 @@ export default function AdminPanel({ onBack }: Props) {
             {t === 'users' && 'Users'}
             {t === 'campaigns' && 'Campaigns'}
             {t === 'search' && 'Global Search'}
+            {t === 'tickets' && 'Support Tickets'}
+            {t === 'reports' && 'User Reports'}
           </button>
         ))}
       </div>
@@ -402,6 +539,188 @@ export default function AdminPanel({ onBack }: Props) {
                 </table>
               ) : <div className="empty-text">No campaigns found.</div>}
             </>
+          )}
+        </div>
+      )}
+
+      {/* ── Support Tickets ── */}
+      {tab === 'tickets' && (
+        <div className="card card-pad">
+          <div className="section-title">Support Tickets</div>
+          <div className="row-wrap" style={{ gap: 8, marginBottom: 12, alignItems: 'center' }}>
+            <span className="muted" style={{ fontSize: 13 }}>Filter by status:</span>
+            <select
+              className="input"
+              style={{ width: 'auto' }}
+              value={ticketStatusFilter}
+              onChange={(e) => {
+                const v = e.target.value
+                setTicketStatusFilter(v)
+                loadTickets(v || undefined)
+              }}
+            >
+              <option value="">All</option>
+              {TICKET_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <button className="btn btn-sm btn-secondary" type="button" onClick={() => loadTickets(ticketStatusFilter || undefined)} disabled={ticketsLoading}>
+              {ticketsLoading ? '…' : 'Refresh'}
+            </button>
+          </div>
+          {ticketsError && <div className="error-text">{ticketsError}</div>}
+          {ticketActionError && <div className="error-text">{ticketActionError}</div>}
+          {!ticketsLoading && !ticketsError && (
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>User</th>
+                  <th>Subject</th>
+                  <th>Status</th>
+                  <th>Submitted</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tickets.map((t) => (
+                  <React.Fragment key={t.id}>
+                    <tr
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => setExpandedTicketId((prev) => (prev === t.id ? null : t.id))}
+                    >
+                      <td>{t.id}</td>
+                      <td>{t.user_name || t.user_email || t.user_id}</td>
+                      <td>{t.subject}</td>
+                      <td>
+                        <span className={`badge ${t.status === 'open' ? 'badge-active' : t.status === 'resolved' || t.status === 'closed' ? 'badge-muted' : 'badge-warn'}`}>
+                          {t.status}
+                        </span>
+                      </td>
+                      <td>{t.created_at ? new Date(t.created_at).toLocaleDateString() : '—'}</td>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <select
+                          className="input"
+                          style={{ width: 'auto', fontSize: 12 }}
+                          value={t.status}
+                          disabled={ticketActionBusy}
+                          onChange={(e) => updateTicketStatus(t.id, e.target.value)}
+                        >
+                          {TICKET_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </td>
+                    </tr>
+                    {expandedTicketId === t.id && (
+                      <tr>
+                        <td colSpan={6} style={{ background: 'var(--tt-surface, #1a1a2e)', padding: '10px 16px' }}>
+                          <div style={{ fontWeight: 600, marginBottom: 4 }}>From: {t.user_name || t.user_email || `User ${t.user_id}`}</div>
+                          <div style={{ whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.6 }}>{t.body}</div>
+                          {t.updated_at && (
+                            <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
+                              Last updated: {new Date(t.updated_at).toLocaleString()}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))}
+                {tickets.length === 0 && (
+                  <tr><td colSpan={6}><span className="empty-text">No tickets found.</span></td></tr>
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {/* ── User Reports ── */}
+      {tab === 'reports' && (
+        <div className="card card-pad">
+          <div className="section-title">User Reports</div>
+          <div className="row-wrap" style={{ gap: 8, marginBottom: 12, alignItems: 'center' }}>
+            <span className="muted" style={{ fontSize: 13 }}>Filter by status:</span>
+            <select
+              className="input"
+              style={{ width: 'auto' }}
+              value={reportStatusFilter}
+              onChange={(e) => {
+                const v = e.target.value
+                setReportStatusFilter(v)
+                loadReports(v || undefined)
+              }}
+            >
+              <option value="">All</option>
+              {REPORT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <button className="btn btn-sm btn-secondary" type="button" onClick={() => loadReports(reportStatusFilter || undefined)} disabled={reportsLoading}>
+              {reportsLoading ? '…' : 'Refresh'}
+            </button>
+          </div>
+          {reportsError && <div className="error-text">{reportsError}</div>}
+          {reportActionError && <div className="error-text">{reportActionError}</div>}
+          {!reportsLoading && !reportsError && (
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Reporter</th>
+                  <th>Reported</th>
+                  <th>Reason</th>
+                  <th>Status</th>
+                  <th>Filed</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reports.map((r) => (
+                  <React.Fragment key={r.id}>
+                    <tr
+                      style={{ cursor: r.details ? 'pointer' : 'default' }}
+                      onClick={() => r.details && setExpandedReportId((prev) => (prev === r.id ? null : r.id))}
+                    >
+                      <td>{r.id}</td>
+                      <td>{r.reporter_name || r.reporter_id}</td>
+                      <td>{r.reported_name || r.reported_id}</td>
+                      <td><span className="badge badge-warn">{r.reason.replace('_', ' ')}</span></td>
+                      <td>
+                        <span className={`badge ${r.status === 'open' ? 'badge-active' : 'badge-muted'}`}>
+                          {r.status}
+                        </span>
+                      </td>
+                      <td>{r.created_at ? new Date(r.created_at).toLocaleDateString() : '—'}</td>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <select
+                          className="input"
+                          style={{ width: 'auto', fontSize: 12 }}
+                          value={r.status}
+                          disabled={reportActionBusy}
+                          onChange={(e) => updateReportStatus(r.id, e.target.value)}
+                        >
+                          {REPORT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </td>
+                    </tr>
+                    {expandedReportId === r.id && r.details && (
+                      <tr>
+                        <td colSpan={7} style={{ background: 'var(--tt-surface, #1a1a2e)', padding: '10px 16px' }}>
+                          <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                            {r.reporter_name || r.reporter_id} → {r.reported_name || r.reported_id}
+                          </div>
+                          <div style={{ whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.6 }}>{r.details}</div>
+                          {r.reviewed_at && (
+                            <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
+                              Reviewed: {new Date(r.reviewed_at).toLocaleString()}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))}
+                {reports.length === 0 && (
+                  <tr><td colSpan={7}><span className="empty-text">No reports found.</span></td></tr>
+                )}
+              </tbody>
+            </table>
           )}
         </div>
       )}
