@@ -40,7 +40,7 @@ def player_accept_friend(from_identifier: str = Body(..., embed=True), current_u
 def player_signup(
     email: str = Body(...),
     password: str = Body(...),
-    name: str | None = Body(None),
+    name: str = Body(...),
     age: int | None = Body(None),
     character: dict[str, Any] | None = Body(None),
 ):
@@ -48,6 +48,8 @@ def player_signup(
     if not email:
         raise HTTPException(status_code=400, detail="Email required")
     username = name.strip() if isinstance(name, str) else None
+    if not username:
+        raise HTTPException(status_code=400, detail="Display name required")
     if db.get_user_by_identifier(email):
         raise HTTPException(status_code=409, detail="User exists")
     profile: dict[str, Any] = {"name": username or email.split("@")[0], "email": email, "preferences": {}}

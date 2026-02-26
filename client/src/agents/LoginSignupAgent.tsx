@@ -22,7 +22,6 @@ const LoginSignupAgent: React.FC<Props> = ({ initialMode = 'login' }) => {
   const [loading, setLoading] = useState(false);
   const [verificationToken, setVerificationToken] = useState('');
   const [unverifiedEmail, setUnverifiedEmail] = useState('');
-  const devCredentials = { email: 'test@example.com', password: 'secret' };
 
   const setMessage = (msg: string, type: 'error' | 'info' = 'error') => {
     setError(msg);
@@ -167,7 +166,6 @@ const LoginSignupAgent: React.FC<Props> = ({ initialMode = 'login' }) => {
     applyAuthResponse(data);
   };
 
-  const handleDevLogin = () => handleLogin(devCredentials);
   const handleSignup = async () => {
     setMessage('');
     setLoading(true);
@@ -177,12 +175,12 @@ const LoginSignupAgent: React.FC<Props> = ({ initialMode = 'login' }) => {
     setSignupEmail(cleanEmail);
     setSignupName(cleanName);
     setSignupPassword(cleanPassword);
-    if (!cleanEmail || !cleanPassword) {
+    if (!cleanEmail || !cleanName || !cleanPassword) {
       setLoading(false);
-      setMessage('Email and password are required.');
+      setMessage('Email, display name, and password are required.');
       return;
     }
-    const payload = { email: cleanEmail, password: cleanPassword, name: cleanName || undefined };
+    const payload = { email: cleanEmail, password: cleanPassword, name: cleanName };
     const { data, errorDetail } = await performAuthRequest('/player/signup', payload);
     setLoading(false);
     if (errorDetail) {
@@ -318,13 +316,6 @@ const LoginSignupAgent: React.FC<Props> = ({ initialMode = 'login' }) => {
                         </div>
                       </div>
                     )}
-
-                    <div className="tt-auth-dev">
-                      <button type="button" className="btn btn-sm btn-quiet" onClick={handleDevLogin} disabled={loading}>
-                        Dev login
-                      </button>
-                      <span className="tt-auth-dev-label">test@example.com / secret</span>
-                    </div>
                   </form>
                 </section>
               ) : (
@@ -337,8 +328,8 @@ const LoginSignupAgent: React.FC<Props> = ({ initialMode = 'login' }) => {
                         <input id="signupEmail" className="tt-auth-input" type="email" placeholder="you@example.com" value={signupEmail} onChange={e => setSignupEmail(e.target.value)} autoComplete="email" />
                       </div>
                       <div className="tt-auth-field">
-                        <label className="tt-auth-label" htmlFor="signupName">Display Name <span className="tt-auth-dev-label">(optional)</span></label>
-                        <input id="signupName" className="tt-auth-input" type="text" placeholder="Gandalf the Grey" value={signupName} onChange={e => setSignupName(e.target.value)} autoComplete="nickname" />
+                        <label className="tt-auth-label" htmlFor="signupName">Display Name</label>
+                        <input id="signupName" className="tt-auth-input" type="text" placeholder="Gandalf the Grey" value={signupName} onChange={e => setSignupName(e.target.value)} autoComplete="nickname" required />
                       </div>
                       <div className="tt-auth-field">
                         <label className="tt-auth-label" htmlFor="signupPassword">Password</label>
