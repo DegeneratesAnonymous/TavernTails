@@ -4,6 +4,7 @@ Minimal, single implementation of the player router. Supports signup, login
 and profile updates. Login returns a dev JWT in `access_token`.
 """
 
+from datetime import timezone
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
@@ -40,7 +41,7 @@ def player_accept_friend(from_identifier: str = Body(..., embed=True), current_u
 def player_signup(
     email: str = Body(...),
     password: str = Body(...),
-    name: str | None = Body(None),
+    name: str = Body(...),
     age: int | None = Body(None),
     character: dict[str, Any] | None = Body(None),
 ):
@@ -48,6 +49,8 @@ def player_signup(
     if not email:
         raise HTTPException(status_code=400, detail="Email required")
     username = name.strip() if isinstance(name, str) else None
+    if not username:
+        raise HTTPException(status_code=400, detail="Display name required")
     if db.get_user_by_identifier(email):
         raise HTTPException(status_code=409, detail="User exists")
     profile: dict[str, Any] = {"name": username or email.split("@")[0], "email": email, "preferences": {}}
@@ -71,6 +74,18 @@ def player_login(email: str | None = Body(None), name: str | None = Body(None), 
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not user.verified:
         raise HTTPException(status_code=403, detail="Email not verified")
+    # Check for active email ban / suspension
+    user_email = (user.email or "").lower().strip()
+    if user_email:
+        ban = db._email_is_banned_or_suspended(user_email)
+        if ban:
+            if ban.ban_type == "suspend":
+                su = ban.suspended_until
+                if su is not None and su.tzinfo is None:
+                    su = su.replace(tzinfo=timezone.utc)
+                until = su.strftime("%Y-%m-%d") if su else "an unspecified date"
+                raise HTTPException(status_code=403, detail=f"Account suspended until {until}.")
+            raise HTTPException(status_code=403, detail="Account banned. Contact support if you believe this is an error.")
     subject = user.email or user.username or identifier
     token = create_access_token(subject)
     return {"profile": user.profile, "access_token": token, "token_type": "bearer"}
@@ -178,6 +193,56 @@ def set_beyond20_domains(identifier: str = Body(...), domains_text: str | None =
 @router.get("/player/me")
 def player_me(current_user=Depends(get_current_user)):
     return {"profile": current_user.profile}
+
+
+@router.put("/player/me")
+def update_player_me(
+    name: str | None = Body(None),
+    email: str | None = Body(None),
+    username: str | None = Body(None),
+    current_user=Depends(get_current_user),
+):
+    """Update the current user's own display name, email, and/or username."""
+    if name is not None:
+        name = name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Display name cannot be empty.")
+    if email is not None:
+        email = email.strip().lower()
+        if not email or "@" not in email:
+            raise HTTPException(status_code=400, detail="A valid email address is required.")
+    if username is not None:
+        username = username.strip()
+    if name is None and email is None and username is None:
+        raise HTTPException(status_code=400, detail="No fields to update.")
+    try:
+        updated = db.update_user_self(current_user.id, name=name, email=email, username=username)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not updated:
+        raise HTTPException(status_code=404, detail="User not found.")
+    response: dict = {"profile": db._profile_with_identity(updated)}
+    # If the email actually changed, the JWT subject (email) is now stale — issue a fresh token.
+    old_email = (current_user.email or "").lower()
+    new_email = (updated.email or "").lower()
+    if email is not None and new_email and new_email != old_email:
+        response["access_token"] = create_access_token(subject=new_email)
+    return response
+
+
+@router.post("/player/me/change-password")
+def change_player_password(
+    current_password: str = Body(...),
+    new_password: str = Body(...),
+    current_user=Depends(get_current_user),
+):
+    """Change the current user's own password (requires current password for verification)."""
+    if len(new_password) < 8:
+        raise HTTPException(status_code=400, detail="New password must be at least 8 characters.")
+    ok = db.change_user_password(current_user.id, current_password, new_password)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Current password is incorrect.")
+    return {"ok": True}
 
 
 @router.post("/player/admin-mode")

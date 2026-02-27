@@ -68,13 +68,19 @@ def test_notes_agent_contract(client: TestClient):
 
 
 def test_image_agent_contract(client: TestClient):
-    resp = client.post("/image/generate", json=payloads.IMAGE_REQUEST)
+    owner = "contract-image-host@example.com"
+    _ensure_user(owner)
+    headers = {"Authorization": f"Bearer {create_access_token(owner)}"}
+    resp = client.post("/image/generate", json=payloads.IMAGE_REQUEST, headers=headers)
     assert resp.status_code == 200, resp.text
     data = resp.json()
     assert data["prompt"] == payloads.IMAGE_REQUEST["prompt"]
     assert data["style"] == payloads.IMAGE_REQUEST["style"]
     assert data["image_url"].startswith("https://placeholder.image/")
     assert "placeholder" in data["guidance"].lower()
+    assert "id" in data
+    assert "generated_at" in data
+    assert data["cached"] is False
 
 
 def test_scene_agent_roll_prompts(client: TestClient):

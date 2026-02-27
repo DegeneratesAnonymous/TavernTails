@@ -17,11 +17,16 @@ const LoginSignupAgent: React.FC<Props> = ({ initialMode = 'login' }) => {
   const [signupEmail, setSignupEmail] = useState('');
   const [signupPassword, setSignupPassword] = useState('');
   const [error, setError] = useState('');
+  const [errorType, setErrorType] = useState<'error' | 'info'>('error');
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [verificationToken, setVerificationToken] = useState('');
   const [unverifiedEmail, setUnverifiedEmail] = useState('');
-  const devCredentials = { email: 'test@example.com', password: 'secret' };
+
+  const setMessage = (msg: string, type: 'error' | 'info' = 'error') => {
+    setError(msg);
+    setErrorType(type);
+  };
 
   React.useEffect(() => {
     setIsSignup(initialMode === 'signup')
@@ -91,7 +96,7 @@ const LoginSignupAgent: React.FC<Props> = ({ initialMode = 'login' }) => {
     if (email) localStorage.setItem('user_email', String(email))
     if (username) localStorage.setItem('user_username', String(username))
     setProfile(resolvedProfile);
-    setError('');
+    setMessage('');
     if (!options?.preserveVerification) {
       setUnverifiedEmail('');
       setVerificationToken('');
@@ -134,10 +139,10 @@ const LoginSignupAgent: React.FC<Props> = ({ initialMode = 'login' }) => {
     setLoginEmail(identifierInfo.raw);
     setLoginPassword(passwordValue);
     if (!identifierInfo.raw || !passwordValue) {
-      setError('Enter both email and password.');
+      setMessage('Enter both email and password.');
       return;
     }
-    setError('');
+    setMessage('');
     setLoading(true);
     const payload: Record<string, any> = { password: passwordValue };
     if (identifierInfo.email) {
@@ -152,18 +157,17 @@ const LoginSignupAgent: React.FC<Props> = ({ initialMode = 'login' }) => {
       const detailStr = formatDetail(errorDetail);
       if (detailStr === 'Email not verified') {
         setUnverifiedEmail(identifierInfo.raw);
-        setError('Email not verified - please enter the verification token sent to your email.');
+        setMessage('Email not verified - please enter the verification token sent to your email.', 'info');
       } else {
-        setError(detailStr || 'Invalid credentials or user not found.');
+        setMessage(detailStr || 'Invalid credentials or user not found.');
       }
       return;
     }
     applyAuthResponse(data);
   };
 
-  const handleDevLogin = () => handleLogin(devCredentials);
   const handleSignup = async () => {
-    setError('');
+    setMessage('');
     setLoading(true);
     const cleanEmail = signupEmail.trim().toLowerCase();
     const cleanName = signupName.trim();
@@ -171,22 +175,22 @@ const LoginSignupAgent: React.FC<Props> = ({ initialMode = 'login' }) => {
     setSignupEmail(cleanEmail);
     setSignupName(cleanName);
     setSignupPassword(cleanPassword);
-    if (!cleanEmail || !cleanPassword) {
+    if (!cleanEmail || !cleanName || !cleanPassword) {
       setLoading(false);
-      setError('Email and password are required.');
+      setMessage('Email, display name, and password are required.');
       return;
     }
-    const payload = { email: cleanEmail, password: cleanPassword, name: cleanName || undefined };
+    const payload = { email: cleanEmail, password: cleanPassword, name: cleanName };
     const { data, errorDetail } = await performAuthRequest('/player/signup', payload);
     setLoading(false);
     if (errorDetail) {
-      setError(formatDetail(errorDetail) || 'Signup failed.');
+      setMessage(formatDetail(errorDetail) || 'Signup failed.');
       return;
     }
     setIsSignup(false);
     setUnverifiedEmail(signupEmail);
     setVerificationToken(data?.verification_token || '');
-    setError('Account created - verify your email before logging in (token included for dev).');
+    setMessage('Account created - verify your email before logging in (token included for dev).', 'info');
   };
 
   const handleVerify = async () => {
@@ -200,18 +204,18 @@ const LoginSignupAgent: React.FC<Props> = ({ initialMode = 'login' }) => {
       });
       setLoading(false);
       if (res.ok) {
-        setError('Email verified - you can now log in.');
+        setMessage('Email verified - you can now log in.', 'info');
         setUnverifiedEmail('');
         setVerificationToken('');
       } else {
         const err = await res.json();
         const detail = err.detail || err || '';
         const detailStr = formatDetail(detail);
-        setError(detailStr || 'Verification failed');
+        setMessage(detailStr || 'Verification failed');
       }
     } catch (e) {
       setLoading(false);
-      setError('Network error during verification');
+      setMessage('Network error during verification');
     }
   };
 
@@ -228,16 +232,16 @@ const LoginSignupAgent: React.FC<Props> = ({ initialMode = 'login' }) => {
       if (res.ok) {
         const data = await res.json();
         setVerificationToken(data.verification_token || '');
-        setError('Verification token resent (returned for dev).');
+        setMessage('Verification token resent (returned for dev).', 'info');
       } else {
         const err = await res.json();
         const detail = err.detail || err || '';
         const detailStr = formatDetail(detail);
-        setError(detailStr || 'Failed to resend verification');
+        setMessage(detailStr || 'Failed to resend verification');
       }
     } catch (e) {
       setLoading(false);
-      setError('Network error during resend');
+      setMessage('Network error during resend');
     }
   };
 
@@ -260,59 +264,97 @@ const LoginSignupAgent: React.FC<Props> = ({ initialMode = 'login' }) => {
     <div style={{ minHeight: '100vh' }}>
       {loading && <HamsterWheel />}
       {!profile ? (
-        <div className="container">
-          <div className="card card-pad" style={{ width: 420, maxWidth: '96%' }}>
-            {!isSignup ? (
-              <section>
-                <h2 className="section-title">Login</h2>
-                <form onSubmit={e => { e.preventDefault(); handleLogin(); }} aria-busy={loading} aria-live="polite">
-                  <label className="sr-only" htmlFor="loginEmail">Email</label>
-                  <input id="loginEmail" className="input" type="email" placeholder="Email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} autoComplete="email" />
+        <div className="tt-auth">
+          <div className="tt-auth-bg" />
+          <div className="tt-auth-inner">
+            <div className="tt-auth-brand">
+              <div className="tt-auth-tag">TavernTails</div>
+              <h1 className="tt-auth-title">
+                {isSignup ? 'Create your account' : 'Welcome back'}
+              </h1>
+            </div>
 
-                  <label className="sr-only" htmlFor="loginPassword">Password</label>
-                  <input id="loginPassword" className="input" type="password" placeholder="Password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} autoComplete="current-password" />
-
-                  <div className="row" style={{ marginTop: 12 }}>
-                    <button className="btn" type="submit" disabled={loading} aria-disabled={loading}>
-                      {loading ? 'Logging in...' : 'Login'}
-                    </button>
-                    <button type="button" className="btn btn-secondary" onClick={() => setIsSignup(true)}>Sign up</button>
-                  </div>
-                  <div className="row-wrap" style={{ marginTop: 10 }}>
-                    <button type="button" className="btn btn-quiet btn-sm" onClick={handleDevLogin} disabled={loading}>
-                      Use dev login
-                    </button>
-                    <span className="muted" style={{ fontSize: 12 }}>test@example.com / secret</span>
-                  </div>
-
-                  {error && <div className="error" role="alert">{error}</div>}
-                  {unverifiedEmail && (
-                    <div style={{ marginTop: 8 }}>
-                      <label className="sr-only" htmlFor="verifyToken">Verification Token</label>
-                      <input id="verifyToken" className="input" type="text" placeholder="Verification token" value={verificationToken} onChange={e => setVerificationToken(e.target.value)} />
-                      <div className="row" style={{ marginTop: 8 }}>
-                        <button className="btn" type="button" onClick={handleVerify}>Verify Email</button>
-                        <button className="btn" type="button" onClick={handleResendVerification}>Resend</button>
+            <div className="tt-auth-card">
+              {!isSignup ? (
+                <section>
+                  <h2 className="tt-auth-card-title">Sign In</h2>
+                  <form onSubmit={e => { e.preventDefault(); handleLogin(); }} aria-busy={loading} aria-live="polite">
+                    <div className="tt-auth-fields">
+                      <div className="tt-auth-field">
+                        <label className="tt-auth-label" htmlFor="loginEmail">Email</label>
+                        <input id="loginEmail" className="tt-auth-input" type="email" placeholder="you@example.com" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} autoComplete="email" />
+                      </div>
+                      <div className="tt-auth-field">
+                        <label className="tt-auth-label" htmlFor="loginPassword">Password</label>
+                        <input id="loginPassword" className="tt-auth-input" type="password" placeholder="••••••••" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} autoComplete="current-password" />
                       </div>
                     </div>
-                  )}
-                </form>
-              </section>
-            ) : (
-              <section>
-                <h2 className="section-title">Sign Up</h2>
-                <form onSubmit={e => { e.preventDefault(); handleSignup(); }}>
-                  <input className="input" type="email" placeholder="Email" value={signupEmail} onChange={e => setSignupEmail(e.target.value)} />
-                  <input className="input" type="text" placeholder="Display Name (optional)" value={signupName} onChange={e => setSignupName(e.target.value)} />
-                  <input className="input" type="password" placeholder="Password" value={signupPassword} onChange={e => setSignupPassword(e.target.value)} />
-                  <div className="row" style={{ marginTop: 12 }}>
-                    <button className="btn" type="submit">Sign Up</button>
-                    <button type="button" className="btn btn-secondary" onClick={() => setIsSignup(false)}>Back to Login</button>
-                  </div>
-                  {error && <div className="error" style={{ marginTop: 8 }}>{error}</div>}
-                </form>
-              </section>
-            )}
+
+                    <div className="tt-auth-actions">
+                      <button className="btn" type="submit" disabled={loading} aria-disabled={loading}>
+                        {loading ? 'Signing in…' : 'Sign In'}
+                      </button>
+                      <button type="button" className="btn btn-ghost" onClick={() => setIsSignup(true)}>
+                        Create account
+                      </button>
+                    </div>
+
+                    {error && (
+                      <div className={`tt-auth-message tt-auth-message--${errorType}`} role="alert">
+                        {error}
+                      </div>
+                    )}
+
+                    {unverifiedEmail && (
+                      <div className="tt-auth-verify">
+                        <span className="tt-auth-verify-label">Enter the verification token sent to your email</span>
+                        <label className="sr-only" htmlFor="verifyToken">Verification Token</label>
+                        <input id="verifyToken" className="tt-auth-input" type="text" placeholder="Verification token" value={verificationToken} onChange={e => setVerificationToken(e.target.value)} />
+                        <div className="tt-auth-verify-actions">
+                          <button className="btn btn-sm" type="button" onClick={handleVerify}>Verify Email</button>
+                          <button className="btn btn-sm btn-ghost" type="button" onClick={handleResendVerification}>Resend</button>
+                        </div>
+                      </div>
+                    )}
+                  </form>
+                </section>
+              ) : (
+                <section>
+                  <h2 className="tt-auth-card-title">Sign Up</h2>
+                  <form onSubmit={e => { e.preventDefault(); handleSignup(); }}>
+                    <div className="tt-auth-fields">
+                      <div className="tt-auth-field">
+                        <label className="tt-auth-label" htmlFor="signupEmail">Email</label>
+                        <input id="signupEmail" className="tt-auth-input" type="email" placeholder="you@example.com" value={signupEmail} onChange={e => setSignupEmail(e.target.value)} autoComplete="email" />
+                      </div>
+                      <div className="tt-auth-field">
+                        <label className="tt-auth-label" htmlFor="signupName">Display Name</label>
+                        <input id="signupName" className="tt-auth-input" type="text" placeholder="Gandalf the Grey" value={signupName} onChange={e => setSignupName(e.target.value)} autoComplete="nickname" required />
+                      </div>
+                      <div className="tt-auth-field">
+                        <label className="tt-auth-label" htmlFor="signupPassword">Password</label>
+                        <input id="signupPassword" className="tt-auth-input" type="password" placeholder="••••••••" value={signupPassword} onChange={e => setSignupPassword(e.target.value)} autoComplete="new-password" />
+                      </div>
+                    </div>
+
+                    <div className="tt-auth-actions">
+                      <button className="btn" type="submit" disabled={loading} aria-disabled={loading}>
+                        {loading ? 'Creating account…' : 'Create Account'}
+                      </button>
+                      <button type="button" className="btn btn-ghost" onClick={() => setIsSignup(false)}>
+                        Sign In
+                      </button>
+                    </div>
+
+                    {error && (
+                      <div className={`tt-auth-message tt-auth-message--${errorType}`} role="alert">
+                        {error}
+                      </div>
+                    )}
+                  </form>
+                </section>
+              )}
+            </div>
           </div>
         </div>
       ) : (

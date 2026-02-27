@@ -12,6 +12,10 @@ import CampaignSetupView from './dashboard/CampaignSetupView'
 import DashboardHome from './dashboard/DashboardHome'
 import AdminPanel from './dashboard/AdminPanel'
 import CharacterSheetModal from './characters/CharacterSheetModal'
+import ContactModal from './ui/ContactModal'
+import BlockReportModal from './ui/BlockReportModal'
+import InboxPanel from './dashboard/InboxPanel'
+import MyTicketsPanel from './dashboard/MyTicketsPanel'
 import PageHeader from './ui/PageHeader'
 import EmptyState from './ui/EmptyState'
 import Modal from './ui/Modal'
@@ -38,6 +42,13 @@ type NotificationItem = {
 const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [view, setView] = useState<string>('home');
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [contactModalOpen, setContactModalOpen] = useState(false)
+  const [blockReportModalOpen, setBlockReportModalOpen] = useState(false)
+  const [blockReportTarget, setBlockReportTarget] = useState<{ id: number; name: string } | null>(null)
+  const [blockReportMode, setBlockReportMode] = useState<'block' | 'report'>('report')
+  const [moderationSearchQuery, setModerationSearchQuery] = useState('')
+  const [moderationSearchResults, setModerationSearchResults] = useState<Array<any>>([])
+  const [moderationSearchBusy, setModerationSearchBusy] = useState(false)
   const [importInitialMode, setImportInitialMode] = useState<'ddb-link' | 'paste' | 'file' | 'pdf' | null>(null)
   const [campaigns, setCampaigns] = useState<Array<any>>([])
   const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null)
@@ -104,11 +115,19 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>([])
   const [pendingFriendRequests, setPendingFriendRequests] = useState<Array<any>>([])
   const [accountSection, setAccountSection] = useState<'profile' | 'invites' | null>(null)
+  const [accountTab, setAccountTab] = useState<'profile' | 'inbox' | 'tickets'>('profile')
   const [accountEditName, setAccountEditName] = useState<string | null>(null)
   const [accountEditEmail, setAccountEditEmail] = useState<string | null>(null)
+  const [accountEditUsername, setAccountEditUsername] = useState<string | null>(null)
   const [accountSaving, setAccountSaving] = useState(false)
   const [accountSaveMsg, setAccountSaveMsg] = useState<{ kind: 'info' | 'error'; text: string } | null>(null)
   const [accountEditMode, setAccountEditMode] = useState(false)
+  const [changePwOpen, setChangePwOpen] = useState(false)
+  const [changePwCurrent, setChangePwCurrent] = useState('')
+  const [changePwNew, setChangePwNew] = useState('')
+  const [changePwConfirm, setChangePwConfirm] = useState('')
+  const [changePwBusy, setChangePwBusy] = useState(false)
+  const [changePwMsg, setChangePwMsg] = useState<{ kind: 'info' | 'error'; text: string } | null>(null)
   const invitesCardRef = React.useRef<HTMLDivElement | null>(null)
 
   // Scroll to invites card when navigated from a notification
@@ -1054,6 +1073,19 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     setDrawerOpen(false)
   }, [])
 
+  const performModerationSearch = useCallback(async (q: string) => {
+    if (q.trim().length < 2) return
+    setModerationSearchBusy(true)
+    try {
+      const res = await apiFetch('/users/search?q=' + encodeURIComponent(q.trim()) + '&limit=5')
+      if (res.ok) {
+        const data = await res.json()
+        setModerationSearchResults(data.results || [])
+      }
+    } catch { /* ignore */ }
+    setModerationSearchBusy(false)
+  }, [])
+
   return (
     <div className="dashboard-root">
       {/* Global top bar */}
@@ -1155,6 +1187,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                     if (key === 'import-character') setView('import-character')
                     if (key === 'account') setView('account')
                     if (key === 'admin') setView('admin')
+                    if (key === 'contact') setContactModalOpen(true)
                     if (key === 'logout') onLogout()
                   }}
                   isAdmin={isAdmin}
@@ -1747,6 +1780,16 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
           }}
         />
 
+        <ContactModal open={contactModalOpen} onClose={() => setContactModalOpen(false)} />
+
+        <BlockReportModal
+          open={blockReportModalOpen}
+          targetUser={blockReportTarget}
+          initialMode={blockReportMode}
+          onClose={() => setBlockReportModalOpen(false)}
+          onBlocked={() => setModerationSearchResults([])}
+        />
+
         <Modal
           open={npcModalOpen}
           title={npcModalCharacter?.name ? `Journal — ${npcModalCharacter.name}` : 'Journal'}
@@ -2210,6 +2253,25 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                     subtitle="Manage profile, emails, security, and linked accounts."
                   />
 
+                  <div className="account-tabs" style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+                    {(['profile', 'inbox', 'tickets'] as const).map(t => (
+                      <button
+                        key={t}
+                        type="button"
+                        className={`btn btn-sm${accountTab === t ? '' : ' btn-secondary'}`}
+                        onClick={() => setAccountTab(t)}
+                      >
+                        {t === 'profile' ? 'Profile' : t === 'inbox' ? '📨 Inbox' : '🎫 My Issues'}
+                      </button>
+                    ))}
+                  </div>
+
+                  {accountTab === 'inbox' ? (
+                    <InboxPanel profile={profile} visible={accountTab === 'inbox'} />
+                  ) : accountTab === 'tickets' ? (
+                    <MyTicketsPanel visible={accountTab === 'tickets'} onContact={() => setContactModalOpen(true)} />
+                  ) : (
+                   <>
                    <div className="account-grid">
                     <div className="card card-pad account-card">
                       <div className="account-header">
@@ -2264,6 +2326,16 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                           />
                         </div>
                         <div>
+                          <label className="muted" style={{ fontSize: 12 }}>Username</label>
+                          <input
+                            className="input"
+                            value={accountEditUsername !== null ? accountEditUsername : (profile?.username || '')}
+                            onChange={(e) => setAccountEditUsername(e.target.value)}
+                            placeholder="Username (optional)"
+                            disabled={accountSaving}
+                          />
+                        </div>
+                        <div>
                           <label className="muted" style={{ fontSize: 12 }}>Email</label>
                           <input
                             className="input"
@@ -2286,6 +2358,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                                 const payload: any = {}
                                 const newName = (accountEditName !== null ? accountEditName : displayName).trim()
                                 const newEmail = (accountEditEmail !== null ? accountEditEmail : (profile?.email || '')).trim()
+                                const newUsername = (accountEditUsername !== null ? accountEditUsername : (profile?.username || '')).trim()
                                 if (!newName) {
                                   throw new Error('Display name cannot be empty.')
                                 }
@@ -2298,11 +2371,14 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                                 if (accountEditEmail !== null && newEmail !== (profile?.email || '')) {
                                   payload.email = newEmail
                                 }
+                                if (accountEditUsername !== null && newUsername !== (profile?.username || '') && newUsername) {
+                                  payload.username = newUsername
+                                }
                                 if (Object.keys(payload).length === 0) {
                                   setAccountSaveMsg({ kind: 'info', text: 'No changes to save.' })
                                   return
                                 }
-                                const res = await apiFetch('/player/profile', {
+                                const res = await apiFetch('/player/me', {
                                   method: 'PUT',
                                   headers: { 'Content-Type': 'application/json' },
                                   body: JSON.stringify(payload),
@@ -2311,9 +2387,15 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                                   const err = await res.json().catch(() => null)
                                   throw new Error(err?.detail || 'Failed to update profile')
                                 }
+                                const data = await res.json()
+                                // If the server issued a fresh token (email changed), persist it.
+                                if (data.access_token) {
+                                  localStorage.setItem('access_token', data.access_token)
+                                }
                                 setAccountSaveMsg({ kind: 'info', text: 'Profile updated.' })
                                 setAccountEditName(null)
                                 setAccountEditEmail(null)
+                                setAccountEditUsername(null)
                                 setAccountEditMode(false)
                               } catch (e: any) {
                                 setAccountSaveMsg({ kind: 'error', text: e?.message || 'Failed to update profile' })
@@ -2331,6 +2413,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                             onClick={() => {
                               setAccountEditName(null)
                               setAccountEditEmail(null)
+                              setAccountEditUsername(null)
                               setAccountSaveMsg(null)
                               setAccountEditMode(false)
                             }}
@@ -2434,17 +2517,106 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                       <div className="muted" style={{ fontSize: 13 }}>
                         Keep your account secure with verified email, strong passwords, and linked providers.
                       </div>
-                      <div className="row-wrap" style={{ marginTop: 10 }}>
-                        <button className="btn btn-secondary" type="button" disabled>
-                          Change password
-                        </button>
-                        <button className="btn btn-secondary" type="button" disabled>
-                          Send reset link
-                        </button>
-                      </div>
-                      <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-                        Best practice: enforce rate limits and require recent login to change credentials.
-                      </div>
+                      {!changePwOpen ? (
+                        <div className="row-wrap" style={{ marginTop: 10 }}>
+                          <button className="btn btn-secondary" type="button" onClick={() => { setChangePwOpen(true); setChangePwMsg(null) }}>
+                            Change password
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="stack" style={{ gap: 10, marginTop: 10 }}>
+                          {changePwMsg && (
+                            <div className={`inline-alert ${changePwMsg.kind === 'error' ? 'inline-alert-error' : ''}`}>
+                              {changePwMsg.text}
+                            </div>
+                          )}
+                          <div>
+                            <label className="muted" style={{ fontSize: 12 }}>Current password</label>
+                            <input
+                              className="input"
+                              type="password"
+                              value={changePwCurrent}
+                              onChange={(e) => setChangePwCurrent(e.target.value)}
+                              placeholder="Current password"
+                              disabled={changePwBusy}
+                            />
+                          </div>
+                          <div>
+                            <label className="muted" style={{ fontSize: 12 }}>New password (min 8 characters)</label>
+                            <input
+                              className="input"
+                              type="password"
+                              value={changePwNew}
+                              onChange={(e) => setChangePwNew(e.target.value)}
+                              placeholder="New password"
+                              disabled={changePwBusy}
+                            />
+                          </div>
+                          <div>
+                            <label className="muted" style={{ fontSize: 12 }}>Confirm new password</label>
+                            <input
+                              className="input"
+                              type="password"
+                              value={changePwConfirm}
+                              onChange={(e) => setChangePwConfirm(e.target.value)}
+                              placeholder="Confirm new password"
+                              disabled={changePwBusy}
+                            />
+                          </div>
+                          <div className="row-wrap" style={{ gap: 8 }}>
+                            <button
+                              className="btn"
+                              type="button"
+                              disabled={changePwBusy}
+                              onClick={async () => {
+                                setChangePwMsg(null)
+                                if (!changePwCurrent) {
+                                  setChangePwMsg({ kind: 'error', text: 'Current password is required.' })
+                                  return
+                                }
+                                if (changePwNew.length < 8) {
+                                  setChangePwMsg({ kind: 'error', text: 'New password must be at least 8 characters.' })
+                                  return
+                                }
+                                if (changePwNew !== changePwConfirm) {
+                                  setChangePwMsg({ kind: 'error', text: 'Passwords do not match.' })
+                                  return
+                                }
+                                setChangePwBusy(true)
+                                try {
+                                  const res = await apiFetch('/player/me/change-password', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ current_password: changePwCurrent, new_password: changePwNew }),
+                                  })
+                                  if (!res.ok) {
+                                    const err = await res.json().catch(() => null)
+                                    throw new Error(err?.detail || 'Failed to change password.')
+                                  }
+                                  setChangePwMsg({ kind: 'info', text: 'Password changed successfully.' })
+                                  setChangePwCurrent('')
+                                  setChangePwNew('')
+                                  setChangePwConfirm('')
+                                } catch (e: any) {
+                                  setChangePwMsg({ kind: 'error', text: e?.message || 'Failed to change password.' })
+                                } finally {
+                                  setChangePwBusy(false)
+                                }
+                              }}
+                            >
+                              {changePwBusy ? 'Saving…' : 'Update password'}
+                            </button>
+                            <button
+                              className="btn btn-secondary"
+                              type="button"
+                              disabled={changePwBusy}
+                              onClick={() => { setChangePwOpen(false); setChangePwCurrent(''); setChangePwNew(''); setChangePwConfirm(''); setChangePwMsg(null) }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {isAdmin ? (
@@ -2519,6 +2691,67 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                       </button>
                     </div>
                   </div>
+
+                  <div className="card card-pad account-card">
+                    <div style={{ fontWeight: 750, marginBottom: 8 }}>Block / Report a User</div>
+                    <div className="muted" style={{ fontSize: 13, marginBottom: 10 }}>
+                      Search for a player by name or email, then block or report them.
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="Search by name or email…"
+                        value={moderationSearchQuery}
+                        onChange={(e) => setModerationSearchQuery(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') performModerationSearch(moderationSearchQuery) }}
+                        style={{ flex: 1 }}
+                      />
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        type="button"
+                        disabled={moderationSearchBusy || moderationSearchQuery.trim().length < 2}
+                        onClick={() => performModerationSearch(moderationSearchQuery)}
+                      >
+                        {moderationSearchBusy ? '…' : 'Search'}
+                      </button>
+                    </div>
+                    {moderationSearchResults.length > 0 && (
+                      <div className="stack" style={{ gap: 6 }}>
+                        {moderationSearchResults.map((u: any) => (
+                          <div key={u.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--tt-border)' }}>
+                            <span style={{ fontSize: 14 }}>{u.name || u.username || u.email}</span>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button
+                                className="btn btn-sm btn-secondary"
+                                type="button"
+                                onClick={() => {
+                                  setBlockReportTarget({ id: u.id, name: u.name || u.username || u.email })
+                                  setBlockReportMode('report')
+                                  setBlockReportModalOpen(true)
+                                }}
+                              >
+                                Report
+                              </button>
+                              <button
+                                className="btn btn-sm btn-danger"
+                                type="button"
+                                onClick={() => {
+                                  setBlockReportTarget({ id: u.id, name: u.name || u.username || u.email })
+                                  setBlockReportMode('block')
+                                  setBlockReportModalOpen(true)
+                                }}
+                              >
+                                Block
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                   </>
+                  )}
 
                   <details className="account-debug">
                     <summary>Debug profile payload</summary>

@@ -4,7 +4,9 @@ import { apiFetch, buildWsUrl } from '../api'
 import ChatToolbar from './chat/ChatToolbar'
 import InvitePanel from './chat/InvitePanel'
 import AdvancedToolsPanel from './chat/AdvancedToolsPanel'
+import ImageGallery from './chat/ImageGallery'
 import MessageList from './chat/MessageList'
+import PinnedBar from './chat/PinnedBar'
 import Composer from './chat/Composer'
 import NpcSnapshotModal from './chat/NpcSnapshotModal'
 
@@ -14,6 +16,8 @@ type Msg = {
   text:string
   createdAt?: string
   mentions?: string[]
+  senderId?: number | null
+  pinned?: boolean
 }
 
 type AdvancedTool = {
@@ -29,6 +33,18 @@ type Props = {
   sessionId?: string | null
   variant?: 'full' | 'dock'
   aboveComposer?: React.ReactNode
+  currentUserId?: number | null
+}
+
+/** Shape of a chat message returned by the /chat API. */
+type ChatApiMessage = {
+  id: number
+  role: string
+  message: string
+  created_at: string
+  mentions?: string[]
+  sender_id?: number | null
+  session_id?: string | null
 }
 
 const rollRegex = /^\s*(\d*)d(\d+)([+-]\d+)?\s*$/i
@@ -74,14 +90,16 @@ const ADVANCED_TOOLS: AdvancedTool[] = [
 
 const ADVANCED_TOOLS_FOR_PANEL = ADVANCED_TOOLS.map((t) => ({ id: t.id, label: t.label, description: t.description }))
 
-export default function Chat({sessionId, variant = 'full', aboveComposer}: Props){
+export default function Chat({sessionId, variant = 'full', aboveComposer, currentUserId}: Props){
   const [messages, setMessages] = useState<Msg[]>([])
+  const [pinnedMessages, setPinnedMessages] = useState<Msg[]>([])
   const [value, setValue] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string|null>(null)
   const [toolbarMessage, setToolbarMessage] = useState<string|null>(null)
   const [showInviteForm, setShowInviteForm] = useState(false)
   const [showToolsPanel, setShowToolsPanel] = useState(false)
+  const [showImageGallery, setShowImageGallery] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteNote, setInviteNote] = useState('')
   const [inviteBusy, setInviteBusy] = useState(false)
@@ -129,6 +147,7 @@ export default function Chat({sessionId, variant = 'full', aboveComposer}: Props
   useEffect(()=>{
     if(!sessionId){
       setMessages([])
+      setPinnedMessages([])
       return
     }
     let canceled = false
@@ -136,16 +155,39 @@ export default function Chat({sessionId, variant = 'full', aboveComposer}: Props
       setLoading(true)
       setError(null)
       try{
-        const res = await apiFetch(`/chat?session_id=${sessionId}`)
-        if(!res.ok) throw new Error('Failed to load chat log')
-        const data = await res.json()
+        const [chatRes, pinnedRes] = await Promise.all([
+          apiFetch(`/chat?session_id=${sessionId}`),
+          apiFetch(`/chat/pinned?session_id=${sessionId}`),
+        ])
+        if(!chatRes.ok) throw new Error('Failed to load chat log')
+        const data = await chatRes.json()
+        const pinnedIds: Set<number> = new Set()
+        if(pinnedRes.ok){
+          const pinnedData = await pinnedRes.json()
+          const pinnedMapped: Msg[] = (Array.isArray(pinnedData) ? pinnedData as ChatApiMessage[] : []).map((m) => {
+            pinnedIds.add(m.id)
+            return {
+              id: m.id,
+              who: (m.role === 'gm' ? 'gm' : 'ally') as Msg['who'],
+              text: m.message,
+              createdAt: m.created_at,
+              mentions: m.mentions || [],
+              senderId: m.sender_id ?? null,
+              pinned: true,
+            }
+          })
+          if(!canceled) setPinnedMessages(pinnedMapped)
+        }
         if(!canceled){
-          const mapped: Msg[] = (Array.isArray(data)?data:data?.messages||[]).map((m:any)=>({
-            id: m.id ?? `${m.session_id}-${m.created_at}` ?? Math.random(),
-            who: m.role === 'gm' ? 'gm' : 'ally',
+          const rawMessages: ChatApiMessage[] = Array.isArray(data) ? data : (data?.messages || [])
+          const mapped: Msg[] = rawMessages.map((m) => ({
+            id: m.id ?? `${m.session_id}-${m.created_at}`,
+            who: (m.role === 'gm' ? 'gm' : 'ally') as Msg['who'],
             text: m.message,
             createdAt: m.created_at,
-            mentions: m.mentions || []
+            mentions: m.mentions || [],
+            senderId: m.sender_id ?? null,
+            pinned: pinnedIds.has(m.id),
           }))
           setMessages(mapped)
         }
@@ -188,7 +230,7 @@ export default function Chat({sessionId, variant = 'full', aboveComposer}: Props
         throw new Error(detail?.detail || 'Failed to send message')
       }
       const saved = await res.json()
-      appendMessage({ id: saved.id, who:'you', text:saved.message, createdAt:saved.created_at, mentions: saved.mentions || [] })
+      appendMessage({ id: saved.id, who:'you', text:saved.message, createdAt:saved.created_at, mentions: saved.mentions || [], senderId: saved.sender_id ?? null })
       notifyMentions(saved.mentions)
     }catch(err:any){
       const msg = err?.message || 'Unable to send message'
@@ -304,9 +346,71 @@ export default function Chat({sessionId, variant = 'full', aboveComposer}: Props
     }
   }
 
+  async function handlePinMessage(id: number | string){
+    if(!sessionId || typeof id !== 'number') return
+    try{
+      const res = await apiFetch(`/chat/${id}/pin?session_id=${encodeURIComponent(sessionId)}`, { method: 'POST' })
+      if(!res.ok){
+        const err = await res.json().catch(()=>null)
+        setToolbarMessage(err?.detail || 'Could not pin message.')
+        return
+      }
+      setMessages(prev => prev.map(m => m.id === id ? { ...m, pinned: true } : m))
+      setPinnedMessages(prev => {
+        if(prev.some(m => m.id === id)) return prev
+        const src = messages.find(m => m.id === id)
+        if(!src) return prev
+        return [...prev, { ...src, pinned: true }]
+      })
+      setToolbarMessage('Message pinned.')
+    }catch(err:any){
+      setToolbarMessage(err?.message || 'Could not pin message.')
+    }
+  }
+
+  async function handleUnpinMessage(id: number | string){
+    if(!sessionId || typeof id !== 'number') return
+    try{
+      const res = await apiFetch(`/chat/${id}/pin?session_id=${encodeURIComponent(sessionId)}`, { method: 'DELETE' })
+      // 404 is acceptable here — it means the message was already unpinned (e.g. by another user
+      // or via a concurrent WebSocket event).  We still remove it from local state so the UI stays
+      // in sync.
+      if(!res.ok && res.status !== 404){
+        const err = await res.json().catch(()=>null)
+        setToolbarMessage(err?.detail || 'Could not unpin message.')
+        return
+      }
+      setMessages(prev => prev.map(m => m.id === id ? { ...m, pinned: false } : m))
+      setPinnedMessages(prev => prev.filter(m => m.id !== id))
+      setToolbarMessage('Message unpinned.')
+    }catch(err:any){
+      setToolbarMessage(err?.message || 'Could not unpin message.')
+    }
+  }
+
+  async function handleDeleteMessage(id: number | string){
+    if(!sessionId || typeof id !== 'number') return
+    try{
+      const res = await apiFetch(`/chat/${id}?session_id=${encodeURIComponent(sessionId)}`, { method: 'DELETE' })
+      if(!res.ok){
+        const err = await res.json().catch(()=>null)
+        setToolbarMessage(err?.detail || 'Could not delete message.')
+        return
+      }
+      setMessages(prev => prev.filter(m => m.id !== id))
+      setPinnedMessages(prev => prev.filter(m => m.id !== id))
+    }catch(err:any){
+      setToolbarMessage(err?.message || 'Could not delete message.')
+    }
+  }
+
   async function runAdvancedTool(tool: AdvancedTool){
     if(tool.id === 'npc-snapshot'){
       setNpcModalOpen(true)
+      return
+    }
+    if(tool.id === 'image'){
+      setShowImageGallery(v => !v)
       return
     }
     if(tool.command){
@@ -369,9 +473,34 @@ export default function Chat({sessionId, variant = 'full', aboveComposer}: Props
             who,
             text: payload.message,
             createdAt: payload.created_at,
-            mentions: payload.mentions || []
+            mentions: payload.mentions || [],
+            senderId: payload.sender_id ?? null,
           })
           notifyMentions(payload.mentions)
+        }
+        if(data?.type === 'chat.pin' && data?.message){
+          const payload = data.message
+          setMessages(prev => prev.map(m => m.id === payload.id ? { ...m, pinned: true } : m))
+          setPinnedMessages(prev => {
+            if(prev.some(m => m.id === payload.id)) return prev
+            return [...prev, {
+              id: payload.id,
+              who: (payload.role === 'gm' ? 'gm' : 'ally') as Msg['who'],
+              text: payload.message,
+              senderId: payload.sender_id ?? null,
+              pinned: true,
+            }]
+          })
+        }
+        if(data?.type === 'chat.unpin'){
+          const msgId = data?.message_id
+          setMessages(prev => prev.map(m => m.id === msgId ? { ...m, pinned: false } : m))
+          setPinnedMessages(prev => prev.filter(m => m.id !== msgId))
+        }
+        if(data?.type === 'chat.delete'){
+          const msgId = data?.message_id
+          setMessages(prev => prev.filter(m => m.id !== msgId))
+          setPinnedMessages(prev => prev.filter(m => m.id !== msgId))
         }
         if(data?.type === 'rolls.result' && data?.result){
           const res = data.result
@@ -453,9 +582,31 @@ export default function Chat({sessionId, variant = 'full', aboveComposer}: Props
             }}
           />
         ) : null}
+
+        {showImageGallery ? (
+          <div className="chat-panel stack">
+            <div className="chat-panel-title" style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              Scene Images
+              <button className="btn btn-sm btn-quiet" type="button" onClick={() => setShowImageGallery(false)} aria-label="Close gallery">✕</button>
+            </div>
+            <ImageGallery sessionId={sessionId} visible={showImageGallery} />
+          </div>
+        ) : null}
       </div>
 
-      <MessageList ref={listRef} loading={loading} messages={messages} />
+      <PinnedBar
+        pins={pinnedMessages.map(m => ({ id: m.id, text: m.text, who: m.who }))}
+        onUnpin={sessionId ? handleUnpinMessage : undefined}
+      />
+
+      <MessageList
+        ref={listRef}
+        loading={loading}
+        messages={messages}
+        currentUserId={currentUserId ?? null}
+        onPin={sessionId ? handlePinMessage : undefined}
+        onDelete={sessionId ? handleDeleteMessage : undefined}
+      />
 
       {error ? <div className="inline-alert inline-alert-error" style={{ marginTop: 10 }}>{error}</div> : null}
 

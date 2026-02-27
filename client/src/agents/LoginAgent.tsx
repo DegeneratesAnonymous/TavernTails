@@ -3,7 +3,6 @@ import React, { useState } from 'react';
 import { buildApiUrl } from '../api';
 
 const LoginAgent: React.FC = () => {
-  const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [email, setEmail] = useState('');
   const [profile, setProfile] = useState<any>(null);

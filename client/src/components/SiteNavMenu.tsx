@@ -50,6 +50,24 @@ export default function SiteNavMenu({ onClose, onNavigate, isAdmin }: Props) {
       </section>
 
       <section className="site-menu-section">
+        <div className="site-menu-section-title">Support</div>
+        <ul className="site-menu-list">
+          <li>
+            <button
+              className="site-menu-item"
+              onClick={() => {
+                onClose?.()
+                onNavigate?.('contact')
+              }}
+            >
+              <span className="site-menu-item-label">Contact Us</span>
+              <span className="site-menu-item-description">Report an issue or send feedback</span>
+            </button>
+          </li>
+        </ul>
+      </section>
+
+      <section className="site-menu-section">
         <div className="site-menu-section-title">Account</div>
         <ul className="site-menu-list">
           <li>

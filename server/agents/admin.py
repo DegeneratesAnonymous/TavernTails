@@ -191,3 +191,151 @@ def admin_search(
     ]
 
     return {"users": user_results, "campaigns": campaign_results}
+
+
+# ---------------------------------------------------------------------------
+# Per-user reports and tickets
+# ---------------------------------------------------------------------------
+
+
+@router.get("/users/{user_id}/reports")
+def get_reports_about_user(
+    user_id: int,
+    current_user=Depends(_require_admin),
+):
+    """Return all user reports filed against a specific user."""
+    u = db.admin_get_user(user_id)
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    reports = db.list_reports_about_user(user_id)
+    return {
+        "user_id": user_id,
+        "reports": [
+            {
+                "id": r.id,
+                "reporter_id": r.reporter_id,
+                "reason": r.reason,
+                "details": r.details,
+                "status": r.status,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "reviewed_at": r.reviewed_at.isoformat() if r.reviewed_at else None,
+            }
+            for r in reports
+        ],
+    }
+
+
+@router.get("/users/{user_id}/tickets")
+def get_tickets_by_user(
+    user_id: int,
+    current_user=Depends(_require_admin),
+):
+    """Return all support tickets submitted by a specific user."""
+    u = db.admin_get_user(user_id)
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    tickets = db.list_tickets_by_user(user_id)
+    return {
+        "user_id": user_id,
+        "tickets": [
+            {
+                "id": t.id,
+                "subject": t.subject,
+                "body": t.body,
+                "status": t.status,
+                "created_at": t.created_at.isoformat() if t.created_at else None,
+                "updated_at": t.updated_at.isoformat() if t.updated_at else None,
+            }
+            for t in tickets
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Impersonation ("Login As")
+# ---------------------------------------------------------------------------
+
+
+@router.post("/users/{user_id}/impersonate")
+def impersonate_user(user_id: int, current_user=Depends(_require_admin)):
+    """Return a short-lived JWT that grants access as the target user.
+
+    The token expires after 15 minutes.  This action should be audited.
+    """
+    token = db.admin_get_impersonation_token(current_user, user_id)
+    if not token:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"access_token": token, "token_type": "bearer", "expires_in": 900, "impersonated_user_id": user_id}
+
+
+# ---------------------------------------------------------------------------
+# Email bans and suspensions
+# ---------------------------------------------------------------------------
+
+
+def _ban_dict(ban: db.BannedEmail) -> dict:
+    return {
+        "id": ban.id,
+        "email": ban.email,
+        "reason": ban.reason,
+        "ban_type": ban.ban_type,
+        "suspended_until": ban.suspended_until.isoformat() if ban.suspended_until else None,
+        "created_at": ban.created_at.isoformat() if ban.created_at else None,
+        "created_by_id": ban.created_by_id,
+    }
+
+
+@router.get("/bans")
+def list_bans(
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    current_user=Depends(_require_admin),
+):
+    """List all banned / suspended email records."""
+    bans = db.list_banned_emails(limit=limit, offset=offset)
+    return {"bans": [_ban_dict(b) for b in bans], "total": len(bans)}
+
+
+@router.post("/bans")
+def create_ban(
+    email: str = Body(..., embed=True),
+    reason: str = Body("", embed=True),
+    ban_type: str = Body("ban", embed=True),
+    suspended_until: str | None = Body(None, embed=True),
+    current_user=Depends(_require_admin),
+):
+    """Ban or suspend an email address or @domain.com pattern."""
+    from datetime import datetime, timezone
+
+    email = (email or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email or pattern required")
+    if ban_type not in ("ban", "suspend"):
+        raise HTTPException(status_code=400, detail="ban_type must be 'ban' or 'suspend'")
+
+    until: datetime | None = None
+    if ban_type == "suspend" and suspended_until:
+        try:
+            until = datetime.fromisoformat(suspended_until.replace("Z", "+00:00")).astimezone(timezone.utc)
+        except ValueError as err:
+            raise HTTPException(status_code=400, detail="Invalid suspended_until format. Use ISO-8601.") from err
+
+    record = db.ban_email(
+        email=email,
+        reason=reason.strip(),
+        ban_type=ban_type,
+        suspended_until=until,
+        created_by_id=current_user.id,
+    )
+    return {"ban": _ban_dict(record)}
+
+
+@router.delete("/bans/{email}")
+def remove_ban(email: str, current_user=Depends(_require_admin)):
+    """Remove a ban or suspension record for the given email / pattern."""
+    from urllib.parse import unquote
+    email = unquote(email).lower().strip()
+    ok = db.unban_email(email)
+    if not ok:
+        raise HTTPException(status_code=404, detail="No ban record found for that email")
+    return {"removed": True, "email": email}
