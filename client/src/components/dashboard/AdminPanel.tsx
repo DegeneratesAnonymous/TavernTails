@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { apiFetch } from '../../api'
 import PageHeader from '../ui/PageHeader'
@@ -60,7 +60,7 @@ const TICKET_STATUSES = ['open', 'in_progress', 'resolved', 'closed'] as const
 const REPORT_STATUSES = ['open', 'reviewed', 'dismissed'] as const
 const MODERATION_LIST_LIMIT = 100
 
-type Tab = 'stats' | 'users' | 'campaigns' | 'search' | 'tickets' | 'reports' | 'bans'
+type Tab = 'stats' | 'users' | 'campaigns' | 'tickets' | 'reports' | 'bans'
 
 type Props = {
   onBack?: () => void
@@ -78,17 +78,13 @@ export default function AdminPanel({ onBack }: Props) {
   const [users, setUsers] = useState<AdminUser[]>([])
   const [usersLoading, setUsersLoading] = useState(false)
   const [usersError, setUsersError] = useState<string | null>(null)
+  const [userSearch, setUserSearch] = useState('')
 
   // Campaigns
   const [campaigns, setCampaigns] = useState<AdminCampaign[]>([])
   const [campaignsLoading, setCampaignsLoading] = useState(false)
   const [campaignsError, setCampaignsError] = useState<string | null>(null)
-
-  // Search
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<{ users: AdminUser[]; campaigns: AdminCampaign[] } | null>(null)
-  const [searchLoading, setSearchLoading] = useState(false)
-  const [searchError, setSearchError] = useState<string | null>(null)
+  const [campaignSearch, setCampaignSearch] = useState('')
 
   // User action modals
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null)
@@ -104,6 +100,7 @@ export default function AdminPanel({ onBack }: Props) {
   const [ticketsLoading, setTicketsLoading] = useState(false)
   const [ticketsError, setTicketsError] = useState<string | null>(null)
   const [ticketStatusFilter, setTicketStatusFilter] = useState<string>('')
+  const [ticketSearch, setTicketSearch] = useState('')
   const [expandedTicketId, setExpandedTicketId] = useState<number | null>(null)
   const [ticketActionBusy, setTicketActionBusy] = useState(false)
   const [ticketActionError, setTicketActionError] = useState<string | null>(null)
@@ -271,6 +268,54 @@ export default function AdminPanel({ onBack }: Props) {
     else if (tab === 'bans') loadBans()
   }, [tab, loadStats, loadUsers, loadCampaigns, loadTickets, loadReports, loadBans])
 
+  // ── Client-side filtered views ──────────────────────────────────────────────
+
+  const filteredUsers = useMemo(() => {
+    const q = userSearch.trim().toLowerCase()
+    if (!q) return users
+    return users.filter(
+      (u) =>
+        (u.name || '').toLowerCase().includes(q) ||
+        (u.username || '').toLowerCase().includes(q) ||
+        (u.email || '').toLowerCase().includes(q),
+    )
+  }, [users, userSearch])
+
+  const filteredCampaigns = useMemo(() => {
+    const q = campaignSearch.trim().toLowerCase()
+    if (!q) return campaigns
+    return campaigns.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        (c.owner_name || '').toLowerCase().includes(q) ||
+        String(c.owner_id).includes(q),
+    )
+  }, [campaigns, campaignSearch])
+
+  const campaignsByOwner = useMemo(() => {
+    const map = new Map<string, AdminCampaign[]>()
+    for (const c of filteredCampaigns) {
+      const key = c.owner_name || `User #${c.owner_id}`
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(c)
+    }
+    return Array.from(map.entries())
+  }, [filteredCampaigns])
+
+  const filteredTickets = useMemo(() => {
+    const q = ticketSearch.trim().toLowerCase()
+    if (!q) return tickets
+    return tickets.filter(
+      (t) =>
+        String(t.id).includes(q) ||
+        t.subject.toLowerCase().includes(q) ||
+        (t.user_name || '').toLowerCase().includes(q) ||
+        (t.user_email || '').toLowerCase().includes(q),
+    )
+  }, [tickets, ticketSearch])
+
+  // ── Actions ──────────────────────────────────────────────────────────────────
+
   const updateTicketStatus = async (ticketId: number, status: string) => {
     setTicketActionBusy(true)
     setTicketActionError(null)
@@ -316,28 +361,6 @@ export default function AdminPanel({ onBack }: Props) {
       setReportActionBusy(false)
     }
   }
-
-  const handleSearch = useCallback(async () => {
-    if (searchQuery.trim().length < 2) {
-      setSearchResults({ users: [], campaigns: [] })
-      return
-    }
-    setSearchLoading(true)
-    setSearchError(null)
-    try {
-      const res = await apiFetch(`/admin/search?q=${encodeURIComponent(searchQuery.trim())}`)
-      if (!res.ok) {
-        const d = await res.json().catch(() => null)
-        setSearchError(d?.detail || `Error ${res.status}`)
-        return
-      }
-      setSearchResults(await res.json())
-    } catch {
-      setSearchError('Network error searching.')
-    } finally {
-      setSearchLoading(false)
-    }
-  }, [searchQuery])
 
   const openAction = (user: AdminUser, action: typeof actionModal) => {
     setSelectedUser(user)
@@ -420,8 +443,10 @@ export default function AdminPanel({ onBack }: Props) {
     }
   }
 
+  // ── Render ────────────────────────────────────────────────────────────────────
+
   return (
-    <section className="dashboard-panel stack">
+    <section className="admin-panel-root stack">
       <PageHeader
         title="Admin Panel"
         subtitle="Site administration tools and reports"
@@ -435,7 +460,7 @@ export default function AdminPanel({ onBack }: Props) {
       />
 
       <div className="tab-bar" role="tablist">
-        {(['stats', 'users', 'campaigns', 'search', 'tickets', 'reports', 'bans'] as Tab[]).map((t) => (
+        {(['stats', 'users', 'campaigns', 'tickets', 'reports', 'bans'] as Tab[]).map((t) => (
           <button
             key={t}
             role="tab"
@@ -446,8 +471,7 @@ export default function AdminPanel({ onBack }: Props) {
           >
             {t === 'stats' && 'Site Stats'}
             {t === 'users' && 'Users'}
-            {t === 'campaigns' && 'Campaigns'}
-            {t === 'search' && 'Global Search'}
+            {t === 'campaigns' && 'Campaign Management'}
             {t === 'tickets' && 'Support Tickets'}
             {t === 'reports' && 'User Reports'}
             {t === 'bans' && '🚫 Bans'}
@@ -457,7 +481,7 @@ export default function AdminPanel({ onBack }: Props) {
 
       {/* ── Stats ── */}
       {tab === 'stats' && (
-        <div className="card card-pad">
+        <div className="admin-section">
           <div className="section-title">Site Statistics</div>
           {statsLoading && <div className="loading-text">Loading…</div>}
           {statsError && <div className="error-text">{statsError}</div>}
@@ -476,8 +500,23 @@ export default function AdminPanel({ onBack }: Props) {
 
       {/* ── Users ── */}
       {tab === 'users' && (
-        <div className="card card-pad">
+        <div className="admin-section">
           <div className="section-title">User Management</div>
+          <div className="row-wrap" style={{ gap: 8, margin: '12px 0' }}>
+            <input
+              className="input"
+              type="search"
+              placeholder="Search by name, username, or email…"
+              value={userSearch}
+              onChange={(e) => setUserSearch(e.target.value)}
+              style={{ maxWidth: 360 }}
+            />
+            {userSearch && (
+              <span className="muted" style={{ fontSize: 13 }}>
+                {filteredUsers.length} of {users.length} shown
+              </span>
+            )}
+          </div>
           {usersLoading && <div className="loading-text">Loading…</div>}
           {usersError && <div className="error-text">{usersError}</div>}
           {!usersLoading && !usersError && (
@@ -493,7 +532,7 @@ export default function AdminPanel({ onBack }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {users.map((u) => (
+                {filteredUsers.map((u) => (
                   <tr key={u.id}>
                     <td>{u.id}</td>
                     <td>{u.name || u.username || '—'}</td>
@@ -508,8 +547,8 @@ export default function AdminPanel({ onBack }: Props) {
                     </td>
                   </tr>
                 ))}
-                {users.length === 0 && (
-                  <tr><td colSpan={6}><span className="empty-text">No users found.</span></td></tr>
+                {filteredUsers.length === 0 && (
+                  <tr><td colSpan={6}><span className="empty-text">{userSearch ? 'No users match your search.' : 'No users found.'}</span></td></tr>
                 )}
               </tbody>
             </table>
@@ -517,102 +556,77 @@ export default function AdminPanel({ onBack }: Props) {
         </div>
       )}
 
-      {/* ── Campaigns ── */}
+      {/* ── Campaign Management ── */}
       {tab === 'campaigns' && (
-        <div className="card card-pad">
-          <div className="section-title">Campaign Audit</div>
-          {campaignsLoading && <div className="loading-text">Loading…</div>}
-          {campaignsError && <div className="error-text">{campaignsError}</div>}
-          {!campaignsLoading && !campaignsError && (
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Name</th>
-                  <th>Owner</th>
-                  <th>Created</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {campaigns.map((c) => (
-                  <tr key={c.id}>
-                    <td>{c.id}</td>
-                    <td>{c.name}</td>
-                    <td>{c.owner_name || c.owner_id}</td>
-                    <td>{c.created_at ? new Date(c.created_at).toLocaleDateString() : '—'}</td>
-                    <td>{c.archived ? <span className="badge badge-muted">Archived</span> : <span className="badge badge-active">Active</span>}</td>
-                    <td>
-                      {!c.archived && (
-                        <button className="btn btn-sm btn-secondary" type="button" onClick={() => archiveCampaign(c.id)}>Archive</button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-                {campaigns.length === 0 && (
-                  <tr><td colSpan={6}><span className="empty-text">No campaigns found.</span></td></tr>
-                )}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
-
-      {/* ── Search ── */}
-      {tab === 'search' && (
-        <div className="card card-pad">
-          <div className="section-title">Global Search</div>
-          <div className="row-wrap" style={{ gap: 8, marginBottom: 16 }}>
+        <div className="admin-section">
+          <div className="section-title">Campaign Management</div>
+          <div className="row-wrap" style={{ gap: 8, margin: '12px 0' }}>
             <input
               className="input"
-              type="text"
-              placeholder="Search users, campaigns…"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              type="search"
+              placeholder="Search by campaign name or owner…"
+              value={campaignSearch}
+              onChange={(e) => setCampaignSearch(e.target.value)}
+              style={{ maxWidth: 360 }}
             />
-            <button className="btn" type="button" onClick={handleSearch} disabled={searchLoading}>
-              {searchLoading ? 'Searching…' : 'Search'}
-            </button>
+            {campaignSearch && (
+              <span className="muted" style={{ fontSize: 13 }}>
+                {filteredCampaigns.length} of {campaigns.length} shown
+              </span>
+            )}
           </div>
-          {searchError && <div className="error-text">{searchError}</div>}
-          {searchResults && (
-            <>
-              <div className="section-subtitle">Users ({searchResults.users.length})</div>
-              {searchResults.users.length > 0 ? (
-                <table className="admin-table">
-                  <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Role</th></tr></thead>
-                  <tbody>
-                    {searchResults.users.map((u) => (
-                      <tr key={u.id}><td>{u.id}</td><td>{u.name || u.username || '—'}</td><td>{u.email || '—'}</td><td>{u.admin ? 'Admin' : 'Player'}</td></tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : <div className="empty-text">No users found.</div>}
-
-              <div className="section-subtitle" style={{ marginTop: 16 }}>Campaigns ({searchResults.campaigns.length})</div>
-              {searchResults.campaigns.length > 0 ? (
-                <table className="admin-table">
-                  <thead><tr><th>ID</th><th>Name</th><th>Owner ID</th><th>Status</th></tr></thead>
-                  <tbody>
-                    {searchResults.campaigns.map((c) => (
-                      <tr key={c.id}><td>{c.id}</td><td>{c.name}</td><td>{c.owner_id}</td><td>{c.archived ? 'Archived' : 'Active'}</td></tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : <div className="empty-text">No campaigns found.</div>}
-            </>
+          {campaignsLoading && <div className="loading-text">Loading…</div>}
+          {campaignsError && <div className="error-text">{campaignsError}</div>}
+          {!campaignsLoading && !campaignsError && campaignsByOwner.length === 0 && (
+            <div className="empty-text">{campaignSearch ? 'No campaigns match your search.' : 'No campaigns found.'}</div>
           )}
+          {!campaignsLoading && !campaignsError && campaignsByOwner.map(([ownerName, ownerCampaigns]) => (
+            <div key={ownerName} className="admin-owner-group">
+              <div className="admin-owner-label">👤 {ownerName} <span className="muted" style={{ fontSize: 12 }}>({ownerCampaigns.length})</span></div>
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Created</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ownerCampaigns.map((c) => (
+                    <tr key={c.id}>
+                      <td><span className="admin-id-chip">{c.id.slice(0, 8)}</span></td>
+                      <td>{c.name}</td>
+                      <td>{c.created_at ? new Date(c.created_at).toLocaleDateString() : '—'}</td>
+                      <td>{c.archived ? <span className="badge badge-muted">Archived</span> : <span className="badge badge-active">Active</span>}</td>
+                      <td className="admin-actions-cell">
+                        {!c.archived && (
+                          <button className="btn btn-sm btn-secondary" type="button" onClick={() => archiveCampaign(c.id)}>Archive</button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
         </div>
       )}
 
       {/* ── Support Tickets ── */}
       {tab === 'tickets' && (
-        <div className="card card-pad">
+        <div className="admin-section">
           <div className="section-title">Support Tickets</div>
-          <div className="row-wrap" style={{ gap: 8, marginBottom: 12, alignItems: 'center' }}>
-            <span className="muted" style={{ fontSize: 13 }}>Filter by status:</span>
+          <div className="row-wrap" style={{ gap: 8, margin: '12px 0', flexWrap: 'wrap' }}>
+            <input
+              className="input"
+              type="search"
+              placeholder="Search by ticket #, user, or subject…"
+              value={ticketSearch}
+              onChange={(e) => setTicketSearch(e.target.value)}
+              style={{ maxWidth: 300 }}
+            />
             <select
               className="input"
               style={{ width: 'auto' }}
@@ -623,12 +637,15 @@ export default function AdminPanel({ onBack }: Props) {
                 loadTickets(v || undefined)
               }}
             >
-              <option value="">All</option>
+              <option value="">All statuses</option>
               {TICKET_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
             <button className="btn btn-sm btn-secondary" type="button" onClick={() => loadTickets(ticketStatusFilter || undefined)} disabled={ticketsLoading}>
               {ticketsLoading ? '…' : 'Refresh'}
             </button>
+            {ticketSearch && (
+              <span className="muted" style={{ fontSize: 13 }}>{filteredTickets.length} of {tickets.length} shown</span>
+            )}
           </div>
           {ticketsError && <div className="error-text">{ticketsError}</div>}
           {ticketActionError && <div className="error-text">{ticketActionError}</div>}
@@ -645,7 +662,7 @@ export default function AdminPanel({ onBack }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {tickets.map((t) => (
+                {filteredTickets.map((t) => (
                   <React.Fragment key={t.id}>
                     <tr
                       style={{ cursor: 'pointer' }}
@@ -674,7 +691,7 @@ export default function AdminPanel({ onBack }: Props) {
                     </tr>
                     {expandedTicketId === t.id && (
                       <tr>
-                        <td colSpan={6} style={{ background: 'var(--tt-surface, #1a1a2e)', padding: '10px 16px' }}>
+                        <td colSpan={6} className="admin-expanded-row">
                           <div style={{ fontWeight: 600, marginBottom: 4 }}>From: {t.user_name || t.user_email || `User ${t.user_id}`}</div>
                           <div style={{ whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.6 }}>{t.body}</div>
                           {t.updated_at && (
@@ -687,8 +704,8 @@ export default function AdminPanel({ onBack }: Props) {
                     )}
                   </React.Fragment>
                 ))}
-                {tickets.length === 0 && (
-                  <tr><td colSpan={6}><span className="empty-text">No tickets found.</span></td></tr>
+                {filteredTickets.length === 0 && (
+                  <tr><td colSpan={6}><span className="empty-text">{ticketSearch ? 'No tickets match your search.' : 'No tickets found.'}</span></td></tr>
                 )}
               </tbody>
             </table>
@@ -698,7 +715,7 @@ export default function AdminPanel({ onBack }: Props) {
 
       {/* ── User Reports ── */}
       {tab === 'reports' && (
-        <div className="card card-pad">
+        <div className="admin-section">
           <div className="section-title">User Reports</div>
           <div className="row-wrap" style={{ gap: 8, marginBottom: 12, alignItems: 'center' }}>
             <span className="muted" style={{ fontSize: 13 }}>Filter by status:</span>
@@ -765,7 +782,7 @@ export default function AdminPanel({ onBack }: Props) {
                     </tr>
                     {expandedReportId === r.id && r.details && (
                       <tr>
-                        <td colSpan={7} style={{ background: 'var(--tt-surface, #1a1a2e)', padding: '10px 16px' }}>
+                        <td colSpan={7} className="admin-expanded-row">
                           <div style={{ fontWeight: 600, marginBottom: 4 }}>
                             {r.reporter_name || r.reporter_id} → {r.reported_name || r.reported_id}
                           </div>
@@ -791,7 +808,7 @@ export default function AdminPanel({ onBack }: Props) {
 
       {/* ── Bans / Suspensions ── */}
       {tab === 'bans' && (
-        <div className="card card-pad">
+        <div className="admin-section">
           <div className="section-title">Email Bans &amp; Suspensions</div>
           <form className="stack" style={{ gap: 10, marginBottom: 16 }} onSubmit={submitBan}>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -889,15 +906,25 @@ export default function AdminPanel({ onBack }: Props) {
                 </>
               )}
               {actionModal === 'reset-password' && (
-                <label className="field-label">
-                  New password (min 8 characters)
-                  <input className="input" type="text" value={actionInput} onChange={(e) => setActionInput(e.target.value)} placeholder="New password" />
-                </label>
+                <>
+                  <div className="inline-alert inline-alert-error" style={{ fontSize: 13 }}>
+                    ⚠️ You are about to reset the password for <strong>{selectedUser.name || selectedUser.email}</strong>. This action cannot be undone. The user will need to use the new password to log in.
+                  </div>
+                  <label className="field-label">
+                    New password (min 8 characters)
+                    <input className="input" type="text" value={actionInput} onChange={(e) => setActionInput(e.target.value)} placeholder="Enter new password…" />
+                  </label>
+                </>
               )}
               {actionModal === 'impersonate' && (
-                <div className="muted" style={{ fontSize: 13 }}>
-                  This will issue a 15-minute session token for <strong>{selectedUser.name || selectedUser.email}</strong>. Your current session will be replaced. Refresh the page after confirming.
-                </div>
+                <>
+                  <div className="inline-alert inline-alert-error" style={{ fontSize: 13 }}>
+                    ⚠️ You are about to log in as <strong>{selectedUser.name || selectedUser.email}</strong>. This will issue a 15-minute session token and replace your current admin session. You will need to log back in as yourself afterwards.
+                  </div>
+                  <div className="muted" style={{ fontSize: 13 }}>
+                    Confirm you want to proceed with impersonation.
+                  </div>
+                </>
               )}
               {actionError && <div className="error-text">{actionError}</div>}
               {actionSuccess && <div className="success-text">{actionSuccess}</div>}
