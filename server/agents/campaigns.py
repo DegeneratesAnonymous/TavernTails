@@ -451,10 +451,11 @@ def send_gm_invite(
         inviter_name = (inviter.username or inviter.email or str(owner_id)) if inviter else str(owner_id)
 
     # Send in-app notification to the invited user
-    world_name = settings.get('world_name', '') if isinstance(settings, dict) else ''
-    setting_summary = settings.get('setting_summary', '') if isinstance(settings, dict) else ''
-    genre = settings.get('genre', '') if isinstance(settings, dict) else ''
-    tone = settings.get('tone', '') if isinstance(settings, dict) else ''
+    s = settings if isinstance(settings, dict) else {}
+    world_name = s.get('world_name', '')
+    setting_summary = s.get('setting_summary', '')
+    genre = s.get('genre', '')
+    tone = s.get('tone', '')
     summary_parts = [p for p in [genre, tone, setting_summary] if p]
     summary_text = ' · '.join(summary_parts[:2]) + (f' — {setting_summary[:80]}' if setting_summary else '')
 

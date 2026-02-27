@@ -2961,15 +2961,18 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                     const campaignId = campaign?.id ? String(campaign.id) : null
 
                     if (campaignId) {
-                      // Save initial settings (genre, tone) and variables (pacing, content_rating)
-                      await apiFetch(`/campaigns/${campaignId}/settings`, {
+                      // Save initial required settings (genre, tone) and variables (pacing, content_rating)
+                      const settingsRes = await apiFetch(`/campaigns/${campaignId}/settings`, {
                         method: 'PUT',
                         body: JSON.stringify({ genre: newCampaignGenre, tone: newCampaignTone }),
                       }).catch(() => null)
-                      await apiFetch(`/campaigns/${campaignId}/variables`, {
+                      const varsRes = await apiFetch(`/campaigns/${campaignId}/variables`, {
                         method: 'PUT',
                         body: JSON.stringify({ pacing: newCampaignPacing, content_rating: newCampaignContentRating }),
                       }).catch(() => null)
+                      if ((settingsRes && !settingsRes.ok) || (varsRes && !varsRes.ok)) {
+                        throw new Error('Campaign created but initial settings could not be saved. You can update them in Settings.')
+                      }
 
                       setActiveCampaignId(campaignId)
                       const firstSession =

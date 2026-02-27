@@ -72,7 +72,7 @@ function SettingLabel({ label, field, style }: { label: string; field: string; s
             type="button"
             style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}
             onClick={() => setOpen((v) => !v)}
-            onBlur={() => setTimeout(() => setOpen(false), 150)}
+            onBlur={() => setTimeout(() => setOpen(false), 150)} // brief delay to allow click on tooltip to fire first
             title={`About ${label}`}
             aria-label={`About ${label}`}
           >
@@ -101,6 +101,7 @@ type Campaign = {
   id: string
   name: string
   description?: string | null
+  /** True when a GM invite has been sent for this campaign but not yet accepted */
   gm_invite_pending?: boolean
 }
 
@@ -482,7 +483,13 @@ export default function CampaignSetupView({
 
   async function handleGMChange(selectedValue: string) {
     if (!activeCampaignId) return
-    
+
+    // Special case: "player" means "I want to invite someone as GM" — just show the invite form
+    if (selectedValue === 'player') {
+      setGmAssignment((prev) => ({ ...prev, gm_user_id: null, gm_mode: 'player' }))
+      return
+    }
+
     setLoadingGM(true)
     setMessage(null)
     try {
@@ -847,7 +854,11 @@ export default function CampaignSetupView({
                     </label>
                     <select
                       className="input"
-                      value={gmAssignment.gm_user_id?.toString() || 'ai'}
+                      value={
+                        gmAssignment.gm_mode === 'player' && !gmAssignment.gm_user_id
+                          ? 'player'
+                          : gmAssignment.gm_user_id?.toString() || 'ai'
+                      }
                       onChange={(e) => handleGMChange(e.target.value)}
                       disabled={!canEdit || loadingGM}
                     >
