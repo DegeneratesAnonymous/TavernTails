@@ -41,10 +41,68 @@ const AddDocumentIcon = () => (
   </svg>
 )
 
+const InfoIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" style={{ width: 14, height: 14, display: 'inline', verticalAlign: 'middle', marginLeft: 4, cursor: 'pointer', opacity: 0.7 }}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" />
+  </svg>
+)
+
+const SETTING_TOOLTIPS: Record<string, string> = {
+  genre: 'Sets the overall genre of the campaign. This shapes the world, NPCs, and events the AI generates — e.g. Fantasy produces swords and sorcery while Sci-Fi produces starships and technology.',
+  tone: 'Controls the emotional register of the narrative. Heroic = triumphant adventures; Grim = harsh realities; Dark Fantasy = danger and moral ambiguity; Comedy = light-hearted fun; Balanced = a mix.',
+  pacing: 'Determines how quickly the story moves. Slow = detailed exploration and roleplay; Moderate = balanced; Fast = action-focused with less downtime.',
+  content_rating: 'Sets the content maturity level. PG = family-friendly, no graphic content; PG-13 = mild violence and themes; R = mature themes, graphic violence allowed.',
+  narrative_style: 'Shapes how the AI writes narrative passages. Epic = grand sweeping prose; Intimate = personal character focus; Gritty = harsh and realistic; Lighthearted = warm and fun.',
+  world_name: 'The name of the campaign world or region. Used by AI agents to refer to the setting consistently throughout the campaign.',
+  setting_summary: 'A brief description of the campaign world — its history, factions, and key locations. AI agents use this as the foundation for all generated content.',
+  ruleset: 'The TTRPG ruleset or system you are playing. The Scene Analysis agent uses this to apply correct rules and stat scaling.',
+  house_rules: 'Custom rules the AI must respect during gameplay. Use this for table-specific modifications or rulings.',
+  game_master: 'Choose who runs the campaign. AI Game Master = the AI actively narrates and drives the story. Player GM = another player takes on the GM role and the AI assists with notes and organization.',
+}
+
+function SettingLabel({ label, field, style }: { label: string; field: string; style?: React.CSSProperties }) {
+  const [open, setOpen] = useState(false)
+  const tip = SETTING_TOOLTIPS[field]
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', gap: 4, ...style }}>
+      <span>{label}</span>
+      {tip ? (
+        <span style={{ position: 'relative', display: 'inline-flex' }}>
+          <button
+            type="button"
+            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}
+            onClick={() => setOpen((v) => !v)}
+            onBlur={() => setTimeout(() => setOpen(false), 150)} // brief delay to allow click on tooltip to fire first
+            title={`About ${label}`}
+            aria-label={`About ${label}`}
+          >
+            <InfoIcon />
+          </button>
+          {open ? (
+            <div style={{
+              position: 'absolute', top: '100%', left: 0, zIndex: 100,
+              background: 'var(--surface-dark, #2a2623)',
+              border: '1px solid var(--tt-border, rgba(173,136,95,0.25))',
+              borderRadius: 6, padding: '8px 10px',
+              fontSize: 12, color: 'var(--tt-text, #e8ddd0)',
+              maxWidth: 260, minWidth: 180, lineHeight: 1.4,
+              boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+            }}>
+              {tip}
+            </div>
+          ) : null}
+        </span>
+      ) : null}
+    </span>
+  )
+}
+
 type Campaign = {
   id: string
   name: string
   description?: string | null
+  /** True when a GM invite has been sent for this campaign but not yet accepted */
+  gm_invite_pending?: boolean
 }
 
 type Character = {
@@ -63,7 +121,6 @@ type CampaignSettings = {
   ruleset: string
   starting_level: number
   house_rules: string
-  player_run_mode: boolean
 }
 
 type CampaignVariables = {
@@ -92,6 +149,7 @@ type Player = {
 type GMAssignment = {
   gm_user_id: number | null
   gm_mode: string
+  pending_invite?: { user_id: number; token: string } | null
 }
 
 type Props = {
@@ -120,7 +178,6 @@ const DEFAULT_SETTINGS: CampaignSettings = {
   ruleset: 'custom',
   starting_level: 1,
   house_rules: '',
-  player_run_mode: false,
 }
 
 const DEFAULT_VARIABLES: CampaignVariables = {
@@ -180,6 +237,15 @@ export default function CampaignSetupView({
   const [inviteMatches, setInviteMatches] = useState<Array<{id?: number; username?: string | null; email?: string | null; name?: string | null}>>([])
   const [inviteMatchBusy, setInviteMatchBusy] = useState(false)
 
+  // GM invite state
+  const [gmInviteIdentifier, setGmInviteIdentifier] = useState('')
+  const [gmInviteBusy, setGmInviteBusy] = useState(false)
+  const [gmInviteMatches, setGmInviteMatches] = useState<Array<{id?: number; username?: string | null; email?: string | null}>>([])
+  const [gmInviteMatchBusy, setGmInviteMatchBusy] = useState(false)
+
+  // Campaigns where the current user is assigned as GM (but does not own)
+  const [gmCampaigns, setGmCampaigns] = useState<Campaign[]>([])
+
   const canEdit = Boolean(activeCampaignId)
 
   useEffect(() => {
@@ -218,7 +284,6 @@ export default function CampaignSetupView({
           ruleset: asString(s?.ruleset) || DEFAULT_SETTINGS.ruleset,
           starting_level: Math.max(1, Math.min(20, asNumber(s?.starting_level, DEFAULT_SETTINGS.starting_level))),
           house_rules: asString(s?.house_rules),
-          player_run_mode: Boolean(s?.player_run_mode),
         }
         if (!canceled) setSettings(next)
       } catch (e: any) {
@@ -289,6 +354,34 @@ export default function CampaignSetupView({
     }
   }, [inviteEmail])
 
+  // GM invite autocomplete
+  useEffect(() => {
+    let canceled = false
+    const raw = gmInviteIdentifier.trim()
+    if (!raw || raw.includes('@') || raw.length < 2) {
+      setGmInviteMatches([])
+      return
+    }
+    setGmInviteMatchBusy(true)
+    const id = window.setTimeout(async () => {
+      try {
+        const res = await apiFetch(`/users/search?q=${encodeURIComponent(raw)}&limit=8`)
+        if (!res.ok) throw new Error('search failed')
+        const data = await res.json().catch(() => null)
+        const results = Array.isArray(data?.results) ? data.results : []
+        if (!canceled) setGmInviteMatches(results)
+      } catch {
+        if (!canceled) setGmInviteMatches([])
+      } finally {
+        if (!canceled) setGmInviteMatchBusy(false)
+      }
+    }, 250)
+    return () => {
+      canceled = true
+      window.clearTimeout(id)
+    }
+  }, [gmInviteIdentifier])
+
   // Load GM assignment
   useEffect(() => {
     let canceled = false
@@ -305,6 +398,7 @@ export default function CampaignSetupView({
           setGmAssignment({
             gm_user_id: data.gm_user_id,
             gm_mode: data.gm_mode || 'ai',
+            pending_invite: data.pending_invite || null,
           })
         }
       } catch (e) {
@@ -316,6 +410,25 @@ export default function CampaignSetupView({
       canceled = true
     }
   }, [activeCampaignId])
+
+  // Load campaigns where user is assigned as GM
+  useEffect(() => {
+    let canceled = false
+    async function loadGmCampaigns() {
+      try {
+        const res = await apiFetch('/campaigns/as-gm')
+        if (!res.ok) return
+        const data = await res.json()
+        if (!canceled && data?.campaigns) {
+          setGmCampaigns(Array.isArray(data.campaigns) ? data.campaigns : [])
+        }
+      } catch {
+        if (!canceled) setGmCampaigns([])
+      }
+    }
+    loadGmCampaigns()
+    return () => { canceled = true }
+  }, [])
 
   // Load campaign variables
   useEffect(() => {
@@ -370,7 +483,13 @@ export default function CampaignSetupView({
 
   async function handleGMChange(selectedValue: string) {
     if (!activeCampaignId) return
-    
+
+    // Special case: "player" means "I want to invite someone as GM" — just show the invite form
+    if (selectedValue === 'player') {
+      setGmAssignment((prev) => ({ ...prev, gm_user_id: null, gm_mode: 'player' }))
+      return
+    }
+
     setLoadingGM(true)
     setMessage(null)
     try {
@@ -387,12 +506,39 @@ export default function CampaignSetupView({
       setGmAssignment({
         gm_user_id: data.gm_user_id,
         gm_mode: data.gm_mode || 'ai',
+        pending_invite: data.pending_invite || null,
       })
       setMessage({ kind: 'info', text: 'GM assignment updated.' })
     } catch (e: any) {
       setMessage({ kind: 'error', text: e?.message || 'Failed to assign GM' })
     } finally {
       setLoadingGM(false)
+    }
+  }
+
+  async function handleSendGmInvite() {
+    const identifier = gmInviteIdentifier.trim()
+    if (!identifier || !activeCampaignId) return
+    setGmInviteBusy(true)
+    setMessage(null)
+    try {
+      const res = await apiFetch(`/campaigns/${activeCampaignId}/gm/invite`, {
+        method: 'POST',
+        body: JSON.stringify({ identifier }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(err?.detail || 'Failed to send GM invite')
+      }
+      const data = await res.json()
+      setGmInviteIdentifier('')
+      setGmInviteMatches([])
+      setGmAssignment((prev) => ({ ...prev, pending_invite: { user_id: data.invited_user_id, token: data.token } }))
+      setMessage({ kind: 'info', text: `GM invite sent to ${data.invited_display}. They must accept before they become GM.` })
+    } catch (e: any) {
+      setMessage({ kind: 'error', text: e?.message || 'Failed to send GM invite' })
+    } finally {
+      setGmInviteBusy(false)
     }
   }
 
@@ -528,6 +674,70 @@ export default function CampaignSetupView({
     return [...campaigns].sort((a, b) => a.name.localeCompare(b.name))
   }, [campaigns])
 
+  const sortedGmCampaigns = useMemo(() => {
+    return [...gmCampaigns].sort((a, b) => a.name.localeCompare(b.name))
+  }, [gmCampaigns])
+
+  function renderCampaignCard(campaign: Campaign, isGmRole = false) {
+    const isActive = String(campaign.id) === String(activeCampaignId)
+    const associatedChars = characters.filter(
+      (c) => c?.sheet?.associations?.campaign_id === String(campaign.id)
+    )
+    return (
+      <div
+        key={campaign.id}
+        className="card"
+        style={{
+          padding: 10,
+          background: 'rgba(71,66,61,0.6)',
+          borderColor: isActive ? 'rgba(173,136,95,0.6)' : 'var(--tt-border)',
+        }}
+      >
+        <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {campaign.name}
+              {isGmRole ? <span className="muted" style={{ fontSize: 11, marginLeft: 6 }}>(GM)</span> : null}
+            </div>
+            {campaign.description ? (
+              <div className="muted" style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {campaign.description}
+              </div>
+            ) : null}
+            {campaign.gm_invite_pending ? (
+              <div className="muted" style={{ fontSize: 11, color: 'var(--tt-accent, #c084fc)', marginTop: 2 }}>Invite pending acceptance</div>
+            ) : null}
+            {associatedChars.length > 0 ? (
+              <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                {associatedChars.map((c) => (
+                  <span key={c.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginRight: 8 }}>
+                    🧙 {c.name}{c.class_name ? ` (${c.class_name})` : ''}{c.level ? ` L${c.level}` : ''}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            {isActive ? <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>Selected</div> : null}
+          </div>
+          <div className="row-wrap" style={{ gap: 6, justifyContent: 'flex-end' }}>
+            <button className="btn btn-secondary btn-sm btn-icon-only" type="button" onClick={() => openCampaignView(String(campaign.id), 'settings')} title="Settings" aria-label="Settings">
+              <SettingsIcon />
+            </button>
+            {!isGmRole ? (
+              <>
+                <button className="btn btn-secondary btn-sm btn-icon-only" type="button" onClick={() => openCampaignView(String(campaign.id), 'documents')} title="Documents" aria-label="Documents">
+                  <DocumentsIcon />
+                </button>
+                <button className="btn btn-secondary btn-sm btn-icon-only" type="button" onClick={() => openCampaignView(String(campaign.id), 'players')} title="Players" aria-label="Players">
+                  <PlayersIcon />
+                </button>
+              </>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <section className="dashboard-panel stack">
       <PageHeader
@@ -546,7 +756,7 @@ export default function CampaignSetupView({
         <div style={{ minWidth: 260, flex: '1 1 260px' }}>
           <div className="card card-pad stack" style={{ gap: 10, background: 'var(--surface-dark)' }}>
             <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-              <div className="muted">Campaigns</div>
+              <div className="muted">My Campaigns</div>
               <button className="btn btn-secondary btn-sm btn-icon-only" type="button" onClick={onCreateCampaign} title="New Campaign" aria-label="New Campaign">
                 <NewIcon />
               </button>
@@ -558,59 +768,20 @@ export default function CampaignSetupView({
               </div>
             ) : (
               <div className="stack" style={{ gap: 10 }}>
-                {sortedCampaigns.map((campaign) => {
-                  const isActive = String(campaign.id) === String(activeCampaignId)
-                  const associatedChars = characters.filter(
-                    (c) => c?.sheet?.associations?.campaign_id === String(campaign.id)
-                  )
-                  return (
-                    <div
-                      key={campaign.id}
-                      className="card"
-                      style={{
-                        padding: 10,
-                        background: 'rgba(71,66,61,0.6)',
-                        borderColor: isActive ? 'rgba(173,136,95,0.6)' : 'var(--tt-border)',
-                      }}
-                    >
-                      <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {campaign.name}
-                          </div>
-                          {campaign.description ? (
-                            <div className="muted" style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {campaign.description}
-                            </div>
-                          ) : null}
-                          {associatedChars.length > 0 ? (
-                            <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-                              {associatedChars.map((c) => (
-                                <span key={c.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginRight: 8 }}>
-                                  🧙 {c.name}{c.class_name ? ` (${c.class_name})` : ''}{c.level ? ` L${c.level}` : ''}
-                                </span>
-                              ))}
-                            </div>
-                          ) : null}
-                          {isActive ? <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>Selected</div> : null}
-                        </div>
-                        <div className="row-wrap" style={{ gap: 6, justifyContent: 'flex-end' }}>
-                          <button className="btn btn-secondary btn-sm btn-icon-only" type="button" onClick={() => openCampaignView(String(campaign.id), 'settings')} title="Settings" aria-label="Settings">
-                            <SettingsIcon />
-                          </button>
-                          <button className="btn btn-secondary btn-sm btn-icon-only" type="button" onClick={() => openCampaignView(String(campaign.id), 'documents')} title="Documents" aria-label="Documents">
-                            <DocumentsIcon />
-                          </button>
-                          <button className="btn btn-secondary btn-sm btn-icon-only" type="button" onClick={() => openCampaignView(String(campaign.id), 'players')} title="Players" aria-label="Players">
-                            <PlayersIcon />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
+                {sortedCampaigns.map((campaign) => renderCampaignCard(campaign, false))}
               </div>
             )}
+
+            {sortedGmCampaigns.length > 0 ? (
+              <>
+                <div className="muted" style={{ marginTop: 8, fontSize: 12, borderTop: '1px solid var(--tt-border)', paddingTop: 8 }}>
+                  Campaigns I GM
+                </div>
+                <div className="stack" style={{ gap: 10 }}>
+                  {sortedGmCampaigns.map((campaign) => renderCampaignCard(campaign, true))}
+                </div>
+              </>
+            ) : null}
           </div>
         </div>
 
@@ -679,15 +850,20 @@ export default function CampaignSetupView({
 
                   <div className="stack" style={{ gap: 6 }}>
                     <label className="muted" style={{ fontSize: 13 }}>
-                      Game Master
+                      <SettingLabel label="Game Master" field="game_master" />
                     </label>
                     <select
                       className="input"
-                      value={gmAssignment.gm_user_id?.toString() || 'ai'}
+                      value={
+                        gmAssignment.gm_mode === 'player' && !gmAssignment.gm_user_id
+                          ? 'player'
+                          : gmAssignment.gm_user_id?.toString() || 'ai'
+                      }
                       onChange={(e) => handleGMChange(e.target.value)}
                       disabled={!canEdit || loadingGM}
                     >
                       <option value="ai">AI Game Master</option>
+                      <option value="player">Player GM (invite by username/email)</option>
                       {players.map((player) => (
                         <option key={player.id} value={player.id.toString()}>
                           {player.username || player.email || `Player ${player.id}`}
@@ -695,14 +871,71 @@ export default function CampaignSetupView({
                       ))}
                     </select>
                     <div className="muted" style={{ fontSize: 12 }}>
-                      {gmAssignment.gm_mode === 'ai' 
-                        ? 'AI will actively narrate and drive the campaign.' 
+                      {gmAssignment.gm_mode === 'ai'
+                        ? 'AI will actively narrate and drive the campaign.'
+                        : gmAssignment.pending_invite
+                        ? '⏳ GM invite pending acceptance.'
                         : 'Selected player will run the session. AI provides note-taking and organization.'}
                     </div>
+
+                    {/* GM invite form — shown when player GM mode but no one confirmed yet */}
+                    {gmAssignment.gm_mode === 'player' && !gmAssignment.gm_user_id && canEdit ? (
+                      <div className="stack" style={{ gap: 6, marginTop: 6 }}>
+                        <label className="muted" style={{ fontSize: 12 }}>Invite player as GM (username or email)</label>
+                        <div className="row-wrap" style={{ gap: 6 }}>
+                          <input
+                            className="input"
+                            style={{ flex: 1 }}
+                            placeholder="Search by username or enter email"
+                            value={gmInviteIdentifier}
+                            onChange={(e) => setGmInviteIdentifier(e.target.value)}
+                            disabled={gmInviteBusy}
+                          />
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            type="button"
+                            disabled={gmInviteBusy || !gmInviteIdentifier.trim()}
+                            onClick={handleSendGmInvite}
+                          >
+                            {gmInviteBusy ? 'Sending…' : 'Send Invite'}
+                          </button>
+                        </div>
+                        {gmInviteMatchBusy ? (
+                          <div className="muted" style={{ fontSize: 12 }}>Searching…</div>
+                        ) : gmInviteMatches.length > 0 ? (
+                          <div className="card" style={{ padding: 8, display: 'grid', gap: 4 }}>
+                            {gmInviteMatches.map((m) => {
+                              const key = String(m?.id ?? m?.email ?? m?.username ?? Math.random())
+                              const label = m?.username ? `@${m.username}` : (m?.email || 'user')
+                              return (
+                                <button
+                                  key={key}
+                                  className="btn btn-secondary btn-sm"
+                                  type="button"
+                                  style={{ textAlign: 'left' }}
+                                  onClick={() => { setGmInviteIdentifier(m?.username || m?.email || ''); setGmInviteMatches([]) }}
+                                >
+                                  {label}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    {/* Show pending invite status */}
+                    {gmAssignment.pending_invite ? (
+                      <div className="muted" style={{ fontSize: 12, color: 'var(--tt-accent, #c084fc)' }}>
+                        ⏳ Waiting for invited user to accept the GM request.
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="stack" style={{ gap: 6 }}>
-                    <label className="muted" style={{ fontSize: 13 }}>World Name</label>
+                    <label className="muted" style={{ fontSize: 13 }}>
+                      <SettingLabel label="World Name" field="world_name" />
+                    </label>
                     <input
                       className="input"
                       value={settings.world_name}
@@ -713,7 +946,9 @@ export default function CampaignSetupView({
                   </div>
 
                   <div className="stack" style={{ gap: 6 }}>
-                    <label className="muted" style={{ fontSize: 13 }}>Setting Summary</label>
+                    <label className="muted" style={{ fontSize: 13 }}>
+                      <SettingLabel label="Setting Summary" field="setting_summary" />
+                    </label>
                     <textarea
                       className="input"
                       value={settings.setting_summary}
@@ -726,7 +961,7 @@ export default function CampaignSetupView({
 
                   <div className="row-wrap" style={{ gap: 8 }}>
                     <div style={{ flex: 1 }}>
-                      <label className="muted" style={{ fontSize: 13 }}>Genre</label>
+                      <label className="muted" style={{ fontSize: 13 }}><SettingLabel label="Genre" field="genre" /></label>
                       <select
                         className="input"
                         value={settings.genre}
@@ -745,7 +980,7 @@ export default function CampaignSetupView({
                     </div>
 
                     <div style={{ flex: 1 }}>
-                      <label className="muted" style={{ fontSize: 13 }}>Tone</label>
+                      <label className="muted" style={{ fontSize: 13 }}><SettingLabel label="Tone" field="tone" /></label>
                       <select
                         className="input"
                         value={settings.tone}
@@ -764,7 +999,7 @@ export default function CampaignSetupView({
                     </div>
 
                     <div style={{ flex: 1 }}>
-                      <label className="muted" style={{ fontSize: 13 }}>Content Rating</label>
+                      <label className="muted" style={{ fontSize: 13 }}><SettingLabel label="Content Rating" field="content_rating" /></label>
                       <select
                         className="input"
                         value={variables.content_rating}
@@ -780,7 +1015,7 @@ export default function CampaignSetupView({
 
                   <div className="row-wrap" style={{ gap: 8 }}>
                     <div style={{ flex: 1 }}>
-                      <label className="muted" style={{ fontSize: 13 }}>Ruleset</label>
+                      <label className="muted" style={{ fontSize: 13 }}><SettingLabel label="Ruleset" field="ruleset" /></label>
                       <input
                         className="input"
                         value={settings.ruleset}
@@ -806,7 +1041,7 @@ export default function CampaignSetupView({
 
                   <div className="row-wrap" style={{ gap: 8 }}>
                     <div style={{ flex: 1 }}>
-                      <label className="muted" style={{ fontSize: 13 }}>Pacing</label>
+                      <label className="muted" style={{ fontSize: 13 }}><SettingLabel label="Pacing" field="pacing" /></label>
                       <select
                         className="input"
                         value={variables.pacing}
@@ -820,7 +1055,7 @@ export default function CampaignSetupView({
                     </div>
 
                     <div style={{ flex: 1 }}>
-                      <label className="muted" style={{ fontSize: 13 }}>Narrative Style</label>
+                      <label className="muted" style={{ fontSize: 13 }}><SettingLabel label="Narrative Style" field="narrative_style" /></label>
                       <select
                         className="input"
                         value={variables.narrative_style}
@@ -833,17 +1068,6 @@ export default function CampaignSetupView({
                         <option value="gritty">Gritty</option>
                         <option value="lighthearted">Lighthearted</option>
                       </select>
-                    </div>
-
-                    <div style={{ flex: 1 }}>
-                      <label className="muted" style={{ fontSize: 13 }}>Naming Style</label>
-                      <input
-                        className="input"
-                        value={variables.naming_style}
-                        onChange={(e) => setVariables((prev) => ({ ...prev, naming_style: e.target.value }))}
-                        placeholder="e.g. Norse, Elvish, Latin"
-                        disabled={!canEdit}
-                      />
                     </div>
                   </div>
 
@@ -861,7 +1085,7 @@ export default function CampaignSetupView({
                   </div>
 
                   <div className="stack" style={{ gap: 6 }}>
-                    <label className="muted" style={{ fontSize: 13 }}>House Rules</label>
+                    <label className="muted" style={{ fontSize: 13 }}><SettingLabel label="House Rules" field="house_rules" /></label>
                     <textarea
                       className="input"
                       value={settings.house_rules}
@@ -870,22 +1094,6 @@ export default function CampaignSetupView({
                       rows={3}
                       disabled={!canEdit}
                     />
-                  </div>
-
-                  <div className="stack" style={{ gap: 6 }}>
-                    <label className="muted" style={{ fontSize: 13 }}>Player-run Mode</label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: canEdit ? 'pointer' : 'default' }}>
-                      <input
-                        type="checkbox"
-                        checked={settings.player_run_mode}
-                        onChange={(e) => setSettings((prev) => ({ ...prev, player_run_mode: e.target.checked }))}
-                        disabled={!canEdit}
-                      />
-                      <span style={{ fontSize: 13 }}>Disable AI narration — players run the session manually</span>
-                    </label>
-                    <div className="muted" style={{ fontSize: 12 }}>
-                      When enabled, AI agents are disabled for narration but note-taking, NPC tracking, and dice rolls remain active.
-                    </div>
                   </div>
                 </div>
               </div>
