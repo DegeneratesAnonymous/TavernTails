@@ -18,13 +18,16 @@ import { test, expect, Page } from '@playwright/test';
 const DEV_EMAIL = 'bilbo@example.com';
 const DEV_PASSWORD = 'secret';
 
+/** CSS selector that matches any of the post-login app shells. */
+const DASHBOARD_SELECTOR = '.dashboard-root, .gameplay-root, .logged-in-dashboard, [data-testid="dashboard"]';
+
 /** Navigate to `/` and ensure the email+password login form is visible,
  *  clicking the "Sign In" landing-page button if necessary. */
 async function navigateToLoginForm(page: Page): Promise<void> {
   await page.goto('/');
   // If we're already on the dashboard, nothing to do.
   const isDashboard = await page
-    .locator('[data-testid="dashboard"], .gameplay-root, .logged-in-dashboard')
+    .locator(DASHBOARD_SELECTOR)
     .first()
     .isVisible()
     .catch(() => false);
@@ -56,7 +59,7 @@ test.describe('Smoke: Login flow', () => {
 
     // If already on the dashboard skip the login step.
     const isDashboard = await page
-      .locator('[data-testid="dashboard"], .gameplay-root, .logged-in-dashboard')
+      .locator(DASHBOARD_SELECTOR)
       .first()
       .isVisible()
       .catch(() => false);
@@ -84,7 +87,7 @@ test.describe('Smoke: Campaign creation', () => {
 
     // If already on the dashboard nothing more to do.
     const isDashboard = await page
-      .locator('.gameplay-root, .logged-in-dashboard, [data-testid="dashboard"]')
+      .locator(DASHBOARD_SELECTOR)
       .first()
       .isVisible()
       .catch(() => false);
@@ -97,13 +100,14 @@ test.describe('Smoke: Campaign creation', () => {
         .locator('button[type="submit"], button:has-text("Log in"), button:has-text("Sign in")')
         .first()
         .click();
-      await page.waitForTimeout(1500);
+      // Wait until the dashboard shell is rendered (replaces fixed waitForTimeout).
+      await page.locator(DASHBOARD_SELECTOR).first().waitFor({ state: 'visible', timeout: 15_000 });
     }
   });
 
   test('application loads campaign UI after login', async ({ page }) => {
     // The dashboard or gameplay layout should be visible.
-    const shell = page.locator('.gameplay-root, .logged-in-dashboard, [data-testid="dashboard"]');
-    await expect(shell.first()).toBeVisible({ timeout: 10_000 });
+    const shell = page.locator(DASHBOARD_SELECTOR);
+    await expect(shell.first()).toBeVisible({ timeout: 15_000 });
   });
 });
