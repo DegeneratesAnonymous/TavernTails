@@ -90,6 +90,16 @@ def list_campaigns_for_owner(owner_id: int) -> List[Campaign]:
         return list(session.exec(stmt).all())
 
 
+def list_campaigns_as_gm(user_id: int) -> List[Campaign]:
+    """Return campaigns where user_id is the assigned GM (but is NOT the owner)."""
+    with Session(engine) as session:
+        stmt = select(Campaign).where(
+            Campaign.gm_user_id == user_id,
+            Campaign.owner_id != user_id,
+        )
+        return list(session.exec(stmt).all())
+
+
 class ChatMessage(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     session_id: str | None = Field(default=None, index=True)

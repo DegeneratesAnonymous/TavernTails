@@ -60,6 +60,10 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [createCampaignError, setCreateCampaignError] = useState<string | null>(null)
   const [newCampaignName, setNewCampaignName] = useState('')
   const [newCampaignDescription, setNewCampaignDescription] = useState('')
+  const [newCampaignGenre, setNewCampaignGenre] = useState('fantasy')
+  const [newCampaignTone, setNewCampaignTone] = useState('balanced')
+  const [newCampaignPacing, setNewCampaignPacing] = useState('moderate')
+  const [newCampaignContentRating, setNewCampaignContentRating] = useState('pg-13')
 
   const [quickstartBusy, setQuickstartBusy] = useState(false)
   const [startPlayBusy, setStartPlayBusy] = useState(false)
@@ -2840,6 +2844,10 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             setShowCreateModal(false)
             setNewCampaignName('')
             setNewCampaignDescription('')
+            setNewCampaignGenre('fantasy')
+            setNewCampaignTone('balanced')
+            setNewCampaignPacing('moderate')
+            setNewCampaignContentRating('pg-13')
             setCreateCampaignError(null)
           }}
         >
@@ -2850,21 +2858,74 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
           ) : null}
 
           <div className="stack" style={{ gap: 10 }}>
-            <input
-              className="input"
-              placeholder="Campaign name"
-              value={newCampaignName}
-              onChange={(e) => setNewCampaignName(e.target.value)}
-              disabled={createCampaignBusy}
-            />
-            <textarea
-              className="input"
-              placeholder="Description (optional)"
-              value={newCampaignDescription}
-              onChange={(e) => setNewCampaignDescription(e.target.value)}
-              disabled={createCampaignBusy}
-              rows={4}
-            />
+            <div>
+              <label className="muted" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Campaign Name <span style={{ color: 'var(--tt-accent, #c084fc)' }}>*</span></label>
+              <input
+                className="input"
+                placeholder="Campaign name"
+                value={newCampaignName}
+                onChange={(e) => setNewCampaignName(e.target.value)}
+                disabled={createCampaignBusy}
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="muted" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Description</label>
+              <textarea
+                className="input"
+                placeholder="Description (optional)"
+                value={newCampaignDescription}
+                onChange={(e) => setNewCampaignDescription(e.target.value)}
+                disabled={createCampaignBusy}
+                rows={2}
+              />
+            </div>
+
+            <div className="row-wrap" style={{ gap: 8 }}>
+              <div style={{ flex: 1 }}>
+                <label className="muted" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Genre <span style={{ color: 'var(--tt-accent, #c084fc)' }}>*</span></label>
+                <select className="input" value={newCampaignGenre} onChange={(e) => setNewCampaignGenre(e.target.value)} disabled={createCampaignBusy}>
+                  <option value="fantasy">Fantasy</option>
+                  <option value="sci-fi">Sci-Fi</option>
+                  <option value="horror">Horror</option>
+                  <option value="western">Western</option>
+                  <option value="steampunk">Steampunk</option>
+                  <option value="modern">Modern</option>
+                  <option value="post-apocalyptic">Post-Apocalyptic</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label className="muted" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Tone <span style={{ color: 'var(--tt-accent, #c084fc)' }}>*</span></label>
+                <select className="input" value={newCampaignTone} onChange={(e) => setNewCampaignTone(e.target.value)} disabled={createCampaignBusy}>
+                  <option value="heroic">Heroic</option>
+                  <option value="grim">Grim</option>
+                  <option value="dark-fantasy">Dark Fantasy</option>
+                  <option value="comedy">Comedy</option>
+                  <option value="horror">Horror</option>
+                  <option value="balanced">Balanced</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="row-wrap" style={{ gap: 8 }}>
+              <div style={{ flex: 1 }}>
+                <label className="muted" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Pacing <span style={{ color: 'var(--tt-accent, #c084fc)' }}>*</span></label>
+                <select className="input" value={newCampaignPacing} onChange={(e) => setNewCampaignPacing(e.target.value)} disabled={createCampaignBusy}>
+                  <option value="slow">Slow</option>
+                  <option value="moderate">Moderate</option>
+                  <option value="fast">Fast</option>
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label className="muted" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>Content Rating <span style={{ color: 'var(--tt-accent, #c084fc)' }}>*</span></label>
+                <select className="input" value={newCampaignContentRating} onChange={(e) => setNewCampaignContentRating(e.target.value)} disabled={createCampaignBusy}>
+                  <option value="family">PG (Family-friendly)</option>
+                  <option value="pg-13">PG-13</option>
+                  <option value="mature">R (Mature)</option>
+                </select>
+              </div>
+            </div>
 
             <div className="row-wrap" style={{ justifyContent: 'flex-end' }}>
               <button
@@ -2897,8 +2958,20 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
 
                     const data = await res.json().catch(() => ({} as any))
                     const campaign = data?.campaign
-                    if (campaign?.id) {
-                      setActiveCampaignId(String(campaign.id))
+                    const campaignId = campaign?.id ? String(campaign.id) : null
+
+                    if (campaignId) {
+                      // Save initial settings (genre, tone) and variables (pacing, content_rating)
+                      await apiFetch(`/campaigns/${campaignId}/settings`, {
+                        method: 'PUT',
+                        body: JSON.stringify({ genre: newCampaignGenre, tone: newCampaignTone }),
+                      }).catch(() => null)
+                      await apiFetch(`/campaigns/${campaignId}/variables`, {
+                        method: 'PUT',
+                        body: JSON.stringify({ pacing: newCampaignPacing, content_rating: newCampaignContentRating }),
+                      }).catch(() => null)
+
+                      setActiveCampaignId(campaignId)
                       const firstSession =
                         Array.isArray(campaign.sessions) && campaign.sessions.length > 0
                           ? String(campaign.sessions[0].id)
@@ -2912,6 +2985,10 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                     setShowCreateModal(false)
                     setNewCampaignName('')
                     setNewCampaignDescription('')
+                    setNewCampaignGenre('fantasy')
+                    setNewCampaignTone('balanced')
+                    setNewCampaignPacing('moderate')
+                    setNewCampaignContentRating('pg-13')
                     await fetchCampaigns()
                   } catch (e: any) {
                     setCreateCampaignError(e?.message || 'Network error creating campaign')
@@ -2930,6 +3007,10 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                   setShowCreateModal(false)
                   setNewCampaignName('')
                   setNewCampaignDescription('')
+                  setNewCampaignGenre('fantasy')
+                  setNewCampaignTone('balanced')
+                  setNewCampaignPacing('moderate')
+                  setNewCampaignContentRating('pg-13')
                   setCreateCampaignError(null)
                 }}
               >

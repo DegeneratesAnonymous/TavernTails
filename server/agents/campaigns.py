@@ -1,3 +1,4 @@
+import uuid
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -152,6 +153,24 @@ def list_campaigns(current_user=Depends(get_current_user)):
     return {'campaigns': campaigns}
 
 
+@router.get('/as-gm', summary='List campaigns where current user is the assigned GM')
+def list_campaigns_as_gm(current_user=Depends(get_current_user)):
+    """Return campaigns owned by others where the current user is assigned as GM."""
+    user_id = _require_user_id(current_user)
+    rows = db.list_campaigns_as_gm(user_id)
+    campaigns = []
+    for r in rows:
+        item = r.model_dump()
+        sessions_list = (r.metadata_json or {}).get('sessions', [])
+        item['sessions'] = [{'id': s, 'meta': f'/sessions/{s}/meta', 'files': f'/sessions/{s}/files'} for s in sessions_list]
+        # Include pending GM invite info
+        meta = r.metadata_json or {}
+        pending = meta.get('pending_gm_invite')
+        item['gm_invite_pending'] = pending is not None
+        campaigns.append(item)
+    return {'campaigns': campaigns}
+
+
 @router.get('/{campaign_id}')
 def get_campaign(campaign_id: str, current_user=Depends(get_current_user)):
     c = db.get_campaign_by_id(campaign_id)
@@ -230,16 +249,17 @@ def purge_campaigns(name_like: str | None = None, current_user=Depends(get_curre
 
 @router.get('/{campaign_id}/settings', response_model=Dict[str, Any])
 def get_campaign_settings(campaign_id: str, current_user=Depends(get_current_user)):
-    owner_id = _require_user_id(current_user)
+    user_id = _require_user_id(current_user)
     c = db.get_campaign_by_id(campaign_id)
     if not c:
         raise HTTPException(status_code=404, detail='Campaign not found')
-    if c.owner_id != owner_id:
+    # Allow owner OR the assigned GM to read settings
+    if c.owner_id != user_id and c.gm_user_id != user_id:
         raise HTTPException(status_code=403, detail='Forbidden')
-    settings = db.get_campaign_settings(campaign_id, owner_id)
+    settings = db.get_campaign_settings(campaign_id, c.owner_id)
     if settings is None:
         raise HTTPException(status_code=404, detail='Campaign not found or forbidden')
-    return {'settings': settings}
+    return {'settings': settings, 'is_owner': c.owner_id == user_id}
 
 
 @router.put('/{campaign_id}/settings', response_model=Dict[str, Any])
@@ -312,18 +332,27 @@ def assign_gm(
 @router.get('/{campaign_id}/gm')
 def get_gm_assignment(campaign_id: str, current_user=Depends(get_current_user)):
     """Get the current GM assignment for a campaign."""
-    owner_id = _require_user_id(current_user)
+    user_id = _require_user_id(current_user)
     c = db.get_campaign_by_id(campaign_id)
     if not c:
         raise HTTPException(status_code=404, detail='Campaign not found')
-    if c.owner_id != owner_id:
+    # Allow owner OR GM to read the assignment
+    if c.owner_id != user_id and c.gm_user_id != user_id:
         raise HTTPException(status_code=403, detail='Forbidden')
 
-    return {
+    meta = c.metadata_json or {}
+    pending_invite = meta.get('pending_gm_invite')
+    result: Dict[str, Any] = {
         'campaign_id': campaign_id,
         'gm_user_id': c.gm_user_id,
         'gm_mode': c.gm_mode,
     }
+    if pending_invite:
+        result['pending_invite'] = {
+            'user_id': pending_invite.get('user_id'),
+            'token': pending_invite.get('token'),
+        }
+    return result
 
 
 @router.get('/{campaign_id}/players')
@@ -352,6 +381,154 @@ def get_campaign_players(campaign_id: str, current_user=Depends(get_current_user
         }]
 
         return {'players': players}
+
+
+class GMInviteRequest(BaseModel):
+    identifier: str  # email or username of the user to invite as GM
+
+
+class GMInviteResponse(BaseModel):
+    token: str
+    accept: bool  # True = accept, False = decline
+
+
+@router.post('/{campaign_id}/gm/invite')
+def send_gm_invite(
+    campaign_id: str,
+    req: GMInviteRequest,
+    current_user=Depends(get_current_user),
+):
+    """Send a GM invite request to another user.  The invited user receives an in-app
+    notification and must accept before they become the GM."""
+    owner_id = _require_user_id(current_user)
+    c = db.get_campaign_by_id(campaign_id)
+    if not c:
+        raise HTTPException(status_code=404, detail='Campaign not found')
+    if c.owner_id != owner_id:
+        raise HTTPException(status_code=403, detail='Only the campaign owner can invite a GM')
+
+    # Resolve user by email or username
+    from sqlmodel import Session, select
+    identifier = req.identifier.strip().lower()
+    with Session(db.engine) as session:
+        stmt = select(db.User).where(
+            (db.User.email == identifier) | (db.User.username == identifier)
+        )
+        target_user = session.exec(stmt).first()
+        if not target_user:
+            raise HTTPException(status_code=404, detail='User not found')
+        if target_user.id == owner_id:
+            raise HTTPException(status_code=400, detail='You cannot invite yourself as GM')
+
+        target_id = target_user.id
+        target_display = target_user.username or target_user.email or str(target_id)
+
+    # Generate a unique invite token
+    token = uuid.uuid4().hex
+
+    # Store pending invite in campaign metadata
+    from sqlmodel import Session as DBSession
+    with DBSession(db.engine) as session:
+        stmt = select(db.Campaign).where(db.Campaign.id == campaign_id)
+        camp = session.exec(stmt).first()
+        if not camp:
+            raise HTTPException(status_code=404, detail='Campaign not found')
+        meta = dict(camp.metadata_json or {})
+        settings = meta.get('settings', {})
+        meta['pending_gm_invite'] = {
+            'token': token,
+            'user_id': target_id,
+            'invited_by_id': owner_id,
+        }
+        camp.metadata_json = meta
+        session.add(camp)
+        session.commit()
+
+    # Look up inviter display name
+    with DBSession(db.engine) as session:
+        stmt = select(db.User).where(db.User.id == owner_id)
+        inviter = session.exec(stmt).first()
+        inviter_name = (inviter.username or inviter.email or str(owner_id)) if inviter else str(owner_id)
+
+    # Send in-app notification to the invited user
+    world_name = settings.get('world_name', '') if isinstance(settings, dict) else ''
+    setting_summary = settings.get('setting_summary', '') if isinstance(settings, dict) else ''
+    genre = settings.get('genre', '') if isinstance(settings, dict) else ''
+    tone = settings.get('tone', '') if isinstance(settings, dict) else ''
+    summary_parts = [p for p in [genre, tone, setting_summary] if p]
+    summary_text = ' · '.join(summary_parts[:2]) + (f' — {setting_summary[:80]}' if setting_summary else '')
+
+    notification_body = (
+        f'{inviter_name} has invited you to be the Game Master for '
+        f'"{c.name}"'
+        f'{(" (" + world_name + ")") if world_name else ""}. '
+        f'{summary_text} '
+        f'Use invite token: {token}'
+    )
+    db.admin_send_notification(
+        target_id,
+        title=f'GM Invite: {c.name}',
+        body=notification_body,
+    )
+
+    return {
+        'ok': True,
+        'invited_user_id': target_id,
+        'invited_display': target_display,
+        'token': token,
+    }
+
+
+@router.post('/{campaign_id}/gm/invite/respond')
+def respond_gm_invite(
+    campaign_id: str,
+    req: GMInviteResponse,
+    current_user=Depends(get_current_user),
+):
+    """Accept or decline a GM invite.  The responding user must match the invite token."""
+    user_id = _require_user_id(current_user)
+    c = db.get_campaign_by_id(campaign_id)
+    if not c:
+        raise HTTPException(status_code=404, detail='Campaign not found')
+
+    meta = dict(c.metadata_json or {})
+    invite = meta.get('pending_gm_invite')
+    if not invite or invite.get('token') != req.token:
+        raise HTTPException(status_code=404, detail='No matching GM invite found')
+    if invite.get('user_id') != user_id:
+        raise HTTPException(status_code=403, detail='This invite is not for your account')
+
+    from sqlmodel import Session, select
+    with Session(db.engine) as session:
+        stmt = select(db.Campaign).where(db.Campaign.id == campaign_id)
+        camp = session.exec(stmt).first()
+        if not camp:
+            raise HTTPException(status_code=404, detail='Campaign not found')
+        camp_meta = dict(camp.metadata_json or {})
+        # Remove pending invite regardless of outcome
+        camp_meta.pop('pending_gm_invite', None)
+
+        if req.accept:
+            camp.gm_user_id = user_id
+            camp.gm_mode = 'player'
+        else:
+            # On decline, revert to AI GM if this user was already set
+            if camp.gm_user_id == user_id:
+                camp.gm_user_id = None
+                camp.gm_mode = 'ai'
+
+        camp.metadata_json = camp_meta
+        session.add(camp)
+        session.commit()
+        session.refresh(camp)
+
+    return {
+        'ok': True,
+        'accepted': req.accept,
+        'campaign_id': campaign_id,
+        'gm_user_id': camp.gm_user_id,
+        'gm_mode': camp.gm_mode,
+    }
 
 
 class FactionEntry(BaseModel):
@@ -421,13 +598,13 @@ class CampaignVariables(BaseModel):
 @router.get('/{campaign_id}/variables')
 def get_campaign_variables(campaign_id: str, current_user=Depends(get_current_user)):
     """Return the campaign variables used by generative agents."""
-    owner_id = _require_user_id(current_user)
+    user_id = _require_user_id(current_user)
     c = db.get_campaign_by_id(campaign_id)
     if not c:
         raise HTTPException(status_code=404, detail='Campaign not found')
-    if c.owner_id != owner_id:
+    if c.owner_id != user_id and c.gm_user_id != user_id:
         raise HTTPException(status_code=403, detail='Forbidden')
-    variables = db.get_campaign_variables(campaign_id, owner_id)
+    variables = db.get_campaign_variables(campaign_id, c.owner_id)
     if variables is None:
         raise HTTPException(status_code=404, detail='Campaign not found or forbidden')
     return {'variables': variables}
