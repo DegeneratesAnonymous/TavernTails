@@ -195,9 +195,11 @@ def _extract_fields_from_pdf_widgets(fields: Dict[str, str]) -> tuple[str | None
                     if re.search(rf"\b{re.escape(cname)}\b", raw_val, flags=re.IGNORECASE):
                         class_name = cname
                         break
-                if class_name is None and raw_val and len(raw_val) <= 50:
-                    # Accept unknown class names verbatim for non-5e systems.
-                    class_name = raw_val
+                if class_name is None and raw_val and 2 <= len(raw_val) <= 50:
+                    # Accept unknown class names verbatim for non-5e systems,
+                    # but only if the value looks like a proper name (letters and spaces only).
+                    if re.match(r"^[A-Za-z][A-Za-z\s'-]{1,49}$", raw_val):
+                        class_name = raw_val
                 break
 
     if level is None:
@@ -1449,7 +1451,7 @@ def _build_character_import_sheet_from_pdf(
     # Pathfinder 2e-specific fields
     heritage = _first_widget_value([r"\bheritage\b"])
     class_dc = _first_widget_int([r"class\s*dc\b", r"classdc"])
-    focus_points_max = _first_widget_int([r"focus\s*points?\s*max", r"max\s*focus\s*points?", r"^focusmax$", r"^focus$"])
+    focus_points_max = _first_widget_int([r"focus\s*points?\s*max", r"max\s*focus\s*points?", r"^focusmax$"])
     focus_points_current = _first_widget_int([r"focus\s*points?\s*(current|used|spent|remaining)", r"^focuscurrent$", r"^focusused$"])
 
     class_line = _first_widget_value([r"class\s*&?\s*level", r"class\s*level"])
