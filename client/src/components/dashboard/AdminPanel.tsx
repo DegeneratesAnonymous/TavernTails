@@ -45,9 +45,9 @@ type AdminTicket = {
 
 const TICKET_STATUSES = ['open', 'in_progress', 'resolved', 'closed'] as const
 const MODERATION_LIST_LIMIT = 100
-/** Maximum users to render in the search results list (scroll box shows ~10 at a time). */
-const MAX_DISPLAYED_USERS = 50
-/** Debounce delay (ms) before triggering a user search. */
+/** Users shown per page in the user management table. */
+const USERS_PER_PAGE = 10
+/** Debounce delay (ms) before filtering the user list after typing. */
 const USER_SEARCH_DEBOUNCE_MS = 300
 
 type Props = {
@@ -60,12 +60,12 @@ export default function AdminPanel({ onBack }: Props) {
   const [statsLoading, setStatsLoading] = useState(false)
   const [statsError, setStatsError] = useState<string | null>(null)
 
-  // Users (search-gated — not auto-loaded)
+  // Users (auto-loaded on mount, paginated)
   const [users, setUsers] = useState<AdminUser[]>([])
   const [usersLoading, setUsersLoading] = useState(false)
   const [usersError, setUsersError] = useState<string | null>(null)
   const [userSearch, setUserSearch] = useState('')
-  const [usersLoaded, setUsersLoaded] = useState(false)
+  const [userPage, setUserPage] = useState(0)
   const userSearchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Campaigns
@@ -134,7 +134,7 @@ export default function AdminPanel({ onBack }: Props) {
     setUsersLoading(true)
     setUsersError(null)
     try {
-      const res = await apiFetch('/admin/users?limit=100')
+      const res = await apiFetch('/admin/users?limit=200')
       if (!res.ok) {
         const d = await res.json().catch(() => null)
         setUsersError(d?.detail || `Error ${res.status}`)
@@ -142,7 +142,6 @@ export default function AdminPanel({ onBack }: Props) {
       }
       const data = await res.json()
       setUsers(data.users || [])
-      setUsersLoaded(true)
     } catch {
       setUsersError('Network error loading users.')
     } finally {
@@ -229,36 +228,46 @@ export default function AdminPanel({ onBack }: Props) {
   // Load stats, campaigns, tickets, bans on mount
   useEffect(() => {
     loadStats()
+    loadUsers()
     loadCampaigns()
     loadTickets()
     loadBans()
-  }, [loadStats, loadCampaigns, loadTickets, loadBans])
+  }, [loadStats, loadUsers, loadCampaigns, loadTickets, loadBans])
 
-  // Debounced user search — load when user types 2+ characters
+  // Reset to page 0 whenever the search query changes
   useEffect(() => {
     if (userSearchTimeout.current) clearTimeout(userSearchTimeout.current)
-    if (userSearch.trim().length >= 2) {
-      userSearchTimeout.current = setTimeout(() => {
-        if (!usersLoaded) loadUsers()
-      }, USER_SEARCH_DEBOUNCE_MS)
-    }
+    userSearchTimeout.current = setTimeout(() => {
+      setUserPage(0)
+    }, USER_SEARCH_DEBOUNCE_MS)
     return () => {
       if (userSearchTimeout.current) clearTimeout(userSearchTimeout.current)
     }
-  }, [userSearch, usersLoaded, loadUsers])
+  }, [userSearch])
 
   // ── Client-side filtered views ──────────────────────────────────────────────
 
+  const sortedUsers = useMemo(() => {
+    return [...users].sort((a, b) => {
+      const nameA = (a.name || a.username || a.email || '').toLowerCase()
+      const nameB = (b.name || b.username || b.email || '').toLowerCase()
+      return nameA.localeCompare(nameB)
+    })
+  }, [users])
+
   const filteredUsers = useMemo(() => {
     const q = userSearch.trim().toLowerCase()
-    if (!q || !usersLoaded) return []
-    return users.filter(
+    if (!q) return sortedUsers
+    return sortedUsers.filter(
       (u) =>
         (u.name || '').toLowerCase().includes(q) ||
         (u.username || '').toLowerCase().includes(q) ||
         (u.email || '').toLowerCase().includes(q),
     )
-  }, [users, userSearch, usersLoaded])
+  }, [sortedUsers, userSearch])
+
+  const userTotalPages = Math.max(1, Math.ceil(filteredUsers.length / USERS_PER_PAGE))
+  const pagedUsers = filteredUsers.slice(userPage * USERS_PER_PAGE, (userPage + 1) * USERS_PER_PAGE)
 
   const filteredCampaigns = useMemo(() => {
     const q = campaignSearch.trim().toLowerCase()
@@ -400,6 +409,21 @@ export default function AdminPanel({ onBack }: Props) {
     }
   }
 
+  const deleteCampaign = async (campaignId: string, campaignName: string) => {
+    if (!window.confirm(`Permanently delete campaign "${campaignName}"? This cannot be undone.`)) return
+    try {
+      const res = await apiFetch(`/admin/campaigns/${campaignId}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const d = await res.json().catch(() => null)
+        alert(d?.detail || `Error ${res.status}`)
+        return
+      }
+      setCampaigns((prev) => prev.filter((c) => c.id !== campaignId))
+    } catch {
+      alert('Network error deleting campaign.')
+    }
+  }
+
   const openDrawer = (user: AdminUser) => setDrawerUser(user)
   const closeDrawer = () => setDrawerUser(null)
 
@@ -415,6 +439,11 @@ export default function AdminPanel({ onBack }: Props) {
   const closeUserDetail = () => {
     setUserDetailModal(null)
     setUserDetailUser(null)
+  }
+
+  const deleteUserDetailCampaign = (campaignId: string, campaignName: string) => {
+    deleteCampaign(campaignId, campaignName)
+    closeUserDetail()
   }
 
   // ── Render ────────────────────────────────────────────────────────────────────
@@ -450,196 +479,230 @@ export default function AdminPanel({ onBack }: Props) {
         )}
       </div>
 
-      {/* ── User Management ── */}
-      <div className="admin-section">
-        <div className="section-title">User Management</div>
-        <div className="row-wrap" style={{ gap: 8, margin: '12px 0' }}>
-          <input
-            className="input"
-            type="search"
-            placeholder="Search by name, username, or email…"
-            value={userSearch}
-            onChange={(e) => setUserSearch(e.target.value)}
-            style={{ maxWidth: 360 }}
-          />
-          {usersLoaded && userSearch && (
-            <span className="muted" style={{ fontSize: 13 }}>
-              {filteredUsers.length} result{filteredUsers.length !== 1 ? 's' : ''}
-            </span>
-          )}
-        </div>
-        {usersLoading && <div className="loading-text">Loading…</div>}
-        {usersError && <div className="error-text">{usersError}</div>}
-
-        <div className="admin-scroll-box">
-          {!userSearch.trim() ? (
-            <div className="empty-text" style={{ padding: '20px 0' }}>Type to search for a user.</div>
-          ) : userSearch.trim().length < 2 ? (
-            <div className="empty-text" style={{ padding: '20px 0' }}>Enter at least 2 characters to search.</div>
-          ) : usersLoaded && filteredUsers.length === 0 ? (
-            <div className="empty-text" style={{ padding: '20px 0' }}>No users match your search.</div>
-          ) : usersLoaded && filteredUsers.length > 0 ? (
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Name / Username</th>
-                  <th>Email</th>
-                  <th>Verified</th>
-                  <th>Role</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredUsers.slice(0, MAX_DISPLAYED_USERS).map((u) => (
-                  <tr key={u.id}>
-                    <td>{u.id}</td>
-                    <td>{u.name || u.username || '—'}</td>
-                    <td>{u.email || '—'}</td>
-                    <td>{u.verified ? '✓' : '✗'}</td>
-                    <td>{u.admin ? 'Admin' : 'Player'}</td>
-                    <td className="admin-actions-cell">
-                      <button
-                        className="btn btn-sm btn-secondary"
-                        type="button"
-                        onClick={() => openDrawer(u)}
-                      >
-                        Actions ▾
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : null}
-        </div>
-
-        {/* ── Bans / Suspensions ── */}
-        <div style={{ marginTop: 28 }}>
-          <div className="section-title">Email Bans &amp; Suspensions</div>
-          <form className="stack" style={{ gap: 10, marginBottom: 16, marginTop: 12 }} onSubmit={submitBan}>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <input
-                className="input"
-                style={{ flex: 2, minWidth: 160 }}
-                placeholder="email or @domain.com"
-                value={banEmail}
-                onChange={e => setBanEmail(e.target.value)}
-                required
-              />
-              <input
-                className="input"
-                style={{ flex: 2, minWidth: 120 }}
-                placeholder="Reason"
-                value={banReason}
-                onChange={e => setBanReason(e.target.value)}
-              />
-              <select className="input" style={{ flex: 1, minWidth: 100 }} value={banType} onChange={e => setBanType(e.target.value as 'ban' | 'suspend')}>
-                <option value="ban">Ban</option>
-                <option value="suspend">Suspend</option>
-              </select>
-              {banType === 'suspend' ? (
-                <input
-                  className="input"
-                  type="datetime-local"
-                  style={{ flex: 1, minWidth: 140 }}
-                  placeholder="Suspend until"
-                  value={banUntil}
-                  onChange={e => setBanUntil(e.target.value)}
-                />
-              ) : null}
-              <button className="btn btn-sm" type="submit" disabled={banBusy || !banEmail.trim()}>
-                {banBusy ? '…' : 'Add'}
-              </button>
-            </div>
-            {banMsg ? <div className={`inline-alert${banMsg === 'Saved.' ? '' : ' inline-alert-error'}`}>{banMsg}</div> : null}
-          </form>
-
-          {bansLoading ? <div className="loading-text">Loading…</div> : null}
-          {bansError ? <div className="error-text">{bansError}</div> : null}
-          {!bansLoading && bans.length === 0 ? <div className="empty-text">No active bans or suspensions.</div> : null}
-          {bans.length > 0 && (
-            <div className="admin-scroll-box">
-              <table className="admin-table">
-                <thead><tr><th>Email</th><th>Type</th><th>Reason</th><th>Until</th><th>Created</th><th></th></tr></thead>
-                <tbody>
-                  {bans.map(b => (
-                    <tr key={b.id}>
-                      <td>{b.email}</td>
-                      <td>{b.ban_type}</td>
-                      <td>{b.reason || '—'}</td>
-                      <td>{b.suspended_until ? new Date(b.suspended_until).toLocaleDateString() : '∞'}</td>
-                      <td>{b.created_at ? new Date(b.created_at).toLocaleDateString() : '—'}</td>
-                      <td>
-                        <button className="btn btn-sm btn-secondary" type="button" onClick={() => removeBan(b.email)}>Remove</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ── Campaign Management ── */}
-      <div className="admin-section">
-        <div className="section-title">Campaign Management</div>
-        <div className="row-wrap" style={{ gap: 8, margin: '12px 0' }}>
-          <input
-            className="input"
-            type="search"
-            placeholder="Search by campaign name or owner…"
-            value={campaignSearch}
-            onChange={(e) => setCampaignSearch(e.target.value)}
-            style={{ maxWidth: 360 }}
-          />
-          {campaignSearch && (
-            <span className="muted" style={{ fontSize: 13 }}>
-              {filteredCampaigns.length} of {campaigns.length} shown
-            </span>
-          )}
-        </div>
-        {campaignsLoading && <div className="loading-text">Loading…</div>}
-        {campaignsError && <div className="error-text">{campaignsError}</div>}
-        {!campaignsLoading && !campaignsError && (
-          <div className="admin-scroll-box">
-            {filteredCampaigns.length === 0 ? (
-              <div className="empty-text" style={{ padding: '20px 0' }}>
-                {campaignSearch ? 'No campaigns match your search.' : 'No campaigns found.'}
-              </div>
-            ) : (
-              <table className="admin-table">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Name</th>
-                    <th>Owner</th>
-                    <th>Created</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredCampaigns.map((c) => (
-                    <tr key={c.id}>
-                      <td><span className="admin-id-chip">{c.id.slice(0, 8)}</span></td>
-                      <td>{c.name}</td>
-                      <td>{c.owner_name || `User #${c.owner_id}`}</td>
-                      <td>{c.created_at ? new Date(c.created_at).toLocaleDateString() : '—'}</td>
-                      <td>{c.archived ? <span className="badge badge-muted">Archived</span> : <span className="badge badge-active">Active</span>}</td>
-                      <td className="admin-actions-cell">
-                        {!c.archived && (
-                          <button className="btn btn-sm btn-secondary" type="button" onClick={() => archiveCampaign(c.id)}>Archive</button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+      {/* ── Two-column grid: User Management + Campaign Management ── */}
+      <div className="admin-two-col-grid">
+        {/* ── User Management ── */}
+        <div className="admin-section" style={{ margin: 0 }}>
+          <div className="section-title">User Management</div>
+          <div className="row-wrap" style={{ gap: 8, margin: '12px 0' }}>
+            <input
+              className="input"
+              type="search"
+              placeholder="Search by name, username, or email…"
+              value={userSearch}
+              onChange={(e) => setUserSearch(e.target.value)}
+              style={{ flex: 1, minWidth: 160 }}
+            />
+            {users.length > 0 && (
+              <span className="muted" style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
+                {userSearch ? `${filteredUsers.length} of ` : ''}{users.length} user{users.length !== 1 ? 's' : ''}
+              </span>
             )}
           </div>
-        )}
+          {usersLoading && <div className="loading-text">Loading…</div>}
+          {usersError && <div className="error-text">{usersError}</div>}
+
+          {!usersLoading && !usersError && (
+            <>
+              <div className="admin-scroll-box">
+                {filteredUsers.length === 0 ? (
+                  <div className="empty-text" style={{ padding: '20px 0' }}>
+                    {userSearch ? 'No users match your search.' : 'No users found.'}
+                  </div>
+                ) : (
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Name / Username</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pagedUsers.map((u) => (
+                        <tr key={u.id}>
+                          <td>
+                            <div style={{ fontWeight: 600, fontSize: 13 }}>{u.name || u.username || '—'}</div>
+                            {u.username && u.name && <div className="muted" style={{ fontSize: 11 }}>@{u.username}</div>}
+                          </td>
+                          <td style={{ fontSize: 12 }}>{u.email || '—'}</td>
+                          <td>
+                            {u.admin
+                              ? <span className="badge badge-active">Admin</span>
+                              : <span className="badge badge-muted">{u.verified ? 'Player' : 'Unverified'}</span>}
+                          </td>
+                          <td className="admin-actions-cell">
+                            <button
+                              className="btn btn-sm btn-secondary"
+                              type="button"
+                              onClick={() => openDrawer(u)}
+                            >
+                              Actions ▾
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+              {/* Pagination controls */}
+              {userTotalPages > 1 && (
+                <div className="admin-pagination">
+                  <button
+                    className="btn btn-sm btn-secondary"
+                    type="button"
+                    disabled={userPage === 0}
+                    onClick={() => setUserPage((p) => Math.max(0, p - 1))}
+                  >
+                    ← Prev
+                  </button>
+                  <span className="muted" style={{ fontSize: 13 }}>
+                    Page {userPage + 1} of {userTotalPages}
+                  </span>
+                  <button
+                    className="btn btn-sm btn-secondary"
+                    type="button"
+                    disabled={userPage >= userTotalPages - 1}
+                    onClick={() => setUserPage((p) => Math.min(userTotalPages - 1, p + 1))}
+                  >
+                    Next →
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── Bans / Suspensions ── */}
+          <div style={{ marginTop: 28 }}>
+            <div className="section-title">Email Bans &amp; Suspensions</div>
+            <form className="stack" style={{ gap: 10, marginBottom: 16, marginTop: 12 }} onSubmit={submitBan}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <input
+                  className="input"
+                  style={{ flex: 2, minWidth: 160 }}
+                  placeholder="email or @domain.com"
+                  value={banEmail}
+                  onChange={e => setBanEmail(e.target.value)}
+                  required
+                />
+                <input
+                  className="input"
+                  style={{ flex: 2, minWidth: 120 }}
+                  placeholder="Reason"
+                  value={banReason}
+                  onChange={e => setBanReason(e.target.value)}
+                />
+                <select className="input" style={{ flex: 1, minWidth: 100 }} value={banType} onChange={e => setBanType(e.target.value as 'ban' | 'suspend')}>
+                  <option value="ban">Ban</option>
+                  <option value="suspend">Suspend</option>
+                </select>
+                {banType === 'suspend' ? (
+                  <input
+                    className="input"
+                    type="datetime-local"
+                    style={{ flex: 1, minWidth: 140 }}
+                    placeholder="Suspend until"
+                    value={banUntil}
+                    onChange={e => setBanUntil(e.target.value)}
+                  />
+                ) : null}
+                <button className="btn btn-sm" type="submit" disabled={banBusy || !banEmail.trim()}>
+                  {banBusy ? '…' : 'Add'}
+                </button>
+              </div>
+              {banMsg ? <div className={`inline-alert${banMsg === 'Saved.' ? '' : ' inline-alert-error'}`}>{banMsg}</div> : null}
+            </form>
+
+            {bansLoading ? <div className="loading-text">Loading…</div> : null}
+            {bansError ? <div className="error-text">{bansError}</div> : null}
+            {!bansLoading && bans.length === 0 ? <div className="empty-text">No active bans or suspensions.</div> : null}
+            {bans.length > 0 && (
+              <div className="admin-scroll-box">
+                <table className="admin-table">
+                  <thead><tr><th>Email</th><th>Type</th><th>Reason</th><th>Until</th><th>Created</th><th></th></tr></thead>
+                  <tbody>
+                    {bans.map(b => (
+                      <tr key={b.id}>
+                        <td>{b.email}</td>
+                        <td>{b.ban_type}</td>
+                        <td>{b.reason || '—'}</td>
+                        <td>{b.suspended_until ? new Date(b.suspended_until).toLocaleDateString() : '∞'}</td>
+                        <td>{b.created_at ? new Date(b.created_at).toLocaleDateString() : '—'}</td>
+                        <td>
+                          <button className="btn btn-sm btn-secondary" type="button" onClick={() => removeBan(b.email)}>Remove</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── Campaign Management ── */}
+        <div className="admin-section" style={{ margin: 0 }}>
+          <div className="section-title">Campaign Management</div>
+          <div className="row-wrap" style={{ gap: 8, margin: '12px 0' }}>
+            <input
+              className="input"
+              type="search"
+              placeholder="Search by campaign name or owner…"
+              value={campaignSearch}
+              onChange={(e) => setCampaignSearch(e.target.value)}
+              style={{ flex: 1, minWidth: 160 }}
+            />
+            {campaignSearch && (
+              <span className="muted" style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
+                {filteredCampaigns.length} of {campaigns.length} shown
+              </span>
+            )}
+          </div>
+          {campaignsLoading && <div className="loading-text">Loading…</div>}
+          {campaignsError && <div className="error-text">{campaignsError}</div>}
+          {!campaignsLoading && !campaignsError && (
+            <div className="admin-scroll-box">
+              {filteredCampaigns.length === 0 ? (
+                <div className="empty-text" style={{ padding: '20px 0' }}>
+                  {campaignSearch ? 'No campaigns match your search.' : 'No campaigns found.'}
+                </div>
+              ) : (
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Owner</th>
+                      <th>Created</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredCampaigns.map((c) => (
+                      <tr key={c.id}>
+                        <td>
+                          <div style={{ fontWeight: 600, fontSize: 13 }}>{c.name}</div>
+                          <div className="muted" style={{ fontSize: 11 }}>{c.id}</div>
+                        </td>
+                        <td>{c.owner_name || `User #${c.owner_id}`}</td>
+                        <td>{c.created_at ? new Date(c.created_at).toLocaleDateString() : '—'}</td>
+                        <td>{c.archived ? <span className="badge badge-muted">Archived</span> : <span className="badge badge-active">Active</span>}</td>
+                        <td className="admin-actions-cell">
+                          {!c.archived && (
+                            <button className="btn btn-sm btn-secondary" type="button" onClick={() => archiveCampaign(c.id)}>Archive</button>
+                          )}
+                          <button className="btn btn-sm btn-danger" type="button" onClick={() => deleteCampaign(c.id, c.name)}>Delete</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ── Support Tickets ── */}
@@ -888,10 +951,11 @@ export default function AdminPanel({ onBack }: Props) {
                             <td>{c.name}</td>
                             <td>{c.created_at ? new Date(c.created_at).toLocaleDateString() : '—'}</td>
                             <td>{c.archived ? <span className="badge badge-muted">Archived</span> : <span className="badge badge-active">Active</span>}</td>
-                            <td>
+                            <td className="admin-actions-cell">
                               {!c.archived && (
                                 <button className="btn btn-sm btn-secondary" type="button" onClick={() => archiveCampaign(c.id)}>Archive</button>
                               )}
+                              <button className="btn btn-sm btn-danger" type="button" onClick={() => deleteUserDetailCampaign(c.id, c.name)}>Delete</button>
                             </td>
                           </tr>
                         ))}

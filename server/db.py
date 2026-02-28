@@ -988,10 +988,16 @@ def get_user_by_beyond20_relay_token(token: str) -> User | None:
 # ---------------------------------------------------------------------------
 
 def admin_list_users(limit: int = 100, offset: int = 0) -> List[User]:
-    """Return all users (admin use only)."""
+    """Return all users sorted alphabetically by username (admin use only)."""
     with Session(engine) as session:
-        stmt = select(User).order_by(User.id).offset(offset).limit(max(1, min(int(limit), 200)))
+        stmt = select(User).order_by(User.username, User.email).offset(offset).limit(max(1, min(int(limit), 200)))
         return list(session.exec(stmt).all())
+
+
+def admin_count_users() -> int:
+    """Return the total number of registered users (admin use only)."""
+    with Session(engine) as session:
+        return session.exec(select(func.count()).select_from(User)).one()
 
 
 def admin_get_user(user_id: int) -> User | None:
@@ -1122,6 +1128,21 @@ def admin_archive_campaign(campaign_id: str) -> bool:
             return False
         camp.archived = True
         session.add(camp)
+        session.commit()
+        return True
+
+
+def admin_delete_campaign(campaign_id: str) -> bool:
+    """Permanently delete a campaign and its dependent rows (admin use only)."""
+    with Session(engine) as session:
+        stmt = select(Campaign).where(Campaign.id == campaign_id)
+        camp = session.exec(stmt).first()
+        if not camp:
+            return False
+        # Bulk-remove dependent rows before deleting the campaign
+        session.exec(delete(ChatMessage).where(ChatMessage.campaign_id == campaign_id))
+        session.exec(delete(Roll).where(Roll.campaign_id == campaign_id))
+        session.delete(camp)
         session.commit()
         return True
 
