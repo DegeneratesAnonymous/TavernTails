@@ -1600,11 +1600,12 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                                 if (!selectedCharacter) return
                                 const current = slotMap.get(level)
                                 if (!current) return
+                                // Clicking a used slot (index < used) restores slots from that point.
+                                // Clicking an available slot (index >= used) uses slots up to and including it.
                                 const newUsed = slotIndex < current.used ? slotIndex : slotIndex + 1
-                                const safeUsed = Math.max(0, Math.min(current.max, newUsed))
                                 // Optimistically update local state
                                 const updatedSlots = rawSlots.map(s =>
-                                  s.level === level ? { ...s, used: safeUsed } : s
+                                  s.level === level ? { ...s, used: newUsed } : s
                                 )
                                 // Persist to server
                                 try {

@@ -636,8 +636,8 @@ def _extract_inventory_from_pdf_widgets(fields: Dict[str, str]) -> list[str]:
             s = re.sub(r"^[\s\*\-\u2022•|]+|[\s\*\-\u2022•|]+$", "", line).strip()
             if not s or len(s) < 2 or len(s) > 200:
                 continue
-            # Skip obvious non-item lines
-            if re.match(r"^(\d+\s*(gp|sp|cp|ep|pp)|\d+\s*lbs?|weight|total|capacity)$", s, re.I):
+            # Skip obvious non-item lines (currencies, weight values, metadata labels)
+            if re.match(r"^\d+\s*(gp|sp|cp|ep|pp)$|^\d+\s*lbs?$|^(weight|total|capacity)s?$", s, re.I):
                 continue
             key = s.lower()
             if key in seen:
