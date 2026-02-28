@@ -3,7 +3,7 @@ import '../LoggedIn.css';
 import './LoggedInDashboard.css';
 import GameplayLayout from './GameplayLayout'
 import SessionSettings from './SessionSettings'
-import { apiFetch } from '../api'
+import { apiFetch, buildApiUrl } from '../api'
 import { CharacterSummary } from './CharacterPanel'
 import ImportCharacterView from './dashboard/ImportCharacterView'
 import CreatingCharacterView from './dashboard/CreatingCharacterView'
@@ -19,6 +19,7 @@ import MyTicketsPanel from './dashboard/MyTicketsPanel'
 import PageHeader from './ui/PageHeader'
 import EmptyState from './ui/EmptyState'
 import Modal from './ui/Modal'
+import Toast from './ui/Toast'
 
 // Container category names that should not appear as individual features
 const FEATURE_CATEGORY_PATTERN = /\b(features|abilities|traits|proficiencies)\s*$/i
@@ -116,6 +117,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [npcRememberCampaign, setNpcRememberCampaign] = useState(true)
 
   const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [globalToast, setGlobalToast] = useState<string | null>(null)
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>([])
   const [pendingFriendRequests, setPendingFriendRequests] = useState<Array<any>>([])
   const [accountSection, setAccountSection] = useState<'profile' | 'invites' | null>(null)
@@ -2252,7 +2254,43 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                 Upload PDFs, campaign modules, random tables, and reference documents. These can be used across campaigns.
               </div>
               <div className="row-wrap" style={{ gap: 8 }}>
-                <button className="btn" type="button">Upload Document</button>
+                <label className="btn" style={{ cursor: 'pointer', margin: 0 }}>
+                  Upload Document
+                  <input
+                    type="file"
+                    accept=".pdf,.txt,.md,.json,.doc,.docx,.xlsx,.csv,.html"
+                    multiple
+                    style={{ display: 'none' }}
+                    onChange={async (e) => {
+                      const files = Array.from(e.target.files || [])
+                      e.target.value = ''
+                      if (!files.length) return
+                      const token = window.localStorage.getItem('access_token')
+                      let uploaded = 0
+                      for (const file of files) {
+                        try {
+                          const form = new FormData()
+                          form.append('file', file)
+                          form.append('title', file.name)
+                          const res = await fetch(buildApiUrl('/references/upload'), {
+                            method: 'POST',
+                            body: form,
+                            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+                          })
+                          if (!res.ok) {
+                            const d = await res.json().catch(() => null)
+                            throw new Error(d?.detail || 'Upload failed')
+                          }
+                          uploaded++
+                        } catch (err: any) {
+                          setGlobalToast(`Upload failed: ${err?.message || 'unknown error'}`)
+                          return
+                        }
+                      }
+                      setGlobalToast(uploaded === 1 ? `"${files[0].name}" uploaded to library.` : `${uploaded} documents uploaded to library.`)
+                    }}
+                  />
+                </label>
               </div>
               <div className="inline-alert" style={{ marginTop: 12 }}>
                 No documents uploaded yet.
@@ -3223,6 +3261,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
           </div>
         </Modal>
       </main>
+      {globalToast && <Toast message={globalToast} onDone={() => setGlobalToast(null)} />}
     </div>
   );
 };
