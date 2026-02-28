@@ -331,3 +331,146 @@ def test_import_character_from_nested_classes_shape():
     assert data["character"]["name"] == "DDB Nested"
     assert data["character"]["level"] == 6
     assert data["character"]["class_name"] == "Fighter / Wizard"
+
+
+def test_import_pathfinder2e_character_from_pdf_widgets():
+    """PF2e sheets use Ancestry/Heritage/ClassDC/FocusPoints instead of DDB-specific fields."""
+    from pypdf import PdfWriter
+    from pypdf.generic import ArrayObject, DictionaryObject, FloatObject, NameObject, TextStringObject
+
+    client = _client()
+    email = "import-owner-pf2e@example.com"
+    _ensure_user(email)
+    token = create_access_token(email)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=612, height=792)
+
+    def add_widget(field_name: str, value: str, y: float) -> None:
+        annot = DictionaryObject()
+        annot.update(
+            {
+                NameObject("/Type"): NameObject("/Annot"),
+                NameObject("/Subtype"): NameObject("/Widget"),
+                NameObject("/FT"): NameObject("/Tx"),
+                NameObject("/T"): TextStringObject(field_name),
+                NameObject("/V"): TextStringObject(value),
+                NameObject("/Rect"): ArrayObject(
+                    [FloatObject(50.0), FloatObject(y), FloatObject(300.0), FloatObject(y + 20.0)]
+                ),
+            }
+        )
+        ref = writer._add_object(annot)  # noqa: SLF001
+        annots = page.get("/Annots")
+        if annots is None:
+            page[NameObject("/Annots")] = ArrayObject([ref])
+        else:
+            annots.append(ref)
+
+    # PF2e-style character sheet fields
+    add_widget("CharacterName", "Seoni", y=700.0)
+    add_widget("Class", "Sorcerer", y=670.0)
+    add_widget("Level", "5", y=650.0)
+    add_widget("Ancestry", "Human", y=630.0)
+    add_widget("Heritage", "Versatile Heritage", y=610.0)
+    add_widget("Background", "Nomad", y=590.0)
+    add_widget("AC", "16", y=570.0)
+    add_widget("MaxHP", "52", y=550.0)
+    add_widget("CurrentHP", "45", y=530.0)
+    add_widget("Class DC", "19", y=510.0)
+    add_widget("Focus Points Max", "3", y=490.0)
+    add_widget("Focus Points Current", "2", y=470.0)
+    add_widget("STR", "10", y=450.0)
+    add_widget("DEX", "14", y=430.0)
+
+    bio = io.BytesIO()
+    writer.write(bio)
+    bio.seek(0)
+
+    res = client.post(
+        "/characters/import/pdf?source=pdf",
+        headers=auth_headers,
+        files={"file": ("seoni_pf2e.pdf", bio, "application/pdf")},
+    )
+    assert res.status_code == 201, res.text
+    data = res.json()
+    char = data["character"]
+    assert char["name"] == "Seoni"
+    assert char["level"] == 5
+    assert char["class_name"] == "Sorcerer"
+
+    sheet = char["sheet"]
+    # PF2e-specific fields should be extracted
+    assert sheet["species"] == "Human", f"Expected ancestry 'Human', got {sheet.get('species')!r}"
+    assert sheet["heritage"] == "Versatile Heritage"
+    assert sheet["background"] == "Nomad"
+    assert sheet["class_dc"] == 19
+    assert sheet["focus_points"] == {"max": 3, "current": 2}
+    assert sheet["ac"] == 16
+    assert sheet["hp"]["max"] == 52
+    assert sheet["hp"]["current"] == 45
+    # Should be detected as a regular character sheet, not a ship
+    assert sheet.get("sheet_type") == "character"
+
+
+def test_import_ship_sheet_is_flagged():
+    """Ship/vehicle sheets are detected and flagged with sheet_type='ship'."""
+    from pypdf import PdfWriter
+    from pypdf.generic import ArrayObject, DictionaryObject, FloatObject, NameObject, TextStringObject
+
+    client = _client()
+    email = "import-owner-ship@example.com"
+    _ensure_user(email)
+    token = create_access_token(email)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=612, height=792)
+
+    def add_widget(field_name: str, value: str, y: float) -> None:
+        annot = DictionaryObject()
+        annot.update(
+            {
+                NameObject("/Type"): NameObject("/Annot"),
+                NameObject("/Subtype"): NameObject("/Widget"),
+                NameObject("/FT"): NameObject("/Tx"),
+                NameObject("/T"): TextStringObject(field_name),
+                NameObject("/V"): TextStringObject(value),
+                NameObject("/Rect"): ArrayObject(
+                    [FloatObject(50.0), FloatObject(y), FloatObject(300.0), FloatObject(y + 20.0)]
+                ),
+            }
+        )
+        ref = writer._add_object(annot)  # noqa: SLF001
+        annots = page.get("/Annots")
+        if annots is None:
+            page[NameObject("/Annots")] = ArrayObject([ref])
+        else:
+            annots.append(ref)
+
+    # Ship sheet fields (Pathfinder / Starfinder style)
+    add_widget("Ship Name", "The Unchained", y=700.0)
+    add_widget("Hull Points", "80", y=670.0)
+    add_widget("Maneuverability", "Average", y=650.0)
+    add_widget("Speed", "8", y=630.0)
+    add_widget("AC", "14", y=610.0)
+
+    bio = io.BytesIO()
+    writer.write(bio)
+    bio.seek(0)
+
+    res = client.post(
+        "/characters/import/pdf?source=pdf",
+        headers=auth_headers,
+        files={"file": ("PZO7101-ShipSheet.pdf", bio, "application/pdf")},
+    )
+    assert res.status_code == 201, res.text
+    data = res.json()
+    sheet = data["character"]["sheet"]
+
+    # Ship sheets must be flagged
+    assert sheet.get("sheet_type") == "ship", f"Expected sheet_type='ship', got {sheet.get('sheet_type')!r}"
+    # Import warnings should mention ship detection
+    warnings = sheet.get("import", {}).get("warnings", [])
+    assert any("ship" in w.lower() or "vehicle" in w.lower() for w in warnings), f"Expected ship warning, got {warnings}"
