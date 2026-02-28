@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from .. import db
 from ..auth import get_current_user
+from .srd import build_ruleset_prompt_context
 
 router = APIRouter(prefix="/generate", tags=["generate"])
 
@@ -83,11 +84,13 @@ def generate_npc(req: GenerateNPCRequest, current_user=Depends(get_current_user)
             }
 
     # Build context for generation
+    ruleset_id = settings.get('ruleset', '')
     context = {
         'world_name': settings.get('world_name', ''),
         'setting_summary': settings.get('setting_summary', ''),
         'tone': settings.get('tone', ''),
-        'ruleset': settings.get('ruleset', ''),
+        'ruleset': ruleset_id,
+        'ruleset_context': build_ruleset_prompt_context(ruleset_id),
         'npc_type': req.npc_type or 'generic',
         'setting': req.setting or '',
         # campaign variables
@@ -113,9 +116,9 @@ def generate_npc(req: GenerateNPCRequest, current_user=Depends(get_current_user)
         'context': context,
         'stats': {
             'level': settings.get('starting_level', 1),
-            # User-entered free-text ruleset label (not a trademarked system name).
-            # Mechanic behaviour for AI prompts lives in context['mechanic_profile'].
-            'ruleset': settings.get('ruleset') or '',
+            # User-entered ruleset ID (e.g. "srd-5.2").
+            # Mechanic behaviour for AI prompts lives in context['ruleset_context'].
+            'ruleset': ruleset_id,
         },
     }
 
@@ -185,11 +188,13 @@ def generate_loot(req: GenerateLootRequest, current_user=Depends(get_current_use
     # Ownership verified above; or {} handles the "variables not yet configured" case.
     variables = db.get_campaign_variables(req.campaign_id, user_id) or {}
 
+    ruleset_id = settings.get('ruleset', '')
     # Build context for generation
     context = {
         'world_name': settings.get('world_name', ''),
         'setting_summary': settings.get('setting_summary', ''),
-        'ruleset': settings.get('ruleset', ''),
+        'ruleset': ruleset_id,
+        'ruleset_context': build_ruleset_prompt_context(ruleset_id),
         'starting_level': settings.get('starting_level', 1),
         'challenge_rating': req.challenge_rating or settings.get('starting_level', 1),
         'loot_type': req.loot_type or 'treasure',
@@ -210,7 +215,7 @@ def generate_loot(req: GenerateLootRequest, current_user=Depends(get_current_use
             {'name': 'Magic item', 'quantity': 1, 'type': 'magic'},
         ],
         'context': context,
-        'ruleset': settings.get('ruleset', ''),
+        'ruleset': ruleset_id,
     }
 
     return {'loot': loot, 'campaign_id': req.campaign_id}
