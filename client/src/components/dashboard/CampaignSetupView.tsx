@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 
 import { apiFetch } from '../../api'
 import PageHeader from '../ui/PageHeader'
@@ -229,6 +229,8 @@ export default function CampaignSetupView({
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [message, setMessage] = useState<{ kind: 'info' | 'error'; text: string } | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   
   const [players, setPlayers] = useState<Player[]>([])
   const [gmAssignment, setGmAssignment] = useState<GMAssignment>({ gm_user_id: null, gm_mode: 'ai' })
@@ -639,7 +641,9 @@ export default function CampaignSetupView({
       }
 
       await onCampaignUpdated()
-      setMessage({ kind: 'info', text: 'Campaign settings saved.' })
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+      setToast('Campaign settings saved.')
+      toastTimerRef.current = setTimeout(() => setToast(null), 3000)
     } catch (e: any) {
       setMessage({ kind: 'error', text: e?.message || 'Failed to save campaign settings' })
     } finally {
@@ -728,6 +732,7 @@ export default function CampaignSetupView({
   }
 
   return (
+    <>
     <section className="dashboard-panel stack">
       <PageHeader
         title={title}
@@ -1216,5 +1221,11 @@ export default function CampaignSetupView({
         </div>
       </div>
     </section>
+      {toast ? (
+        <div className="tt-toast" role="status" aria-live="polite">
+          {toast}
+        </div>
+      ) : null}
+    </>
   )
 }
