@@ -49,7 +49,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [moderationSearchQuery, setModerationSearchQuery] = useState('')
   const [moderationSearchResults, setModerationSearchResults] = useState<Array<any>>([])
   const [moderationSearchBusy, setModerationSearchBusy] = useState(false)
-  const [importInitialMode, setImportInitialMode] = useState<'paste' | 'file' | 'pdf' | null>(null)
+  const [importInitialMode, setImportInitialMode] = useState<'pdf' | 'beyond20' | null>(null)
   const [campaigns, setCampaigns] = useState<Array<any>>([])
   const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null)
   const [sessionMetaById, setSessionMetaById] = useState<Record<string, any>>({})
@@ -1170,7 +1170,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
           <button className={`nav-btn ${view==='campaign-setup'?'active':''}`} onClick={() => navigate('campaign-setup')}>Manage Campaigns</button>
           <button className={`nav-btn ${view==='view-characters'?'active':''}`} onClick={() => navigate('view-characters')}>Manage Characters</button>
           <button className={`nav-btn ${view==='documents'?'active':''}`} onClick={() => navigate('documents')}>Documents</button>
-          <button className={`nav-btn ${view==='beyond20'?'active':''}`} onClick={() => navigate('beyond20')}>Beyond20</button>
           <button className={`nav-btn ${view==='explore'?'active':''}`} onClick={() => navigate('explore')}>Explore</button>
           <button className={`nav-btn ${view==='guides'?'active':''}`} onClick={() => navigate('guides')}>Guides</button>
           {isAdmin && (
@@ -1314,7 +1313,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             {characters.length === 0 ? (
               <EmptyState
                 title="No characters yet"
-                description="Create a character from scratch, import a PDF export, or upload a JSON export."
+                description="Create a character from scratch or import from a D&D Beyond PDF export."
                 actions={
                   <>
                     <button
@@ -2227,7 +2226,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             <div className="stack" style={{ gap: 12 }}>
               {[
                 { title: 'Getting Started', body: 'Create a campaign, import or create your character, then start your first session.' },
-                { title: 'Importing Characters', body: 'Import characters via PDF export or JSON. Use "Manage Characters → Import" to get started. Beyond20 browser extension support is also available.' },
+                { title: 'Importing Characters', body: 'Import characters via PDF export. Use "Manage Characters → Import" to get started. The Beyond 20 browser extension can also relay your rolls directly into TavernTails.' },
                 { title: 'AI Game Master', body: 'The AI GM narrates scenes, prompts dice rolls, and tracks NPCs. Use the campaign settings to assign an AI or human GM.' },
                 { title: 'Managing Documents', body: 'Upload campaign PDFs, rule sets, or random tables under Documents. These inform the AI during gameplay.' },
                 { title: 'Player-Run Mode', body: 'Enable player-run mode in campaign settings if a human GM is running the session. AI still handles notes and NPC tracking.' },
@@ -2789,12 +2788,11 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                   <div className="card card-pad account-card stack">
                     <div style={{ fontWeight: 750 }}>Integrations</div>
                     <div className="muted" style={{ fontSize: 13 }}>
-                      Beyond20 generally works from the browser extension itself (when rolling on D&amp;D Beyond or VTTs).
-                      This section is for optional relay/debug tooling.
+                      The Beyond 20 browser extension relays your D&amp;D Beyond rolls into TavernTails. Only the extension install is required — no additional software needed.
                     </div>
                     <div className="row-wrap">
                       <button className="btn btn-secondary" type="button" onClick={() => setView('beyond20')}>
-                        Beyond20 settings
+                        Beyond 20 settings
                       </button>
                     </div>
                   </div>
