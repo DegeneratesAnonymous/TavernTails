@@ -49,7 +49,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [moderationSearchQuery, setModerationSearchQuery] = useState('')
   const [moderationSearchResults, setModerationSearchResults] = useState<Array<any>>([])
   const [moderationSearchBusy, setModerationSearchBusy] = useState(false)
-  const [importInitialMode, setImportInitialMode] = useState<'ddb-link' | 'paste' | 'file' | 'pdf' | null>(null)
+  const [importInitialMode, setImportInitialMode] = useState<'paste' | 'file' | 'pdf' | null>(null)
   const [campaigns, setCampaigns] = useState<Array<any>>([])
   const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null)
   const [sessionMetaById, setSessionMetaById] = useState<Record<string, any>>({})
@@ -261,7 +261,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
         .map((raw: any) => {
           if(typeof raw === 'string') return { name: raw, mod: 0 }
           const name = String(raw?.name ?? '').trim()
-          const mod = toNum(raw?.mod) ?? 0
+          const mod = toNum(raw?.mod ?? raw?.modifier) ?? 0
           if(!name) return null
           return { name, mod }
         })
@@ -442,11 +442,45 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     const allFeaturesFlat = uniqFeatures([...classFeatures, ...racialFeatures, ...otherFeatures])
 
     const spells = uniq(toList(sheet?.spells))
-    const inventory = uniq(toList(sheet?.inventory))
-    const skills = uniq(toList(sheet?.skills))
+    // inventory: prefer string list, fallback to equipment objects
+    const inventoryRaw = Array.isArray(sheet?.inventory) && sheet.inventory.length > 0
+      ? sheet.inventory
+      : Array.isArray(sheet?.equipment) ? sheet.equipment : []
+    const inventory = uniq(
+      inventoryRaw.map((item: any) => {
+        if (typeof item === 'string') return item
+        if (item && typeof item === 'object') {
+          const name = String(item?.name ?? item?.definition?.name ?? '').trim()
+          return name || null
+        }
+        return null
+      }).filter(Boolean) as string[]
+    )
+    // Handle skills as either strings or objects {name, mod, modifier, proficient}
+    const skillsRaw = Array.isArray(sheet?.skills) ? sheet.skills : []
+    const skills = uniq(
+      skillsRaw.map((s: any) => {
+        if (typeof s === 'string') return s
+        const name = String(s?.name ?? '').trim()
+        if (!name) return null
+        const mod = typeof s?.mod === 'number' ? s.mod : (typeof s?.modifier === 'number' ? s.modifier : null)
+        return mod !== null ? `${name} (${mod >= 0 ? '+' : ''}${mod})` : name
+      }).filter(Boolean) as string[]
+    )
 
     const dexScore = statValue('dex')
     const wisScore = statValue('wis')
+
+    // Proficiencies
+    const proficienciesSkilled = skillsRaw
+      .filter((s: any) => s && typeof s === 'object' && s.proficient === true)
+      .map((s: any) => String(s.name || '').trim())
+      .filter(Boolean)
+    const languages = uniq(toList(sheet?.languages))
+    const armorProf = uniq(toList(sheet?.armor_proficiencies))
+    const weaponProf = uniq(toList(sheet?.weapon_proficiencies))
+    const toolProf = uniq(toList(sheet?.tool_proficiencies))
+    const otherProf = uniq(toList(sheet?.other_proficiencies))
 
     return {
       stats,
@@ -478,6 +512,14 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       spells: summarize(spells, 10),
       inventory: summarize(inventory, 8),
       skills: summarize(skills, 8),
+      proficiencies: {
+        skilled: proficienciesSkilled,
+        languages,
+        armor: armorProf,
+        weapons: weaponProf,
+        tools: toolProf,
+        other: otherProf,
+      },
     }
   }, [selectedCharacter])
 
@@ -593,30 +635,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       await updateCharacterCampaignAssociation(characterId, activeCampaignId)
     }
   }, [activeCampaignId, setSessionCharacter, updateCharacterCampaignAssociation])
-
-  const handleDeleteTestCharacters = useCallback(async () => {
-    const confirmDelete = window.confirm('Delete test characters (name contains "test" or "launk")? This cannot be undone.')
-    if (!confirmDelete) return
-    try {
-      const res = await apiFetch('/characters/purge?name_like=test,launk', { method: 'DELETE' })
-      if (!res.ok) {
-        const detail = await res.json().catch(() => null)
-        const message = detail?.detail || detail?.message || `Delete failed (${res.status}).`
-        alert(message)
-        return
-      }
-      const data = await res.json().catch(() => ({} as any))
-      await fetchCharacters()
-      if (activeCharacterId !== null) {
-        await assignCharacterToSession(null)
-        setActiveCharacterId(null)
-      }
-      setSelectedCharacterId(null)
-      alert(`Deleted ${Number(data?.deleted ?? 0)} test character(s).`)
-    } catch {
-      alert('Network error. Please try again.')
-    }
-  }, [activeCharacterId, assignCharacterToSession, fetchCharacters])
 
   const handleDeleteTestCampaigns = useCallback(async () => {
     const confirmDelete = window.confirm('Delete test campaigns (name contains "test")? This cannot be undone.')
@@ -1146,6 +1164,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
           <button className={`nav-btn ${view==='campaign-setup'?'active':''}`} onClick={() => navigate('campaign-setup')}>Manage Campaigns</button>
           <button className={`nav-btn ${view==='view-characters'?'active':''}`} onClick={() => navigate('view-characters')}>Manage Characters</button>
           <button className={`nav-btn ${view==='documents'?'active':''}`} onClick={() => navigate('documents')}>Documents</button>
+          <button className={`nav-btn ${view==='beyond20'?'active':''}`} onClick={() => navigate('beyond20')}>Beyond20</button>
           <button className={`nav-btn ${view==='explore'?'active':''}`} onClick={() => navigate('explore')}>Explore</button>
           <button className={`nav-btn ${view==='guides'?'active':''}`} onClick={() => navigate('guides')}>Guides</button>
           {isAdmin && (
@@ -1270,11 +1289,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
               subtitle="Create or import characters. You can optionally select one for the active session to use during play."
               actions={
                 <>
-                  {isAdmin && adminMode ? (
-                    <button className="btn btn-quiet" type="button" onClick={handleDeleteTestCharacters}>
-                      Delete test characters
-                    </button>
-                  ) : null}
                   <button className="btn btn-secondary" type="button" onClick={() => setView('import-character')}>
                     Import
                   </button>
@@ -1294,7 +1308,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             {characters.length === 0 ? (
               <EmptyState
                 title="No characters yet"
-                description="Create a character from scratch, import a JSON export, or save a D&D Beyond link as a reference."
+                description="Create a character from scratch, import a PDF export, or upload a JSON export."
                 actions={
                   <>
                     <button
@@ -1336,7 +1350,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                               </div>
                               <div className="muted" style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {source ? `Source: ${source}` : 'Source: manual'}
-                                {importMeta?.ddb_url ? ' • DDB link stored' : ''}
                               </div>
                             </div>
                             {isPicked ? <span className="muted" style={{ fontSize: 12 }}>Selected</span> : null}
@@ -1397,7 +1410,24 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                           <button
                             className="btn btn-secondary btn-icon-only"
                             type="button"
-                            onClick={() => setCharacterSettingsOpen(true)}
+                            onClick={async () => {
+                              if (!selectedCharacter) return
+                              setSheetModalLoading(true)
+                              setSheetModalOpen(true)
+                              try {
+                                const res = await apiFetch(`/characters/${selectedCharacter.id}`)
+                                if (res.ok) {
+                                  const data = await res.json().catch(() => ({}))
+                                  setSheetModalCharacter(data?.character ?? selectedCharacter)
+                                } else {
+                                  setSheetModalCharacter(selectedCharacter)
+                                }
+                              } catch {
+                                setSheetModalCharacter(selectedCharacter)
+                              } finally {
+                                setSheetModalLoading(false)
+                              }
+                            }}
                             title="Settings"
                             aria-label="Settings"
                           >
@@ -1498,6 +1528,30 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                               </div>
                             </div>
                           ) : null}
+                          {(() => {
+                            const prof = selectedSheetSummary.proficiencies
+                            const profRows: Array<{ label: string; items: string[] }> = [
+                              { label: 'Languages', items: prof.languages },
+                              { label: 'Armor', items: prof.armor },
+                              { label: 'Weapons', items: prof.weapons },
+                              { label: 'Tools', items: prof.tools },
+                              { label: 'Other', items: prof.other },
+                            ].filter(r => r.items.length > 0)
+                            if (!profRows.length) return null
+                            return (
+                              <div className="card card-pad characters-subcard" style={{ marginTop: 8 }}>
+                                <div className="muted" style={{ marginBottom: 6 }}>Proficiencies</div>
+                                <div className="stack" style={{ gap: 4 }}>
+                                  {profRows.map(row => (
+                                    <div key={row.label}>
+                                      <span className="muted" style={{ fontSize: 12 }}>{row.label}: </span>
+                                      <span style={{ fontSize: 12 }}>{row.items.join(', ')}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )
+                          })()}
                         </div>
                       ) : null}
                       {characterPanelMode === 'journal' ? (
@@ -1522,45 +1576,51 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                           {selectedCharacter ? (
                             (() => {
                               const sheet = (selectedCharacter?.sheet && typeof selectedCharacter.sheet === 'object') ? selectedCharacter.sheet : {}
-                              const spellSlots: Array<{ level: number; used?: number | null; max?: number | null }> = Array.isArray((sheet as any)?.spellSlots) ? (sheet as any).spellSlots : []
+                              const rawSlots: Array<{ level: number; used?: number | null; max?: number | null }> = Array.isArray((sheet as any)?.spellSlots) ? (sheet as any).spellSlots : []
                               const spellbook = Array.isArray((sheet as any)?.spellbook) ? (sheet as any).spellbook : []
                               const spellNames = Array.isArray((sheet as any)?.spells) ? (sheet as any).spells : []
                               const rows = spellbook.length
                                 ? spellbook
                                 : spellNames.map((name: any) => ({ name: String(name) }))
+
+                              // Build slot map: level -> {max, used}
+                              const slotMap = new Map<number, { max: number; used: number }>(
+                                rawSlots.map(s => [s.level, { max: s.max ?? 0, used: s.used ?? 0 }])
+                              )
+
+                              // Helper to parse level number from header string
+                              const headerToLevel = (header: string | null): number | null => {
+                                if (!header) return null
+                                if (/cantrip/i.test(header)) return 0
+                                const m = header.match(/^(\d+)/)
+                                return m ? parseInt(m[1], 10) : null
+                              }
+
+                              const toggleSpellSlot = async (level: number, slotIndex: number) => {
+                                if (!selectedCharacter) return
+                                const current = slotMap.get(level)
+                                if (!current) return
+                                const newUsed = slotIndex < current.used ? slotIndex : slotIndex + 1
+                                const safeUsed = Math.max(0, Math.min(current.max, newUsed))
+                                // Optimistically update local state
+                                const updatedSlots = rawSlots.map(s =>
+                                  s.level === level ? { ...s, used: safeUsed } : s
+                                )
+                                // Persist to server
+                                try {
+                                  const existingSheet = (selectedCharacter?.sheet && typeof selectedCharacter.sheet === 'object') ? { ...selectedCharacter.sheet } : {}
+                                  await apiFetch(`/characters/${selectedCharacter.id}`, {
+                                    method: 'PUT',
+                                    body: JSON.stringify({ sheet: { ...existingSheet, spellSlots: updatedSlots } }),
+                                  })
+                                  await fetchCharacters()
+                                } catch {
+                                  // silent
+                                }
+                              }
+
                               return (
                                 <>
-                                  {spellSlots.length > 0 && (
-                                    <div style={{ marginBottom: 10 }}>
-                                      <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>Spell Slots</div>
-                                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                                        {spellSlots.map((slot) => {
-                                          const max = slot.max ?? 0
-                                          const used = slot.used ?? 0
-                                          return (
-                                            <div key={slot.level} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                              <span className="muted" style={{ fontSize: 11, minWidth: 18 }}>L{slot.level}</span>
-                                              {Array.from({ length: max }).map((_, i) => (
-                                                <span
-                                                  key={i}
-                                                  style={{
-                                                    display: 'inline-block',
-                                                    width: 10,
-                                                    height: 10,
-                                                    borderRadius: '50%',
-                                                    border: '1px solid rgba(255,255,255,0.4)',
-                                                    background: i < used ? 'rgba(255,255,255,0.2)' : 'rgba(173,136,95,0.6)',
-                                                  }}
-                                                  title={`Slot ${i + 1}: ${i < used ? 'used' : 'available'}`}
-                                                />
-                                              ))}
-                                              <span className="muted" style={{ fontSize: 11 }}>{used}/{max}</span>
-                                            </div>
-                                          )
-                                        })}
-                                      </div>
-                                    </div>
-                                  )}
                                   {rows.length === 0 ? (
                                     <div className="muted">No spells parsed.</div>
                                   ) : (
@@ -1580,53 +1640,82 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                                       }
                                       return (
                                         <div className="stack" style={{ gap: 6 }}>
-                                          {groups.map((group, gi) => (
-                                            <div key={gi}>
-                                              {group.header ? (
-                                                <div style={{ fontWeight: 700, fontSize: 11, padding: '4px 0 4px', opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{group.header}</div>
-                                              ) : null}
-                                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-                                                {group.rows.map((row: any, idx: number) => {
-                                                  const isExpanded = selectedSpellRow?.name === row?.name
-                                                  const hasDetails = row?.source || row?.time || row?.range || row?.components || row?.duration || row?.save_hit || row?.notes || row?.page
-                                                  return (
-                                                    <React.Fragment key={`${row?.name || 'spell'}-${idx}`}>
-                                                      <button
-                                                        type="button"
-                                                        className="btn btn-quiet"
-                                                        style={{
-                                                          textAlign: 'left',
-                                                          background: isExpanded ? 'rgba(173,136,95,0.20)' : 'rgba(0,0,0,0.10)',
-                                                          borderRadius: 6,
-                                                          padding: '5px 8px',
-                                                          fontSize: 12,
-                                                          gridColumn: isExpanded ? 'span 2' : undefined,
-                                                        }}
-                                                        onClick={() => setSelectedSpellRow(isExpanded ? null : row)}
-                                                      >
-                                                        <span style={{ fontWeight: 600, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row?.name || '—'}</span>
-                                                        {row?.slot_header ? <span className="muted" style={{ fontSize: 10 }}>{row.slot_header}</span> : null}
-                                                      </button>
-                                                      {isExpanded && hasDetails ? (
-                                                        <div className="card card-pad" style={{ fontSize: 12, background: 'rgba(0,0,0,0.15)', gridColumn: 'span 2', marginLeft: 0 }}>
-                                                          <div className="row-wrap" style={{ gap: 10, flexWrap: 'wrap' }}>
-                                                            {row?.source ? <div><span className="muted">Source:</span> {row.source}</div> : null}
-                                                            {row?.save_hit ? <div><span className="muted">Save/Atk:</span> {row.save_hit}</div> : null}
-                                                            {row?.time ? <div><span className="muted">Cast Time:</span> {row.time}</div> : null}
-                                                            {row?.range ? <div><span className="muted">Range:</span> {row.range}</div> : null}
-                                                            {row?.components ? <div><span className="muted">Components:</span> {row.components}</div> : null}
-                                                            {row?.duration ? <div><span className="muted">Duration:</span> {row.duration}</div> : null}
-                                                            {row?.page ? <div><span className="muted">Page:</span> {row.page}</div> : null}
-                                                            {row?.notes ? <div style={{ width: '100%' }}><span className="muted">Notes:</span> {row.notes}</div> : null}
+                                          {groups.map((group, gi) => {
+                                            const lvl = headerToLevel(group.header)
+                                            const slotInfo = (lvl !== null && lvl > 0) ? slotMap.get(lvl) : undefined
+                                            return (
+                                              <div key={gi}>
+                                                {group.header ? (
+                                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 11, padding: '4px 0 4px', opacity: 0.85, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                                                    <span>{group.header}</span>
+                                                    {slotInfo && slotInfo.max > 0 ? (
+                                                      <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                                                        {Array.from({ length: slotInfo.max }).map((_, i) => (
+                                                          <button
+                                                            key={i}
+                                                            type="button"
+                                                            title={`Slot ${i + 1}: ${i < slotInfo.used ? 'used (click to restore)' : 'available (click to use)'}`}
+                                                            onClick={() => lvl !== null && toggleSpellSlot(lvl, i)}
+                                                            style={{
+                                                              display: 'inline-block',
+                                                              width: 12,
+                                                              height: 12,
+                                                              borderRadius: '50%',
+                                                              border: '1px solid rgba(255,255,255,0.5)',
+                                                              background: i < slotInfo.used ? 'rgba(255,255,255,0.15)' : 'rgba(173,136,95,0.7)',
+                                                              cursor: 'pointer',
+                                                              padding: 0,
+                                                            }}
+                                                          />
+                                                        ))}
+                                                        <span className="muted" style={{ fontSize: 10, marginLeft: 2 }}>{slotInfo.used}/{slotInfo.max}</span>
+                                                      </div>
+                                                    ) : null}
+                                                  </div>
+                                                ) : null}
+                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                                                  {group.rows.map((row: any, idx: number) => {
+                                                    const isExpanded = selectedSpellRow?.name === row?.name
+                                                    const hasDetails = row?.source || row?.time || row?.range || row?.components || row?.duration || row?.save_hit || row?.notes || row?.page
+                                                    return (
+                                                      <React.Fragment key={`${row?.name || 'spell'}-${idx}`}>
+                                                        <button
+                                                          type="button"
+                                                          className="btn btn-quiet"
+                                                          style={{
+                                                            textAlign: 'left',
+                                                            background: isExpanded ? 'rgba(173,136,95,0.20)' : 'rgba(0,0,0,0.10)',
+                                                            borderRadius: 6,
+                                                            padding: '5px 8px',
+                                                            fontSize: 12,
+                                                            gridColumn: isExpanded ? 'span 2' : undefined,
+                                                          }}
+                                                          onClick={() => setSelectedSpellRow(isExpanded ? null : row)}
+                                                        >
+                                                          <span style={{ fontWeight: 600, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row?.name || '—'}</span>
+                                                          {row?.slot_header ? <span className="muted" style={{ fontSize: 10 }}>{row.slot_header}</span> : null}
+                                                        </button>
+                                                        {isExpanded && hasDetails ? (
+                                                          <div className="card card-pad" style={{ fontSize: 12, background: 'rgba(0,0,0,0.15)', gridColumn: 'span 2', marginLeft: 0 }}>
+                                                            <div className="row-wrap" style={{ gap: 10, flexWrap: 'wrap' }}>
+                                                              {row?.source ? <div><span className="muted">Source:</span> {row.source}</div> : null}
+                                                              {row?.save_hit ? <div><span className="muted">Save/Atk:</span> {row.save_hit}</div> : null}
+                                                              {row?.time ? <div><span className="muted">Cast Time:</span> {row.time}</div> : null}
+                                                              {row?.range ? <div><span className="muted">Range:</span> {row.range}</div> : null}
+                                                              {row?.components ? <div><span className="muted">Components:</span> {row.components}</div> : null}
+                                                              {row?.duration ? <div><span className="muted">Duration:</span> {row.duration}</div> : null}
+                                                              {row?.page ? <div><span className="muted">Page:</span> {row.page}</div> : null}
+                                                              {row?.notes ? <div style={{ width: '100%' }}><span className="muted">Notes:</span> {row.notes}</div> : null}
+                                                            </div>
                                                           </div>
-                                                        </div>
-                                                      ) : null}
-                                                    </React.Fragment>
-                                                  )
-                                                })}
+                                                        ) : null}
+                                                      </React.Fragment>
+                                                    )
+                                                  })}
+                                                </div>
                                               </div>
-                                            </div>
-                                          ))}
+                                            )
+                                          })}
                                         </div>
                                       )
                                     })()
@@ -2131,7 +2220,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             <div className="stack" style={{ gap: 12 }}>
               {[
                 { title: 'Getting Started', body: 'Create a campaign, import or create your character, then start your first session.' },
-                { title: 'Importing Characters', body: 'Import characters via D&D Beyond link, PDF, or JSON. Use "Manage Characters → Import" to get started.' },
+                { title: 'Importing Characters', body: 'Import characters via PDF export or JSON. Use "Manage Characters → Import" to get started. Beyond20 browser extension support is also available.' },
                 { title: 'AI Game Master', body: 'The AI GM narrates scenes, prompts dice rolls, and tracks NPCs. Use the campaign settings to assign an AI or human GM.' },
                 { title: 'Managing Documents', body: 'Upload campaign PDFs, rule sets, or random tables under Documents. These inform the AI during gameplay.' },
                 { title: 'Player-Run Mode', body: 'Enable player-run mode in campaign settings if a human GM is running the session. AI still handles notes and NPC tracking.' },
@@ -2217,6 +2306,13 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
           </section>
         )}
 
+
+        {view === 'beyond20' && (
+          <Beyond20View
+            activeSessionId={activeSession}
+            identifier={profile?.email || profile?.username || null}
+          />
+        )}
 
         {view === 'account' && (
           <section className="dashboard-panel stack">

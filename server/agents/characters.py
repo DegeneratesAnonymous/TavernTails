@@ -600,6 +600,97 @@ def _extract_skills_from_pdf_widgets(fields: Dict[str, str]) -> list[Dict[str, A
     return skills
 
 
+def _extract_inventory_from_pdf_widgets(fields: Dict[str, str]) -> list[str]:
+    """Extract equipment/inventory items from PDF widget key/value pairs.
+
+    Looks for fields named 'Equipment', 'Inventory', 'Item*', 'Gear', etc.
+    and returns a deduplicated list of item name strings.
+    """
+    if not fields:
+        return []
+
+    def _norm(s: str) -> str:
+        return re.sub(r"[^a-z0-9]", "", s.lower()).strip()
+
+    # Gather text blobs from equipment/inventory/item fields
+    blobs: list[str] = []
+    for raw_key, raw_value in fields.items():
+        if not raw_value or not str(raw_value).strip():
+            continue
+        key = _norm(raw_key)
+        # Match equipment/inventory/gear/item fields
+        if re.match(r"(equipment|inventory|gear|item|weapon|armor|tool|backpack)", key):
+            blobs.append(str(raw_value).strip())
+
+    if not blobs:
+        return []
+
+    items: list[str] = []
+    seen: set[str] = set()
+    for blob in blobs:
+        # Try splitting on newlines first, then comma fallback
+        lines = re.split(r"\r?\n", blob)
+        if len(lines) == 1 and "," in blob:
+            lines = [p.strip() for p in blob.split(",")]
+        for line in lines:
+            s = re.sub(r"^[\s\*\-\u2022•|]+|[\s\*\-\u2022•|]+$", "", line).strip()
+            if not s or len(s) < 2 or len(s) > 200:
+                continue
+            # Skip obvious non-item lines
+            if re.match(r"^(\d+\s*(gp|sp|cp|ep|pp)|\d+\s*lbs?|weight|total|capacity)$", s, re.I):
+                continue
+            key = s.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            items.append(s)
+            if len(items) >= 200:
+                break
+        if len(items) >= 200:
+            break
+
+    return items
+
+
+def _extract_proficiencies_from_pdf_widgets(fields: Dict[str, str]) -> Dict[str, list[str]]:
+    """Extract languages and proficiency lists from PDF widget fields."""
+    if not fields:
+        return {}
+
+    def _split_blob(blob: str) -> list[str]:
+        parts: list[str] = []
+        for line in re.split(r"\r?\n|,|;", blob):
+            s = re.sub(r"^[\s\*\-\u2022•]+|[\s\*\-\u2022•]+$", "", line).strip()
+            if s and 1 < len(s) <= 120:
+                parts.append(s)
+        return parts
+
+    def _find_blob(patterns: list[str]) -> str | None:
+        for k, v in fields.items():
+            if not v or not str(v).strip():
+                continue
+            if any(re.search(pat, k, re.I) for pat in patterns):
+                return str(v).strip()
+        return None
+
+    languages_blob = _find_blob([r"languages?", r"language\s*proficiencies"])
+    armor_blob = _find_blob([r"armor\s*prof", r"armorprof"])
+    weapon_blob = _find_blob([r"weapon\s*prof", r"weaponprof"])
+    tool_blob = _find_blob([r"tool\s*prof", r"toolprof"])
+    other_blob = _find_blob([r"other\s*prof", r"proficiencies\s*&?\s*languages?"])
+
+    result: Dict[str, list[str]] = {}
+    if languages_blob:
+        result["languages"] = _split_blob(languages_blob)
+    if armor_blob:
+        result["armor_proficiencies"] = _split_blob(armor_blob)
+    if weapon_blob:
+        result["weapon_proficiencies"] = _split_blob(weapon_blob)
+    if tool_blob:
+        result["tool_proficiencies"] = _split_blob(tool_blob)
+    if other_blob:
+        result["other_proficiencies"] = _split_blob(other_blob)
+    return result
 
 
 def _read_pdf_text(content: bytes) -> str | None:
@@ -1212,6 +1303,8 @@ def _build_character_import_sheet_from_pdf(
     hp_from_widgets = _extract_hp_from_pdf_widgets(widget_values)
     features_from_widgets = _extract_features_from_pdf_widgets(widget_values)
     skills_from_widgets = _extract_skills_from_pdf_widgets(widget_values)
+    inventory_from_widgets = _extract_inventory_from_pdf_widgets(widget_values)
+    proficiencies_from_widgets = _extract_proficiencies_from_pdf_widgets(widget_values)
 
     # Try to group features into class / racial / other using widget keys when available.
     class_features: list[str] = []
@@ -1612,6 +1705,12 @@ def _build_character_import_sheet_from_pdf(
         "racialFeatures": racial_features,
         "otherFeatures": other_features,
         "skills": skills_from_widgets,
+        "inventory": inventory_from_widgets,
+        "languages": proficiencies_from_widgets.get("languages", []),
+        "armor_proficiencies": proficiencies_from_widgets.get("armor_proficiencies", []),
+        "weapon_proficiencies": proficiencies_from_widgets.get("weapon_proficiencies", []),
+        "tool_proficiencies": proficiencies_from_widgets.get("tool_proficiencies", []),
+        "other_proficiencies": proficiencies_from_widgets.get("other_proficiencies", []),
         "spells": raw_struct.get("spells", []),
         "spellbook": spell_entries,
         "speed": raw_struct.get("speed"),

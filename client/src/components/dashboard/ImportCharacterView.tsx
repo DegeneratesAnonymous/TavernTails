@@ -44,7 +44,7 @@ type Props = {
   onSetActiveCharacterId: (characterId: number | null) => void
   onDone: () => void
   onGoToGameplay: () => void
-  initialMode?: 'ddb-link' | 'ddb-api' | 'paste' | 'file' | 'pdf'
+  initialMode?: 'paste' | 'file' | 'pdf'
   notificationsPending?: boolean
   onNotificationsClick?: () => void
 }
@@ -60,9 +60,8 @@ export default function ImportCharacterView({
   notificationsPending,
   onNotificationsClick,
 }: Props) {
-  const [mode, setMode] = useState<'ddb-link' | 'ddb-api' | 'paste' | 'file' | 'pdf'>(initialMode || 'ddb-api')
+  const [mode, setMode] = useState<'paste' | 'file' | 'pdf'>(initialMode || 'pdf')
   const [rawJson, setRawJson] = useState('')
-  const [ddbUrl, setDdbUrl] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [pdfName, setPdfName] = useState('')
   const [pdfLevel, setPdfLevel] = useState('')
@@ -89,7 +88,6 @@ export default function ImportCharacterView({
   const [reviewLevel, setReviewLevel] = useState('')
   const [reviewClassName, setReviewClassName] = useState('')
   const [includeClassName, setIncludeClassName] = useState(true)
-  const [includeDdbLink, setIncludeDdbLink] = useState(true)
   const [includeRawJson, setIncludeRawJson] = useState(true)
   const [includePdfText, setIncludePdfText] = useState(true)
 
@@ -102,8 +100,6 @@ export default function ImportCharacterView({
     return {
       importJson: hasPath('/characters/import/preview') || hasPath('/characters/import') || hasPath('/characters/import/file'),
       importPdf: hasPath('/characters/import/pdf/preview') || hasPath('/characters/import/pdf'),
-      importLink: hasPath('/characters/import/link'),
-      importDdb: hasPath('/characters/import/ddb/preview') || hasPath('/characters/import/ddb'),
     }
   }, [backendPaths])
 
@@ -194,7 +190,6 @@ export default function ImportCharacterView({
     setReviewLevel('')
     setReviewClassName('')
     setIncludeClassName(true)
-    setIncludeDdbLink(true)
     setIncludeRawJson(true)
     setIncludePdfText(true)
   }
@@ -231,7 +226,6 @@ export default function ImportCharacterView({
     setReviewLevel(String(nextPreview?.level || 1))
     setReviewClassName(nextPreview?.class_name || '')
     setIncludeClassName(Boolean(nextPreview?.class_name))
-    setIncludeDdbLink(Boolean(ddbUrl.trim()))
     setIncludeRawJson(true)
     setIncludePdfText(true)
 
@@ -275,7 +269,7 @@ export default function ImportCharacterView({
     try {
       const res = await apiFetch('/characters/import/preview', {
         method: 'POST',
-        body: JSON.stringify({ raw_json: raw, ddb_url: ddbUrl.trim() || null, source }),
+        body: JSON.stringify({ raw_json: raw, source }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
@@ -311,7 +305,6 @@ export default function ImportCharacterView({
       if (pdfLevel.trim()) form.append('level', pdfLevel.trim())
       const qs = new URLSearchParams()
       qs.set('source', 'pdf')
-      if (ddbUrl.trim()) qs.set('ddb_url', ddbUrl.trim())
       const res = await apiFetch(`/characters/import/pdf/preview?${qs.toString()}`, {
         method: 'POST',
         body: form,
@@ -361,15 +354,6 @@ export default function ImportCharacterView({
 
     // Build sheet with user-selected sections.
     const sheet = cloneJson(preview.sheet || {})
-    if (!includeDdbLink) {
-      if (sheet?.import) {
-        delete sheet.import.ddb_url
-      }
-    } else {
-      if (sheet?.import && ddbUrl.trim()) {
-        sheet.import.ddb_url = ddbUrl.trim()
-      }
-    }
 
     if (previewSource === 'paste' || previewSource === 'file') {
       if (!includeRawJson) {
@@ -533,10 +517,6 @@ export default function ImportCharacterView({
 
             <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)' }}>
               <div style={{ fontWeight: 750 }}>What to include</div>
-              <label className="row" style={{ gap: 10, userSelect: 'none' }}>
-                <input type="checkbox" checked={includeDdbLink} onChange={(e) => setIncludeDdbLink(e.target.checked)} disabled={confirmBusy} />
-                <span className="muted">Store D&amp;D Beyond link reference (if provided)</span>
-              </label>
 
               {previewSource === 'paste' || previewSource === 'file' ? (
                 <label className="row" style={{ gap: 10, userSelect: 'none' }}>
@@ -802,14 +782,9 @@ export default function ImportCharacterView({
 
       <PageHeader
         title="Import Character"
-        subtitle="Import a character from JSON (paste or upload), or store a D&D Beyond link as a reference. We keep your raw data so future parsing improvements can enrich sheets without losing information."
+        subtitle="Import a character from a D&D Beyond PDF export or JSON. We keep your raw data so future parsing improvements can enrich sheets without losing information."
         actions={
           <div className="row-wrap" style={{ justifyContent: 'flex-end', gap: 8 }}>
-            {activeSessionId ? (
-              <button className="btn btn-secondary" type="button" disabled={busy} onClick={onGoToGameplay}>
-                Back to Play
-              </button>
-            ) : null}
             <button className="btn btn-quiet" type="button" disabled={busy} onClick={onDone}>
               Done
             </button>
@@ -843,20 +818,14 @@ export default function ImportCharacterView({
           <div className="stack" style={{ gap: 6 }}>
             <div className="muted">1) Choose import method</div>
             <div className="segmented" role="group" aria-label="Import method">
+              <button type="button" aria-pressed={mode === 'pdf'} onClick={() => setMode('pdf')} disabled={busy}>
+                Upload PDF
+              </button>
               <button type="button" aria-pressed={mode === 'paste'} onClick={() => setMode('paste')} disabled={busy}>
                 Paste JSON
               </button>
               <button type="button" aria-pressed={mode === 'file'} onClick={() => setMode('file')} disabled={busy}>
                 Upload JSON
-              </button>
-              <button type="button" aria-pressed={mode === 'ddb-api'} onClick={() => setMode('ddb-api')} disabled={busy}>
-                DDB Live Import
-              </button>
-              <button type="button" aria-pressed={mode === 'pdf'} onClick={() => setMode('pdf')} disabled={busy}>
-                Upload DDB PDF
-              </button>
-              <button type="button" aria-pressed={mode === 'ddb-link'} onClick={() => setMode('ddb-link')} disabled={busy}>
-                DDB link
               </button>
             </div>
           </div>
@@ -870,17 +839,6 @@ export default function ImportCharacterView({
             />
             <span className="muted">Auto-select for active session</span>
           </label>
-        </div>
-
-        <div className="stack" style={{ gap: 6 }}>
-          <label className="muted">D&amp;D Beyond character link (optional)</label>
-          <input
-            className="input"
-            placeholder="https://www.dndbeyond.com/characters/123456"
-            value={ddbUrl}
-            onChange={(e) => setDdbUrl(e.target.value)}
-            disabled={busy}
-          />
         </div>
 
         {mode === 'paste' ? (
@@ -1029,133 +987,6 @@ export default function ImportCharacterView({
                 }}
               >
                 Upload &amp; Review
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        {mode === 'ddb-api' ? (
-          <div className="stack" style={{ gap: 10 }}>
-            <div className="muted">2) Enter your D&amp;D Beyond character URL or ID</div>
-            <input
-              className="input"
-              placeholder="https://www.dndbeyond.com/characters/91460971  (or just the numeric ID)"
-              value={ddbUrl}
-              onChange={(e) => setDdbUrl(e.target.value)}
-              disabled={busy}
-            />
-            <div className="row-wrap" style={{ gap: 8 }}>
-              <button
-                className="btn"
-                disabled={busy || !ddbUrl.trim()}
-                onClick={async () => {
-                  if (!ddbUrl.trim()) {
-                    showMessage('error', 'Enter a D&D Beyond character URL or ID first.')
-                    return
-                  }
-                  setBusy(true)
-                  setMessage(null)
-                  try {
-                    const res = await apiFetch('/characters/import/ddb/preview', {
-                      method: 'POST',
-                      body: JSON.stringify({ ddb_url: ddbUrl.trim() })
-                    })
-                    if (res.ok) {
-                      const data = await res.json().catch(() => ({}))
-                      setPreview(data?.preview ?? null)
-                      setPreviewSource('ddb-api' as any)
-                      setConfirmOpen(true)
-                    } else {
-                      const err = await res.json().catch(() => ({}))
-                      showMessage('error', err?.detail || 'Failed to fetch character from D&D Beyond')
-                    }
-                  } catch (e) {
-                    showMessage('error', 'Network error - is the backend running?')
-                  } finally {
-                    setBusy(false)
-                  }
-                }}
-              >
-                {busy ? 'Fetching...' : 'Preview from D&D Beyond'}
-              </button>
-              <button
-                className="btn btn-secondary"
-                disabled={busy || !ddbUrl.trim()}
-                onClick={async () => {
-                  if (!ddbUrl.trim()) {
-                    showMessage('error', 'Enter a D&D Beyond character URL or ID first.')
-                    return
-                  }
-                  setBusy(true)
-                  setMessage(null)
-                  try {
-                    const res = await apiFetch('/characters/import/ddb', {
-                      method: 'POST',
-                      body: JSON.stringify({ ddb_url: ddbUrl.trim() })
-                    })
-                    if (res.ok) {
-                      const data = await res.json().catch(() => ({}))
-                      const createdId = typeof data?.character?.id === 'number' ? data.character.id : null
-                      await handleSaved(createdId, 'created')
-                    } else {
-                      const err = await res.json().catch(() => ({}))
-                      showMessage('error', err?.detail || 'Failed to import from D&D Beyond')
-                    }
-                  } catch (e) {
-                    showMessage('error', 'Network error - is the backend running?')
-                  } finally {
-                    setBusy(false)
-                  }
-                }}
-              >
-                Import Directly
-              </button>
-            </div>
-            <p className="muted" style={{ fontSize: 12 }}>
-              Fetches your character directly from the D&amp;D Beyond API. Character must have public sharing enabled.
-            </p>
-          </div>
-        ) : null}
-
-
-        {mode === 'ddb-link' ? (
-          <div className="stack" style={{ gap: 10 }}>
-            <div className="muted">2) Store link as reference</div>
-            <div className="inline-alert">
-              This creates a placeholder character you can “View” later (it stores the URL). We do not scrape D&amp;D Beyond.
-            </div>
-            <div className="row-wrap">
-              <button
-                className="btn"
-                disabled={busy}
-                onClick={async () => {
-                  if (!ddbUrl.trim()) {
-                    showMessage('error', 'Paste a D&D Beyond character link first.')
-                    return
-                  }
-                  setBusy(true)
-                  setMessage(null)
-                  try {
-                    const res = await apiFetch('/characters/import/link', {
-                      method: 'POST',
-                      body: JSON.stringify({ ddb_url: ddbUrl.trim() })
-                    })
-                    if (res.ok) {
-                      const data = await res.json().catch(() => ({}))
-                      const createdId = typeof data?.character?.id === 'number' ? data.character.id : null
-                      await handleSaved(createdId, 'created')
-                    } else {
-                      const err = await res.json().catch(() => ({}))
-                      showMessage('error', err?.detail || 'Failed to create character from link')
-                    }
-                  } catch (e) {
-                    showMessage('error', 'Network error')
-                  } finally {
-                    setBusy(false)
-                  }
-                }}
-              >
-                Create Placeholder
               </button>
             </div>
           </div>
