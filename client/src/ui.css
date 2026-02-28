@@ -302,6 +302,16 @@
   background: rgba(173, 136, 95, 0.9);
 }
 
+.btn-danger {
+  background: rgba(180, 50, 50, 0.75);
+  border-color: transparent;
+  color: #fff;
+}
+
+.btn-danger:hover {
+  background: rgba(200, 60, 60, 0.9);
+}
+
 .btn-quiet {
   background: rgba(95, 128, 139, 0.35);
   border-color: rgba(255,255,255,0.12);
@@ -507,6 +517,21 @@
   gap: 0;
 }
 
+/* Two-column grid for User Management + Campaign Management */
+
+.admin-two-col-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+@media (max-width: 900px) {
+  .admin-two-col-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Admin section — each tab's content block */
 
 .admin-section {
@@ -515,6 +540,16 @@
   border-radius: var(--radius);
   padding: 20px;
   margin-top: 4px;
+}
+
+/* Pagination controls for user table */
+
+.admin-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 10px 0 4px;
 }
 
 /* Campaign owner grouping */

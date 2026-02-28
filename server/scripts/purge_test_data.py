@@ -65,15 +65,11 @@ def purge() -> None:
 
         # ── Identify campaigns to keep and remove ────────────────────────────
         all_campaigns = session.exec(select(db.Campaign)).all()
-        keep_campaign_ids: set[str] = set()
         remove_campaign_ids: set[str] = set()
 
         for c in all_campaigns:
-            if c.owner_id in keep_ids:
-                keep_campaign_ids.add(c.id)
-            else:
-                remove_campaign_ids.add(c.id)
-                print(f"  REMOVE campaign {c.id}  '{c.name}'  owner_id={c.owner_id}")
+            remove_campaign_ids.add(c.id)
+            print(f"  REMOVE campaign {c.id}  '{c.name}'  owner_id={c.owner_id}")
 
         # ── Delete dependent data for removed users ───────────────────────────
 

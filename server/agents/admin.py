@@ -36,7 +36,7 @@ def list_users(
     offset: int = Query(0, ge=0),
     current_user=Depends(_require_admin),
 ):
-    """List all registered users."""
+    """List all registered users sorted alphabetically."""
     users = db.admin_list_users(limit=limit, offset=offset)
     result = []
     for u in users:
@@ -51,7 +51,9 @@ def list_users(
                 "admin": db.is_admin_user(u),
             }
         )
-    return {"users": result, "total": len(result), "offset": offset}
+    # Also return total count so the frontend can paginate correctly
+    total = db.admin_count_users()
+    return {"users": result, "total": total, "offset": offset}
 
 
 @router.get("/users/{user_id}")
@@ -156,6 +158,15 @@ def archive_campaign(campaign_id: str, current_user=Depends(_require_admin)):
     if not ok:
         raise HTTPException(status_code=404, detail="Campaign not found")
     return {"archived": True, "campaign_id": campaign_id}
+
+
+@router.delete("/campaigns/{campaign_id}")
+def delete_campaign(campaign_id: str, current_user=Depends(_require_admin)):
+    """Permanently delete a campaign and its data."""
+    ok = db.admin_delete_campaign(campaign_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    return {"deleted": True, "campaign_id": campaign_id}
 
 
 # ---------------------------------------------------------------------------
