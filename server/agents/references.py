@@ -1,8 +1,10 @@
+import html as _html_stdlib
 import json
 import logging
 import math
 import os
 import re
+from html.parser import HTMLParser
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -15,6 +17,14 @@ from ..auth import get_current_user
 logger = logging.getLogger("taverntails.references")
 
 router = APIRouter(prefix="/references", tags=["references"])
+
+# Supported file extensions and their MIME types accepted for reference upload
+SUPPORTED_EXTENSIONS = {
+    ".pdf", ".txt", ".md", ".csv", ".json",
+    ".html", ".htm",
+    ".docx", ".doc",
+    ".xlsx", ".xls",
+}
 
 
 class ReferenceMeta(BaseModel):
@@ -63,16 +73,132 @@ def _save_uploaded_file(dest: Path, upload: UploadFile):
         f.write(upload.file.read())
 
 
-def _extract_pages_text(pdf_path: Path) -> list[str]:
+class _HTMLTextExtractor(HTMLParser):
+    """Minimal HTML-to-text converter using stdlib only."""
+
+    def __init__(self):
+        super().__init__()
+        self._parts: list[str] = []
+        self._skip = False
+
+    def handle_starttag(self, tag, attrs):
+        if tag in {"script", "style"}:
+            self._skip = True
+
+    def handle_endtag(self, tag):
+        if tag in {"script", "style"}:
+            self._skip = False
+        if tag in {"p", "div", "br", "li", "h1", "h2", "h3", "h4", "h5", "h6", "tr"}:
+            self._parts.append("\n")
+
+    def handle_data(self, data):
+        if not self._skip:
+            self._parts.append(data)
+
+    def get_text(self) -> str:
+        return _html_stdlib.unescape("".join(self._parts))
+
+
+def _extract_pages_text(file_path: Path) -> list[str]:
+    """Extract text from a document file into a list of page/chunk strings.
+
+    Supports PDF, plain text (.txt, .md, .csv, .json), HTML (.html, .htm),
+    Word documents (.docx), and Excel spreadsheets (.xlsx).
+    For non-paged formats the entire content is returned as a single chunk.
+    """
+    suffix = file_path.suffix.lower()
+
+    # ── PDF ────────────────────────────────────────────────────────────────
+    if suffix == ".pdf":
+        try:
+            reader = PdfReader(str(file_path))
+            pages: list[str] = []
+            for page in reader.pages:
+                text = page.extract_text() or ""
+                pages.append(text)
+            return pages
+        except Exception:
+            logger.exception("Failed to extract PDF text from %s", file_path.name)
+            return []
+
+    # ── Plain text / Markdown / CSV / JSON ────────────────────────────────
+    if suffix in {".txt", ".md", ".csv", ".json"}:
+        try:
+            raw = file_path.read_text(encoding="utf-8", errors="replace")
+            # chunk at ~3000 chars to keep passage size reasonable
+            chunk_size = 3000
+            chunks = [raw[i : i + chunk_size] for i in range(0, len(raw), chunk_size)] or [""]
+            return chunks
+        except Exception:
+            logger.exception("Failed to read text file %s", file_path.name)
+            return []
+
+    # ── HTML ───────────────────────────────────────────────────────────────
+    if suffix in {".html", ".htm"}:
+        try:
+            raw = file_path.read_text(encoding="utf-8", errors="replace")
+            extractor = _HTMLTextExtractor()
+            extractor.feed(raw)
+            text = extractor.get_text()
+            chunk_size = 3000
+            chunks = [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)] or [""]
+            return chunks
+        except Exception:
+            logger.exception("Failed to extract HTML text from %s", file_path.name)
+            return []
+
+    # ── Word documents (.docx) ─────────────────────────────────────────────
+    if suffix in {".docx", ".doc"}:
+        try:
+            import docx  # python-docx
+
+            doc = docx.Document(str(file_path))
+            paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+            # group paragraphs into page-sized chunks
+            chunk_size = 3000
+            docx_chunks: list[str] = []
+            current = ""
+            for para in paragraphs:
+                if len(current) + len(para) + 1 > chunk_size and current:
+                    docx_chunks.append(current)
+                    current = para
+                else:
+                    current = (current + "\n" + para).strip() if current else para
+            if current:
+                docx_chunks.append(current)
+            return docx_chunks or [""]
+        except Exception:
+            logger.exception("Failed to extract Word text from %s", file_path.name)
+            return []
+
+    # ── Excel spreadsheets (.xlsx / .xls) ────────────────────────────────
+    if suffix in {".xlsx", ".xls"}:
+        try:
+            import openpyxl
+
+            wb = openpyxl.load_workbook(str(file_path), read_only=True, data_only=True)
+            excel_chunks: list[str] = []
+            for sheet in wb.worksheets:
+                rows_text: list[str] = []
+                for row in sheet.iter_rows(values_only=True):
+                    cells = [str(c) if c is not None else "" for c in row]
+                    rows_text.append("\t".join(cells))
+                sheet_text = f"[Sheet: {sheet.title}]\n" + "\n".join(rows_text)
+                chunk_size = 3000
+                for i in range(0, len(sheet_text), chunk_size):
+                    excel_chunks.append(sheet_text[i : i + chunk_size])
+            wb.close()
+            return excel_chunks or [""]
+        except Exception:
+            logger.exception("Failed to extract Excel text from %s", file_path.name)
+            return []
+
+    # ── Fallback: try reading as UTF-8 text ───────────────────────────────
     try:
-        reader = PdfReader(str(pdf_path))
-        pages: list[str] = []
-        for page in reader.pages:
-            text = page.extract_text() or ""
-            pages.append(text)
-        return pages
+        raw = file_path.read_text(encoding="utf-8", errors="replace")
+        return [raw[:3000]] if raw.strip() else []
     except Exception:
-        logger.exception("Failed to extract PDF text")
+        logger.exception("Failed to read file %s as text", file_path.name)
         return []
 
 
@@ -105,9 +231,26 @@ async def upload_reference(
     title: str = Form(None),
     current_user=Depends(get_current_user),
 ):
-    """Upload a reference PDF (PHB/DMG/MM). This will extract per-page text and create an embedding index if OPENAI_API_KEY is set."""
+    """Upload a reference document for AI lookup.
+
+    Supported formats: PDF, Word (.docx), Excel (.xlsx), HTML (.html/.htm),
+    plain text (.txt), Markdown (.md), CSV (.csv), and JSON (.json).
+    Text is extracted and optionally embedded for semantic search if
+    OPENAI_API_KEY is set.
+    """
+    filename = file.filename or "upload"
+    suffix = Path(filename).suffix.lower()
+    if suffix not in SUPPORTED_EXTENSIONS:
+        raise HTTPException(
+            status_code=415,
+            detail=(
+                f"Unsupported file type '{suffix}'. "
+                "Accepted: PDF, Word (.docx), Excel (.xlsx), HTML, "
+                "plain text (.txt/.md/.csv), JSON."
+            ),
+        )
     root = _storage_root()
-    safe_name = (title or Path(file.filename).stem).strip().replace(" ", "_")
+    safe_name = (title or Path(filename).stem).strip().replace(" ", "_")
     dest_dir = root / f"{safe_name}"
     if dest_dir.exists():
         # create a new unique folder
@@ -116,17 +259,17 @@ async def upload_reference(
             i += 1
         dest_dir = root / f"{safe_name}_{i}"
     dest_dir.mkdir(parents=True)
-    dest_pdf = dest_dir / file.filename
-    _save_uploaded_file(dest_pdf, file)
+    dest_file = dest_dir / filename
+    _save_uploaded_file(dest_file, file)
 
-    pages = _extract_pages_text(dest_pdf)
+    pages = _extract_pages_text(dest_file)
 
     # prepare pages JSON
     pages_json = []
     for idx, text in enumerate(pages):
         pages_json.append({"page": idx + 1, "text": text, "snippet": _make_snippet(text)})
 
-    meta = {"title": title or file.filename, "filename": file.filename, "pages": len(pages)}
+    meta = {"title": title or filename, "filename": filename, "pages": len(pages)}
     (dest_dir / "metadata.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     (dest_dir / "pages.json").write_text(json.dumps(pages_json, ensure_ascii=False), encoding="utf-8")
 
@@ -240,21 +383,24 @@ async def search_references(q: str, top_k: int = 5, current_user=Depends(get_cur
 
 @router.get("/{ref_id}/raw")
 def get_reference_raw(ref_id: str):
-    """Return the raw PDF file for a given reference id (served for embedding/viewing in the frontend).
+    """Return the raw file for a given reference id.
 
-    The frontend may open this URL and include a `#page=` fragment to jump to a page.
+    For PDFs the browser can display inline; for other types the file is served
+    for download with the appropriate media type inferred from the extension.
     """
     root = _storage_root()
     directory = root / ref_id
     if not directory.exists() or not directory.is_dir():
         raise HTTPException(status_code=404, detail="Reference not found")
-    # Find a PDF file in the directory
+    # Prefer a known document file over metadata/index files
+    preferred_suffixes = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".html", ".htm", ".txt", ".md", ".csv", ".json"}
+    for path in sorted(directory.iterdir()):
+        if path.is_file() and path.suffix.lower() in preferred_suffixes:
+            media_type = "application/pdf" if path.suffix.lower() == ".pdf" else None
+            return FileResponse(str(path), media_type=media_type, filename=path.name)
+    # Fallback: if any non-index file exists, return the first
     for path in directory.iterdir():
-        if path.is_file() and path.suffix.lower() == ".pdf":
-            return FileResponse(str(path), media_type="application/pdf", filename=path.name)
-    # Fallback: if any file exists, return the first
-    for path in directory.iterdir():
-        if path.is_file():
+        if path.is_file() and path.name not in {"metadata.json", "pages.json", "embeddings.json"}:
             return FileResponse(str(path), filename=path.name)
     raise HTTPException(status_code=404, detail="No file found for reference")
 

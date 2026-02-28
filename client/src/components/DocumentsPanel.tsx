@@ -416,12 +416,17 @@ export default function DocumentsPanel({sessionId}: Props){
     const files = e.target.files
     if(!files || files.length === 0) return
     setRefError(null)
+    const token = window.localStorage.getItem('access_token')
     for(const f of Array.from(files)){
       try{
         const form = new FormData()
         form.append('file', f)
         form.append('title', f.name)
-        const res = await fetch(buildApiUrl('/references/upload'), { method: 'POST', body: form })
+        const res = await fetch(buildApiUrl('/references/upload'), {
+          method: 'POST',
+          body: form,
+          headers: token ? { 'Authorization': `Bearer ${token}` } : undefined,
+        })
         if(!res.ok){ const d = await res.json().catch(()=>null); throw new Error(d?.detail || 'Upload failed') }
         // refresh list
         await loadReferences()
@@ -539,9 +544,12 @@ export default function DocumentsPanel({sessionId}: Props){
       </div>
 
       <div style={{ marginTop: 14 }}>
-        <h4 style={{ margin: '8px 0' }}>Reference PDFs</h4>
+        <h4 style={{ margin: '8px 0' }}>Reference Documents</h4>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 6 }}>
+          Supported: PDF, Word (.docx), Excel (.xlsx), HTML, plain text (.txt/.md/.csv), JSON. The AI uses these as learning data during gameplay.
+        </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-          <input type="file" accept="application/pdf" multiple onChange={handleReferenceUpload} />
+          <input type="file" accept=".pdf,.docx,.doc,.xlsx,.xls,.html,.htm,.txt,.md,.csv,.json" multiple onChange={handleReferenceUpload} />
           <div style={{ color: '#999', fontSize: 13 }}>{refLoading ? 'Refreshing…' : `${refs.length} references`}</div>
         </div>
         {refError && <div className="docsPanel__error">{refError}</div>}
@@ -551,7 +559,7 @@ export default function DocumentsPanel({sessionId}: Props){
             <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0' }}>
               <div>
                 <div style={{ fontWeight: 700 }}>{r.meta?.title || r.id}</div>
-                <div className="muted" style={{ fontSize: 12 }}>{r.meta?.filename || ''} · {r.meta?.pages || 0} pages</div>
+                <div className="muted" style={{ fontSize: 12 }}>{r.meta?.filename || ''} · {r.meta?.pages || 0} chunk{(r.meta?.pages || 0) !== 1 ? 's' : ''}</div>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <a className="docsPanel__link" href={buildApiUrl(`/references/${encodeURIComponent(r.id)}/raw`)} target="_blank" rel="noreferrer">Open</a>
