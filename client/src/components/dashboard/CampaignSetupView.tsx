@@ -103,6 +103,7 @@ type Campaign = {
   description?: string | null
   /** True when a GM invite has been sent for this campaign but not yet accepted */
   gm_invite_pending?: boolean
+  metadata_json?: Record<string, any>
 }
 
 type Character = {
@@ -161,7 +162,7 @@ type Props = {
   onCampaignUpdated: () => Promise<void> | void
   onCreateCampaign: () => void
 
-  onPlay?: () => Promise<void> | void
+  onPlay?: (campaignId?: string) => Promise<void> | void
   playBusy?: boolean
 
   notificationsPending?: boolean
@@ -542,30 +543,6 @@ export default function CampaignSetupView({
     }
   }
 
-  async function handleGenerateContent(type: 'npc' | 'location' | 'loot') {
-    if (!activeCampaignId) return
-    
-    setMessage(null)
-    try {
-      const endpoint = `/generate/${type}`
-      const res = await apiFetch(endpoint, {
-        method: 'POST',
-        body: JSON.stringify({ campaign_id: activeCampaignId }),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => null)
-        throw new Error(err?.detail || `Failed to generate ${type}`)
-      }
-      const data = await res.json()
-      // For now, just show a success message
-      // In the future, this could open a modal with the generated content
-      const itemName = data[type]?.name || 'Content'
-      setMessage({ kind: 'info', text: `Generated: ${itemName}` })
-    } catch (e: any) {
-      setMessage({ kind: 'error', text: e?.message || `Failed to generate ${type}` })
-    }
-  }
-
   async function handleDeleteCampaign() {
     if (!activeCampaignId) return
     if (!window.confirm(`Delete campaign "${activeCampaign?.name ?? activeCampaignId}"? This cannot be undone.`)) return
@@ -683,6 +660,7 @@ export default function CampaignSetupView({
     const associatedChars = characters.filter(
       (c) => c?.sheet?.associations?.campaign_id === String(campaign.id)
     )
+    const missingMandatorySettings = !campaign.metadata_json?.settings?.world_name?.trim()
     return (
       <div
         key={campaign.id}
@@ -730,6 +708,17 @@ export default function CampaignSetupView({
                 <button className="btn btn-secondary btn-sm btn-icon-only" type="button" onClick={() => openCampaignView(String(campaign.id), 'players')} title="Players" aria-label="Players">
                   <PlayersIcon />
                 </button>
+                {onPlay ? (
+                  <button
+                    className="btn btn-sm"
+                    type="button"
+                    disabled={Boolean(playBusy) || missingMandatorySettings}
+                    title={missingMandatorySettings ? 'Fill in mandatory settings (world name) before starting a session' : 'Start Session'}
+                    onClick={() => onPlay(String(campaign.id))}
+                  >
+                    {playBusy && String(campaign.id) === activeCampaignId ? 'Starting…' : 'Start Session'}
+                  </button>
+                ) : null}
               </>
             ) : null}
           </div>
@@ -743,13 +732,6 @@ export default function CampaignSetupView({
       <PageHeader
         title={title}
         subtitle="Create, configure, and start/restart scenes."
-        actions={
-          showAdminControls && onDeleteTestCampaigns ? (
-            <button className="btn btn-quiet" type="button" onClick={onDeleteTestCampaigns}>
-              Delete test campaigns
-            </button>
-          ) : undefined
-        }
       />
 
       <div className="row-wrap" style={{ gap: 16, alignItems: 'stretch' }}>
@@ -815,11 +797,6 @@ export default function CampaignSetupView({
                 <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
                   <div className="muted">Adventure details</div>
                   <div className="row-wrap" style={{ gap: 8 }}>
-                    {onPlay && activeCampaignId ? (
-                      <button className="btn" type="button" disabled={!canEdit || Boolean(playBusy)} onClick={onPlay}>
-                        {playBusy ? 'Starting…' : 'Start Session'}
-                      </button>
-                    ) : null}
                     <button
                       className="btn btn-secondary"
                       type="button"
@@ -1097,43 +1074,6 @@ export default function CampaignSetupView({
                   </div>
                 </div>
               </div>
-
-              {gmAssignment.gm_mode === 'player' && (
-                <div className="card card-pad" style={{ background: 'var(--surface-dark)', marginTop: 12 }}>
-                  <div className="stack" style={{ gap: 10 }}>
-                    <div className="muted">GM Generative Tools</div>
-                    <div className="muted" style={{ fontSize: 13 }}>
-                      Generate content that fits your campaign setting and tone.
-                    </div>
-                    <div className="row-wrap" style={{ gap: 8 }}>
-                      <button 
-                        className="btn btn-secondary" 
-                        type="button"
-                        onClick={() => handleGenerateContent('npc')}
-                        disabled={!canEdit}
-                      >
-                        Generate NPC
-                      </button>
-                      <button 
-                        className="btn btn-secondary" 
-                        type="button"
-                        onClick={() => handleGenerateContent('location')}
-                        disabled={!canEdit}
-                      >
-                        Generate Location
-                      </button>
-                      <button 
-                        className="btn btn-secondary" 
-                        type="button"
-                        onClick={() => handleGenerateContent('loot')}
-                        disabled={!canEdit}
-                      >
-                        Generate Loot
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
 
               <div className="card card-pad" style={{ background: 'var(--surface-dark)', marginTop: 12 }}>
                 <div className="muted" style={{ marginBottom: 8, fontWeight: 700 }}>Danger Zone</div>

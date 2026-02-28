@@ -945,19 +945,25 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     assignCharacterToSession,
   ])
 
-  const startPlaying = useCallback(async () => {
+  const startPlaying = useCallback(async (targetCampaignId?: string) => {
     if (startPlayBusy) return
     setStartPlayBusy(true)
+    const cid = targetCampaignId ?? activeCampaignId
+    const isSwitching = Boolean(targetCampaignId && targetCampaignId !== activeCampaignId)
+    if (isSwitching) {
+      setActiveCampaignId(targetCampaignId as string)
+      setActiveSession(null)
+    }
     try {
-      if (!activeCampaignId) {
+      if (!cid) {
         setView('gameplay')
         alert('Select or create a campaign first.')
         return
       }
 
-      let sessionId = activeSession
+      let sessionId = isSwitching ? null : activeSession
       if (!sessionId) {
-        const res = await apiFetch(`/campaigns/${activeCampaignId}/create_session`, { method: 'POST' })
+        const res = await apiFetch(`/campaigns/${cid}/create_session`, { method: 'POST' })
         if (!res.ok) {
           const err = await res.json().catch(() => ({} as any))
           throw new Error(err?.detail || 'Failed to create session')
@@ -1005,10 +1011,10 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
         })
         if (createChar.ok) {
           const data = await createChar.json().catch(() => ({} as any))
-          const cid = data?.character?.id
-          if (typeof cid === 'number') {
-            selectedId = cid
-            setActiveCharacterId(cid)
+          const charId = data?.character?.id
+          if (typeof charId === 'number') {
+            selectedId = charId
+            setActiveCharacterId(charId)
           }
           await fetchCharacters()
         }
