@@ -44,7 +44,7 @@ type Props = {
   onSetActiveCharacterId: (characterId: number | null) => void
   onDone: () => void
   onGoToGameplay: () => void
-  initialMode?: 'paste' | 'file' | 'pdf'
+  initialMode?: 'pdf' | 'beyond20'
   notificationsPending?: boolean
   onNotificationsClick?: () => void
 }
@@ -60,8 +60,7 @@ export default function ImportCharacterView({
   notificationsPending,
   onNotificationsClick,
 }: Props) {
-  const [mode, setMode] = useState<'paste' | 'file' | 'pdf'>(initialMode || 'pdf')
-  const [rawJson, setRawJson] = useState('')
+  const [mode, setMode] = useState<'pdf' | 'beyond20'>(initialMode || 'pdf')
   const [file, setFile] = useState<File | null>(null)
   const [pdfName, setPdfName] = useState('')
   const [pdfLevel, setPdfLevel] = useState('')
@@ -259,36 +258,6 @@ export default function ImportCharacterView({
     }
   }
 
-  const beginJsonPreview = async (raw: string, source: 'paste' | 'file') => {
-    if (!raw.trim()) {
-      showMessage('error', 'Paste JSON to import.')
-      return
-    }
-    setBusy(true)
-    setMessage(null)
-    try {
-      const res = await apiFetch('/characters/import/preview', {
-        method: 'POST',
-        body: JSON.stringify({ raw_json: raw, source }),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        showMessage('error', err?.detail || 'Failed to preview import')
-        return
-      }
-      const data = await res.json().catch(() => ({}))
-      const p = data?.preview
-      if (!p || typeof p?.name !== 'string') {
-        showMessage('error', 'Backend preview response was invalid.')
-        return
-      }
-      await openConfirmForPreview(source, p)
-    } catch {
-      showMessage('error', 'Network error')
-    } finally {
-      setBusy(false)
-    }
-  }
 
   const beginPdfPreview = async () => {
     if (!file) {
@@ -433,7 +402,6 @@ export default function ImportCharacterView({
   }
 
   const handleSaved = async (characterId: number | null, verb: 'created' | 'updated' = 'created') => {
-    setRawJson('')
     setFile(null)
     setPdfName('')
     setPdfLevel('')
@@ -782,7 +750,7 @@ export default function ImportCharacterView({
 
       <PageHeader
         title="Import Character"
-        subtitle="Import a character from a D&D Beyond PDF export or JSON. We keep your raw data so future parsing improvements can enrich sheets without losing information."
+        subtitle="Import a character from a D&D Beyond PDF export or connect the Beyond 20 browser extension."
         actions={
           <div className="row-wrap" style={{ justifyContent: 'flex-end', gap: 8 }}>
             <button className="btn btn-quiet" type="button" disabled={busy} onClick={onDone}>
@@ -821,11 +789,8 @@ export default function ImportCharacterView({
               <button type="button" aria-pressed={mode === 'pdf'} onClick={() => setMode('pdf')} disabled={busy}>
                 Upload PDF
               </button>
-              <button type="button" aria-pressed={mode === 'paste'} onClick={() => setMode('paste')} disabled={busy}>
-                Paste JSON
-              </button>
-              <button type="button" aria-pressed={mode === 'file'} onClick={() => setMode('file')} disabled={busy}>
-                Upload JSON
+              <button type="button" aria-pressed={mode === 'beyond20'} onClick={() => setMode('beyond20')} disabled={busy}>
+                Beyond 20
               </button>
             </div>
           </div>
@@ -841,79 +806,40 @@ export default function ImportCharacterView({
           </label>
         </div>
 
-        {mode === 'paste' ? (
-          <div className="stack" style={{ gap: 10 }}>
-            <div className="muted">2) Paste JSON export</div>
-            <textarea
-              className="input input-mono"
-              placeholder='{"name":"Minsc","level":3,"class_name":"Ranger"}'
-              value={rawJson}
-              onChange={(e) => setRawJson(e.target.value)}
-              style={{ minHeight: 190 }}
-              disabled={busy}
-            />
-
-            <div className="row-wrap">
-              <button
-                className="btn"
-                disabled={busy}
-                onClick={async () => {
-                  await beginJsonPreview(rawJson, 'paste')
-                }}
-              >
-                Review Import
-              </button>
-              <button
-                className="btn btn-secondary"
-                disabled={busy}
-                onClick={() => {
-                  setRawJson('')
-                  setMessage(null)
-                }}
-              >
-                Clear
-              </button>
+        {mode === 'beyond20' ? (
+          <div className="stack" style={{ gap: 12 }}>
+            <div className="inline-alert">
+              Beyond 20 is a free browser extension that reads your D&amp;D Beyond rolls and sends them to TavernTails. The only install required is the Beyond 20 extension itself — no additional software needed.
             </div>
-          </div>
-        ) : null}
-
-        {mode === 'file' ? (
-          <div className="stack" style={{ gap: 10 }}>
-            <div className="muted">2) Upload JSON file</div>
-            <div className="row-wrap" style={{ alignItems: 'center' }}>
-              <input
-                className="input"
-                type="file"
-                accept="application/json,.json"
-                onChange={(e) => {
-                  const f = e.target.files && e.target.files[0] ? e.target.files[0] : null
-                  setFile(f)
-                }}
-                disabled={busy}
-                style={{ maxWidth: 420 }}
-              />
-              <button
-                className="btn"
-                disabled={busy}
-                onClick={async () => {
-                  if (!file) {
-                    showMessage('error', 'Choose a JSON file.')
-                    return
-                  }
-                  setBusy(true)
-                  setMessage(null)
-                  try {
-                    const text = await file.text()
-                    await beginJsonPreview(text, 'file')
-                  } catch {
-                    showMessage('error', 'Unable to read file.')
-                  } finally {
-                    setBusy(false)
-                  }
-                }}
-              >
-                Upload & Review
-              </button>
+            <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)', gap: 8 }}>
+              <div style={{ fontWeight: 750 }}>Step 1 — Install the Beyond 20 extension</div>
+              <div className="muted" style={{ fontSize: 13 }}>
+                Install Beyond 20 from the Chrome Web Store or Firefox Add-ons. Once installed, it will automatically detect rolls on your D&amp;D Beyond character sheet.
+              </div>
+              <div className="row-wrap" style={{ gap: 8 }}>
+                <a
+                  className="btn btn-secondary"
+                  href="https://chrome.google.com/webstore/detail/beyond-20/gnblbpbepfbfmoobegdogkglpbhcjofh"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Chrome Web Store
+                </a>
+                <a
+                  className="btn btn-secondary"
+                  href="https://addons.mozilla.org/en-US/firefox/addon/beyond-20/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Firefox Add-ons
+                </a>
+              </div>
+            </div>
+            <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)', gap: 8 }}>
+              <div style={{ fontWeight: 750 }}>Step 2 — Roll on D&amp;D Beyond</div>
+              <div className="muted" style={{ fontSize: 13 }}>
+                With a session open in TavernTails, click any roll button on your D&amp;D Beyond character sheet. Beyond 20 will relay the result directly into your TavernTails session chat.
+              </div>
             </div>
           </div>
         ) : null}
