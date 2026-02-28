@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .agents import references as references_router
+from .agents import srd as srd_router
 from .agents import ws as ws_router
 from .agents.admin import router as admin_router
 from .agents.campaigns import router as campaigns_router
@@ -146,6 +147,7 @@ app.include_router(documents_router)
 app.include_router(scene_router)
 app.include_router(npc_router)
 app.include_router(references_router.router)
+app.include_router(srd_router.router)
 
 # Serve static build (if present) so the app is reachable at the backend port.
 build_dir = Path(__file__).resolve().parents[1] / 'client' / 'build'

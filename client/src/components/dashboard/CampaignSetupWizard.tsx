@@ -38,6 +38,20 @@ const DEFAULT_SETTINGS: CampaignSettings = {
   house_rules: '',
 }
 
+/** Known structured ruleset options surfaced in the UI. */
+const RULESET_OPTIONS = [
+  { value: 'srd-5.2', label: 'D&D 5e — SRD 5.2 (CC-BY-4.0)' },
+  { value: 'pathfinder-2e', label: 'Pathfinder 2e (Paizo / ORC License)' },
+  { value: 'osr', label: 'OSR / Old-School Essentials' },
+  { value: 'custom', label: 'Custom / Homebrew' },
+]
+
+/** Return the select value: the matching known id or 'custom' for freetext. */
+function rulesetSelectValue(ruleset: string): string {
+  if (!ruleset) { return '' }
+  return RULESET_OPTIONS.some((o) => o.value === ruleset) ? ruleset : 'custom'
+}
+
 function asString(v: any): string {
   return typeof v === 'string' ? v : v == null ? '' : String(v)
 }
@@ -256,14 +270,36 @@ export default function CampaignSetupWizard({
             />
 
             <div className="row-wrap">
-              <input
+              <select
                 className="input"
-                value={settings.ruleset}
-                onChange={(e) => setSettings((prev) => ({ ...prev, ruleset: e.target.value }))}
-                placeholder="e.g. 5th Edition SRD, OSR, custom homebrew"
+                value={rulesetSelectValue(settings.ruleset)}
+                onChange={(e) => {
+                  const v = e.target.value
+                  if (v !== 'custom') {
+                    setSettings((prev) => ({ ...prev, ruleset: v }))
+                  } else {
+                    setSettings((prev) => ({ ...prev, ruleset: '' }))
+                  }
+                }}
                 disabled={!canEdit}
                 aria-disabled={!canEdit}
-              />
+              >
+                <option value="">Select ruleset…</option>
+                {RULESET_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+
+              {rulesetSelectValue(settings.ruleset) === 'custom' && (
+                <input
+                  className="input"
+                  value={settings.ruleset}
+                  onChange={(e) => setSettings((prev) => ({ ...prev, ruleset: e.target.value }))}
+                  placeholder="Describe your ruleset (e.g. Knave 2e, GURPS)"
+                  disabled={!canEdit}
+                  aria-disabled={!canEdit}
+                />
+              )}
 
               <select
                 className="input"
