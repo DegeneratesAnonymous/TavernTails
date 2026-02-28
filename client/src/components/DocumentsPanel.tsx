@@ -597,7 +597,58 @@ export default function DocumentsPanel({sessionId}: Props){
         </div>
       )}
 
+      <div className="docsPanel__uploads">
+        <h4 style={{ margin: '8px 0 4px' }}>Upload File</h4>
+        <div className="docsPanel__uploadsTop">
+          <input type="file" multiple onChange={handleUpload} disabled={!hasSession} />
+          {hasActiveUploads && <div className="docsPanel__uploadsHint">Uploading…</div>}
+          {!hasActiveUploads && uploads.length > 0 && <div className="docsPanel__uploadsHint">Uploads</div>}
+          {canClearUploads && (
+            <button type="button" onClick={clearCompletedUploads} className="docsPanel__tinyBtn">Clear completed</button>
+          )}
+        </div>
+        {uploads.length > 0 && (
+          <div className="docsPanel__uploadsList">
+            {uploads.map(u => (
+              <div key={u.id} className="docsPanel__uploadRow">
+                {u.previewUrl && (
+                  <img src={u.previewUrl} alt={u.name} className="docsPanel__uploadThumb" />
+                )}
+                <div className="docsPanel__uploadBody">
+                  <div className="docsPanel__uploadName">{u.name}</div>
+                  <div className="docsPanel__uploadMeta">
+                    {formatBytes(u.size)} · {u.status === 'uploading' ? `${u.progress}%` : u.status === 'done' ? 'Uploaded' : u.status === 'error' ? 'Error' : 'Canceled'}
+                  </div>
+                  <div className="docsPanel__bar">
+                    <div
+                      className="docsPanel__barFill"
+                      style={{
+                        width: `${u.status==='done' ? 100 : u.progress}%`,
+                        background: u.status==='error' ? '#c65b5b' : u.status==='done' ? '#3fcf8e' : '#39f'
+                      }}
+                    />
+                  </div>
+                  {u.error && <div className="docsPanel__uploadErr">{u.error}</div>}
+                </div>
+                <div className="docsPanel__uploadActions">
+                  {u.status === 'uploading' && (
+                    <button type="button" onClick={()=>cancelUpload(u.id)} className="docsPanel__tinyBtn">Cancel</button>
+                  )}
+                  {(u.status === 'error' || u.status === 'canceled') && (
+                    <button type="button" onClick={()=>retryUpload(u.id)} className="docsPanel__tinyBtn">Retry</button>
+                  )}
+                  {u.status !== 'uploading' && (
+                    <button type="button" onClick={()=>dismissUpload(u.id)} className="docsPanel__tinyBtn">Dismiss</button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <form onSubmit={handleCreate} className="docsPanel__form">
+        <h4 style={{ margin: '8px 0 4px' }}>Create Text Document</h4>
         <input value={name} onChange={e=>setName(e.target.value)} placeholder="Document name" disabled={!hasSession || formBusy} className="docsPanel__input" />
         <div className="docsPanel__row">
           <label className="docsPanel__label">Category</label>
@@ -616,54 +667,6 @@ export default function DocumentsPanel({sessionId}: Props){
         <button type="submit" disabled={!hasSession || formBusy} className="docsPanel__saveBtn">
           {formBusy ? 'Saving…' : 'Save Document'}
         </button>
-        <div className="docsPanel__uploads">
-          <div className="docsPanel__uploadsTop">
-            <input type="file" multiple onChange={handleUpload} disabled={!hasSession} />
-            {hasActiveUploads && <div className="docsPanel__uploadsHint">Uploading…</div>}
-            {!hasActiveUploads && uploads.length > 0 && <div className="docsPanel__uploadsHint">Uploads</div>}
-            {canClearUploads && (
-              <button type="button" onClick={clearCompletedUploads} className="docsPanel__tinyBtn">Clear completed</button>
-            )}
-          </div>
-          {uploads.length > 0 && (
-            <div className="docsPanel__uploadsList">
-              {uploads.map(u => (
-                <div key={u.id} className="docsPanel__uploadRow">
-                  {u.previewUrl && (
-                    <img src={u.previewUrl} alt={u.name} className="docsPanel__uploadThumb" />
-                  )}
-                  <div className="docsPanel__uploadBody">
-                    <div className="docsPanel__uploadName">{u.name}</div>
-                    <div className="docsPanel__uploadMeta">
-                      {formatBytes(u.size)} · {u.status === 'uploading' ? `${u.progress}%` : u.status === 'done' ? 'Uploaded' : u.status === 'error' ? 'Error' : 'Canceled'}
-                    </div>
-                    <div className="docsPanel__bar">
-                      <div
-                        className="docsPanel__barFill"
-                        style={{
-                          width: `${u.status==='done' ? 100 : u.progress}%`,
-                          background: u.status==='error' ? '#c65b5b' : u.status==='done' ? '#3fcf8e' : '#39f'
-                        }}
-                      />
-                    </div>
-                    {u.error && <div className="docsPanel__uploadErr">{u.error}</div>}
-                  </div>
-                  <div className="docsPanel__uploadActions">
-                    {u.status === 'uploading' && (
-                      <button type="button" onClick={()=>cancelUpload(u.id)} className="docsPanel__tinyBtn">Cancel</button>
-                    )}
-                    {(u.status === 'error' || u.status === 'canceled') && (
-                      <button type="button" onClick={()=>retryUpload(u.id)} className="docsPanel__tinyBtn">Retry</button>
-                    )}
-                    {u.status !== 'uploading' && (
-                      <button type="button" onClick={()=>dismissUpload(u.id)} className="docsPanel__tinyBtn">Dismiss</button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
       </form>
     </div>
   )

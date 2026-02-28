@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 
 import { apiFetch } from '../../api'
 import PageHeader from '../ui/PageHeader'
+import Toast from '../ui/Toast'
 
 const SettingsIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="btn-icon">
@@ -230,7 +231,6 @@ export default function CampaignSetupView({
   const [deleting, setDeleting] = useState(false)
   const [message, setMessage] = useState<{ kind: 'info' | 'error'; text: string } | null>(null)
   const [toast, setToast] = useState<string | null>(null)
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   
   const [players, setPlayers] = useState<Player[]>([])
   const [gmAssignment, setGmAssignment] = useState<GMAssignment>({ gm_user_id: null, gm_mode: 'ai' })
@@ -641,9 +641,7 @@ export default function CampaignSetupView({
       }
 
       await onCampaignUpdated()
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
       setToast('Campaign settings saved.')
-      toastTimerRef.current = setTimeout(() => setToast(null), 3000)
     } catch (e: any) {
       setMessage({ kind: 'error', text: e?.message || 'Failed to save campaign settings' })
     } finally {
@@ -1115,8 +1113,9 @@ export default function CampaignSetupView({
                       style={{ display: 'none' }}
                       onChange={(e) => {
                         const file = e.target.files?.[0]
-                        // TODO: wire to server document upload endpoint
-                        if (file) setMessage({ kind: 'info', text: `Selected: ${file.name} (upload coming soon)` })
+                        if (file) {
+                          setToast(`To upload "${file.name}", open a session for this campaign and use the Documents panel (Settings → Manage Session Documents).`)
+                        }
                         e.target.value = ''
                       }}
                     />
@@ -1222,9 +1221,7 @@ export default function CampaignSetupView({
       </div>
     </section>
       {toast ? (
-        <div className="tt-toast" role="status" aria-live="polite">
-          {toast}
-        </div>
+        <Toast message={toast} onDone={() => setToast(null)} />
       ) : null}
     </>
   )

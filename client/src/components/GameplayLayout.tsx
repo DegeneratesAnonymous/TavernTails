@@ -278,6 +278,17 @@ export default function GameplayLayout({
   }, [sessionId])
 
   useEffect(()=>{
+    const handler = ()=>{
+      setDrawerView('documents')
+      openDrawer()
+    }
+    window.addEventListener('gameplay:open-documents', handler)
+    return ()=>{
+      window.removeEventListener('gameplay:open-documents', handler)
+    }
+  },[])
+
+  useEffect(()=>{
     const handler = (event: Event)=>{
       if(!sessionId) return
       const detail = (event as CustomEvent).detail || {}

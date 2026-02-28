@@ -672,7 +672,7 @@
   position: fixed;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%) scale(1);
   background: var(--surface-dark, #2a2623);
   color: var(--tt-text, #e8ddd0);
   border: 1px solid var(--tt-accent, #c084fc);
@@ -681,11 +681,25 @@
   font-size: 15px;
   font-weight: 600;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: default;
   z-index: 9999;
-  animation: tt-toast-fade 3s ease forwards;
+  opacity: 1;
+  transition: opacity 0.35s ease, transform 0.35s ease;
+  animation: tt-toast-in 0.2s ease;
 }
 
+.tt-toast--dismissing {
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.95);
+}
+
+@keyframes tt-toast-in {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.95); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+/* Keep the old fade animation for any legacy raw usage */
 @keyframes tt-toast-fade {
   0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.95); }
   5%   { opacity: 1; transform: translate(-50%, -50%) scale(1); }

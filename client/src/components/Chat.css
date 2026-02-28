@@ -120,7 +120,41 @@
 
 .chat-composer{
   display: flex;
+  margin-top: 6px;
+}
+
+.chat-composer-wrap{
   margin-top: 10px;
+}
+
+.chat-dice-tray{
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.chat-die-btn{
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 6px;
+  color: var(--tt-accent, #c084fc);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  line-height: 1.4;
+}
+
+.chat-die-btn:hover:not(:disabled){
+  background: rgba(192,132,252,0.15);
+  border-color: var(--tt-accent, #c084fc);
+}
+
+.chat-die-btn:disabled{
+  opacity: 0.4;
+  cursor: default;
 }
 
 /* --- Filter bar ---------------------------------------------------------- */
