@@ -132,7 +132,7 @@ def _extract_fields_from_pdf_widgets(fields: Dict[str, str]) -> tuple[str | None
     if not fields:
         return None, None, None
 
-    name = fields.get("CharacterName") or fields.get("CHARACTER NAME")
+    name = fields.get("CharacterName") or fields.get("CHARACTER NAME") or fields.get("Character Name")
 
     # All known class names (5e + PF2e) used for conservative matching.
     candidates = [
@@ -284,6 +284,103 @@ def _extract_stats_from_pdf_widgets(fields: Dict[str, str]) -> Dict[str, int]:
             result[key] = n
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Star Trek Adventures (STA) field extraction
+# ---------------------------------------------------------------------------
+_STA_ATTRIBUTES = ["Control", "Daring", "Fitness", "Insight", "Presence", "Reason"]
+_STA_DISCIPLINES = ["Command", "Conn", "Engineering", "Medicine", "Science", "Security"]
+
+
+def _is_sta_sheet(widget_values: Dict[str, str]) -> bool:
+    """Return True if the widget keys strongly suggest a Star Trek Adventures character sheet.
+
+    Requires at least 4 of the 12 STA-specific attribute/discipline field names
+    to be present as widget keys.
+    """
+    sta_keys = set(_STA_ATTRIBUTES + _STA_DISCIPLINES)
+    matches = sum(1 for k in widget_values if k in sta_keys)
+    return matches >= 4
+
+
+def _extract_sta_attributes_from_widgets(fields: Dict[str, str]) -> Dict[str, int]:
+    """Extract STA attribute scores (Control, Daring, Fitness, Insight, Presence, Reason)."""
+    result: Dict[str, int] = {}
+    for attr in _STA_ATTRIBUTES:
+        n = _extract_pdf_widget_int(fields, [attr], min_value=1, max_value=12)
+        if isinstance(n, int):
+            result[attr.lower()] = n
+    return result
+
+
+def _extract_sta_disciplines_from_widgets(fields: Dict[str, str]) -> Dict[str, int]:
+    """Extract STA discipline ratings (Command, Conn, Engineering, Medicine, Science, Security)."""
+    result: Dict[str, int] = {}
+    for disc in _STA_DISCIPLINES:
+        n = _extract_pdf_widget_int(fields, [disc], min_value=0, max_value=5)
+        if isinstance(n, int):
+            result[disc.lower()] = n
+    return result
+
+
+def _extract_sta_stress_from_widgets(fields: Dict[str, str]) -> Dict[str, int]:
+    """Extract the STA stress track (replaces D&D HP as the primary health resource)."""
+    current = _extract_pdf_widget_int(
+        fields,
+        ["Stress", "Current Stress", "Stress Current"],
+        min_value=0,
+        max_value=30,
+    )
+    maximum = _extract_pdf_widget_int(
+        fields,
+        ["Stress Max", "Maximum Stress", "Max Stress", "StressMax"],
+        min_value=0,
+        max_value=30,
+    )
+    out: Dict[str, int] = {}
+    if isinstance(current, int):
+        out["current"] = current
+    if isinstance(maximum, int):
+        out["max"] = maximum
+    return out
+
+
+def _extract_sta_list_fields_from_widgets(
+    fields: Dict[str, str],
+    prefixes: list[str],
+    max_items: int = 6,
+) -> list[str]:
+    """Extract a numbered list of STA text fields (e.g. 'Value 1'…'Value 4', 'Focus 1'…'Focus 6').
+
+    Tries both space-delimited and concatenated variants (``"Value 1"``, ``"Value1"``,
+    ``"Value_1"``).  Falls back to splitting a single un-numbered blob field on
+    newlines / semicolons.
+    """
+    items: list[str] = []
+    seen: set[str] = set()
+    for prefix in prefixes:
+        for i in range(1, max_items + 1):
+            for key in (f"{prefix} {i}", f"{prefix}{i}", f"{prefix}_{i}"):
+                val = _as_str(fields.get(key))
+                if val:
+                    lv = val.lower()
+                    if lv not in seen:
+                        seen.add(lv)
+                        items.append(val)
+    # If nothing found via numbered keys, try a single un-numbered blob
+    if not items:
+        for prefix in prefixes:
+            val = _as_str(fields.get(prefix))
+            if val:
+                for part in re.split(r"\r?\n|;", val):
+                    part = part.strip()
+                    if part:
+                        lv = part.lower()
+                        if lv not in seen:
+                            seen.add(lv)
+                            items.append(part)
+    return items[:max_items]
 
 
 def _extract_ac_from_pdf_widgets(fields: Dict[str, str]) -> int | None:
@@ -884,22 +981,6 @@ def _extract_pf2e_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, Any]:
                 equipment.append(item_name)
     if equipment:
         result["equipment"] = equipment
-
-    # Ability score modifiers
-    stat_mods: Dict[str, int] = {}
-    for stat, patterns in [
-        ("str_mod", [r"\bstr\s*mod\b", r"\bstrength\s*mod(?:ifier)?\b"]),
-        ("dex_mod", [r"\bdex\s*mod\b", r"\bdexterity\s*mod(?:ifier)?\b"]),
-        ("con_mod", [r"\bcon\s*mod\b", r"\bconstitution\s*mod(?:ifier)?\b"]),
-        ("int_mod", [r"\bint\s*mod\b", r"\bintelligence\s*mod(?:ifier)?\b"]),
-        ("wis_mod", [r"\bwis\s*mod\b", r"\bwisdom\s*mod(?:ifier)?\b"]),
-        ("cha_mod", [r"\bcha\s*mod\b", r"\bcharisma\s*mod(?:ifier)?\b"]),
-    ]:
-        val = _find_int(patterns)
-        if val is not None:
-            stat_mods[stat] = val
-    if stat_mods:
-        result["stat_mods"] = stat_mods
 
     return result
 
@@ -1725,6 +1806,11 @@ def _build_character_import_sheet_from_pdf(
 
     final_level = level_override if isinstance(level_override, int) else extracted_level
     final_class_name = _as_str(class_name_override) or extracted_class_name
+    # For STA sheets, fall back to the Department widget as the character's "class"
+    if not final_class_name:
+        _sta_dept = _as_str(widget_values.get("Department")) or _as_str(widget_values.get("department"))
+        if _sta_dept:
+            final_class_name = _sta_dept
 
     class_features = _lines_from_blobs(class_blobs)
     racial_features = _lines_from_blobs(race_blobs)
@@ -2197,13 +2283,16 @@ def _build_character_import_sheet_from_pdf(
         # Do not fail the import if reference lookup errors occur
         pass
 
-    # Detect TTRPG system from extracted sheet data (include widget keys for PF disambiguation).
+    # Detect TTRPG system from extracted sheet data.
+    # Include STA attributes in the stats dict so the STA signature can be scored
+    # even when the standard D&D ability-score widgets are absent.
     try:
+        sta_attrs_for_detection = _extract_sta_attributes_from_widgets(widget_values)
         detect_input = {
             "class_name": final_class_name,
             "multiclass": multiclass,
             "skills": skills_from_widgets,
-            "stats": stats_from_widgets,
+            "stats": {**stats_from_widgets, **sta_attrs_for_detection},
             "raw_text": (combined_text or "")[:10000],
             "import": {"source": source, "ddb_url": ddb_url, "filename": filename},
             "widget_keys": list(widget_values.keys()),
@@ -2212,12 +2301,18 @@ def _build_character_import_sheet_from_pdf(
     except Exception:
         pass
 
-    # Add a normalized `system` key consumed by clients and tests.
-    detected = sheet.get("detected_system") or {}
-    system_name = detected.get("system_name", "Unknown")
-    sheet["system"] = {"name": system_name}
+    # Convenience key: sheet["system"] mirrors the core fields of detected_system.
+    try:
+        ds = sheet.get("detected_system") or {}
+        sheet["system"] = {
+            "name": ds.get("system_name", "Unknown"),
+            "publisher": ds.get("publisher", ""),
+        }
+    except Exception:
+        pass
 
     # Merge Pathfinder-specific fields extracted from widget keys.
+    system_name = (sheet.get("system") or {}).get("name", "Unknown")
     if system_name == "Pathfinder 2e":
         pf_fields = _extract_pf2e_fields_from_widgets(widget_values)
         for k, v in pf_fields.items():
@@ -2226,6 +2321,54 @@ def _build_character_import_sheet_from_pdf(
         pf_fields = _extract_pf1e_fields_from_widgets(widget_values)
         for k, v in pf_fields.items():
             sheet[k] = v
+
+    # STA-specific field population (only when the sheet is identified as STA).
+    if _is_sta_sheet(widget_values):
+        sta_attributes = _extract_sta_attributes_from_widgets(widget_values)
+        sta_disciplines = _extract_sta_disciplines_from_widgets(widget_values)
+        sta_stress = _extract_sta_stress_from_widgets(widget_values)
+        sta_values = _extract_sta_list_fields_from_widgets(widget_values, ["Value", "Values"], max_items=6)
+        sta_focuses = _extract_sta_list_fields_from_widgets(widget_values, ["Focus", "Focuses"], max_items=6)
+        sta_talents = _extract_sta_list_fields_from_widgets(widget_values, ["Talent", "Talents"], max_items=6)
+        sta_traits = _extract_sta_list_fields_from_widgets(widget_values, ["Trait", "Traits"], max_items=4)
+        sta_injuries = _extract_sta_list_fields_from_widgets(widget_values, ["Injury", "Injuries"], max_items=6)
+        sta_rank = _as_str(widget_values.get("Rank"))
+        sta_assignment = _as_str(widget_values.get("Assignment"))
+
+        if sta_attributes:
+            sheet["attributes"] = sta_attributes
+        if sta_disciplines:
+            sheet["disciplines"] = sta_disciplines
+        if sta_stress:
+            sheet["stress"] = sta_stress
+        if sta_values:
+            sheet["values"] = sta_values
+        if sta_focuses:
+            sheet["focuses"] = sta_focuses
+        if sta_talents:
+            sheet["talents"] = sta_talents
+        if sta_traits:
+            sheet["traits"] = sta_traits
+        if sta_injuries:
+            sheet["injuries"] = sta_injuries
+        if sta_rank:
+            sheet["rank"] = sta_rank
+        if sta_assignment:
+            sheet["assignment"] = sta_assignment
+        # Equipment for STA: gather weapon/item widget blobs
+        sta_equipment: list[str] = []
+        _sta_equip_seen: set[str] = set()
+        for k, v in widget_values.items():
+            if not v:
+                continue
+            kn = k.lower()
+            if re.match(r"(weapon|item|gear|equipment)\s*\d*$", kn):
+                val = _as_str(v)
+                if val and val.lower() not in _sta_equip_seen:
+                    _sta_equip_seen.add(val.lower())
+                    sta_equipment.append(val)
+        if sta_equipment:
+            sheet["equipment"] = sta_equipment
 
     return final_name, safe_level, final_class_name, sheet
 
