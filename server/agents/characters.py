@@ -2311,17 +2311,6 @@ def _build_character_import_sheet_from_pdf(
     except Exception:
         pass
 
-    # Merge Pathfinder-specific fields extracted from widget keys.
-    system_name = (sheet.get("system") or {}).get("name", "Unknown")
-    if system_name == "Pathfinder 2e":
-        pf_fields = _extract_pf2e_fields_from_widgets(widget_values)
-        for k, v in pf_fields.items():
-            sheet[k] = v
-    elif system_name == "Pathfinder 1e":
-        pf_fields = _extract_pf1e_fields_from_widgets(widget_values)
-        for k, v in pf_fields.items():
-            sheet[k] = v
-
     # STA-specific field population (only when the sheet is identified as STA).
     if _is_sta_sheet(widget_values):
         sta_attributes = _extract_sta_attributes_from_widgets(widget_values)
@@ -2369,6 +2358,17 @@ def _build_character_import_sheet_from_pdf(
                     sta_equipment.append(val)
         if sta_equipment:
             sheet["equipment"] = sta_equipment
+
+    # Merge Pathfinder-specific fields extracted from widget keys.
+    system_name = (sheet.get("system") or {}).get("name", "Unknown")
+    if system_name == "Pathfinder 2e":
+        pf_fields = _extract_pf2e_fields_from_widgets(widget_values)
+        for k, v in pf_fields.items():
+            sheet[k] = v
+    elif system_name == "Pathfinder 1e":
+        pf_fields = _extract_pf1e_fields_from_widgets(widget_values)
+        for k, v in pf_fields.items():
+            sheet[k] = v
 
     return final_name, safe_level, final_class_name, sheet
 

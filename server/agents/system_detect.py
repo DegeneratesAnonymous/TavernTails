@@ -90,13 +90,6 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
         "stats": {"str", "dex", "con", "int", "wis", "cha",
                   "strength", "dexterity", "constitution", "intelligence",
                   "wisdom", "charisma"},
-        "keywords": {
-            "pathfinder", "pf2e", "pf2", "paizo", "pathfinder 2",
-            "pathfinder second edition", "age of ashes", "abomination vaults",
-            "core rulebook", "player core", "pzo",
-            # Pathfinder-specific sheet terminology
-            "ancestry", "heritage", "focus points", "class dc",
-        },
         # Widget keys that appear on official PF2e character sheets but not PF1e.
         # Used by infer_ttrpg_system when widget_keys are supplied in the sheet dict.
         "widget_signals": {
@@ -105,6 +98,13 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
                 "focus points", "focus max", "class dc", "bulk",
             },
             "negative": {"bab", "base attack bonus", "cmb", "cmd", "spells per day"},
+        },
+        "keywords": {
+            "pathfinder", "pf2e", "pf2", "paizo", "pathfinder 2",
+            "pathfinder second edition", "age of ashes", "abomination vaults",
+            "core rulebook", "player core", "pzo",
+            # Pathfinder-specific sheet terminology
+            "ancestry", "heritage", "focus points", "class dc",
         },
     },
     {
