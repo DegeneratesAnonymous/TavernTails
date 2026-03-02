@@ -2176,7 +2176,7 @@ def _build_character_import_sheet_from_pdf(
     except Exception:
         pass
 
-    # Add a normalised `system` key consumed by clients and tests.
+    # Add a normalized `system` key consumed by clients and tests.
     detected = sheet.get("detected_system") or {}
     system_name = detected.get("system_name", "Unknown")
     sheet["system"] = {"name": system_name}

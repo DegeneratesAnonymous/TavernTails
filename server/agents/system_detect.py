@@ -425,15 +425,15 @@ def _score_system(sig: Dict[str, Any], sheet: Dict[str, Any]) -> tuple[int, List
     # ---- Widget key signals (PDF form field names for PF edition disambiguation) ----
     widget_keys = sheet.get("widget_keys") or []
     if widget_keys and sig.get("widget_signals"):
-        def _norm_wk(s: str) -> str:
+        def _normalize_widget_key(s: str) -> str:
             return re.sub(r"[^a-z0-9 ]", "", (s or "").lower()).strip()
 
-        normed_wkeys = {_norm_wk(k) for k in widget_keys if k}
+        normed_wkeys = {_normalize_widget_key(k) for k in widget_keys if k}
         positive_signals = sig["widget_signals"].get("positive", set())
         negative_signals = sig["widget_signals"].get("negative", set())
 
         for signal in positive_signals:
-            norm_sig = _norm_wk(signal)
+            norm_sig = _normalize_widget_key(signal)
             for nk in normed_wkeys:
                 if norm_sig == nk or norm_sig in nk:
                     score += 4
@@ -441,7 +441,7 @@ def _score_system(sig: Dict[str, Any], sheet: Dict[str, Any]) -> tuple[int, List
                     break
 
         for signal in negative_signals:
-            norm_sig = _norm_wk(signal)
+            norm_sig = _normalize_widget_key(signal)
             for nk in normed_wkeys:
                 if norm_sig == nk or norm_sig in nk:
                     score -= 2

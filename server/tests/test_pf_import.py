@@ -73,7 +73,7 @@ def _make_widget_pdf(widget_map: dict[str, str]) -> bytes:
                 ),
             }
         )
-        ref = writer._add_object(annot)  # noqa: SLF001
+        ref = writer._add_object(annot)  # noqa: SLF001  # pypdf has no public API for this low-level step
         annots = page.get("/Annots")
         if annots is None:
             page[NameObject("/Annots")] = ArrayObject([ref])
