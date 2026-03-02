@@ -90,6 +90,15 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
         "stats": {"str", "dex", "con", "int", "wis", "cha",
                   "strength", "dexterity", "constitution", "intelligence",
                   "wisdom", "charisma"},
+        # Widget keys that appear on official PF2e character sheets but not PF1e.
+        # Used by infer_ttrpg_system when widget_keys are supplied in the sheet dict.
+        "widget_signals": {
+            "positive": {
+                "proficiency rank", "ancestry", "heritage",
+                "focus points", "focus max", "class dc", "bulk",
+            },
+            "negative": {"bab", "base attack bonus", "cmb", "cmd", "spells per day"},
+        },
         "keywords": {
             "pathfinder", "pf2e", "pf2", "paizo", "pathfinder 2",
             "pathfinder second edition", "age of ashes", "abomination vaults",
@@ -128,6 +137,16 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
         "keywords": {
             "pathfinder 1e", "pathfinder 1", "pathfinder first edition",
             "pathfinder rpg",
+            # PF1e-specific sheet terminology (these appear in widget key lines)
+            "base attack bonus", "bab", "cmb", "cmd",
+        },
+        # Widget keys that appear on official PF1e character sheets but not PF2e.
+        "widget_signals": {
+            "positive": {
+                "bab", "base attack bonus", "cmb", "cmd",
+                "spells per day", "combat maneuver bonus", "combat maneuver defense",
+            },
+            "negative": {"proficiency rank", "ancestry", "heritage", "focus points"},
         },
     },
     {
@@ -408,6 +427,32 @@ def _score_system(sig: Dict[str, Any], sheet: Dict[str, Any]) -> tuple[int, List
         if re.search(rf"\b{pattern}\b", searchable, re.IGNORECASE):
             score += 3
             evidence.append(f"keyword:{kw}")
+
+    # ---- Widget key signals (PDF form field names for PF edition disambiguation) ----
+    widget_keys = sheet.get("widget_keys") or []
+    if widget_keys and sig.get("widget_signals"):
+        def _normalize_widget_key(s: str) -> str:
+            return re.sub(r"[^a-z0-9 ]", "", (s or "").lower()).strip()
+
+        normed_wkeys = {_normalize_widget_key(k) for k in widget_keys if k}
+        positive_signals = sig["widget_signals"].get("positive", set())
+        negative_signals = sig["widget_signals"].get("negative", set())
+
+        for signal in positive_signals:
+            norm_sig = _normalize_widget_key(signal)
+            for nk in normed_wkeys:
+                if norm_sig == nk or norm_sig in nk:
+                    score += 4
+                    evidence.append(f"widget_signal:{norm_sig}")
+                    break
+
+        for signal in negative_signals:
+            norm_sig = _normalize_widget_key(signal)
+            for nk in normed_wkeys:
+                if norm_sig == nk or norm_sig in nk:
+                    score -= 2
+                    evidence.append(f"widget_antisignal:{norm_sig}")
+                    break
 
     return score, evidence
 
