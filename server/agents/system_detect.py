@@ -78,6 +78,8 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
             "fighter", "investigator", "magus", "monk", "oracle", "psychic",
             "ranger", "rogue", "sorcerer", "summoner", "swashbuckler",
             "thaumaturge", "witch", "wizard",
+            # Remaster classes
+            "animist", "exemplar", "commander", "guardian",
         },
         "skills": {
             "acrobatics", "arcana", "athletics", "crafting", "deception",
@@ -91,7 +93,9 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
         "keywords": {
             "pathfinder", "pf2e", "pf2", "paizo", "pathfinder 2",
             "pathfinder second edition", "age of ashes", "abomination vaults",
-            "core rulebook",
+            "core rulebook", "player core", "pzo",
+            # Pathfinder-specific sheet terminology
+            "ancestry", "heritage", "focus points", "class dc",
         },
         # Widget keys that appear on official PF2e character sheets but not PF1e.
         # Used by infer_ttrpg_system when widget_keys are supplied in the sheet dict.
@@ -133,6 +137,8 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
         "keywords": {
             "pathfinder 1e", "pathfinder 1", "pathfinder first edition",
             "pathfinder rpg",
+            # PF1e-specific sheet terminology (these appear in widget key lines)
+            "base attack bonus", "bab", "cmb", "cmd",
         },
         # Widget keys that appear on official PF1e character sheets but not PF2e.
         "widget_signals": {
