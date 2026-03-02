@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from pypdf import PdfReader
 
+from .. import db as _db
 from ..auth import get_current_user
 
 logger = logging.getLogger("taverntails.references")
@@ -31,6 +32,7 @@ class ReferenceMeta(BaseModel):
     title: str
     filename: str
     pages: int
+    system_ref: bool = False  # admin/agent-only; never visible to players
 
 
 class ReferenceListItem(BaseModel):
@@ -229,6 +231,7 @@ def _make_snippet(text: str, max_len: int = 400) -> str:
 async def upload_reference(
     file: UploadFile = File(...),
     title: str = Form(None),
+    system_ref: bool = Form(False),
     current_user=Depends(get_current_user),
 ):
     """Upload a reference document for AI lookup.
@@ -237,7 +240,19 @@ async def upload_reference(
     plain text (.txt), Markdown (.md), CSV (.csv), and JSON (.json).
     Text is extracted and optionally embedded for semantic search if
     OPENAI_API_KEY is set.
+
+    Set ``system_ref=true`` to mark this document as system-level reference
+    data (e.g. rulebooks, monster manuals).  System references are:
+    - Only uploadable by admins.
+    - Never listed or searchable by players.
+    - Never returned verbatim to any endpoint (snippets are suppressed).
+    - Accessible only to AI agents building GM context internally.
     """
+    if system_ref and not _db.is_admin_user(current_user):
+        raise HTTPException(
+            status_code=403,
+            detail="Only admins may upload system reference documents.",
+        )
     filename = file.filename or "upload"
     suffix = Path(filename).suffix.lower()
     if suffix not in SUPPORTED_EXTENSIONS:
@@ -269,7 +284,7 @@ async def upload_reference(
     for idx, text in enumerate(pages):
         pages_json.append({"page": idx + 1, "text": text, "snippet": _make_snippet(text)})
 
-    meta = {"title": title or filename, "filename": filename, "pages": len(pages)}
+    meta = {"title": title or filename, "filename": filename, "pages": len(pages), "system_ref": bool(system_ref)}
     (dest_dir / "metadata.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     (dest_dir / "pages.json").write_text(json.dumps(pages_json, ensure_ascii=False), encoding="utf-8")
 
@@ -300,6 +315,7 @@ async def upload_reference(
 @router.get("/list", response_model=list[ReferenceListItem])
 async def list_references(current_user=Depends(get_current_user)):
     root = _storage_root()
+    is_admin = _db.is_admin_user(current_user)
     out: list[ReferenceListItem] = []
     for directory in sorted(root.iterdir()):
         if not directory.is_dir():
@@ -309,18 +325,28 @@ async def list_references(current_user=Depends(get_current_user)):
             try:
                 meta = json.loads(meta_path.read_text(encoding="utf-8"))
             except Exception:
-                meta = {"title": directory.name, "filename": "", "pages": 0}
+                meta = {"title": directory.name, "filename": "", "pages": 0, "system_ref": False}
         else:
-            meta = {"title": directory.name, "filename": "", "pages": 0}
+            meta = {"title": directory.name, "filename": "", "pages": 0, "system_ref": False}
+        # System references are never listed to non-admin users.
+        if meta.get("system_ref") and not is_admin:
+            continue
         out.append({"id": directory.name, "meta": meta})
     return out
 
 
 @router.get("/search", response_model=ReferenceSearchResponse)
 async def search_references(q: str, top_k: int = 5, current_user=Depends(get_current_user)):
-    """Search all references for the query. Returns top_k passages with score and source info."""
+    """Search all references for the query. Returns top_k passages with score and source info.
+
+    System reference documents (rulebooks, monster manuals, etc.) are excluded
+    from this endpoint entirely for non-admin users.  Even for admins, snippets
+    from system references are suppressed -- they are for internal AI context
+    only and must never be quoted verbatim.
+    """
     if not q or not q.strip():
         raise HTTPException(status_code=400, detail="Query required")
+    is_admin = _db.is_admin_user(current_user)
     root = _storage_root()
     openai_key = os.environ.get("OPENAI_API_KEY")
     query_vect: list[float] | None = None
@@ -343,6 +369,18 @@ async def search_references(q: str, top_k: int = 5, current_user=Depends(get_cur
         emb_path = directory / "embeddings.json"
         if not pages_path.exists():
             continue
+        # Check system_ref flag before returning any content.
+        meta_path = directory / "metadata.json"
+        is_system = False
+        if meta_path.exists():
+            try:
+                ref_meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                is_system = bool(ref_meta.get("system_ref"))
+            except Exception:
+                pass
+        # Non-admin users never see system reference content.
+        if is_system and not is_admin:
+            continue
         pages = json.loads(pages_path.read_text(encoding="utf-8"))
         embeddings = None
         if emb_path.exists():
@@ -359,10 +397,8 @@ async def search_references(q: str, top_k: int = 5, current_user=Depends(get_cur
                 text = (page.get("text") or "").lower()
                 q_lower = q.lower()
                 if q_lower in text:
-                    # score by fraction of context matched
                     score = min(1.0, len(q_lower) / (len(text) + 1) * 50)
                 else:
-                    # small partial score for token overlap
                     toks = set(q_lower.split())
                     ct = sum(1 for tok in toks if tok in text)
                     if toks:
@@ -372,7 +408,9 @@ async def search_references(q: str, top_k: int = 5, current_user=Depends(get_cur
                     {
                         "source_id": directory.name,
                         "page": page.get("page"),
-                        "snippet": page.get("snippet"),
+                        # Verbatim snippets are never returned for system
+                        # references -- agents must paraphrase from context.
+                        "snippet": None if is_system else page.get("snippet"),
                         "score": float(score),
                     }
                 )
@@ -382,16 +420,33 @@ async def search_references(q: str, top_k: int = 5, current_user=Depends(get_cur
 
 
 @router.get("/{ref_id}/raw")
-def get_reference_raw(ref_id: str):
+def get_reference_raw(ref_id: str, current_user=Depends(get_current_user)):
     """Return the raw file for a given reference id.
 
     For PDFs the browser can display inline; for other types the file is served
     for download with the appropriate media type inferred from the extension.
+
+    System reference documents (e.g. rulebooks, monster manuals) are restricted
+    to admins only -- players may never download the source material.
     """
     root = _storage_root()
     directory = root / ref_id
     if not directory.exists() or not directory.is_dir():
         raise HTTPException(status_code=404, detail="Reference not found")
+    # Enforce system_ref access control before serving any bytes.
+    meta_path = directory / "metadata.json"
+    if meta_path.exists():
+        try:
+            ref_meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            if ref_meta.get("system_ref") and not _db.is_admin_user(current_user):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Access denied: system reference documents are not available to players.",
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            pass
     # Prefer a known document file over metadata/index files
     preferred_suffixes = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".html", ".htm", ".txt", ".md", ".csv", ".json"}
     for path in sorted(directory.iterdir()):
@@ -443,10 +498,25 @@ def reindex_reference(ref_id: str, current_user=Depends(get_current_user)):
         raise HTTPException(status_code=500, detail="Reindex failed") from None
 
 
-def search_query(q: str, top_k: int = 5):
+def search_query(q: str, top_k: int = 5, *, system_only: bool = False, include_system: bool = True):
     """Synchronous helper for other server modules to search references.
 
-    Returns list of result dicts: {source_id, page, snippet, score}
+    Returns list of result dicts: {source_id, page, snippet, score, paraphrase_required}
+
+    Parameters
+    ----------
+    system_only:
+        When True, search ONLY system reference documents (rulebooks, etc.).
+    include_system:
+        When False, skip all system reference documents.  Useful for
+        user-facing queries that should not draw on restricted material.
+
+    Notes
+    -----
+    The ``snippet`` field is always ``None`` for system reference results.
+    The ``paraphrase_required`` flag is ``True`` for those results.
+    Agents MUST paraphrase or summarise content from system references;
+    they must never quote the source text verbatim.
     """
     if not q or not q.strip():
         return []
@@ -475,6 +545,19 @@ def search_query(q: str, top_k: int = 5):
         emb_path = directory / "embeddings.json"
         if not pages_path.exists():
             continue
+        # Resolve system_ref flag for this directory.
+        dir_meta_path = directory / "metadata.json"
+        is_system = False
+        if dir_meta_path.exists():
+            try:
+                dir_meta = json.loads(dir_meta_path.read_text(encoding="utf-8"))
+                is_system = bool(dir_meta.get("system_ref"))
+            except Exception:
+                pass
+        if system_only and not is_system:
+            continue
+        if not include_system and is_system:
+            continue
         pages = json.loads(pages_path.read_text(encoding="utf-8"))
         embeddings = None
         if emb_path.exists():
@@ -489,7 +572,9 @@ def search_query(q: str, top_k: int = 5):
                 {
                     "source_id": directory.name,
                     "page": page.get("page"),
-                    "snippet": page.get("snippet"),
+                    # Never expose raw snippet text for system references.
+                    "snippet": None if is_system else page.get("snippet"),
+                    "paraphrase_required": is_system,
                     "emb": embeddings[idx] if embeddings and idx < len(embeddings) else None,
                 }
             )
@@ -507,6 +592,7 @@ def search_query(q: str, top_k: int = 5):
                         "source_id": meta["source_id"],
                         "page": meta["page"],
                         "snippet": meta.get("snippet"),
+                        "paraphrase_required": meta.get("paraphrase_required", False),
                         "score": float(score),
                     }
                 )
@@ -561,6 +647,7 @@ def search_query(q: str, top_k: int = 5):
                             "source_id": meta["source_id"],
                             "page": meta["page"],
                             "snippet": meta.get("snippet"),
+                            "paraphrase_required": meta.get("paraphrase_required", False),
                             "score": float(score),
                         }
                     )
@@ -575,6 +662,7 @@ def search_query(q: str, top_k: int = 5):
                             "source_id": meta["source_id"],
                             "page": meta["page"],
                             "snippet": meta.get("snippet"),
+                            "paraphrase_required": meta.get("paraphrase_required", False),
                             "score": 0.5,
                         }
                     )
