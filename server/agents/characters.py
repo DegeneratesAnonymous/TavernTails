@@ -147,6 +147,7 @@ def _extract_fields_from_pdf_widgets(fields: Dict[str, str]) -> tuple[str | None
 
     if class_level_value:
         candidates = [
+            # D&D 5e classes
             "Artificer",
             "Barbarian",
             "Bard",
@@ -160,6 +161,23 @@ def _extract_fields_from_pdf_widgets(fields: Dict[str, str]) -> tuple[str | None
             "Sorcerer",
             "Warlock",
             "Wizard",
+            # Pathfinder 2e exclusive classes
+            "Alchemist",
+            "Champion",
+            "Investigator",
+            "Magus",
+            "Oracle",
+            "Psychic",
+            "Summoner",
+            "Swashbuckler",
+            "Thaumaturge",
+            "Witch",
+            # Pathfinder 1e exclusive classes
+            "Cavalier",
+            "Gunslinger",
+            "Inquisitor",
+            "Ninja",
+            "Samurai",
         ]
 
         pairs = re.findall(r"\b([A-Za-z][A-Za-z ]{2,40}?)\s+(\d{1,2})\b", class_level_value)
@@ -690,6 +708,350 @@ def _extract_proficiencies_from_pdf_widgets(fields: Dict[str, str]) -> Dict[str,
         result["tool_proficiencies"] = _split_blob(tool_blob)
     if other_blob:
         result["other_proficiencies"] = _split_blob(other_blob)
+    return result
+
+
+def _extract_pf2e_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, Any]:
+    """Extract Pathfinder 2e-specific fields from PDF widget key/value pairs.
+
+    Returns a dict with PF2e-only keys: ancestry, heritage, skills (dict keyed
+    by name with rank), saves (with rank), class_dc, focus, spell_slots, feats,
+    bulk, traits, equipment, and stat modifier pairs.
+    """
+    if not fields:
+        return {}
+
+    def _find_first(patterns: list[str]) -> str | None:
+        for k, v in fields.items():
+            if not v:
+                continue
+            for pat in patterns:
+                if re.search(pat, str(k), re.I):
+                    return _as_str(v)
+        return None
+
+    def _find_int(patterns: list[str]) -> int | None:
+        val = _find_first(patterns)
+        if val is None:
+            return None
+        m = re.search(r"-?\d+", str(val))
+        return int(m.group(0)) if m else _as_int(val)
+
+    _rank_map: Dict[str, str] = {
+        "u": "untrained", "untrained": "untrained",
+        "t": "trained", "trained": "trained",
+        "e": "expert", "expert": "expert",
+        "m": "master", "master": "master",
+        "l": "legendary", "legendary": "legendary",
+        "0": "untrained", "1": "trained", "2": "expert", "3": "master", "4": "legendary",
+    }
+
+    def _parse_rank(v: str | None) -> str | None:
+        if not v:
+            return None
+        n = (v or "").strip().lower()
+        return _rank_map.get(n) or _rank_map.get(n[:1])
+
+    result: Dict[str, Any] = {}
+
+    # Core identity fields unique to PF2e
+    ancestry = _find_first([r"\bancestry\b", r"\bancestryname\b"])
+    if ancestry:
+        result["ancestry"] = ancestry
+
+    heritage = _find_first([r"\bheritage\b", r"\bheritagename\b"])
+    if heritage:
+        result["heritage"] = heritage
+
+    # Class DC and Spell DC
+    class_dc = _find_int([r"\bclass\s*dc\b", r"\bclassdc\b"])
+    if class_dc is not None:
+        result["class_dc"] = class_dc
+
+    spell_dc = _find_int([r"\bspell\s*dc\b", r"\bspelldc\b"])
+    if spell_dc is not None:
+        result["spell_dc"] = spell_dc
+
+    # Focus Points
+    focus_max = _find_int([r"\bfocus\s*(points?\s*)?max\b", r"\bmax\s*focus\b", r"\bfocusmax\b", r"\bfocuspointsmax\b"])
+    focus_current = _find_int([r"\bfocus\s*(points?\s*)?current\b", r"\bcurrent\s*focus\b", r"\bfocuscurrent\b"])
+    if focus_max is not None or focus_current is not None:
+        result["focus"] = {}
+        if focus_max is not None:
+            result["focus"]["max"] = focus_max
+        if focus_current is not None:
+            result["focus"]["current"] = focus_current
+
+    # Saves with proficiency ranks
+    saves: Dict[str, Any] = {}
+    for save_key, patterns_total, patterns_rank in [
+        ("fort", [r"\bfortitude\s*total\b", r"\bfort\s*total\b"], [r"\bfortitude\s*rank\b", r"\bfort\s*rank\b"]),
+        ("ref", [r"\breflex\s*total\b", r"\bref\s*total\b"], [r"\breflex\s*rank\b", r"\bref\s*rank\b"]),
+        ("will", [r"\bwill\s*total\b", r"\bwill\s*save\b"], [r"\bwill\s*rank\b"]),
+    ]:
+        save_entry: Dict[str, Any] = {}
+        total = _find_int(patterns_total)
+        if total is not None:
+            save_entry["total"] = total
+        rank = _parse_rank(_find_first(patterns_rank))
+        if rank:
+            save_entry["rank"] = rank
+        if save_entry:
+            saves[save_key] = save_entry
+    if saves:
+        result["saves"] = saves
+
+    # Skills with proficiency ranks (dict keyed by skill name)
+    pf2e_skills = [
+        "Acrobatics", "Arcana", "Athletics", "Crafting", "Deception",
+        "Diplomacy", "Intimidation", "Medicine", "Nature", "Occultism",
+        "Performance", "Religion", "Society", "Stealth", "Survival", "Thievery",
+    ]
+    skills: Dict[str, Any] = {}
+    for skill_name in pf2e_skills:
+        skill_entry: Dict[str, Any] = {}
+        rank = _parse_rank(_find_first([
+            rf"\b{re.escape(skill_name)}\s*rank\b",
+            rf"\brank\s*{re.escape(skill_name)}\b",
+        ]))
+        if rank:
+            skill_entry["rank"] = rank
+        mod_val = _find_int([
+            rf"\b{re.escape(skill_name)}\s*(mod|modifier|bonus|total)\b",
+        ])
+        if mod_val is not None:
+            skill_entry["modifier"] = mod_val
+        if skill_entry:
+            skills[skill_name] = skill_entry
+    if skills:
+        result["skills"] = skills
+
+    # Bulk (PF2e uses Bulk instead of weight)
+    bulk_current = _find_int([r"\bcurrent\s*bulk\b", r"\bbulk\s*current\b", r"\bbulkcurrent\b"])
+    bulk_limit = _find_int([r"\bbulk\s*limit\b", r"\bmax\s*bulk\b", r"\bbulklimit\b"])
+    if bulk_current is not None or bulk_limit is not None:
+        result["bulk"] = {}
+        if bulk_current is not None:
+            result["bulk"]["current"] = bulk_current
+        if bulk_limit is not None:
+            result["bulk"]["limit"] = bulk_limit
+
+    # Traits (character traits/tags)
+    traits_blob = _find_first([r"\bcharacter\s*traits?\b", r"\btraits?\b"])
+    if traits_blob:
+        result["traits"] = [t.strip() for t in re.split(r"[,\n;]+", traits_blob) if t.strip()]
+
+    # Spell slots keyed by level
+    spell_slots: Dict[str, int] = {}
+    for k, v in fields.items():
+        if not v:
+            continue
+        m = re.search(r"spell\s*slots?\s*(?:l|level|lvl)?\s*(\d+)\s*(?:max|total)?$", str(k), re.I)
+        if m:
+            slot_count = _as_int(str(v).strip())
+            if isinstance(slot_count, int) and slot_count >= 0:
+                spell_slots[m.group(1)] = slot_count
+    if spell_slots:
+        result["spell_slots"] = spell_slots
+
+    # Feats by category
+    feat_categories: Dict[str, list[str]] = {"ancestry": [], "class": [], "skill": [], "general": []}
+    for k, v in fields.items():
+        if not v or not str(v).strip():
+            continue
+        kl = str(k).lower()
+        feat_name = _as_str(v)
+        if not feat_name:
+            continue
+        if re.search(r"\bancestry\s*feat\b", kl):
+            feat_categories["ancestry"].append(feat_name)
+        elif re.search(r"\bclass\s*feat\b", kl):
+            feat_categories["class"].append(feat_name)
+        elif re.search(r"\bskill\s*feat\b", kl):
+            feat_categories["skill"].append(feat_name)
+        elif re.search(r"\bgeneral\s*feat\b", kl):
+            feat_categories["general"].append(feat_name)
+    if any(v for v in feat_categories.values()):
+        result["feats"] = {cat: names for cat, names in feat_categories.items() if names}
+
+    # Equipment (list of item names)
+    equipment: list[str] = []
+    seen_items: set[str] = set()
+    for k, v in fields.items():
+        if not v:
+            continue
+        if re.search(r"\b(equipment|item|gear|weapon|armor)\b", str(k), re.I):
+            item_name = _as_str(v)
+            if item_name and item_name.lower() not in seen_items and len(item_name) > 1:
+                seen_items.add(item_name.lower())
+                equipment.append(item_name)
+    if equipment:
+        result["equipment"] = equipment
+
+    # Ability score modifiers (PF2e stores them alongside raw scores)
+    stat_mods: Dict[str, int] = {}
+    for stat, patterns in [
+        ("str_mod", [r"\bstr\s*mod\b", r"\bstrength\s*mod(?:ifier)?\b"]),
+        ("dex_mod", [r"\bdex\s*mod\b", r"\bdexterity\s*mod(?:ifier)?\b"]),
+        ("con_mod", [r"\bcon\s*mod\b", r"\bconstitution\s*mod(?:ifier)?\b"]),
+        ("int_mod", [r"\bint\s*mod\b", r"\bintelligence\s*mod(?:ifier)?\b"]),
+        ("wis_mod", [r"\bwis\s*mod\b", r"\bwisdom\s*mod(?:ifier)?\b"]),
+        ("cha_mod", [r"\bcha\s*mod\b", r"\bcharisma\s*mod(?:ifier)?\b"]),
+    ]:
+        val = _find_int(patterns)
+        if val is not None:
+            stat_mods[stat] = val
+    if stat_mods:
+        result["stat_mods"] = stat_mods
+
+    return result
+
+
+def _extract_pf1e_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, Any]:
+    """Extract Pathfinder 1e-specific fields from PDF widget key/value pairs.
+
+    Returns a dict with PF1e-only keys: race, bab, cmb, cmd, saves (integer
+    totals), skills (dict with ranks/total), spells_per_day, feats (flat list),
+    equipment, and special_abilities.
+    """
+    if not fields:
+        return {}
+
+    def _find_first(patterns: list[str]) -> str | None:
+        for k, v in fields.items():
+            if not v:
+                continue
+            for pat in patterns:
+                if re.search(pat, str(k), re.I):
+                    return _as_str(v)
+        return None
+
+    def _find_int(patterns: list[str]) -> int | None:
+        val = _find_first(patterns)
+        if val is None:
+            return None
+        m = re.search(r"-?\d+", str(val))
+        return int(m.group(0)) if m else _as_int(val)
+
+    result: Dict[str, Any] = {}
+
+    # Race (PF1e uses Race, not Ancestry/Heritage)
+    race = _find_first([r"\brace\b"])
+    if race:
+        result["race"] = race
+
+    # Background is not a PF1e concept; explicitly null for schema consistency
+    result["background"] = None
+
+    # Combat stats unique to PF1e
+    bab = _find_int([r"\b(base\s*attack\s*bonus|bab)\b"])
+    if bab is not None:
+        result["bab"] = bab
+
+    cmb = _find_int([r"\b(combat\s*maneuver\s*bonus|cmb)\b"])
+    if cmb is not None:
+        result["cmb"] = cmb
+
+    cmd = _find_int([r"\b(combat\s*maneuver\s*defense|cmd)\b"])
+    if cmd is not None:
+        result["cmd"] = cmd
+
+    # Saving throws (integer totals; no proficiency ranks)
+    saves: Dict[str, Any] = {}
+    for save_key, patterns in [
+        ("fort", [r"\bfortitude\s*total\b", r"\bfort\s*save\b", r"\bfortitudesave\b", r"\bfortitude\b"]),
+        ("ref", [r"\breflex\s*total\b", r"\bref\s*save\b", r"\breflexsave\b", r"\breflex\b"]),
+        ("will", [r"\bwill\s*total\b", r"\bwill\s*save\b", r"\bwillsave\b", r"\bwill\b"]),
+    ]:
+        total = _find_int(patterns)
+        if total is not None:
+            saves[save_key] = total
+    if saves:
+        result["saves"] = saves
+
+    # Skills with explicit integer ranks and totals (dict keyed by skill name)
+    pf1e_skills = [
+        "Acrobatics", "Appraise", "Bluff", "Climb", "Craft", "Diplomacy",
+        "Disable Device", "Disguise", "Escape Artist", "Fly", "Handle Animal",
+        "Heal", "Intimidate", "Knowledge", "Linguistics", "Perception",
+        "Perform", "Profession", "Ride", "Sense Motive", "Sleight of Hand",
+        "Spellcraft", "Stealth", "Survival", "Swim", "Use Magic Device",
+    ]
+    skills: Dict[str, Any] = {}
+    for skill_name in pf1e_skills:
+        skill_entry: Dict[str, Any] = {}
+        ranks_val = _find_int([
+            rf"\b{re.escape(skill_name)}\s*ranks?\b",
+            rf"\branks?\s*{re.escape(skill_name)}\b",
+        ])
+        if ranks_val is not None:
+            skill_entry["ranks"] = ranks_val
+        total_val = _find_int([
+            rf"\b{re.escape(skill_name)}\s*total\b",
+            rf"\btotal\s*{re.escape(skill_name)}\b",
+        ])
+        if total_val is not None:
+            skill_entry["total"] = total_val
+        if skill_entry:
+            skills[skill_name] = skill_entry
+    if skills:
+        result["skills"] = skills
+
+    # Spells per day (dict keyed by spell level string)
+    spells_per_day: Dict[str, int] = {}
+    for k, v in fields.items():
+        if not v:
+            continue
+        m = re.search(r"spells?\s*per\s*day\s*(?:l|level|lvl)?\s*(\d+)", str(k), re.I)
+        if m:
+            val = _as_int(str(v).strip())
+            if isinstance(val, int) and val >= 0:
+                spells_per_day[m.group(1)] = val
+    if spells_per_day:
+        result["spells_per_day"] = spells_per_day
+
+    # Feats — flat list (PF1e has no feat-type subdivision)
+    feats: list[str] = []
+    seen_feats: set[str] = set()
+    for k, v in fields.items():
+        if not v:
+            continue
+        if re.search(r"\bfeat\b", str(k), re.I) and not re.search(r"\b(ancestry|class|skill|general)\b", str(k), re.I):
+            feat_name = _as_str(v)
+            if feat_name and feat_name.lower() not in seen_feats:
+                seen_feats.add(feat_name.lower())
+                feats.append(feat_name)
+    if feats:
+        result["feats"] = feats
+
+    # Equipment / gear
+    equipment: list[str] = []
+    seen_items: set[str] = set()
+    for k, v in fields.items():
+        if not v:
+            continue
+        if re.search(r"\b(equipment|item|gear|weapon|armor)\b", str(k), re.I):
+            item_name = _as_str(v)
+            if item_name and item_name.lower() not in seen_items and len(item_name) > 1:
+                seen_items.add(item_name.lower())
+                equipment.append(item_name)
+    if equipment:
+        result["equipment"] = equipment
+
+    # Special abilities / class features / racial traits
+    special_abilities: list[str] = []
+    seen_abilities: set[str] = set()
+    for k, v in fields.items():
+        if not v:
+            continue
+        if re.search(r"\b(special\s*abilit(?:y|ies)|class\s*feature|racial\s*trait)\b", str(k), re.I):
+            ability_name = _as_str(v)
+            if ability_name and ability_name.lower() not in seen_abilities:
+                seen_abilities.add(ability_name.lower())
+                special_abilities.append(ability_name)
+    if special_abilities:
+        result["special_abilities"] = special_abilities
+
     return result
 
 
@@ -1799,7 +2161,7 @@ def _build_character_import_sheet_from_pdf(
         # Do not fail the import if reference lookup errors occur
         pass
 
-    # Detect TTRPG system from extracted sheet data.
+    # Detect TTRPG system from extracted sheet data (include widget keys for PF disambiguation).
     try:
         detect_input = {
             "class_name": final_class_name,
@@ -1808,10 +2170,26 @@ def _build_character_import_sheet_from_pdf(
             "stats": stats_from_widgets,
             "raw_text": (combined_text or "")[:10000],
             "import": {"source": source, "ddb_url": ddb_url, "filename": filename},
+            "widget_keys": list(widget_values.keys()),
         }
         sheet["detected_system"] = infer_ttrpg_system(detect_input)
     except Exception:
         pass
+
+    # Add a normalised `system` key consumed by clients and tests.
+    detected = sheet.get("detected_system") or {}
+    system_name = detected.get("system_name", "Unknown")
+    sheet["system"] = {"name": system_name}
+
+    # Merge Pathfinder-specific fields extracted from widget keys.
+    if system_name == "Pathfinder 2e":
+        pf_fields = _extract_pf2e_fields_from_widgets(widget_values)
+        for k, v in pf_fields.items():
+            sheet[k] = v
+    elif system_name == "Pathfinder 1e":
+        pf_fields = _extract_pf1e_fields_from_widgets(widget_values)
+        for k, v in pf_fields.items():
+            sheet[k] = v
 
     return final_name, safe_level, final_class_name, sheet
 
