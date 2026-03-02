@@ -134,6 +134,17 @@ def _extract_fields_from_pdf_widgets(fields: Dict[str, str]) -> tuple[str | None
 
     name = fields.get("CharacterName") or fields.get("CHARACTER NAME")
 
+    # All known class names (5e + PF2e) used for conservative matching.
+    candidates = [
+        # D&D 5e
+        "Artificer", "Barbarian", "Bard", "Cleric", "Druid", "Fighter",
+        "Monk", "Paladin", "Ranger", "Rogue", "Sorcerer", "Warlock", "Wizard",
+        # Pathfinder 2e (Remaster + earlier)
+        "Alchemist", "Champion", "Investigator", "Magus", "Oracle", "Psychic",
+        "Summoner", "Swashbuckler", "Thaumaturge", "Witch",
+        "Animist", "Exemplar", "Commander", "Guardian",
+    ]
+
     # Find a key that looks like it contains both Class and Level.
     class_level_value: str | None = None
     for k, v in fields.items():
@@ -146,22 +157,6 @@ def _extract_fields_from_pdf_widgets(fields: Dict[str, str]) -> tuple[str | None
     level: int | None = None
 
     if class_level_value:
-        candidates = [
-            "Artificer",
-            "Barbarian",
-            "Bard",
-            "Cleric",
-            "Druid",
-            "Fighter",
-            "Monk",
-            "Paladin",
-            "Ranger",
-            "Rogue",
-            "Sorcerer",
-            "Warlock",
-            "Wizard",
-        ]
-
         pairs = re.findall(r"\b([A-Za-z][A-Za-z ]{2,40}?)\s+(\d{1,2})\b", class_level_value)
         found_classes: list[str] = []
         total_level = 0
@@ -170,7 +165,7 @@ def _extract_fields_from_pdf_widgets(fields: Dict[str, str]) -> tuple[str | None
             lvl = _as_int(lvl_raw)
             if not cname or not isinstance(lvl, int):
                 continue
-            # Only accept known 5e class names to avoid picking up random labels.
+            # Only accept known class names to avoid picking up random labels.
             if not any(cname.lower() == c.lower() for c in candidates):
                 continue
             if cname not in found_classes:
@@ -188,6 +183,31 @@ def _extract_fields_from_pdf_widgets(fields: Dict[str, str]) -> tuple[str | None
                 if re.search(rf"\b{re.escape(cname)}\b", class_level_value, flags=re.IGNORECASE):
                     class_name = cname
                     break
+
+    # PF2e and other systems use separate "Class" and "Level" widgets.
+    # Only fall back to these if the combined CLASS & LEVEL key wasn't found.
+    if class_name is None:
+        for k, v in fields.items():
+            up = k.upper().strip()
+            if up == "CLASS" and v and v.strip():
+                raw_val = v.strip()
+                for cname in candidates:
+                    if re.search(rf"\b{re.escape(cname)}\b", raw_val, flags=re.IGNORECASE):
+                        class_name = cname
+                        break
+                if class_name is None and raw_val and 2 <= len(raw_val) <= 50:
+                    # Accept unknown class names verbatim for non-5e systems,
+                    # but only if the value looks like a proper name (letters and spaces only).
+                    if re.match(r"^[A-Za-z][A-Za-z\s'-]{1,49}$", raw_val):
+                        class_name = raw_val
+                break
+
+    if level is None:
+        for k, v in fields.items():
+            up = k.upper().strip()
+            if up == "LEVEL" and v and v.strip():
+                level = _as_int(v.strip())
+                break
 
     return name, level, class_name
 
@@ -291,6 +311,8 @@ def _extract_hp_from_pdf_widgets(fields: Dict[str, str]) -> Dict[str, int]:
             "Hit Points Current",
             "HPCurrent",
             "HP Current",
+            "CurrentHP",
+            "Current HP",
             "HP",
             "Hit Points",
         ],
@@ -1388,19 +1410,13 @@ def _build_character_import_sheet_from_pdf(
     safe_level = max(1, min(20, safe_level))
 
     class_names = [
-        "Artificer",
-        "Barbarian",
-        "Bard",
-        "Cleric",
-        "Druid",
-        "Fighter",
-        "Monk",
-        "Paladin",
-        "Ranger",
-        "Rogue",
-        "Sorcerer",
-        "Warlock",
-        "Wizard",
+        # D&D 5e
+        "Artificer", "Barbarian", "Bard", "Cleric", "Druid", "Fighter",
+        "Monk", "Paladin", "Ranger", "Rogue", "Sorcerer", "Warlock", "Wizard",
+        # Pathfinder 2e (including Remaster classes)
+        "Alchemist", "Champion", "Investigator", "Magus", "Oracle", "Psychic",
+        "Summoner", "Swashbuckler", "Thaumaturge", "Witch",
+        "Animist", "Exemplar", "Commander", "Guardian",
     ]
 
     def _first_widget_value(patterns: list[str]) -> str | None:
@@ -1425,8 +1441,18 @@ def _build_character_import_sheet_from_pdf(
         "investigation": _first_widget_int([r"passive\s*investigation", r"passiveinvestigation"]),
     }
 
-    species = _first_widget_value([r"\brace\b", r"species", r"subrace"])
+    # PF2e uses "Ancestry" in place of Race/Species; prefer it if present.
+    species = (
+        _first_widget_value([r"\bancestry\b"])
+        or _first_widget_value([r"\brace\b", r"species", r"subrace"])
+    )
     background = _first_widget_value([r"background"])
+
+    # Pathfinder 2e-specific fields
+    heritage = _first_widget_value([r"\bheritage\b"])
+    class_dc = _first_widget_int([r"class\s*dc\b", r"classdc"])
+    focus_points_max = _first_widget_int([r"focus\s*points?\s*max", r"max\s*focus\s*points?", r"^focusmax$"])
+    focus_points_current = _first_widget_int([r"focus\s*points?\s*(current|used|spent|remaining)", r"^focuscurrent$", r"^focusused$"])
 
     class_line = _first_widget_value([r"class\s*&?\s*level", r"class\s*level"])
 
@@ -1464,6 +1490,29 @@ def _build_character_import_sheet_from_pdf(
         "flaws": _first_widget_value([r"flaws?"] ),
         "allies": _first_widget_value([r"allies", r"organizations", r"organizations\s*&\s*allies"]),
     }
+
+    # Detect whether the PDF is a ship/vehicle sheet rather than a character sheet.
+    # Ship sheets (Pathfinder, Starfinder) typically have hull points, maneuverability,
+    # drift rating, or frame fields that character sheets never have.
+    _ship_sheet_patterns = [
+        r"\bhull\s*points?\b", r"\bhullpoints?\b",
+        r"\bmaneuverability\b",
+        r"\bdrift\s*rating\b", r"\bdriftrating\b",
+        r"\bship\s*name\b", r"\bshipname\b",
+        r"\bship\s*type\b", r"\bshiptype\b",
+        r"\bship\s*frame\b", r"\bshipframe\b",
+        r"\bframe\s*hp\b", r"\bframehp\b",
+        r"\bship\s*tier\b", r"\bshiptier\b",
+        r"\bpcu\b",
+        r"\bct\b.*\bdt\b",  # critical threshold / damage threshold (Starfinder ship stat)
+        r"\bkac\b",  # KAC (Kinetic Armor Class) unique to Starfinder ships
+        r"\btargeting\s*systems?\b",
+    ]
+    _is_ship_sheet = any(
+        re.search(pat, k, re.I)
+        for k in widget_values.keys()
+        for pat in _ship_sheet_patterns
+    )
 
     # Build a structured `raw` object so client-side inference helpers can read
     # values from a predictable place (e.g. `sheet.raw.speed`, `sheet.raw.deathSaves`).
@@ -1717,10 +1766,20 @@ def _build_character_import_sheet_from_pdf(
         "passives": passives,
         "species": species,
         "background": background,
+        # Pathfinder 2e-specific fields (ignored for other systems)
+        "heritage": heritage,
+        "class_dc": class_dc,
+        "focus_points": (
+            {"max": focus_points_max, "current": focus_points_current}
+            if focus_points_max is not None or focus_points_current is not None
+            else None
+        ),
         "multiclass": multiclass,
         "carry": carry,
         "portrait_url": None,
         "story": story,
+        # sheet_type identifies non-standard sheets (e.g. "ship" for vehicle sheets).
+        "sheet_type": "ship" if _is_ship_sheet else "character",
         "import": {
             "source": source or "pdf",
             "imported_at": _now_iso(),
@@ -1754,13 +1813,15 @@ def _build_character_import_sheet_from_pdf(
     }
 
     warnings: list[str] = []
-    if not species:
+    if _is_ship_sheet:
+        warnings.append("Ship/vehicle sheet detected — fields may be stored as a document instead of a character")
+    elif not species:
         warnings.append("Missing species")
-    if not background:
+    if not background and not _is_ship_sheet:
         warnings.append("Missing background")
-    if not any(v is not None for v in passives.values()):
+    if not any(v is not None for v in passives.values()) and not _is_ship_sheet:
         warnings.append("Missing passive scores")
-    if not carry.get("use_encumbrance"):
+    if not carry.get("use_encumbrance") and not _is_ship_sheet:
         warnings.append("Missing encumbrance data")
     if warnings:
         sheet["import"]["warnings"] = warnings

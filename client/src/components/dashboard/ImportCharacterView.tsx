@@ -126,6 +126,11 @@ export default function ImportCharacterView({
         : null
     const extracted = (importMeta?.extracted && typeof importMeta.extracted === 'object') ? importMeta.extracted : {}
     const overrides = (importMeta?.overrides && typeof importMeta.overrides === 'object') ? importMeta.overrides : {}
+    const detectedSystem = (sheet?.detected_system && typeof sheet.detected_system === 'object') ? sheet.detected_system : null
+    const sheetType = typeof sheet?.sheet_type === 'string' ? sheet.sheet_type : 'character'
+    const heritage = typeof sheet?.heritage === 'string' ? sheet.heritage : null
+    const classDc = typeof sheet?.class_dc === 'number' ? sheet.class_dc : null
+    const focusPoints = (sheet?.focus_points && typeof sheet.focus_points === 'object') ? sheet.focus_points as { max?: number; current?: number } : null
 
     return {
       stats,
@@ -136,6 +141,11 @@ export default function ImportCharacterView({
       rawTextLen,
       extracted,
       overrides,
+      detectedSystem,
+      sheetType,
+      heritage,
+      classDc,
+      focusPoints,
     }
   }, [previewSource, preview])
 
@@ -504,6 +514,21 @@ export default function ImportCharacterView({
             {pdfPreview ? (
               <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)' }}>
                 <div style={{ fontWeight: 750 }}>PDF extraction summary</div>
+
+                {pdfPreview.sheetType === 'ship' ? (
+                  <div className="inline-alert" style={{ background: 'rgba(251,191,36,0.15)', borderColor: '#fbbf24', color: '#fbbf24', fontSize: 13 }}>
+                    ⚓ Ship/Vehicle Sheet detected — This PDF appears to be a ship or vehicle sheet, not a character sheet. You can still import it; consider also adding it as a campaign document.
+                  </div>
+                ) : null}
+
+                {pdfPreview.detectedSystem && pdfPreview.detectedSystem.system_name && pdfPreview.detectedSystem.system_name !== 'Unknown' ? (
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    Detected system: <strong style={{ color: 'var(--tt-accent, #c084fc)' }}>{pdfPreview.detectedSystem.system_name}</strong>
+                    {pdfPreview.detectedSystem.publisher ? ` (${pdfPreview.detectedSystem.publisher})` : ''}
+                    {typeof pdfPreview.detectedSystem.confidence === 'number' ? ` — ${Math.round(pdfPreview.detectedSystem.confidence * 100)}% confidence` : ''}
+                  </div>
+                ) : null}
+
                 <div className="row-wrap" style={{ gap: 14 }}>
                   <div className="stack" style={{ gap: 6, minWidth: 200 }}>
                     <div className="muted">Ability scores</div>
@@ -520,6 +545,10 @@ export default function ImportCharacterView({
                     <div><strong>AC:</strong> {pdfPreview.ac ?? '—'}</div>
                     <div><strong>HP:</strong> {pdfPreview.hp?.current ?? '—'} / {pdfPreview.hp?.max ?? '—'}</div>
                     <div><strong>Temp:</strong> {pdfPreview.hp?.temp ?? '—'}</div>
+                    {pdfPreview.classDc != null ? <div><strong>Class DC:</strong> {pdfPreview.classDc}</div> : null}
+                    {pdfPreview.focusPoints != null ? (
+                      <div><strong>Focus Points:</strong> {pdfPreview.focusPoints.current ?? '—'} / {pdfPreview.focusPoints.max ?? '—'}</div>
+                    ) : null}
                   </div>
                   <div className="stack" style={{ gap: 6, minWidth: 160 }}>
                     <div className="muted">Features</div>
@@ -534,7 +563,7 @@ export default function ImportCharacterView({
 
                 {(pdfPreview.extracted?.name || pdfPreview.extracted?.level || pdfPreview.extracted?.class_name) ? (
                   <div className="muted" style={{ fontSize: 12 }}>
-                    Extracted: {pdfPreview.extracted?.name ? `Name “${pdfPreview.extracted.name}”` : 'Name —'} •
+                    Extracted: {pdfPreview.extracted?.name ? `Name "${pdfPreview.extracted.name}"` : 'Name —'} •
                     {pdfPreview.extracted?.level ? ` Level ${pdfPreview.extracted.level}` : ' Level —'} •
                     {pdfPreview.extracted?.class_name ? ` Class ${pdfPreview.extracted.class_name}` : ' Class —'}
                   </div>
@@ -542,7 +571,7 @@ export default function ImportCharacterView({
 
                 {(pdfPreview.overrides?.name || pdfPreview.overrides?.level || pdfPreview.overrides?.class_name) ? (
                   <div className="muted" style={{ fontSize: 12 }}>
-                    Overrides: {pdfPreview.overrides?.name ? `Name “${pdfPreview.overrides.name}”` : 'Name —'} •
+                    Overrides: {pdfPreview.overrides?.name ? `Name "${pdfPreview.overrides.name}"` : 'Name —'} •
                     {pdfPreview.overrides?.level ? ` Level ${pdfPreview.overrides.level}` : ' Level —'} •
                     {pdfPreview.overrides?.class_name ? ` Class ${pdfPreview.overrides.class_name}` : ' Class —'}
                   </div>

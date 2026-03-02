@@ -703,10 +703,19 @@ export default function CharacterSheetModal({ open, character, loading = false, 
     const species = asString((sheet as any)?.species)
     const background = asString((sheet as any)?.background)
     const languages = (sheet as any)?.languages
+    // Pathfinder 2e-specific fields
+    const heritage = asString((sheet as any)?.heritage)
+    const classDc = typeof (sheet as any)?.class_dc === 'number' ? (sheet as any).class_dc as number : null
+    const focusPoints = (sheet as any)?.focus_points && typeof (sheet as any).focus_points === 'object' ? (sheet as any).focus_points as { max?: number; current?: number } : null
+    const sheetType = asString((sheet as any)?.sheet_type)
     return {
       species,
       background,
       alignment,
+      heritage,
+      classDc,
+      focusPoints,
+      sheetType,
       personality: asString(story?.personality_traits),
       ideals: asString(story?.ideals),
       bonds: asString(story?.bonds),
@@ -910,6 +919,11 @@ export default function CharacterSheetModal({ open, character, loading = false, 
           {/* OVERVIEW TAB */}
           {activeTab === "overview" ? (
             <>
+              {bio.sheetType === "ship" ? (
+                <div className="inline-alert" style={{ background: "rgba(251,191,36,0.15)", borderColor: "#fbbf24", color: "#fbbf24" }}>
+                  ⚓ Ship/Vehicle Sheet — This sheet represents a vessel, not a character. Fields are stored as-is; consider adding it as a campaign document for gameplay reference.
+                </div>
+              ) : null}
               {ddbUrl ? (
                 <div className="card tt-sheet-card">
                   <div className="muted" style={{ marginBottom: 6 }}>D&D Beyond</div>
@@ -958,7 +972,8 @@ export default function CharacterSheetModal({ open, character, loading = false, 
                   <div><strong>Name:</strong> {character.name}</div>
                   <div><strong>Level:</strong> {character.level}</div>
                   <div><strong>Class:</strong> {character.class_name || "—"}</div>
-                  {bio.species ? <div><strong>Species:</strong> {bio.species}</div> : null}
+                  {bio.species ? <div><strong>{bio.heritage ? 'Ancestry' : 'Species'}:</strong> {bio.species}</div> : null}
+                  {bio.heritage ? <div><strong>Heritage:</strong> {bio.heritage}</div> : null}
                   {bio.background ? <div><strong>Background:</strong> {bio.background}</div> : null}
                   {bio.alignment ? <div><strong>Alignment:</strong> {bio.alignment}</div> : null}
                 </div>
@@ -966,6 +981,10 @@ export default function CharacterSheetModal({ open, character, loading = false, 
                   <div className="muted" style={{ marginBottom: 6 }}>Combat</div>
                   <div><strong>HP:</strong> {derived.hpCurrent ?? "—"} / {derived.hpMax ?? "—"}</div>
                   <div><strong>AC:</strong> {derived.ac ?? "—"}</div>
+                  {bio.classDc != null ? <div><strong>Class DC:</strong> {bio.classDc}</div> : null}
+                  {bio.focusPoints != null ? (
+                    <div><strong>Focus Points:</strong> {bio.focusPoints.current ?? "—"} / {bio.focusPoints.max ?? "—"}</div>
+                  ) : null}
                 </div>
                 <div className="card tt-sheet-card">
                   <div className="muted" style={{ marginBottom: 6 }}>Status</div>
@@ -1065,7 +1084,8 @@ export default function CharacterSheetModal({ open, character, loading = false, 
               <div className="tt-sheet-grid">
                 <div className="card tt-sheet-card">
                   <div className="muted" style={{ marginBottom: 6 }}>Identity</div>
-                  <div><strong>Species:</strong> {bio.species || "—"}</div>
+                  <div><strong>{bio.heritage ? 'Ancestry' : 'Species'}:</strong> {bio.species || "—"}</div>
+                  {bio.heritage ? <div><strong>Heritage:</strong> {bio.heritage}</div> : null}
                   <div><strong>Background:</strong> {bio.background || "—"}</div>
                   <div><strong>Alignment:</strong> {bio.alignment || "—"}</div>
                 </div>
