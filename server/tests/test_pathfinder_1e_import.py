@@ -74,8 +74,24 @@ def _ensure_admin_user(email: str, username: str) -> db.User:
 
 
 def _load_fixture_pdf() -> bytes:
-    with open(_FIXTURE_PDF, "rb") as fh:
-        return fh.read()
+    """Load the fixture PDF, generating it on-the-fly if not present.
+
+    The pre-generated ``character.pdf`` is excluded by ``.gitignore``.
+    In CI (or fresh clones) the file won't exist, so we build it from the
+    ``generate_valeros.py`` script instead so the tests always run.
+    """
+    if os.path.isfile(_FIXTURE_PDF):
+        with open(_FIXTURE_PDF, "rb") as fh:
+            return fh.read()
+
+    # Generate on-the-fly via the committed generator script
+    import importlib.util
+
+    _gen_path = os.path.join(os.path.dirname(_FIXTURE_PDF), "generate_valeros.py")
+    spec = importlib.util.spec_from_file_location("generate_valeros", _gen_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.build_pdf(mod.VALEROS_FIELDS)
 
 
 def _import_for_user(client: TestClient, email: str, pdf_bytes: bytes, filename: str = "character.pdf") -> dict:
@@ -96,8 +112,10 @@ def _import_for_user(client: TestClient, email: str, pdf_bytes: bytes, filename:
 # ---------------------------------------------------------------------------
 
 pytestmark = pytest.mark.skipif(
-    not os.path.isfile(_FIXTURE_PDF),
-    reason="Fixture PDF not found — run server/tests/fixtures/pathfinder_1e/generate_valeros.py",
+    not os.path.isfile(
+        os.path.join(os.path.dirname(_FIXTURE_PDF), "generate_valeros.py")
+    ),
+    reason="PF1e fixture generator not found",
 )
 
 # ---------------------------------------------------------------------------
