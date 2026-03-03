@@ -134,7 +134,7 @@ def _extract_fields_from_pdf_widgets(fields: Dict[str, str]) -> tuple[str | None
 
     name = fields.get("CharacterName") or fields.get("CHARACTER NAME") or fields.get("Character Name")
 
-    # All known class names (5e + PF2e) used for conservative matching.
+    # All known class names (5e + PF2e + Starfinder) used for conservative matching.
     candidates = [
         # D&D 5e
         "Artificer", "Barbarian", "Bard", "Cleric", "Druid", "Fighter",
@@ -143,6 +143,10 @@ def _extract_fields_from_pdf_widgets(fields: Dict[str, str]) -> tuple[str | None
         "Alchemist", "Champion", "Investigator", "Magus", "Oracle", "Psychic",
         "Summoner", "Swashbuckler", "Thaumaturge", "Witch",
         "Animist", "Exemplar", "Commander", "Guardian",
+        # Starfinder
+        "Biohacker", "Envoy", "Evolutionist", "Mechanic", "Mystic",
+        "Nanocyte", "Operative", "Precog", "Solarian", "Soldier",
+        "Technomancer", "Vanguard", "Witchwarper",
     ]
 
     # Find a key that looks like it contains both Class and Level.
