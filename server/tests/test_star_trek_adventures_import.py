@@ -24,7 +24,7 @@ from fastapi.testclient import TestClient
 import server.main as main
 from server import db
 from server.auth import create_access_token
-from server.scripts.seed_star_trek_adventures_characters import build_japel_pdf, JAPEL_FIELDS
+from server.scripts.seed_star_trek_adventures_characters import JAPEL_FIELDS, build_japel_pdf
 
 # ---------------------------------------------------------------------------
 # Helpers

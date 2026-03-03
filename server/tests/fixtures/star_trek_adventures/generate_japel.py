@@ -20,7 +20,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "..
 
 from server.scripts.seed_star_trek_adventures_characters import build_japel_pdf  # noqa: E402
 
-
 if __name__ == "__main__":
     out_path = os.path.join(os.path.dirname(__file__), "japelsta.pdf")
     pdf_bytes = build_japel_pdf()
