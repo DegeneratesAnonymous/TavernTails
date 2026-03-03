@@ -11,6 +11,8 @@ These dev agents are **process helpers**. They should not change product scope w
 
 Recommended cadence:
 - PM Agent creates/updates 1–3 Work Orders.
+- **Research Agent** performs web research + best-practice lookup; delivers a Research Briefing to the Tech Lead.
+- Tech Lead Agent plans execution using the Research Briefing.
 - Backend/Frontend Agent executes a Work Order.
 - QA Agent runs/extends tests.
 - Reviewer Agent does a final pass and creates a concise merge checklist.
@@ -56,13 +58,20 @@ Use `docs/WORK_ORDER_TEMPLATE.md`.
 
 ## Agent Roles
 
+### Research Agent
+**Does**: web research, best-practice lookups, spec/API reference gathering. Delivers a Research Briefing to the Tech Lead *before* any implementation planning begins. Does NOT write code or make architecture decisions.
+
+**When to invoke**: at the start of any Work Order that involves a new technology, external format (e.g. PDF parsing, game system schemas), third-party API, or unfamiliar domain.
+
+**Prompt**: see `docs/dev-agents/RESEARCH.md`.
+
 ### Docs/PM Agent
 **Does**: maintains MVP scope decisions, keeps trackers current, creates small Work Orders with acceptance criteria.
 
 **Prompt**: see `docs/dev-agents/PM.md`.
 
 ### Tech Lead Agent
-**Does**: API/UI architecture decisions within agreed scope; keeps contracts stable.
+**Does**: API/UI architecture decisions within agreed scope; keeps contracts stable. Consumes Research Briefing from the Research Agent when available.
 
 **Prompt**: see `docs/dev-agents/TECH_LEAD.md`.
 
