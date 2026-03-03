@@ -305,6 +305,19 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
         },
         "skills": set(),
         "stats": {"strength", "agility", "intellect", "will"},
+        # Widget keys found on official SotDL character sheets (unique to this system).
+        "widget_signals": {
+            "positive": {
+                "corruption", "healing rate", "novice path", "expert path",
+                "master path", "insanity", "intellect", "will",
+                "boons", "banes",
+            },
+            "negative": {
+                "proficiency rank", "ancestry feat", "focus points", "class dc",
+                "base attack bonus", "cmb", "cmd", "stress", "determination",
+                "momentum", "spell slots",
+            },
+        },
         "keywords": {
             "shadow of the demon lord", "sotdl", "schwalb",
             "demon lord", "tradition",
