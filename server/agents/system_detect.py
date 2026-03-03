@@ -601,3 +601,33 @@ def _unknown_result() -> Dict[str, Any]:
         "all_scores": {sig["name"]: 0 for sig in SYSTEM_SIGNATURES},
         "mechanic_profile": {},
     }
+
+
+def list_ttrpg_systems() -> List[Dict[str, str]]:
+    """Return a list of all known TTRPG systems with name and publisher.
+
+    Intended for use in UI dropdowns so players can manually specify which
+    game system a PDF was created for.  Displaying these names in a
+    selection list is purely referential (like a file-format selector) and
+    does not reproduce any copyrighted rules content.
+    """
+    return [{"name": sig["name"], "publisher": sig["publisher"]} for sig in SYSTEM_SIGNATURES]
+
+
+def override_ttrpg_system(detected: Dict[str, Any], system_name: str) -> Dict[str, Any]:
+    """Return a copy of *detected* with system fields overridden by *system_name*.
+
+    If *system_name* is not in the known registry the original dict is returned
+    unchanged.  Confidence is set to 1.0 and ``"user-selected"`` is prepended
+    to the evidence list so downstream code can tell it was a manual choice.
+    """
+    sig = _SYSTEMS_BY_NAME.get(system_name)
+    if sig is None:
+        return detected
+    overridden = dict(detected)
+    overridden["system_name"] = sig["name"]
+    overridden["publisher"] = sig["publisher"]
+    overridden["mechanic_profile"] = sig.get("mechanic_profile", {})
+    overridden["confidence"] = 1.0
+    overridden["evidence"] = ["user-selected"] + list(overridden.get("evidence") or [])
+    return overridden
