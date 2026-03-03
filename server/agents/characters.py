@@ -4453,6 +4453,16 @@ def _build_character_import_sheet_from_pdf(
         for k, v in coc_fields.items():
             sheet[k] = v
 
+    # Merge WFRP-specific fields when the sheet is identified as Warhammer Fantasy Roleplay.
+    # Both conditions are intentional:
+    #   - system_name check: covers manual system_override to WFRP even if widget keys differ
+    #   - _is_wfrp_sheet check: catches WFRP sheets where system detection scored it as Unknown
+    # _extract_wfrp_fields_from_widgets is only called once regardless of which branch fires.
+    if system_name == "Warhammer Fantasy Roleplay" or _is_wfrp_sheet(widget_values):
+        wfrp_fields = _extract_wfrp_fields_from_widgets(widget_values)
+        for k, v in wfrp_fields.items():
+            sheet[k] = v
+
     return final_name, safe_level, final_class_name, sheet
 
 
