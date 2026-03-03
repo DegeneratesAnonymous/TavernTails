@@ -72,6 +72,12 @@ def _init_db_if_needed():
         if os.environ.get('TAVERNTAILS_SEED_USERS', '1') == '1':
             _db.ensure_seed_users()
             logger.info('Seed users ensured (admin + bilbo)')
+            try:
+                from .scripts.seed_pathfinder_2e_characters import seed_pf2e_characters
+                seed_pf2e_characters()
+                logger.info('PF2e seed characters ensured (bilbo + admin)')
+            except Exception:
+                logger.exception('PF2e character seed failed (non-fatal)')
         logger.info('Database ready')
         _db_initialized = True
     except Exception:
