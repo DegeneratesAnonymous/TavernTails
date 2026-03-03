@@ -132,7 +132,12 @@ def _extract_fields_from_pdf_widgets(fields: Dict[str, str]) -> tuple[str | None
     if not fields:
         return None, None, None
 
-    name = fields.get("CharacterName") or fields.get("CHARACTER NAME") or fields.get("Character Name")
+    name = (
+        fields.get("CharacterName")
+        or fields.get("CHARACTER NAME")
+        or fields.get("Character Name")
+        or fields.get("Name")
+    )
 
     # All known class names (5e + PF2e) used for conservative matching.
     candidates = [
@@ -381,6 +386,118 @@ def _extract_sta_list_fields_from_widgets(
                             seen.add(lv)
                             items.append(part)
     return items[:max_items]
+
+
+# ---------------------------------------------------------------------------
+# Alien RPG (Free League Publishing / Year Zero Engine) field extraction
+# ---------------------------------------------------------------------------
+# The four core attributes on an Alien RPG character sheet.
+_ALIEN_RPG_ATTRIBUTES = ["Strength", "Agility", "Wits", "Empathy"]
+
+# The twelve skills, each tied to one of the four attributes.
+_ALIEN_RPG_SKILLS = [
+    # Strength skills
+    "Close Combat", "Heavy Machinery", "Stamina",
+    # Agility skills
+    "Mobility", "Piloting", "Ranged Combat",
+    # Wits skills
+    "Comtech", "Observation", "Survival",
+    # Empathy skills
+    "Command", "Manipulation", "Medical Aid",
+]
+
+
+def _is_alien_rpg_sheet(widget_values: Dict[str, str]) -> bool:
+    """Return True if the widget keys strongly suggest an Alien RPG character sheet.
+
+    Requires at least 4 of the distinctive Alien RPG attribute / skill / resource
+    widget names to be present.  "Wits", "Empathy", "Comtech", "Stress", "Panic",
+    and "Agenda" are all unique to the Year Zero Engine / Alien RPG family.
+    """
+    alien_keys = set(_ALIEN_RPG_ATTRIBUTES + _ALIEN_RPG_SKILLS + ["Stress", "Panic", "Agenda", "Career"])
+    matches = sum(1 for k in widget_values if k in alien_keys)
+    return matches >= 4
+
+
+def _extract_alien_rpg_attributes_from_widgets(fields: Dict[str, str]) -> Dict[str, int]:
+    """Extract the four Alien RPG attribute scores (Strength, Agility, Wits, Empathy).
+
+    Attribute values range from 1–6 on the standard Alien RPG character sheet.
+    Stored under ``sheet["alien_attributes"]`` so they do not overload D&D 5e
+    stat keys.
+    """
+    result: Dict[str, int] = {}
+    for attr in _ALIEN_RPG_ATTRIBUTES:
+        n = _extract_pdf_widget_int(fields, [attr], min_value=1, max_value=6)
+        if isinstance(n, int):
+            result[attr.lower()] = n
+    return result
+
+
+def _extract_alien_rpg_skills_from_widgets(fields: Dict[str, str]) -> Dict[str, int]:
+    """Extract the twelve Alien RPG skill ratings (0–5 scale).
+
+    Stored under ``sheet["alien_skills"]`` with snake_case keys.
+    """
+    result: Dict[str, int] = {}
+    for skill in _ALIEN_RPG_SKILLS:
+        n = _extract_pdf_widget_int(fields, [skill], min_value=0, max_value=5)
+        if isinstance(n, int):
+            result[skill.lower().replace(" ", "_")] = n
+    return result
+
+
+def _extract_alien_rpg_health_from_widgets(fields: Dict[str, str]) -> Dict[str, int]:
+    """Extract Alien RPG health (tied to Strength attribute; max = Strength score).
+
+    Stored under ``sheet["alien_health"]`` — not ``hp`` — to avoid overloading the
+    D&D 5e hit-point field.
+    """
+    current = _extract_pdf_widget_int(
+        fields,
+        ["Health", "Current Health", "Health Current"],
+        min_value=0,
+        max_value=10,
+    )
+    maximum = _extract_pdf_widget_int(
+        fields,
+        ["Max Health", "Health Max", "Maximum Health"],
+        min_value=0,
+        max_value=10,
+    )
+    out: Dict[str, int] = {}
+    if isinstance(current, int):
+        out["current"] = current
+    if isinstance(maximum, int):
+        out["max"] = maximum
+    return out
+
+
+def _extract_alien_rpg_stress_from_widgets(fields: Dict[str, str]) -> Dict[str, int]:
+    """Extract Alien RPG stress track (the primary tension/horror mechanic).
+
+    Stress adds bonus dice but each stress die showing a face triggers a Panic
+    Roll.  Stored under ``sheet["alien_stress"]`` — not ``hp`` or STA's ``stress``
+    — to keep the namespaces clean.
+    """
+    current = _extract_pdf_widget_int(
+        fields,
+        ["Stress", "Current Stress", "Stress Level", "Stress Current"],
+        min_value=0,
+        max_value=10,
+    )
+    maximum = _extract_pdf_widget_int(
+        fields,
+        ["Max Stress", "Stress Max", "Maximum Stress"],
+        min_value=0,
+        max_value=10,
+    )
+    out: Dict[str, int] = {}
+    if isinstance(current, int):
+        out["current"] = current
+    if isinstance(maximum, int):
+        out["max"] = maximum
+    return out
 
 
 def _extract_ac_from_pdf_widgets(fields: Dict[str, str]) -> int | None:
@@ -1812,6 +1929,11 @@ def _build_character_import_sheet_from_pdf(
         _sta_dept = _as_str(widget_values.get("Department")) or _as_str(widget_values.get("department"))
         if _sta_dept:
             final_class_name = _sta_dept
+    # For Alien RPG sheets, fall back to the Career widget as the character's "class"
+    if not final_class_name:
+        _alien_career = _as_str(widget_values.get("Career")) or _as_str(widget_values.get("Job"))
+        if _alien_career:
+            final_class_name = _alien_career
 
     class_features = _lines_from_blobs(class_blobs)
     racial_features = _lines_from_blobs(race_blobs)
@@ -2285,15 +2407,16 @@ def _build_character_import_sheet_from_pdf(
         pass
 
     # Detect TTRPG system from extracted sheet data.
-    # Include STA attributes in the stats dict so the STA signature can be scored
-    # even when the standard D&D ability-score widgets are absent.
+    # Include STA and Alien RPG attributes in the stats dict so those signatures
+    # can be scored even when the standard D&D ability-score widgets are absent.
     try:
         sta_attrs_for_detection = _extract_sta_attributes_from_widgets(widget_values)
+        alien_attrs_for_detection = _extract_alien_rpg_attributes_from_widgets(widget_values)
         detect_input = {
             "class_name": final_class_name,
             "multiclass": multiclass,
             "skills": skills_from_widgets,
-            "stats": {**stats_from_widgets, **sta_attrs_for_detection},
+            "stats": {**stats_from_widgets, **sta_attrs_for_detection, **alien_attrs_for_detection},
             "raw_text": (combined_text or "")[:10000],
             "import": {"source": source, "ddb_url": ddb_url, "filename": filename},
             "widget_keys": list(widget_values.keys()),
@@ -2361,6 +2484,66 @@ def _build_character_import_sheet_from_pdf(
                     sta_equipment.append(val)
         if sta_equipment:
             sheet["equipment"] = sta_equipment
+
+    # Alien RPG-specific field population (only when the sheet is identified as Alien RPG).
+    if _is_alien_rpg_sheet(widget_values):
+        alien_attributes = _extract_alien_rpg_attributes_from_widgets(widget_values)
+        alien_skills = _extract_alien_rpg_skills_from_widgets(widget_values)
+        alien_health = _extract_alien_rpg_health_from_widgets(widget_values)
+        alien_stress = _extract_alien_rpg_stress_from_widgets(widget_values)
+
+        if alien_attributes:
+            sheet["alien_attributes"] = alien_attributes
+        if alien_skills:
+            sheet["alien_skills"] = alien_skills
+        if alien_health:
+            sheet["alien_health"] = alien_health
+        if alien_stress:
+            sheet["alien_stress"] = alien_stress
+
+        # Career maps to the sheet career field (analogous to class in D&D).
+        alien_career = _as_str(widget_values.get("Career") or widget_values.get("Job"))
+        if alien_career:
+            sheet["alien_career"] = alien_career
+
+        # Agenda is a unique Alien RPG field: the character's secret personal objective.
+        alien_agenda = _as_str(widget_values.get("Agenda"))
+        if alien_agenda:
+            sheet["agenda"] = alien_agenda
+
+        # Buddy / Rival — optional relational fields on the Alien RPG sheet.
+        alien_buddy = _as_str(widget_values.get("Buddy"))
+        if alien_buddy:
+            sheet["alien_buddy"] = alien_buddy
+        alien_rival = _as_str(widget_values.get("Rival"))
+        if alien_rival:
+            sheet["alien_rival"] = alien_rival
+
+        # Appearance / personal description.
+        alien_appearance = _as_str(widget_values.get("Appearance"))
+        if alien_appearance:
+            sheet["alien_appearance"] = alien_appearance
+
+        # Experience points.
+        alien_xp = _extract_pdf_widget_int(widget_values, ["Experience", "XP"], min_value=0, max_value=999)
+        if isinstance(alien_xp, int):
+            sheet["alien_experience"] = alien_xp
+
+        # Gear / equipment (numbered list, e.g. "Gear 1" … "Gear 10").
+        # Reuses _extract_sta_list_fields_from_widgets which is system-agnostic
+        # despite its name — it extracts any numbered widget prefix list.
+        alien_gear: list[str] = _extract_sta_list_fields_from_widgets(
+            widget_values, ["Gear", "Equipment", "Item", "Weapon"], max_items=10
+        )
+        if alien_gear:
+            sheet["equipment"] = alien_gear
+
+        # Critical injuries (numbered list).
+        alien_injuries: list[str] = _extract_sta_list_fields_from_widgets(
+            widget_values, ["Critical Injury", "Injury", "Critical"], max_items=8
+        )
+        if alien_injuries:
+            sheet["injuries"] = alien_injuries
 
     # Merge Pathfinder-specific fields extracted from widget keys.
     system_name = (sheet.get("system") or {}).get("name", "Unknown")
