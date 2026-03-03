@@ -2675,7 +2675,9 @@ def _extract_shadowrun_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, 
     if metatype:
         result["shadowrun_metatype"] = metatype
 
-    # Essence (reduced by cyberware) — valid range 0.01–6.0
+    # Essence (reduced by cyberware) — valid range 0.01–6.0.
+    # Essence 0.0 means the character has died from cyberware overload and is
+    # not a playable state; treat as out-of-range to avoid importing garbage.
     essence = _find_float([r"\bessence\b", r"\bess\b"])
     if essence is not None and 0.0 < essence <= 6.0:
         result["shadowrun_essence"] = essence

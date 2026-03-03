@@ -754,7 +754,11 @@ class TestShadowrunExtractor:
         assert "shadowrun_nuyen" not in result
 
     def test_essence_bounds_check(self):
-        """Essence outside 0–6 range should be excluded."""
+        """Essence outside valid range should be excluded.
+
+        Essence 0.0 means the character has died from cyberware overload —
+        not a playable state, so it is intentionally excluded.
+        """
         fields_valid = {"Essence": "5.5"}
         fields_zero = {"Essence": "0.0"}
         fields_over = {"Essence": "7.0"}
