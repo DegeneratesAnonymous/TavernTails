@@ -1928,15 +1928,7 @@ def _extract_starfinder_fields_from_widgets(fields: Dict[str, str]) -> Dict[str,
         if re.search(r"\baugment(?:ation)?\b|\bcybernetics?\b|\bbiotech\b|\bneuroblock\b", str(k), re.I):
             aug_name = _as_str(v)
             if aug_name and len(aug_name) > 1:
-                slot = None
-                for k2, v2 in fields.items():
-                    if re.search(r"\bslot\b", str(k2), re.I) and v2:
-                        slot = _as_str(v2)
-                        break
-                entry: Dict[str, Any] = {"name": aug_name}
-                if slot:
-                    entry["slot"] = slot
-                augmentations.append(entry)
+                augmentations.append({"name": aug_name})
     if augmentations:
         result["starfinder_augmentations"] = augmentations
 
@@ -2683,9 +2675,9 @@ def _extract_shadowrun_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, 
     if metatype:
         result["shadowrun_metatype"] = metatype
 
-    # Essence (reduced by cyberware)
+    # Essence (reduced by cyberware) — valid range 0.01–6.0
     essence = _find_float([r"\bessence\b", r"\bess\b"])
-    if essence is not None:
+    if essence is not None and 0.0 < essence <= 6.0:
         result["shadowrun_essence"] = essence
 
     # Condition monitors

@@ -753,5 +753,14 @@ class TestShadowrunExtractor:
         result = _extract_shadowrun_fields_from_widgets(fields)
         assert "shadowrun_nuyen" not in result
 
+    def test_essence_bounds_check(self):
+        """Essence outside 0–6 range should be excluded."""
+        fields_valid = {"Essence": "5.5"}
+        fields_zero = {"Essence": "0.0"}
+        fields_over = {"Essence": "7.0"}
+        assert _extract_shadowrun_fields_from_widgets(fields_valid).get("shadowrun_essence") == 5.5
+        assert "shadowrun_essence" not in _extract_shadowrun_fields_from_widgets(fields_zero)
+        assert "shadowrun_essence" not in _extract_shadowrun_fields_from_widgets(fields_over)
+
     def test_empty_returns_empty(self):
         assert _extract_shadowrun_fields_from_widgets({}) == {}
