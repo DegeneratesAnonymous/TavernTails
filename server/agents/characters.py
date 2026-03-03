@@ -1133,6 +1133,203 @@ def _extract_pf1e_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, Any]:
     return result
 
 
+# ---------------------------------------------------------------------------
+# D&D 5e-specific field extraction
+# ---------------------------------------------------------------------------
+
+def _extract_dnd5e_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, Any]:
+    """Extract D&D 5e-specific fields from PDF widget key/value pairs.
+
+    Returns a dict with 5e-only keys: race, background, proficiency_bonus,
+    initiative, saves (with proficiency flag), skills (dict with proficiency
+    and expertise flags), spell_slots (keyed by level string), features
+    (flat list), hit_dice, inspiration, and death_saves.
+
+    Fields with no D&D 5e equivalent that map to system-namespaced keys
+    (e.g. ``d&d_stress``) are not emitted; HP / AC / stats are handled by
+    the shared extractors already called by the main import builder.
+    """
+    if not fields:
+        return {}
+
+    def _find_first(patterns: list[str]) -> str | None:
+        for k, v in fields.items():
+            if not v:
+                continue
+            for pat in patterns:
+                if re.search(pat, str(k), re.I):
+                    return _as_str(v)
+        return None
+
+    def _find_int(patterns: list[str]) -> int | None:
+        val = _find_first(patterns)
+        if val is None:
+            return None
+        m = re.search(r"-?\d+", str(val))
+        return int(m.group(0)) if m else _as_int(val)
+
+    def _find_bool(patterns: list[str]) -> bool | None:
+        val = _find_first(patterns)
+        if val is None:
+            return None
+        v = str(val).strip().lower()
+        if v in ("yes", "true", "1", "on"):
+            return True
+        if v in ("no", "false", "0", "off", ""):
+            return False
+        return None
+
+    result: Dict[str, Any] = {}
+
+    # Race / Species (D&D 5e uses Race; "species" already extracted by the shared builder
+    # but we also store the raw widget value under "race" for schema consistency).
+    race = _find_first([r"\brace\b", r"\bspecies\b", r"\bsubrace\b"])
+    if race:
+        result["race"] = race
+
+    # Proficiency Bonus
+    prof_bonus = _find_int([r"\bprof(?:iciency)?\s*bonus\b", r"\bprofbonus\b"])
+    if prof_bonus is not None:
+        result["proficiency_bonus"] = prof_bonus
+
+    # Initiative (D&D 5e tracks this as a separate field; typically = DEX mod)
+    initiative = _find_int([r"\binitiative\b"])
+    if initiative is not None:
+        result["initiative"] = initiative
+
+    # Inspiration (boolean)
+    inspiration = _find_bool([r"\binspiration\b", r"\binspired\b"])
+    if inspiration is not None:
+        result["inspiration"] = inspiration
+
+    # Hit Dice (e.g. "d8" or "5d8"; D&D 5e tracks hit die type per level)
+    hit_dice = _find_first([r"\bhit\s*dice\b", r"\bhd\s*type\b", r"\bhd\s*total\b", r"\bhdtotal\b", r"\bhit_dice\b"])
+    if hit_dice:
+        result["hit_dice"] = hit_dice
+
+    # Death Saves (successes / failures counts)
+    ds_successes = _find_int([r"\bdeath\s*save\s*success", r"\bds\s*success", r"\bdeathsavesuccess"])
+    ds_failures = _find_int([r"\bdeath\s*save\s*fail", r"\bds\s*fail", r"\bdeathsavefail"])
+    death_saves: Dict[str, Any] = {}
+    if ds_successes is not None:
+        death_saves["successes"] = ds_successes
+    if ds_failures is not None:
+        death_saves["failures"] = ds_failures
+    if death_saves:
+        result["death_saves"] = death_saves
+
+    # Saving throws — D&D 5e has 6 ability-score saves, each with a proficiency flag.
+    saves: Dict[str, Any] = {}
+    for save_key, patterns_total, patterns_prof in [
+        ("str", [r"\bstr\s*save\b", r"\bstrength\s*save\b", r"\bst\s*strength\b"],
+                [r"\bstr\s*save\s*prof\b", r"\bstsaveprof\b"]),
+        ("dex", [r"\bdex\s*save\b", r"\bdexterity\s*save\b", r"\bst\s*dexterity\b"],
+                [r"\bdex\s*save\s*prof\b"]),
+        ("con", [r"\bcon\s*save\b", r"\bconstitution\s*save\b", r"\bst\s*constitution\b"],
+                [r"\bcon\s*save\s*prof\b"]),
+        ("int", [r"\bint\s*save\b", r"\bintelligence\s*save\b", r"\bst\s*intelligence\b"],
+                [r"\bint\s*save\s*prof\b"]),
+        ("wis", [r"\bwis\s*save\b", r"\bwisdom\s*save\b", r"\bst\s*wisdom\b"],
+                [r"\bwis\s*save\s*prof\b"]),
+        ("cha", [r"\bcha\s*save\b", r"\bcharisma\s*save\b", r"\bst\s*charisma\b"],
+                [r"\bcha\s*save\s*prof\b"]),
+    ]:
+        save_entry: Dict[str, Any] = {}
+        total = _find_int(patterns_total)
+        if total is not None:
+            save_entry["total"] = total
+        prof = _find_bool(patterns_prof)
+        if prof is not None:
+            save_entry["proficient"] = prof
+        if save_entry:
+            saves[save_key] = save_entry
+    if saves:
+        result["saves"] = saves
+
+    # Skills — D&D 5e has 18 skills each with a modifier, proficiency flag, and
+    # optional expertise flag.
+    dnd5e_skills = [
+        "Acrobatics", "Animal Handling", "Arcana", "Athletics",
+        "Deception", "History", "Insight", "Intimidation",
+        "Investigation", "Medicine", "Nature", "Perception",
+        "Performance", "Persuasion", "Religion", "Sleight of Hand",
+        "Stealth", "Survival",
+    ]
+    skills: Dict[str, Any] = {}
+    for skill_name in dnd5e_skills:
+        skill_entry: Dict[str, Any] = {}
+        # Widget key variants seen on D&D Beyond and community fillable PDFs:
+        #   "Acrobatics", "AcrobaticsBonus", "Acrobatics Total"
+        safe = re.escape(skill_name)
+        mod_val = _find_int([
+            rf"\b{safe}\s*(bonus|modifier|total|mod)\b",
+            rf"\b{safe}\b",
+        ])
+        if mod_val is not None:
+            skill_entry["modifier"] = mod_val
+        prof = _find_bool([rf"\b{safe}\s*prof(?:iciency)?\b"])
+        if prof is not None:
+            skill_entry["proficient"] = prof
+        exp = _find_bool([rf"\b{safe}\s*exp(?:ertise)?\b"])
+        if exp is not None:
+            skill_entry["expertise"] = exp
+        if skill_entry:
+            skills[skill_name] = skill_entry
+    if skills:
+        result["skills"] = skills
+
+    # Spell slots keyed by level string ("1"–"9").
+    # Matches D&D Beyond PDF widgets ("SlotsTotal1", "SlotsRemaining1"),
+    # community fillable sheet variants ("SpellSlots1", "Spell Slot L1"),
+    # and the plain "Spell Slots Total 1" format.
+    # Capturing group 1 = the level digit.
+    _spell_slot_pattern = re.compile(
+        r"(?:spell\s*slots?\s*(?:total|max)?|slots?\s*total|spell\s*slot\s*(?:l|lvl|level)?\s*)(\d)$",
+        re.I,
+    )
+    spell_slots: Dict[str, int] = {}
+    for k, v in fields.items():
+        if not v:
+            continue
+        m = _spell_slot_pattern.search(str(k))
+        if m:
+            slot_count = _as_int(str(v).strip())
+            if isinstance(slot_count, int) and slot_count >= 0:
+                spell_slots[m.group(1)] = slot_count
+    if spell_slots:
+        result["spell_slots"] = spell_slots
+
+    # Class features / traits (D&D 5e calls them "Features & Traits")
+    features: list[str] = []
+    seen_feats: set[str] = set()
+    for k, v in fields.items():
+        if not v:
+            continue
+        if re.search(r"\b(feature|trait|class\s*feature|racial\s*trait)\b", str(k), re.I):
+            feat_name = _as_str(v)
+            if feat_name and feat_name.lower() not in seen_feats:
+                seen_feats.add(feat_name.lower())
+                features.append(feat_name)
+    if features:
+        result["features"] = features
+
+    # Equipment / gear
+    equipment: list[str] = []
+    seen_items: set[str] = set()
+    for k, v in fields.items():
+        if not v:
+            continue
+        if re.search(r"\b(equipment|item|gear|weapon|armor)\b", str(k), re.I):
+            item_name = _as_str(v)
+            if item_name and item_name.lower() not in seen_items and len(item_name) > 1:
+                seen_items.add(item_name.lower())
+                equipment.append(item_name)
+    if equipment:
+        result["equipment"] = equipment
+
+    return result
+
+
 def _read_pdf_text(content: bytes) -> str | None:
     """Extract plain text from a PDF binary. Falls back to utf-8 decoding.
 
@@ -2371,6 +2568,10 @@ def _build_character_import_sheet_from_pdf(
     elif system_name == "Pathfinder 1e":
         pf_fields = _extract_pf1e_fields_from_widgets(widget_values)
         for k, v in pf_fields.items():
+            sheet[k] = v
+    elif system_name == "D&D 5e":
+        dnd5e_fields = _extract_dnd5e_fields_from_widgets(widget_values)
+        for k, v in dnd5e_fields.items():
             sheet[k] = v
 
     return final_name, safe_level, final_class_name, sheet

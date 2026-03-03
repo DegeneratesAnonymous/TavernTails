@@ -56,6 +56,24 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
         "stats": {"str", "dex", "con", "int", "wis", "cha",
                   "strength", "dexterity", "constitution", "intelligence",
                   "wisdom", "charisma"},
+        # Widget keys that appear on D&D 5e official/D&D Beyond character sheets.
+        # Proficiency Bonus, Death Saves, Hit Dice, and Inspiration are D&D 5e–specific
+        # field labels that do not appear on Pathfinder sheets.
+        "widget_signals": {
+            "positive": {
+                "proficiency bonus", "profbonus",
+                "death saves", "death save",
+                "hit dice", "inspiration",
+                "spell slots total", "slotstotal",
+                "animal handling", "sleight of hand",
+            },
+            "negative": {
+                "ancestry", "heritage", "proficiency rank",
+                "focus points", "class dc", "bulk",
+                "bab", "base attack bonus", "cmb", "cmd",
+                "control", "daring", "fitness", "reason",
+            },
+        },
         "keywords": {
             "d&d", "dnd", "dungeons & dragons", "dungeons and dragons",
             "5e", "5th edition", "d&d beyond", "dndbeyond",
