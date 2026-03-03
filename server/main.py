@@ -72,6 +72,13 @@ def _init_db_if_needed():
         if os.environ.get('TAVERNTAILS_SEED_USERS', '1') == '1':
             _db.ensure_seed_users()
             logger.info('Seed users ensured (admin + bilbo)')
+        if os.environ.get('TAVERNTAILS_SEED_STARFINDER', '1') == '1':
+            try:
+                from .scripts.seed_starfinder_characters import seed_starfinder_characters
+                seed_starfinder_characters()
+                logger.info('Starfinder seed characters ensured (Navasi for admin + bilbo)')
+            except Exception:
+                logger.exception('Starfinder character seeding failed (non-fatal)')
         logger.info('Database ready')
         _db_initialized = True
     except Exception:

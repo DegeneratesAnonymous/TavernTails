@@ -178,6 +178,18 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
             "starfinder", "sfrd", "pact worlds", "drift", "eox",
             "armada", "starship", "absalom station",
         },
+        # Widget keys that appear on Starfinder character sheets but not on PF or D&D sheets.
+        "widget_signals": {
+            "positive": {
+                "stamina points", "sp max", "sp current", "resolve points",
+                "rp max", "rp current", "eac", "kac", "theme",
+                "drift", "racial hp",
+            },
+            "negative": {
+                "proficiency rank", "ancestry", "heritage", "focus points",
+                "bab", "base attack bonus", "cmb", "cmd",
+            },
+        },
     },
     {
         "name": "Call of Cthulhu",

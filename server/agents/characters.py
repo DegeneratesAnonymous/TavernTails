@@ -134,7 +134,7 @@ def _extract_fields_from_pdf_widgets(fields: Dict[str, str]) -> tuple[str | None
 
     name = fields.get("CharacterName") or fields.get("CHARACTER NAME") or fields.get("Character Name")
 
-    # All known class names (5e + PF2e) used for conservative matching.
+    # All known class names (5e + PF2e + Starfinder) used for conservative matching.
     candidates = [
         # D&D 5e
         "Artificer", "Barbarian", "Bard", "Cleric", "Druid", "Fighter",
@@ -143,6 +143,10 @@ def _extract_fields_from_pdf_widgets(fields: Dict[str, str]) -> tuple[str | None
         "Alchemist", "Champion", "Investigator", "Magus", "Oracle", "Psychic",
         "Summoner", "Swashbuckler", "Thaumaturge", "Witch",
         "Animist", "Exemplar", "Commander", "Guardian",
+        # Starfinder
+        "Biohacker", "Envoy", "Evolutionist", "Mechanic", "Mystic",
+        "Nanocyte", "Operative", "Precog", "Solarian", "Soldier",
+        "Technomancer", "Vanguard", "Witchwarper",
     ]
 
     # Find a key that looks like it contains both Class and Level.
@@ -1129,6 +1133,203 @@ def _extract_pf1e_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, Any]:
                 special_abilities.append(ability_name)
     if special_abilities:
         result["special_abilities"] = special_abilities
+
+    return result
+
+
+def _extract_starfinder_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, Any]:
+    """Extract Starfinder-specific fields from PDF widget key/value pairs.
+
+    Returns a dict with Starfinder-only keys.  Fields with no D&D 5e equivalent
+    are stored under system-namespaced keys (``starfinder_*``) to avoid
+    overloading shared schema keys like ``hp``.
+
+    Mapped fields:
+    - ``race``                    – species/race
+    - ``starfinder_theme``        – character theme (no 5e equivalent)
+    - ``starfinder_homeworld``    – homeworld
+    - ``starfinder_stamina``      – stamina points pool {max, current}
+    - ``starfinder_resolve``      – resolve points pool {max, current}
+    - ``starfinder_kac``          – Kinetic Armor Class
+    - ``starfinder_eac``          – Energy Armor Class
+    - ``saves``                   – {fort, ref, will} as integer totals
+    - ``skills``                  – {name: {ranks, total}} for each skill
+    - ``feats``                   – flat list of feat names
+    - ``class_features``          – list of class feature / special ability names
+    - ``equipment``               – list of item names
+    - ``bulk``                    – {current, limit}
+    - ``spell_slots``             – {level_str: max_count} for spellcasters
+    """
+    if not fields:
+        return {}
+
+    def _find_first(patterns: list[str]) -> str | None:
+        for k, v in fields.items():
+            if not v:
+                continue
+            for pat in patterns:
+                if re.search(pat, str(k), re.I):
+                    return _as_str(v)
+        return None
+
+    def _find_int(patterns: list[str]) -> int | None:
+        val = _find_first(patterns)
+        if val is None:
+            return None
+        m = re.search(r"-?\d+", str(val))
+        return int(m.group(0)) if m else _as_int(val)
+
+    result: Dict[str, Any] = {}
+
+    # Race / species (Starfinder uses "Race" on the official sheet)
+    race = _find_first([r"\brace\b", r"\bspecies\b"])
+    if race:
+        result["race"] = race
+
+    # Theme — no D&D 5e equivalent; stored as namespaced key
+    theme = _find_first([r"\btheme\b"])
+    if theme:
+        result["starfinder_theme"] = theme
+
+    # Homeworld — no D&D 5e equivalent
+    homeworld = _find_first([r"\bhomeworld\b", r"\bhome\s*world\b"])
+    if homeworld:
+        result["starfinder_homeworld"] = homeworld
+
+    # Stamina Points — no D&D 5e equivalent; stored as namespaced key
+    sp_max = _find_int([r"\bsp\s*max\b", r"\bstamina\s*(?:points?)?\s*max\b", r"\bmax\s*(?:stamina\s*(?:points?)?|sp)\b"])
+    sp_cur = _find_int([r"\bsp\s*current\b", r"\bcurrent\s*(?:stamina\s*(?:points?)?|sp)\b"])
+    if sp_max is not None or sp_cur is not None:
+        result["starfinder_stamina"] = {}
+        if sp_max is not None:
+            result["starfinder_stamina"]["max"] = sp_max
+        if sp_cur is not None:
+            result["starfinder_stamina"]["current"] = sp_cur
+
+    # Resolve Points — no D&D 5e equivalent; stored as namespaced key
+    rp_max = _find_int([r"\brp\s*max\b", r"\bresolve\s*(?:points?)?\s*max\b", r"\bmax\s*(?:resolve\s*(?:points?)?|rp)\b"])
+    rp_cur = _find_int([r"\brp\s*current\b", r"\bcurrent\s*(?:resolve\s*(?:points?)?|rp)\b"])
+    if rp_max is not None or rp_cur is not None:
+        result["starfinder_resolve"] = {}
+        if rp_max is not None:
+            result["starfinder_resolve"]["max"] = rp_max
+        if rp_cur is not None:
+            result["starfinder_resolve"]["current"] = rp_cur
+
+    # Kinetic Armor Class (KAC) — no D&D 5e equivalent
+    kac = _find_int([r"\bkac\b", r"\bkinetic\s*(?:armor\s*)?class\b"])
+    if kac is not None:
+        result["starfinder_kac"] = kac
+
+    # Energy Armor Class (EAC) — no D&D 5e equivalent
+    eac = _find_int([r"\beac\b", r"\benergy\s*(?:armor\s*)?class\b"])
+    if eac is not None:
+        result["starfinder_eac"] = eac
+
+    # Saving throws (integer totals, no proficiency ranks — same model as PF1e)
+    saves: Dict[str, Any] = {}
+    for save_key, patterns in [
+        ("fort", [r"\bfortitude\s*(?:save\s*)?total\b", r"\bfort(?:itude)?\b"]),
+        ("ref", [r"\breflex\s*(?:save\s*)?total\b", r"\bref(?:lex)?\b"]),
+        ("will", [r"\bwill\s*(?:save\s*)?total\b", r"\bwill\b"]),
+    ]:
+        total = _find_int(patterns)
+        if total is not None:
+            saves[save_key] = total
+    if saves:
+        result["saves"] = saves
+
+    # Skills — {name: {ranks, total}}
+    starfinder_skills = [
+        "Acrobatics", "Athletics", "Bluff", "Computers", "Culture",
+        "Diplomacy", "Disguise", "Engineering", "Intimidate", "Life Science",
+        "Medicine", "Mysticism", "Perception", "Physical Science",
+        "Piloting", "Sense Motive", "Sleight of Hand", "Stealth", "Survival",
+    ]
+    skills: Dict[str, Any] = {}
+    for skill_name in starfinder_skills:
+        skill_entry: Dict[str, Any] = {}
+        ranks = _find_int([
+            rf"\b{re.escape(skill_name)}\s*ranks?\b",
+            rf"\branks?\s*{re.escape(skill_name)}\b",
+        ])
+        if ranks is not None:
+            skill_entry["ranks"] = ranks
+        total = _find_int([
+            rf"\b{re.escape(skill_name)}\s*total\b",
+            rf"\btotal\s*{re.escape(skill_name)}\b",
+        ])
+        if total is not None:
+            skill_entry["total"] = total
+        if skill_entry:
+            skills[skill_name] = skill_entry
+    if skills:
+        result["skills"] = skills
+
+    # Feats — flat list (Starfinder feats are not categorised like PF2e)
+    feats: list[str] = []
+    seen_feats: set[str] = set()
+    for k, v in fields.items():
+        if not v:
+            continue
+        if re.search(r"\bfeat\b", str(k), re.I):
+            feat_name = _as_str(v)
+            if feat_name and feat_name.lower() not in seen_feats:
+                seen_feats.add(feat_name.lower())
+                feats.append(feat_name)
+    if feats:
+        result["feats"] = feats
+
+    # Class features / special abilities
+    class_features: list[str] = []
+    seen_features: set[str] = set()
+    for k, v in fields.items():
+        if not v:
+            continue
+        if re.search(r"\b(class\s*feature|special\s*abilit|class\s*abilit|racial\s*trait)\b", str(k), re.I):
+            feature_name = _as_str(v)
+            if feature_name and feature_name.lower() not in seen_features:
+                seen_features.add(feature_name.lower())
+                class_features.append(feature_name)
+    if class_features:
+        result["class_features"] = class_features
+
+    # Equipment / gear
+    equipment: list[str] = []
+    seen_items: set[str] = set()
+    for k, v in fields.items():
+        if not v:
+            continue
+        if re.search(r"\b(equipment|item|gear|weapon|armor|augmentation)\b", str(k), re.I):
+            item_name = _as_str(v)
+            if item_name and item_name.lower() not in seen_items and len(item_name) > 1:
+                seen_items.add(item_name.lower())
+                equipment.append(item_name)
+    if equipment:
+        result["equipment"] = equipment
+
+    # Bulk (Starfinder uses bulk encumbrance, same as PF2e)
+    bulk_current = _find_int([r"\bcurrent\s*bulk\b", r"\bbulk\s*current\b", r"\bbulkcurrent\b"])
+    bulk_limit = _find_int([r"\bbulk\s*limit\b", r"\bmax\s*bulk\b", r"\bbulklimit\b"])
+    if bulk_current is not None or bulk_limit is not None:
+        result["bulk"] = {}
+        if bulk_current is not None:
+            result["bulk"]["current"] = bulk_current
+        if bulk_limit is not None:
+            result["bulk"]["limit"] = bulk_limit
+
+    # Spell slots keyed by level string (for Mystic / Technomancer)
+    spell_slots: Dict[str, int] = {}
+    for k, v in fields.items():
+        if not v:
+            continue
+        m = re.search(r"spell\s*slots?\s*(?:l|level|lvl)?\s*(\d+)\s*(?:max|total)?$", str(k), re.I)
+        if m:
+            slot_count = _as_int(str(v).strip())
+            if isinstance(slot_count, int) and slot_count >= 0:
+                spell_slots[m.group(1)] = slot_count
+    if spell_slots:
+        result["spell_slots"] = spell_slots
 
     return result
 
@@ -2371,6 +2572,10 @@ def _build_character_import_sheet_from_pdf(
     elif system_name == "Pathfinder 1e":
         pf_fields = _extract_pf1e_fields_from_widgets(widget_values)
         for k, v in pf_fields.items():
+            sheet[k] = v
+    elif system_name == "Starfinder":
+        sf_fields = _extract_starfinder_fields_from_widgets(widget_values)
+        for k, v in sf_fields.items():
             sheet[k] = v
 
     return final_name, safe_level, final_class_name, sheet
