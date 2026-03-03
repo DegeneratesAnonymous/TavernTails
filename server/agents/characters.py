@@ -383,6 +383,161 @@ def _extract_sta_list_fields_from_widgets(
     return items[:max_items]
 
 
+# ---------------------------------------------------------------------------
+# Shadow of the Demon Lord (SotDL) field extraction
+# ---------------------------------------------------------------------------
+_SOTDL_ATTRIBUTES = ["Strength", "Agility", "Intellect", "Will"]
+
+
+def _is_sotdl_sheet(widget_values: Dict[str, str]) -> bool:
+    """Return True if the widget keys strongly suggest a Shadow of the Demon Lord sheet.
+
+    Requires at least three of the four SotDL-unique attribute names AND at least one of
+    Corruption or Healing Rate (which have no equivalent in other systems).
+    """
+    attr_matches = sum(1 for k in widget_values if k in _SOTDL_ATTRIBUTES)
+    has_sotdl_unique = any(
+        k in widget_values for k in ("Corruption", "Healing Rate", "Novice Path", "Expert Path", "Master Path")
+    )
+    return attr_matches >= 3 and has_sotdl_unique
+
+
+def _extract_sotdl_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, Any]:
+    """Extract Shadow of the Demon Lord-specific fields from PDF widget key/value pairs.
+
+    Returns a dict with SotDL-specific keys (prefixed ``sotdl_`` where there is
+    no shared-schema equivalent) plus shared keys that have a direct analogue.
+
+    Field mapping:
+    - Strength / Agility / Intellect / Will → ``stats`` (shared schema)
+    - Health → ``hp`` (closest analogue)
+    - Defense → ``ac`` (closest analogue)
+    - Healing Rate → ``sotdl_healing_rate`` (no 5e equivalent)
+    - Perception → ``sotdl_perception`` (derived stat, not a skill list entry)
+    - Corruption → ``sotdl_corruption`` (unique resource, no 5e equivalent)
+    - Insanity → ``sotdl_insanity`` (unique resource, no 5e equivalent)
+    - Speed → ``sotdl_speed``
+    - Novice/Expert/Master Path → ``sotdl_paths``
+    - Talents → ``talents`` (shared list convention used by STA)
+    - Spells → ``spells`` (shared list)
+    - Ancestry → ``race`` (closest shared-schema analogue)
+    - Languages/Professions → ``languages`` / ``sotdl_professions``
+    """
+    if not fields:
+        return {}
+
+    def _find_int(candidates: list[str], *, min_value: int | None = None, max_value: int | None = None) -> int | None:
+        return _extract_pdf_widget_int(fields, candidates, min_value=min_value, max_value=max_value)
+
+    def _find_str(candidates: list[str]) -> str | None:
+        for candidate in candidates:
+            val = _as_str(fields.get(candidate))
+            if val:
+                return val
+        return None
+
+    result: Dict[str, Any] = {}
+
+    # ---- Core attributes (stored under stats for shared-schema compatibility) ----
+    stats: Dict[str, int] = {}
+    for attr in _SOTDL_ATTRIBUTES:
+        n = _find_int([attr, f"{attr} Score", f"{attr}Score"], min_value=1, max_value=20)
+        if isinstance(n, int):
+            stats[attr.lower()] = n
+    if stats:
+        result["stats"] = stats
+
+    # ---- Health (maps to hp) ----
+    health_max = _find_int(["Health", "HP", "Hit Points", "Max Health", "Health Max"], min_value=0, max_value=500)
+    health_current = _find_int(
+        ["Current Health", "Health Current", "Current HP"],
+        min_value=0,
+        max_value=500,
+    )
+    if health_max is not None or health_current is not None:
+        hp: Dict[str, int] = {}
+        if health_max is not None:
+            hp["max"] = health_max
+        if health_current is not None:
+            hp["current"] = health_current
+        result["hp"] = hp
+
+    # ---- Defense (maps to ac) ----
+    defense = _find_int(["Defense", "DEF", "Armor Class", "AC"], min_value=0, max_value=50)
+    if defense is not None:
+        result["ac"] = defense
+
+    # ---- SotDL-unique fields (namespaced to avoid overloading shared keys) ----
+    healing_rate = _find_int(["Healing Rate", "HealingRate"], min_value=0, max_value=100)
+    if healing_rate is not None:
+        result["sotdl_healing_rate"] = healing_rate
+
+    perception = _find_int(["Perception", "Perc"], min_value=0, max_value=30)
+    if perception is not None:
+        result["sotdl_perception"] = perception
+
+    corruption = _find_int(["Corruption", "Corruption Points"], min_value=0, max_value=100)
+    if corruption is not None:
+        result["sotdl_corruption"] = corruption
+
+    insanity = _find_int(["Insanity", "Insanity Points"], min_value=0, max_value=100)
+    if insanity is not None:
+        result["sotdl_insanity"] = insanity
+
+    speed = _find_int(["Speed", "Movement", "Base Speed"], min_value=0, max_value=200)
+    if speed is not None:
+        result["sotdl_speed"] = speed
+
+    # ---- Paths (novice / expert / master) ----
+    paths: Dict[str, str] = {}
+    for tier in ("Novice", "Expert", "Master"):
+        val = _find_str([f"{tier} Path", f"{tier}Path", f"{tier}_Path"])
+        if val:
+            paths[tier.lower()] = val
+    if paths:
+        result["sotdl_paths"] = paths
+
+    # ---- Ancestry (stored as `race` for shared-schema compatibility) ----
+    ancestry = _find_str(["Ancestry", "Ancestries", "Race", "Species"])
+    if ancestry:
+        result["race"] = ancestry
+
+    # ---- Talents ----
+    talents = _extract_sta_list_fields_from_widgets(fields, ["Talent", "Talents"], max_items=20)
+    if talents:
+        result["talents"] = talents
+
+    # ---- Spells (by tradition or flat list) ----
+    spells = _extract_sta_list_fields_from_widgets(fields, ["Spell", "Spells", "Cantrip", "Cantrips"], max_items=40)
+    if spells:
+        result["spells"] = spells
+
+    # ---- Equipment ----
+    equipment: list[str] = []
+    seen_items: set[str] = set()
+    for k, v in fields.items():
+        if not v:
+            continue
+        if re.search(r"\b(weapon|item|gear|equipment)\s*\d*$", str(k), re.I):
+            item_name = _as_str(v)
+            if item_name and item_name.lower() not in seen_items and len(item_name) > 1:
+                seen_items.add(item_name.lower())
+                equipment.append(item_name)
+    if equipment:
+        result["equipment"] = equipment
+
+    # ---- Languages / Professions ----
+    lang_blob = _find_str(["Languages", "Language", "Spoken Languages"])
+    if lang_blob:
+        result["languages"] = [lang.strip() for lang in re.split(r"[,\n;]+", lang_blob) if lang.strip()]
+
+    prof_blob = _find_str(["Professions", "Profession", "Occupations"])
+    if prof_blob:
+        result["sotdl_professions"] = [p.strip() for p in re.split(r"[,\n;]+", prof_blob) if p.strip()]
+
+    return result
+
+
 def _extract_ac_from_pdf_widgets(fields: Dict[str, str]) -> int | None:
     if not fields:
         return None
@@ -2285,15 +2440,20 @@ def _build_character_import_sheet_from_pdf(
         pass
 
     # Detect TTRPG system from extracted sheet data.
-    # Include STA attributes in the stats dict so the STA signature can be scored
-    # even when the standard D&D ability-score widgets are absent.
+    # Include STA attributes and SotDL attributes in the stats dict so their
+    # signatures can be scored even when standard D&D ability-score widgets are absent.
     try:
         sta_attrs_for_detection = _extract_sta_attributes_from_widgets(widget_values)
+        sotdl_attrs_for_detection: Dict[str, int] = {}
+        for attr in _SOTDL_ATTRIBUTES:
+            n = _extract_pdf_widget_int(widget_values, [attr], min_value=1, max_value=20)
+            if isinstance(n, int):
+                sotdl_attrs_for_detection[attr.lower()] = n
         detect_input = {
             "class_name": final_class_name,
             "multiclass": multiclass,
             "skills": skills_from_widgets,
-            "stats": {**stats_from_widgets, **sta_attrs_for_detection},
+            "stats": {**stats_from_widgets, **sta_attrs_for_detection, **sotdl_attrs_for_detection},
             "raw_text": (combined_text or "")[:10000],
             "import": {"source": source, "ddb_url": ddb_url, "filename": filename},
             "widget_keys": list(widget_values.keys()),
@@ -2371,6 +2531,10 @@ def _build_character_import_sheet_from_pdf(
     elif system_name == "Pathfinder 1e":
         pf_fields = _extract_pf1e_fields_from_widgets(widget_values)
         for k, v in pf_fields.items():
+            sheet[k] = v
+    elif _is_sotdl_sheet(widget_values):
+        sotdl_fields = _extract_sotdl_fields_from_widgets(widget_values)
+        for k, v in sotdl_fields.items():
             sheet[k] = v
 
     return final_name, safe_level, final_class_name, sheet
