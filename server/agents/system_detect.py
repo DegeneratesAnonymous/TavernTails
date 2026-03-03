@@ -308,6 +308,16 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
             "warhammer", "wfrp", "cubicle 7", "altdorf", "reikland",
             "sigmar", "old world", "chaos",
         },
+        # Widget key signals unique to Cubicle 7 WFRP 4e fillable PDF sheets.
+        # Used by infer_ttrpg_system when widget_keys are supplied in the sheet dict.
+        "widget_signals": {
+            "positive": {
+                "ws advances", "bs advances", "toughness advances", "wounds",
+                "fate points", "fortune points", "resilience", "resolve points",
+                "corruption", "career level", "skill advances",
+            },
+            "negative": {"armor class", "saving throw", "hit dice", "stress max"},
+        },
     },
     {
         "name": "Alien RPG",

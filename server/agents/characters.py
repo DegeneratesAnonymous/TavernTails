@@ -1133,6 +1133,263 @@ def _extract_pf1e_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, Any]:
     return result
 
 
+# ---------------------------------------------------------------------------
+# Warhammer Fantasy Roleplay (WFRP 4e) field extraction
+# ---------------------------------------------------------------------------
+
+# Characteristic abbreviations used on the Cubicle 7 WFRP 4e fillable PDF.
+_WFRP_CHARACTERISTICS = ["WS", "BS", "S", "T", "I", "Agi", "Dex", "Int", "WP", "Fel"]
+
+# Mapping from PDF abbreviation → long name (for schema keys)
+_WFRP_CHAR_NAMES: Dict[str, str] = {
+    "WS": "weapon_skill",
+    "BS": "ballistic_skill",
+    "S": "strength",
+    "T": "toughness",
+    "I": "initiative",
+    "Agi": "agility",
+    "Dex": "dexterity",
+    "Int": "intelligence",
+    "WP": "willpower",
+    "Fel": "fellowship",
+}
+
+
+def _is_wfrp_sheet(widget_values: Dict[str, str]) -> bool:
+    """Return True if the widget keys strongly suggest a WFRP 4e character sheet.
+
+    Requires at least 4 of the 10 WFRP characteristic field names (e.g. 'WS',
+    'BS Advances', 'Toughness') to be present as widget keys.
+    """
+    found = 0
+    for k in widget_values:
+        kn = k.strip()
+        # Direct characteristic abbreviation match
+        if kn in _WFRP_CHARACTERISTICS:
+            found += 1
+        # "WS Advances", "BS Advances", etc.
+        elif re.match(r"^(WS|BS|S|T|I|Agi|Dex|Int|WP|Fel)\s+(Advances?|Initial|Starting)$", kn):
+            found += 1
+        # Full-name characteristic fields
+        elif kn.lower() in {"weapon skill", "ballistic skill", "toughness", "willpower", "fellowship"}:
+            found += 1
+        if found >= 4:
+            return True
+    return False
+
+
+def _extract_wfrp_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, Any]:
+    """Extract Warhammer Fantasy Roleplay 4e-specific fields from PDF widget key/value pairs.
+
+    Field mapping notes (schema-namespaced to avoid overloading D&D 5e keys):
+    - Characteristics (WS/BS/S/T/I/Agi/Dex/Int/WP/Fel): percentile range 01-100+
+      stored under ``warhammer_characteristics`` with ``initial``, ``advances``, ``total``
+    - Wounds replace D&D HP → stored under ``warhammer_wounds`` (not ``hp``)
+    - Fate/Fortune and Resilience/Resolve → ``warhammer_fate``, ``warhammer_resilience``
+    - Skills stored as ``{"name": str, "characteristic": str, "advances": int}`` list
+    - Talents as list of strings
+    - Career and career path stored under ``warhammer_career``
+    - ``sheet.system.name`` is set to "Warhammer Fantasy Roleplay" by the main builder
+    """
+    if not fields:
+        return {}
+
+    def _find_first(patterns: list[str]) -> str | None:
+        for k, v in fields.items():
+            if not v:
+                continue
+            for pat in patterns:
+                if re.search(pat, str(k), re.I):
+                    return _as_str(v)
+        return None
+
+    def _find_int(patterns: list[str], min_v: int = 0, max_v: int = 9999) -> int | None:
+        val = _find_first(patterns)
+        if val is None:
+            return None
+        m = re.search(r"-?\d+", str(val))
+        if not m:
+            return None
+        n = int(m.group(0))
+        return n if min_v <= n <= max_v else None
+
+    result: Dict[str, Any] = {}
+
+    # ---- Characteristics ---------------------------------------------------
+    characteristics: Dict[str, Any] = {}
+    for abbr in _WFRP_CHARACTERISTICS:
+        long_name = _WFRP_CHAR_NAMES[abbr]
+        # Initial (base) score
+        initial = _find_int([
+            rf"^{re.escape(abbr)}$",
+            rf"^{re.escape(abbr)}\s+(initial|starting|base)$",
+        ], min_v=1, max_v=120)
+        # Advances (bonus from career/XP)
+        advances = _find_int([
+            rf"^{re.escape(abbr)}\s+advances?$",
+            rf"^{re.escape(abbr)}\s+adv$",
+        ], min_v=0, max_v=99)
+        entry: Dict[str, Any] = {}
+        if initial is not None:
+            entry["initial"] = initial
+        if advances is not None:
+            entry["advances"] = advances
+        if initial is not None and advances is not None:
+            entry["total"] = initial + advances
+        if entry:
+            characteristics[long_name] = entry
+    if characteristics:
+        result["warhammer_characteristics"] = characteristics
+
+    # ---- Wounds (replaces HP in WFRP) -------------------------------------
+    wounds_current = _find_int(
+        [r"\bcurrent\s*wounds?\b", r"\bwounds?\s*current\b", r"\bcurrent\s*w\b"],
+        min_v=0, max_v=999,
+    )
+    wounds_max = _find_int(
+        [r"\bwounds?\s*(max|maximum|total|threshold)\b", r"\bmax(imum)?\s*wounds?\b", r"\bwounds?\b"],
+        min_v=0, max_v=999,
+    )
+    if wounds_current is not None or wounds_max is not None:
+        wounds: Dict[str, int] = {}
+        if wounds_current is not None:
+            wounds["current"] = wounds_current
+        if wounds_max is not None:
+            wounds["max"] = wounds_max
+        result["warhammer_wounds"] = wounds
+
+    # ---- Fate & Fortune ---------------------------------------------------
+    fate_total = _find_int([r"\bfate\s*(points?)?\s*(total|max)?\b", r"\bfate\b"], min_v=0, max_v=99)
+    fortune_current = _find_int([r"\bfortune\s*(points?)?\b"], min_v=0, max_v=99)
+    if fate_total is not None or fortune_current is not None:
+        fate: Dict[str, int] = {}
+        if fate_total is not None:
+            fate["fate"] = fate_total
+        if fortune_current is not None:
+            fate["fortune"] = fortune_current
+        result["warhammer_fate"] = fate
+
+    # ---- Resilience & Resolve ---------------------------------------------
+    resilience_total = _find_int([r"\bresilience\b"], min_v=0, max_v=99)
+    resolve_current = _find_int([r"\bresolve\b"], min_v=0, max_v=99)
+    if resilience_total is not None or resolve_current is not None:
+        resil: Dict[str, int] = {}
+        if resilience_total is not None:
+            resil["resilience"] = resilience_total
+        if resolve_current is not None:
+            resil["resolve"] = resolve_current
+        result["warhammer_resilience"] = resil
+
+    # ---- Corruption & Mutations -------------------------------------------
+    corruption = _find_int([r"\bcorruption\b"], min_v=0, max_v=99)
+    if corruption is not None:
+        result["warhammer_corruption"] = corruption
+
+    # ---- Experience -------------------------------------------------------
+    xp_total = _find_int([r"\b(total\s*)?experience\b", r"\btotal\s*xp\b"], min_v=0, max_v=99999)
+    xp_spent = _find_int(
+        [r"\b(spent|used)\s*(experience|xp)\b", r"\bexperience\s*(spent|used)\b", r"\bxp\s*spent\b"],
+        min_v=0, max_v=99999,
+    )
+    if xp_total is not None or xp_spent is not None:
+        xp: Dict[str, int] = {}
+        if xp_total is not None:
+            xp["total"] = xp_total
+        if xp_spent is not None:
+            xp["spent"] = xp_spent
+        result["warhammer_experience"] = xp
+
+    # ---- Career -----------------------------------------------------------
+    career_name = _find_first([r"\bcareer\s*(name)?\b"])
+    career_level = _find_first([r"\bcareer\s*level\b", r"\bcareer\s*tier\b"])
+    career_path = _find_first([r"\bcareer\s*path\b"])
+    career_status = _find_first([r"\bstatus\s*(standing)?\b", r"\bsocial\s*status\b"])
+    if career_name or career_level or career_path:
+        career: Dict[str, Any] = {}
+        if career_name:
+            career["name"] = career_name
+        if career_level:
+            career["level"] = career_level
+        if career_path:
+            career["path"] = career_path
+        if career_status:
+            career["status"] = career_status
+        result["warhammer_career"] = career
+
+    # ---- Skills (as advances) --------------------------------------------
+    # Pattern: "Skill Name N" + "Skill Advances N" widget pairs
+    skills: list[Dict[str, Any]] = []
+    seen_skills: set[str] = set()
+    for i in range(1, 40):
+        skill_name = _as_str(fields.get(f"Skill Name {i}") or fields.get(f"Skill {i}"))
+        if not skill_name:
+            continue
+        if skill_name.lower() in seen_skills:
+            continue
+        seen_skills.add(skill_name.lower())
+        advances_raw = (
+            fields.get(f"Skill Advances {i}")
+            or fields.get(f"Skill Adv {i}")
+            or fields.get(f"Advances {i}")
+        )
+        advances_val = _as_int(str(advances_raw).strip()) if advances_raw is not None else None
+        char_raw = _as_str(fields.get(f"Skill Char {i}") or fields.get(f"Skill Characteristic {i}"))
+        entry_s: Dict[str, Any] = {"name": skill_name}
+        if isinstance(advances_val, int) and advances_val >= 0:
+            entry_s["advances"] = advances_val
+        if char_raw:
+            entry_s["characteristic"] = char_raw
+        skills.append(entry_s)
+    if skills:
+        result["warhammer_skills"] = skills
+
+    # ---- Talents ----------------------------------------------------------
+    talents: list[str] = []
+    seen_talents: set[str] = set()
+    for i in range(1, 20):
+        talent = _as_str(fields.get(f"Talent {i}") or fields.get(f"Talent Name {i}"))
+        if talent and talent.lower() not in seen_talents:
+            seen_talents.add(talent.lower())
+            talents.append(talent)
+    if talents:
+        result["warhammer_talents"] = talents
+
+    # ---- Armour & Trappings ----------------------------------------------
+    armour = _find_int([r"\barmour\s*(points?)?\b", r"\barmor\s*(points?)?\b"], min_v=0, max_v=20)
+    if armour is not None:
+        result["warhammer_armour_points"] = armour
+
+    # Equipment / trappings
+    equipment: list[str] = []
+    seen_items: set[str] = set()
+    for k, v in fields.items():
+        if not v:
+            continue
+        if re.search(r"\b(trapping|weapon|equipment|item|gear|armou?r)\s*\d*\b", str(k), re.I):
+            item_name = _as_str(v)
+            if item_name and item_name.lower() not in seen_items and len(item_name) > 1:
+                # Skip numeric-only values (likely score fields)
+                if re.match(r"^\d+$", item_name.strip()):
+                    continue
+                seen_items.add(item_name.lower())
+                equipment.append(item_name)
+    if equipment:
+        result["warhammer_trappings"] = equipment
+
+    # ---- Ambitions / Goals -----------------------------------------------
+    short_term = _find_first([r"\bshort[\s_-]*term\s*(ambition|goal)?\b"])
+    long_term = _find_first([r"\blong[\s_-]*term\s*(ambition|goal)?\b"])
+    if short_term or long_term:
+        ambitions: Dict[str, Any] = {}
+        if short_term:
+            ambitions["short_term"] = short_term
+        if long_term:
+            ambitions["long_term"] = long_term
+        result["warhammer_ambitions"] = ambitions
+
+    return result
+
+
 def _read_pdf_text(content: bytes) -> str | None:
     """Extract plain text from a PDF binary. Falls back to utf-8 decoding.
 
@@ -1812,6 +2069,11 @@ def _build_character_import_sheet_from_pdf(
         _sta_dept = _as_str(widget_values.get("Department")) or _as_str(widget_values.get("department"))
         if _sta_dept:
             final_class_name = _sta_dept
+    # For WFRP sheets, fall back to the Career widget as the character's "class"
+    if not final_class_name:
+        _wfrp_career = _as_str(widget_values.get("Career")) or _as_str(widget_values.get("career"))
+        if _wfrp_career and re.match(r"^[A-Za-z][A-Za-z\s'-]{1,49}$", _wfrp_career.strip()):
+            final_class_name = _wfrp_career.strip()
 
     class_features = _lines_from_blobs(class_blobs)
     racial_features = _lines_from_blobs(race_blobs)
@@ -2285,15 +2547,21 @@ def _build_character_import_sheet_from_pdf(
         pass
 
     # Detect TTRPG system from extracted sheet data.
-    # Include STA attributes in the stats dict so the STA signature can be scored
-    # even when the standard D&D ability-score widgets are absent.
+    # Include STA attributes and WFRP characteristic abbreviations in the stats dict
+    # so those system signatures can be scored even when D&D ability-score widgets are absent.
     try:
         sta_attrs_for_detection = _extract_sta_attributes_from_widgets(widget_values)
+        # Collect any WFRP characteristic keys present in the widgets for detection scoring.
+        wfrp_stats_for_detection: Dict[str, int] = {
+            abbr.lower(): 1
+            for abbr in _WFRP_CHARACTERISTICS
+            if abbr in widget_values and widget_values[abbr]
+        }
         detect_input = {
             "class_name": final_class_name,
             "multiclass": multiclass,
             "skills": skills_from_widgets,
-            "stats": {**stats_from_widgets, **sta_attrs_for_detection},
+            "stats": {**stats_from_widgets, **sta_attrs_for_detection, **wfrp_stats_for_detection},
             "raw_text": (combined_text or "")[:10000],
             "import": {"source": source, "ddb_url": ddb_url, "filename": filename},
             "widget_keys": list(widget_values.keys()),
@@ -2371,6 +2639,16 @@ def _build_character_import_sheet_from_pdf(
     elif system_name == "Pathfinder 1e":
         pf_fields = _extract_pf1e_fields_from_widgets(widget_values)
         for k, v in pf_fields.items():
+            sheet[k] = v
+
+    # Merge WFRP-specific fields when the sheet is identified as Warhammer Fantasy Roleplay.
+    # Both conditions are intentional:
+    #   - system_name check: covers manual system_override to WFRP even if widget keys differ
+    #   - _is_wfrp_sheet check: catches WFRP sheets where system detection scored it as Unknown
+    # _extract_wfrp_fields_from_widgets is only called once regardless of which branch fires.
+    if system_name == "Warhammer Fantasy Roleplay" or _is_wfrp_sheet(widget_values):
+        wfrp_fields = _extract_wfrp_fields_from_widgets(widget_values)
+        for k, v in wfrp_fields.items():
             sheet[k] = v
 
     return final_name, safe_level, final_class_name, sheet
