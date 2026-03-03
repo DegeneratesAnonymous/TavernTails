@@ -447,6 +447,15 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
             "shadowrun", "sixth world", "nuyen", "matrix",
             "sprawl", "corp", "megacorp", "awakened", "otaku",
         },
+        # Widget key signals from the Catalyst Game Labs SR6e fillable PDF.
+        # BOD/AGI/REA/EDG/ESS are unique to Shadowrun; condition monitors add
+        # further confidence.  D&D stat abbreviations (STR/INT/CHA) overlap so
+        # they are not scored here.
+        "widget_signals": {
+            "positive": {"BOD", "AGI", "REA", "EDG", "ESS", "Metatype",
+                         "Nuyen", "PhysMonMax", "StunMonMax"},
+            "negative": set(),
+        },
     },
 ]
 
