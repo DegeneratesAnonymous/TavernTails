@@ -4408,6 +4408,66 @@ def _build_character_import_sheet_from_pdf(
         if sta_equipment:
             sheet["equipment"] = sta_equipment
 
+    # Alien RPG-specific field population (only when the sheet is identified as Alien RPG).
+    if _is_alien_rpg_sheet(widget_values):
+        alien_attributes = _extract_alien_rpg_attributes_from_widgets(widget_values)
+        alien_skills = _extract_alien_rpg_skills_from_widgets(widget_values)
+        alien_health = _extract_alien_rpg_health_from_widgets(widget_values)
+        alien_stress = _extract_alien_rpg_stress_from_widgets(widget_values)
+
+        if alien_attributes:
+            sheet["alien_attributes"] = alien_attributes
+        if alien_skills:
+            sheet["alien_skills"] = alien_skills
+        if alien_health:
+            sheet["alien_health"] = alien_health
+        if alien_stress:
+            sheet["alien_stress"] = alien_stress
+
+        # Career maps to the sheet career field (analogous to class in D&D).
+        alien_career = _as_str(widget_values.get("Career") or widget_values.get("Job"))
+        if alien_career:
+            sheet["alien_career"] = alien_career
+
+        # Agenda is a unique Alien RPG field: the character's secret personal objective.
+        alien_agenda = _as_str(widget_values.get("Agenda"))
+        if alien_agenda:
+            sheet["agenda"] = alien_agenda
+
+        # Buddy / Rival — optional relational fields on the Alien RPG sheet.
+        alien_buddy = _as_str(widget_values.get("Buddy"))
+        if alien_buddy:
+            sheet["alien_buddy"] = alien_buddy
+        alien_rival = _as_str(widget_values.get("Rival"))
+        if alien_rival:
+            sheet["alien_rival"] = alien_rival
+
+        # Appearance / personal description.
+        alien_appearance = _as_str(widget_values.get("Appearance"))
+        if alien_appearance:
+            sheet["alien_appearance"] = alien_appearance
+
+        # Experience points.
+        alien_xp = _extract_pdf_widget_int(widget_values, ["Experience", "XP"], min_value=0, max_value=999)
+        if isinstance(alien_xp, int):
+            sheet["alien_experience"] = alien_xp
+
+        # Gear / equipment (numbered list, e.g. "Gear 1" … "Gear 10").
+        # Reuses _extract_sta_list_fields_from_widgets which is system-agnostic
+        # despite its name — it extracts any numbered widget prefix list.
+        alien_gear: list[str] = _extract_sta_list_fields_from_widgets(
+            widget_values, ["Gear", "Equipment", "Item", "Weapon"], max_items=10
+        )
+        if alien_gear:
+            sheet["equipment"] = alien_gear
+
+        # Critical injuries (numbered list).
+        alien_injuries: list[str] = _extract_sta_list_fields_from_widgets(
+            widget_values, ["Critical Injury", "Injury", "Critical"], max_items=8
+        )
+        if alien_injuries:
+            sheet["injuries"] = alien_injuries
+
     # Merge Pathfinder-specific fields extracted from widget keys.
     system_name = (sheet.get("system") or {}).get("name", "Unknown")
     if system_name == "Pathfinder 2e":

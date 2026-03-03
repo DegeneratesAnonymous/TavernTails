@@ -396,6 +396,21 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
             "alien rpg", "alien", "free league", "xenomorph",
             "weyland-yutani", "nostromo",
         },
+        # Widget keys that appear on Alien RPG character sheets (Year Zero Engine).
+        # Agility/Wits/Empathy and the skill names are distinctive; Panic and Agenda
+        # are unique to the Alien RPG.
+        "widget_signals": {
+            "positive": {
+                "wits", "empathy", "agenda", "panic",
+                "close combat", "heavy machinery", "comtech",
+                "ranged combat", "medical aid", "manipulation",
+                "stress", "colonial marine", "roughneck",
+            },
+            "negative": {
+                "proficiency bonus", "spell slots", "hit dice", "ki points",
+                "disciplines", "control", "daring",
+            },
+        },
     },
     {
         "name": "Shadowrun",
