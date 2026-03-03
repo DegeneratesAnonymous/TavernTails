@@ -24,14 +24,12 @@ from __future__ import annotations
 
 import io
 import os
-from typing import Any
 
 from pypdf import PdfWriter
 from pypdf.generic import ArrayObject, DictionaryObject, FloatObject, NameObject, TextStringObject
 
 from server import db
 from server.agents.characters import _build_character_import_sheet_from_pdf  # noqa: PLC2701
-
 
 # ---------------------------------------------------------------------------
 # Character sheet data — matches the fixture used by test_shadowrun_import.py
