@@ -474,3 +474,76 @@ def test_import_ship_sheet_is_flagged():
     # Import warnings should mention ship detection
     warnings = sheet.get("import", {}).get("warnings", [])
     assert any("ship" in w.lower() or "vehicle" in w.lower() for w in warnings), f"Expected ship warning, got {warnings}"
+
+
+def test_list_import_systems_returns_known_systems():
+    """GET /characters/import/systems returns a list of supported TTRPG systems."""
+    client = _client()
+    email = "systems-list@example.com"
+    _ensure_user(email)
+    token = create_access_token(email)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+
+    res = client.get("/characters/import/systems", headers=auth_headers)
+    assert res.status_code == 200, res.text
+    data = res.json()
+    systems = data["systems"]
+    assert isinstance(systems, list)
+    assert len(systems) > 0
+    names = [s["name"] for s in systems]
+    assert "D&D 5e" in names
+    assert "Pathfinder 2e" in names
+    for entry in systems:
+        assert "name" in entry
+        assert "publisher" in entry
+
+
+def test_pdf_import_game_system_override_is_applied():
+    """When game_system is supplied, it overrides auto-detection."""
+    client = _client()
+    email = "system-override@example.com"
+    _ensure_user(email)
+    token = create_access_token(email)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+
+    # A PDF with Ranger text would normally score as D&D 5e; we override to PF2e.
+    payload = b"Minsc\nLevel 3\nRanger\n"
+    res = client.post(
+        "/characters/import/pdf/preview?source=pdf",
+        headers=auth_headers,
+        files={"file": ("character.pdf", io.BytesIO(payload), "application/pdf")},
+        data={"game_system": "Pathfinder 2e"},
+    )
+    assert res.status_code == 200, res.text
+    data = res.json()
+    sheet = data["preview"]["sheet"]
+    detected = sheet.get("detected_system", {})
+    assert detected.get("system_name") == "Pathfinder 2e"
+    assert detected.get("publisher") == "Paizo"
+    assert detected.get("confidence") == 1.0
+    assert "user-selected" in detected.get("evidence", [])
+    # Convenience key should also reflect the override
+    assert sheet.get("system", {}).get("name") == "Pathfinder 2e"
+
+
+def test_pdf_import_unknown_game_system_override_is_ignored():
+    """An unrecognised game_system value is silently ignored (auto-detect is used)."""
+    client = _client()
+    email = "system-override-bad@example.com"
+    _ensure_user(email)
+    token = create_access_token(email)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+
+    payload = b"Minsc\nLevel 3\nRanger\n"
+    res = client.post(
+        "/characters/import/pdf/preview?source=pdf",
+        headers=auth_headers,
+        files={"file": ("character.pdf", io.BytesIO(payload), "application/pdf")},
+        data={"game_system": "NonExistentSystem 99e"},
+    )
+    assert res.status_code == 200, res.text
+    data = res.json()
+    sheet = data["preview"]["sheet"]
+    detected = sheet.get("detected_system", {})
+    # Should NOT have user-selected in evidence since the system name was invalid
+    assert "user-selected" not in detected.get("evidence", [])

@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from .. import db
 from ..auth import get_current_user
 from . import references as references_agent
-from .system_detect import infer_ttrpg_system
+from .system_detect import infer_ttrpg_system, list_ttrpg_systems, override_ttrpg_system
 
 router = APIRouter(prefix="/characters", tags=["characters"])
 
@@ -1731,6 +1731,7 @@ def _build_character_import_sheet_from_pdf(
     class_name_override: str | None,
     ddb_url: str | None,
     source: str | None,
+    system_override: str | None = None,
 ) -> tuple[str, int, str | None, Dict[str, Any]]:
     if not content:
         raise HTTPException(status_code=400, detail="Empty file")
@@ -2298,6 +2299,8 @@ def _build_character_import_sheet_from_pdf(
             "widget_keys": list(widget_values.keys()),
         }
         sheet["detected_system"] = infer_ttrpg_system(detect_input)
+        if system_override:
+            sheet["detected_system"] = override_ttrpg_system(sheet["detected_system"], system_override)
     except Exception:
         pass
 
@@ -2619,12 +2622,23 @@ async def import_character_file(
     )
 
 
+@router.get("/import/systems", summary="List supported TTRPG systems for the PDF import game-system selector")
+def list_import_systems(current_user=Depends(get_current_user)):
+    """Return all TTRPG systems that the importer can recognise and that users
+    can select from the game-system dropdown.  Listing system names in a UI
+    selector is purely referential and does not reproduce any copyrighted
+    rules content.
+    """
+    return {"systems": list_ttrpg_systems()}
+
+
 @router.post("/import/pdf", status_code=201, summary="Import a character from an uploaded PDF (best-effort)")
 async def import_character_pdf(
     file: UploadFile = File(...),
     name: str | None = Form(default=None),
     level: int | None = Form(default=None),
     class_name: str | None = Form(default=None),
+    game_system: str | None = Form(default=None),
     ddb_url: str | None = None,
     source: str | None = "pdf",
     current_user=Depends(get_current_user),
@@ -2638,6 +2652,7 @@ async def import_character_pdf(
         class_name_override=class_name,
         ddb_url=ddb_url,
         source=source,
+        system_override=game_system or None,
     )
 
     character = db.create_character(
@@ -2656,6 +2671,7 @@ async def preview_import_character_pdf(
     name: str | None = Form(default=None),
     level: int | None = Form(default=None),
     class_name: str | None = Form(default=None),
+    game_system: str | None = Form(default=None),
     ddb_url: str | None = None,
     source: str | None = "pdf",
     current_user=Depends(get_current_user),
@@ -2669,6 +2685,7 @@ async def preview_import_character_pdf(
         class_name_override=class_name,
         ddb_url=ddb_url,
         source=source,
+        system_override=game_system or None,
     )
     return {
         "preview": {

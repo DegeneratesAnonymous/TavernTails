@@ -4,6 +4,22 @@ import { apiFetch, API_BASE, buildApiUrl } from '../../api'
 import PageHeader from '../ui/PageHeader'
 import Modal from '../ui/Modal'
 
+// Known TTRPG systems available for the game-system selector.
+// Listing these names in a UI dropdown is purely referential – the same as
+// any file-format selector – and does not reproduce copyrighted rules content.
+const KNOWN_TTRPG_SYSTEMS: { name: string; publisher: string }[] = [
+  { name: 'D&D 5e', publisher: 'Wizards of the Coast' },
+  { name: 'Pathfinder 2e', publisher: 'Paizo' },
+  { name: 'Pathfinder 1e', publisher: 'Paizo' },
+  { name: 'Starfinder', publisher: 'Paizo' },
+  { name: 'Call of Cthulhu', publisher: 'Chaosium' },
+  { name: 'Star Trek Adventures', publisher: 'Modiphius' },
+  { name: 'Shadow of the Demon Lord', publisher: 'Schwalb Entertainment' },
+  { name: 'Warhammer Fantasy Roleplay', publisher: 'Cubicle 7' },
+  { name: 'Alien RPG', publisher: 'Free League Publishing' },
+  { name: 'Shadowrun', publisher: 'Catalyst Game Labs' },
+]
+
 type CharacterPreview = {
   name: string
   level: number
@@ -65,6 +81,8 @@ export default function ImportCharacterView({
   const [pdfName, setPdfName] = useState('')
   const [pdfLevel, setPdfLevel] = useState('')
   const [pdfClassName, setPdfClassName] = useState('')
+  const [pdfSystem, setPdfSystem] = useState('')
+  const [availableSystems, setAvailableSystems] = useState<{ name: string; publisher: string }[]>(KNOWN_TTRPG_SYSTEMS)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [messageKind, setMessageKind] = useState<'ok' | 'error'>('ok')
@@ -181,6 +199,27 @@ export default function ImportCharacterView({
     }
   }, [])
 
+  useEffect(() => {
+    let canceled = false
+    async function fetchSystems() {
+      try {
+        const res = await apiFetch('/characters/import/systems')
+        if (!res.ok) return
+        const data = await res.json().catch(() => null)
+        const list = Array.isArray(data?.systems) ? data.systems : null
+        if (list && list.length > 0 && !canceled) {
+          setAvailableSystems(list)
+        }
+      } catch {
+        // Non-fatal: fall back to KNOWN_TTRPG_SYSTEMS already set as default
+      }
+    }
+    fetchSystems()
+    return () => {
+      canceled = true
+    }
+  }, [])
+
   const showMessage = (kind: 'ok' | 'error', text: string) => {
     setMessageKind(kind)
     setMessage(text)
@@ -282,6 +321,7 @@ export default function ImportCharacterView({
       if (pdfName.trim()) form.append('name', pdfName.trim())
       if (pdfClassName.trim()) form.append('class_name', pdfClassName.trim())
       if (pdfLevel.trim()) form.append('level', pdfLevel.trim())
+      if (pdfSystem.trim()) form.append('game_system', pdfSystem.trim())
       const qs = new URLSearchParams()
       qs.set('source', 'pdf')
       const res = await apiFetch(`/characters/import/pdf/preview?${qs.toString()}`, {
@@ -523,9 +563,10 @@ export default function ImportCharacterView({
 
                 {pdfPreview.detectedSystem && pdfPreview.detectedSystem.system_name && pdfPreview.detectedSystem.system_name !== 'Unknown' ? (
                   <div className="muted" style={{ fontSize: 12 }}>
-                    Detected system: <strong style={{ color: 'var(--tt-accent, #c084fc)' }}>{pdfPreview.detectedSystem.system_name}</strong>
-                    {pdfPreview.detectedSystem.publisher ? ` (${pdfPreview.detectedSystem.publisher})` : ''}
-                    {typeof pdfPreview.detectedSystem.confidence === 'number' ? ` — ${Math.round(pdfPreview.detectedSystem.confidence * 100)}% confidence` : ''}
+                    {Array.isArray(pdfPreview.detectedSystem.evidence) && pdfPreview.detectedSystem.evidence[0] === 'user-selected'
+                      ? <>Game system: <strong style={{ color: 'var(--tt-accent, #c084fc)' }}>{pdfPreview.detectedSystem.system_name}</strong>{pdfPreview.detectedSystem.publisher ? ` (${pdfPreview.detectedSystem.publisher})` : ''} — <em>manually selected</em></>
+                      : <>Detected system: <strong style={{ color: 'var(--tt-accent, #c084fc)' }}>{pdfPreview.detectedSystem.system_name}</strong>{pdfPreview.detectedSystem.publisher ? ` (${pdfPreview.detectedSystem.publisher})` : ''}{typeof pdfPreview.detectedSystem.confidence === 'number' ? ` — ${Math.round(pdfPreview.detectedSystem.confidence * 100)}% confidence` : ''}</>
+                    }
                   </div>
                 ) : null}
 
@@ -919,6 +960,22 @@ export default function ImportCharacterView({
                   onChange={(e) => setPdfClassName(e.target.value)}
                   disabled={busy}
                 />
+              </div>
+              <div className="stack" style={{ gap: 6, minWidth: 220 }}>
+                <label className="muted">Game system (optional)</label>
+                <select
+                  className="input"
+                  value={pdfSystem}
+                  onChange={(e) => setPdfSystem(e.target.value)}
+                  disabled={busy}
+                >
+                  <option value="">Auto-detect</option>
+                  {availableSystems.map((sys) => (
+                    <option key={sys.name} value={sys.name}>
+                      {sys.name} — {sys.publisher}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
