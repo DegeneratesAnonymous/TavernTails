@@ -287,6 +287,296 @@ def _extract_stats_from_pdf_widgets(fields: Dict[str, str]) -> Dict[str, int]:
 
 
 # ---------------------------------------------------------------------------
+# Shadowrun (SR6e) field extraction
+# ---------------------------------------------------------------------------
+# Canonical Shadowrun 6e attribute abbreviations as they appear on the
+# Catalyst Game Labs fillable PDF.
+_SR_ATTRIBUTE_KEYS = ["BOD", "AGI", "REA", "STR", "WIL", "LOG", "INT", "CHA", "EDG"]
+# Optional magic/tech attributes — only one is non-zero per character.
+_SR_MAGIC_KEYS = ["MAG", "RES"]
+# Essence is a float (cyberware reduces it from 6.0).
+_SR_ESSENCE_KEYS = ["ESS", "Essence"]
+# Upper bound for Nuyen validation; high-level SR characters can have hundreds
+# of thousands of ¥, but values above 10 M are likely data entry errors.
+_MAX_NUYEN_VALUE = 10_000_000
+
+
+def _is_shadowrun_sheet(widget_values: Dict[str, str]) -> bool:
+    """Return True if the widget keys strongly suggest a Shadowrun character sheet.
+
+    Requires at least 5 of the 9 core SR attribute abbreviations (BOD, AGI,
+    REA, STR, WIL, LOG, INT, CHA, EDG) to be present as widget keys.  This
+    combination is unique to Shadowrun sheets and not found on any other TTRPG
+    sheet supported by TavernTAIls.
+    """
+    matches = sum(1 for k in widget_values if k.upper() in _SR_ATTRIBUTE_KEYS)
+    return matches >= 5
+
+
+def _extract_shadowrun_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, Any]:
+    """Extract Shadowrun 6e-specific fields from PDF widget key/value pairs.
+
+    All keys are namespaced under ``shadowrun_*`` to avoid overloading shared
+    keys like ``hp``.  Fields that have no D&D 5e equivalent (condition
+    monitors, essence, nuyen, matrix stats) are stored here rather than in
+    the generic sheet keys.
+
+    Returns a dict with the following top-level keys:
+    - ``shadowrun_attributes`` – core + magic/resonance attribute ratings
+    - ``shadowrun_essence``    – Essence rating (float, reduced by cyberware)
+    - ``shadowrun_condition_monitor`` – physical and stun damage tracks
+    - ``shadowrun_skills``     – list of {name, rating, specialization?}
+    - ``shadowrun_qualities``  – {positive: [...], negative: [...]}
+    - ``shadowrun_cyberware``  – list of cyberware/bioware strings
+    - ``shadowrun_nuyen``      – Nuyen balance (int)
+    - ``shadowrun_lifestyle``  – current lifestyle tier string
+    - ``shadowrun_contacts``   – list of {name, loyalty?, connection?}
+    - ``shadowrun_matrix``     – matrix persona stats (Decker/Technomancer)
+    """
+    if not fields:
+        return {}
+
+    def _find_first(patterns: list[str]) -> str | None:
+        for k, v in fields.items():
+            if not v:
+                continue
+            for pat in patterns:
+                if re.search(pat, str(k), re.I):
+                    return _as_str(v)
+        return None
+
+    def _find_int(patterns: list[str], *, min_val: int = 0, max_val: int = 99) -> int | None:
+        raw = _find_first(patterns)
+        if raw is None:
+            return None
+        m = re.search(r"-?\d+", str(raw))
+        if m:
+            n = int(m.group(0))
+            return n if min_val <= n <= max_val else None
+        return None
+
+    def _find_float(patterns: list[str]) -> float | None:
+        raw = _find_first(patterns)
+        if raw is None:
+            return None
+        m = re.search(r"\d+(\.\d+)?", str(raw))
+        return float(m.group(0)) if m else None
+
+    result: Dict[str, Any] = {}
+
+    # ------------------------------------------------------------------
+    # Core attributes
+    # ------------------------------------------------------------------
+    attrs: Dict[str, Any] = {}
+    _attr_map = {
+        "body": ["^BOD$", r"\bbody\b"],
+        "agility": ["^AGI$", r"\bagility\b"],
+        "reaction": ["^REA$", r"\breaction\b"],
+        "strength": ["^STR$", r"\bstrength\b"],
+        "willpower": ["^WIL$", r"\bwillpower\b"],
+        "logic": ["^LOG$", r"\blogic\b"],
+        "intuition": ["^INT$", r"\bintuition\b"],
+        "charisma": ["^CHA$", r"\bcharisma\b"],
+        "edge": ["^EDG$", r"\bedge\b"],
+    }
+    for attr_name, pats in _attr_map.items():
+        val = _find_int(pats, min_val=1, max_val=12)
+        if val is not None:
+            attrs[attr_name] = val
+
+    # Magic or Resonance (mutually exclusive)
+    mag = _find_int(["^MAG$", r"\bmagic\b(?!.*point)"], min_val=1, max_val=12)
+    if mag is not None:
+        attrs["magic"] = mag
+    res = _find_int(["^RES$", r"\bresonance\b"], min_val=1, max_val=12)
+    if res is not None:
+        attrs["resonance"] = res
+
+    if attrs:
+        result["shadowrun_attributes"] = attrs
+
+    # ------------------------------------------------------------------
+    # Essence
+    # ------------------------------------------------------------------
+    essence = _find_float([r"^ESS$", r"\bessence\b"])
+    if essence is not None:
+        result["shadowrun_essence"] = essence
+
+    # ------------------------------------------------------------------
+    # Condition monitors
+    # ------------------------------------------------------------------
+    phys_max = _find_int([r"\bphys(ical)?\s*(cond(ition)?\s*)?(mon(itor)?\s*)?max\b",
+                          r"\bphys(ical)?\s*dmg\s*max\b",
+                          r"^PhysMonMax$", r"^PhysMax$"], min_val=1, max_val=20)
+    stun_max = _find_int([r"\bstun\s*(cond(ition)?\s*)?(mon(itor)?\s*)?max\b",
+                          r"\bstun\s*dmg\s*max\b",
+                          r"^StunMonMax$", r"^StunMax$"], min_val=1, max_val=20)
+    # Current damage filled (boxes checked)
+    phys_dmg = _find_int([r"\bphys(ical)?\s*(dmg|damage|filled)\b",
+                          r"^PhysDmg$", r"^PhysicalDmg$"], min_val=0, max_val=20)
+    stun_dmg = _find_int([r"\bstun\s*(dmg|damage|filled)\b",
+                          r"^StunDmg$"], min_val=0, max_val=20)
+    cmon: Dict[str, Any] = {}
+    if phys_max is not None or phys_dmg is not None:
+        cmon["physical"] = {}
+        if phys_max is not None:
+            cmon["physical"]["max"] = phys_max
+        if phys_dmg is not None:
+            cmon["physical"]["damage"] = phys_dmg
+    if stun_max is not None or stun_dmg is not None:
+        cmon["stun"] = {}
+        if stun_max is not None:
+            cmon["stun"]["max"] = stun_max
+        if stun_dmg is not None:
+            cmon["stun"]["damage"] = stun_dmg
+    if cmon:
+        result["shadowrun_condition_monitor"] = cmon
+
+    # ------------------------------------------------------------------
+    # Skills (numbered rows: Skill1Name / Skill1Rating / Skill1Spec)
+    # ------------------------------------------------------------------
+    skills: list[Dict[str, Any]] = []
+    seen_skills: set[str] = set()
+    for i in range(1, 30):
+        name_val = None
+        rating_val = None
+        spec_val = None
+        for k, v in fields.items():
+            if not v:
+                continue
+            kn = k.strip()
+            # Match patterns like Skill1Name, skill_1_name, SkillName1, Skill 1 Name
+            if re.match(rf"^skill\s*{i}\s*name$", kn, re.I) or re.match(rf"^skill\s*name\s*{i}$", kn, re.I):
+                name_val = _as_str(v)
+            elif re.match(rf"^skill\s*{i}\s*rating$", kn, re.I) or re.match(rf"^skill\s*rating\s*{i}$", kn, re.I):
+                m_int = re.search(r"\d+", str(v))
+                if m_int:
+                    rating_val = int(m_int.group(0))
+            elif re.match(rf"^skill\s*{i}\s*spec(iali[sz]ation)?$", kn, re.I):
+                spec_val = _as_str(v)
+        if name_val:
+            lname = name_val.lower()
+            if lname not in seen_skills:
+                seen_skills.add(lname)
+                entry: Dict[str, Any] = {"name": name_val}
+                if rating_val is not None:
+                    entry["rating"] = rating_val
+                if spec_val:
+                    entry["specialization"] = spec_val
+                skills.append(entry)
+    if skills:
+        result["shadowrun_skills"] = skills
+
+    # ------------------------------------------------------------------
+    # Qualities
+    # ------------------------------------------------------------------
+    pos_quals: list[str] = []
+    neg_quals: list[str] = []
+    seen_quals: set[str] = set()
+    for i in range(1, 20):
+        for k, v in fields.items():
+            if not v:
+                continue
+            kn = k.strip()
+            if re.match(rf"^pos(itive)?\s*qual(ity)?\s*{i}$", kn, re.I):
+                q = _as_str(v)
+                if q and q.lower() not in seen_quals:
+                    seen_quals.add(q.lower())
+                    pos_quals.append(q)
+            elif re.match(rf"^neg(ative)?\s*qual(ity)?\s*{i}$", kn, re.I):
+                q = _as_str(v)
+                if q and q.lower() not in seen_quals:
+                    seen_quals.add(q.lower())
+                    neg_quals.append(q)
+    if pos_quals or neg_quals:
+        result["shadowrun_qualities"] = {"positive": pos_quals, "negative": neg_quals}
+
+    # ------------------------------------------------------------------
+    # Cyberware / Bioware
+    # ------------------------------------------------------------------
+    cyberware: list[str] = []
+    seen_cyber: set[str] = set()
+    for i in range(1, 20):
+        for k, v in fields.items():
+            if not v:
+                continue
+            kn = k.strip()
+            if re.match(rf"^(cyber|bio)ware\s*{i}(name)?$", kn, re.I):
+                item = _as_str(v)
+                if item and item.lower() not in seen_cyber:
+                    seen_cyber.add(item.lower())
+                    cyberware.append(item)
+    if cyberware:
+        result["shadowrun_cyberware"] = cyberware
+
+    # ------------------------------------------------------------------
+    # Nuyen and Lifestyle
+    # ------------------------------------------------------------------
+    nuyen = _find_int([r"\bnuyen\b", r"^¥$", r"^Nuyen$"], min_val=0, max_val=_MAX_NUYEN_VALUE)
+    if nuyen is not None:
+        result["shadowrun_nuyen"] = nuyen
+
+    lifestyle = _find_first([r"\blifestyle\b"])
+    if lifestyle:
+        result["shadowrun_lifestyle"] = lifestyle
+
+    # ------------------------------------------------------------------
+    # Contacts
+    # ------------------------------------------------------------------
+    contacts: list[Dict[str, Any]] = []
+    seen_contacts: set[str] = set()
+    for i in range(1, 20):
+        cname = None
+        loyalty = None
+        connection = None
+        for k, v in fields.items():
+            if not v:
+                continue
+            kn = k.strip()
+            if re.match(rf"^contact\s*{i}\s*name$", kn, re.I) or re.match(rf"^contact\s*name\s*{i}$", kn, re.I):
+                cname = _as_str(v)
+            elif re.match(rf"^contact\s*{i}\s*loyalty$", kn, re.I):
+                m_int = re.search(r"\d+", str(v))
+                if m_int:
+                    loyalty = int(m_int.group(0))
+            elif re.match(rf"^contact\s*{i}\s*connection$", kn, re.I):
+                m_int = re.search(r"\d+", str(v))
+                if m_int:
+                    connection = int(m_int.group(0))
+        if cname:
+            lname = cname.lower()
+            if lname not in seen_contacts:
+                seen_contacts.add(lname)
+                entry_c: Dict[str, Any] = {"name": cname}
+                if loyalty is not None:
+                    entry_c["loyalty"] = loyalty
+                if connection is not None:
+                    entry_c["connection"] = connection
+                contacts.append(entry_c)
+    if contacts:
+        result["shadowrun_contacts"] = contacts
+
+    # ------------------------------------------------------------------
+    # Matrix persona stats (Decker / Technomancer)
+    # Attack, Sleaze, DataProcessing, Firewall
+    # ------------------------------------------------------------------
+    matrix: Dict[str, Any] = {}
+    for mkey, pats in [
+        ("attack", [r"^Attack$", r"^ATK$", r"\bmatrix\s*attack\b"]),
+        ("sleaze", [r"^Sleaze$", r"^SLZ$", r"\bmatrix\s*sleaze\b"]),
+        ("data_processing", [r"^DataProcessing$", r"^DP$", r"\bdata\s*proc(essing)?\b"]),
+        ("firewall", [r"^Firewall$", r"^FW$", r"\bmatrix\s*firewall\b"]),
+    ]:
+        mv = _find_int(pats, min_val=1, max_val=12)
+        if mv is not None:
+            matrix[mkey] = mv
+    if matrix:
+        result["shadowrun_matrix"] = matrix
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Star Trek Adventures (STA) field extraction
 # ---------------------------------------------------------------------------
 _STA_ATTRIBUTES = ["Control", "Daring", "Fitness", "Insight", "Presence", "Reason"]
@@ -2372,6 +2662,15 @@ def _build_character_import_sheet_from_pdf(
         pf_fields = _extract_pf1e_fields_from_widgets(widget_values)
         for k, v in pf_fields.items():
             sheet[k] = v
+
+    # Merge Shadowrun-specific fields (only when sheet is identified as Shadowrun).
+    if _is_shadowrun_sheet(widget_values):
+        sr_fields = _extract_shadowrun_fields_from_widgets(widget_values)
+        for k, v in sr_fields.items():
+            sheet[k] = v
+        # Ensure sheet.system reflects Shadowrun even if detection confidence was low.
+        if sheet.get("system", {}).get("name") in (None, "Unknown"):
+            sheet["system"] = {"name": "Shadowrun", "publisher": "Catalyst Game Labs"}
 
     return final_name, safe_level, final_class_name, sheet
 
