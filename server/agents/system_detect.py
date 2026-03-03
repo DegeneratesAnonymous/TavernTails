@@ -247,6 +247,14 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
             "power", "appearance", "education", "size",
             "sanity", "luck", "hit points", "magic points",
         },
+        # Widget keys that appear on CoC sheets but not on D&D/PF sheets.
+        "widget_signals": {
+            "positive": {
+                "sanity points", "magic points", "luck", "cthulhu mythos",
+                "pow", "app", "siz", "edu", "investigator name",
+            },
+            "negative": {"proficiency bonus", "spell slots", "ki points"},
+        },
         "keywords": {
             "call of cthulhu", "coc", "cthulhu", "investigator",
             "keeper", "chaosium", "sanity", "cosmic horror",

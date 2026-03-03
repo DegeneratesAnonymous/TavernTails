@@ -132,7 +132,8 @@ def _extract_fields_from_pdf_widgets(fields: Dict[str, str]) -> tuple[str | None
     if not fields:
         return None, None, None
 
-    name = fields.get("CharacterName") or fields.get("CHARACTER NAME") or fields.get("Character Name")
+    _name_keys = ("CharacterName", "CHARACTER NAME", "Character Name", "Investigator Name", "INVESTIGATOR NAME")
+    name = next((fields[k] for k in _name_keys if fields.get(k)), None)
 
     # All known class names (5e + PF2e + Starfinder) used for conservative matching.
     candidates = [
@@ -385,6 +386,186 @@ def _extract_sta_list_fields_from_widgets(
                             seen.add(lv)
                             items.append(part)
     return items[:max_items]
+
+
+# ---------------------------------------------------------------------------
+# Call of Cthulhu (CoC 7e) field extraction
+# ---------------------------------------------------------------------------
+_COC_CHARACTERISTICS = ["STR", "CON", "SIZ", "DEX", "APP", "INT", "POW", "EDU"]
+# CoC-unique characteristics that don't appear in D&D/PF sheets
+_COC_UNIQUE_STATS = {"POW", "APP", "SIZ", "EDU"}
+
+
+def _is_coc_sheet(widget_values: Dict[str, str]) -> bool:
+    """Return True if the widget keys strongly suggest a Call of Cthulhu character sheet.
+
+    Requires at least 2 of the CoC-unique characteristic field names (POW, APP, SIZ, EDU)
+    or the presence of CoC-specific derived stat keys (Sanity Points, Magic Points, Luck).
+    """
+    normed_keys = {k.lower().strip() for k in widget_values}
+    _coc_unique_lower = {s.lower() for s in _COC_UNIQUE_STATS}
+    unique_matches = sum(1 for k in normed_keys if k in _coc_unique_lower)
+    if unique_matches >= 2:
+        return True
+    coc_signals = {"sanity points", "magic points", "cthulhu mythos", "investigator name"}
+    return bool(coc_signals & normed_keys)
+
+
+def _extract_coc_characteristics_from_widgets(fields: Dict[str, str]) -> Dict[str, int]:
+    """Extract CoC 7e characteristic scores (STR/CON/SIZ/DEX/APP/INT/POW/EDU).
+
+    Values are percentile integers (typically 15–99).
+    """
+    result: Dict[str, int] = {}
+    for char in _COC_CHARACTERISTICS:
+        # Each characteristic may have variants like "STR", "STR Score", "Strength"
+        n = _extract_pdf_widget_int(fields, [char, f"{char} Score", f"{char} score"], min_value=1, max_value=99)
+        if isinstance(n, int):
+            result[char.lower()] = n
+    return result
+
+
+def _extract_coc_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, Any]:
+    """Extract Call of Cthulhu 7e-specific fields from PDF widget key/value pairs.
+
+    Returns a dict with CoC-namespaced keys:
+    - ``characteristics``: dict of str/con/siz/dex/app/int/pow/edu
+    - ``hp``: {current, max}  (Hit Points — CON+SIZ derived)
+    - ``magic_points``: {current, max}  (MP — POW derived; CoC-specific, not D&D)
+    - ``sanity``: {current, max}  (SAN — POW×5 derived; CoC-specific)
+    - ``luck``: int  (3d6×5; CoC-specific)
+    - ``skills``: dict of skill_name → percentage (int)
+    - ``occupation``: str  (replaces D&D class; CoC-specific)
+    - ``background``: str
+    """
+    if not fields:
+        return {}
+
+    result: Dict[str, Any] = {}
+
+    # Characteristics
+    characteristics = _extract_coc_characteristics_from_widgets(fields)
+    if characteristics:
+        result["characteristics"] = characteristics
+
+    # Hit Points (CON+SIZ / 10, rounded down; stored here for schema consistency)
+    hp_current = _extract_pdf_widget_int(
+        fields,
+        ["Hit Points", "HP", "Hit Points Current", "Current HP", "HitPoints"],
+        min_value=0,
+        max_value=99,
+    )
+    hp_max = _extract_pdf_widget_int(
+        fields,
+        ["Hit Points Max", "HP Max", "Maximum HP", "Max Hit Points", "HitPointsMax"],
+        min_value=0,
+        max_value=99,
+    )
+    hp: Dict[str, int] = {}
+    if isinstance(hp_current, int):
+        hp["current"] = hp_current
+    if isinstance(hp_max, int):
+        hp["max"] = hp_max
+    if hp:
+        result["hp"] = hp
+
+    # Magic Points (POW / 5; CoC-specific resource — do NOT overload D&D hp)
+    mp_current = _extract_pdf_widget_int(
+        fields,
+        ["Magic Points", "MP", "Magic Points Current", "Current MP", "MagicPoints"],
+        min_value=0,
+        max_value=99,
+    )
+    mp_max = _extract_pdf_widget_int(
+        fields,
+        ["Magic Points Max", "MP Max", "Maximum MP", "Max Magic Points", "MagicPointsMax"],
+        min_value=0,
+        max_value=99,
+    )
+    mp: Dict[str, int] = {}
+    if isinstance(mp_current, int):
+        mp["current"] = mp_current
+    if isinstance(mp_max, int):
+        mp["max"] = mp_max
+    if mp:
+        result["magic_points"] = mp
+
+    # Sanity (POW×5; CoC-specific — stored under "sanity", not "stress" or "hp")
+    san_current = _extract_pdf_widget_int(
+        fields,
+        ["Sanity Points", "Sanity", "SAN", "Current Sanity", "Sanity Current", "SanityPoints"],
+        min_value=0,
+        max_value=99,
+    )
+    san_max = _extract_pdf_widget_int(
+        fields,
+        ["Sanity Points Max", "Max Sanity", "Maximum Sanity", "Sanity Max", "SanityMax"],
+        min_value=0,
+        max_value=99,
+    )
+    san: Dict[str, int] = {}
+    if isinstance(san_current, int):
+        san["current"] = san_current
+    if isinstance(san_max, int):
+        san["max"] = san_max
+    if san:
+        result["sanity"] = san
+
+    # Luck (3d6×5; CoC-specific)
+    luck = _extract_pdf_widget_int(
+        fields,
+        ["Luck", "Current Luck", "Starting Luck"],
+        min_value=0,
+        max_value=99,
+    )
+    if isinstance(luck, int):
+        result["luck"] = luck
+
+    # Occupation (replaces class in CoC — stored separately to avoid conflating with D&D class)
+    for k, v in fields.items():
+        if re.match(r"^(occupation|Occupation|OCCUPATION)$", k) and v and v.strip():
+            result["occupation"] = _as_str(v)
+            break
+
+    # Background / backstory
+    for k, v in fields.items():
+        kl = k.lower().strip()
+        if kl in ("background", "backstory", "personal description", "description") and v and v.strip():
+            result["background"] = _as_str(v)
+            break
+
+    # Skills (percentile integers, keyed by skill name)
+    # Collect all widget keys that look like skill names with a numeric value.
+    # CoC skill names are well-known; we capture any key whose value is 1–99.
+    _coc_known_skills: set[str] = {
+        "accounting", "anthropology", "appraise", "archaeology",
+        "art/craft", "charm", "climb", "computer use", "credit rating",
+        "cthulhu mythos", "disguise", "dodge", "drive auto",
+        "electrical repair", "fast talk", "fighting", "first aid",
+        "history", "hypnosis", "intimidate", "jump", "language",
+        "law", "library use", "listen", "locksmith",
+        "mechanical repair", "medicine", "natural world", "navigate",
+        "occult", "operate heavy machinery", "persuade", "photography",
+        "pilot", "psychology", "psychoanalysis", "ride", "science",
+        "sleight of hand", "spot hidden", "stealth", "swim",
+        "throw", "track",
+        # weapon groups
+        "firearms", "firearms (handgun)", "firearms (rifle)", "firearms (shotgun)",
+        "brawl", "fighting (brawl)",
+    }
+    skills: Dict[str, int] = {}
+    for k, v in fields.items():
+        if not v:
+            continue
+        kl = k.lower().strip()
+        if kl in _coc_known_skills:
+            pct = _as_int(str(v).strip())
+            if isinstance(pct, int) and 1 <= pct <= 99:
+                skills[k] = pct
+    if skills:
+        result["skills"] = skills
+
+    return result
 
 
 def _extract_ac_from_pdf_widgets(fields: Dict[str, str]) -> int | None:
@@ -3661,6 +3842,11 @@ def _build_character_import_sheet_from_pdf(
         _sta_dept = _as_str(widget_values.get("Department")) or _as_str(widget_values.get("department"))
         if _sta_dept:
             final_class_name = _sta_dept
+    # For CoC sheets, fall back to the Occupation widget as the character's "class"
+    if not final_class_name:
+        _coc_occ = _as_str(widget_values.get("Occupation")) or _as_str(widget_values.get("occupation"))
+        if _coc_occ:
+            final_class_name = _coc_occ
 
     class_features = _lines_from_blobs(class_blobs)
     racial_features = _lines_from_blobs(race_blobs)
@@ -4134,15 +4320,17 @@ def _build_character_import_sheet_from_pdf(
         pass
 
     # Detect TTRPG system from extracted sheet data.
-    # Include STA attributes in the stats dict so the STA signature can be scored
-    # even when the standard D&D ability-score widgets are absent.
+    # Include STA attributes and CoC characteristics in the stats dict so the
+    # respective signatures can be scored even when standard D&D ability-score
+    # widgets are absent.
     try:
         sta_attrs_for_detection = _extract_sta_attributes_from_widgets(widget_values)
+        coc_chars_for_detection = _extract_coc_characteristics_from_widgets(widget_values)
         detect_input = {
             "class_name": final_class_name,
             "multiclass": multiclass,
             "skills": skills_from_widgets,
-            "stats": {**stats_from_widgets, **sta_attrs_for_detection},
+            "stats": {**stats_from_widgets, **sta_attrs_for_detection, **coc_chars_for_detection},
             "raw_text": (combined_text or "")[:10000],
             "import": {"source": source, "ddb_url": ddb_url, "filename": filename},
             "widget_keys": list(widget_values.keys()),
@@ -4257,6 +4445,12 @@ def _build_character_import_sheet_from_pdf(
     elif system_name == "Shadowrun":
         sr_fields = _extract_shadowrun_fields_from_widgets(widget_values)
         for k, v in sr_fields.items():
+            sheet[k] = v
+
+    # Merge Call of Cthulhu-specific fields when the sheet is identified as CoC.
+    if _is_coc_sheet(widget_values) or system_name == "Call of Cthulhu":
+        coc_fields = _extract_coc_fields_from_widgets(widget_values)
+        for k, v in coc_fields.items():
             sheet[k] = v
 
     return final_name, safe_level, final_class_name, sheet
