@@ -68,15 +68,17 @@ async function main() {
 
   // ── 3. Sign-up form ───────────────────────────────────────────────────────
   console.log('Capturing: signup');
-  await page.click('button:has-text("Sign up")');
-  await page.waitForSelector('input[placeholder="Email"]', { timeout: 5000 });
+  await page.click('button:has-text("Create account")');
+  await page.waitForSelector('#signupEmail', { timeout: 5000 });
   await shot(page, '03-signup');
 
   // ── 4. Dashboard home (log in with dev account) ───────────────────────────
   console.log('Capturing: dashboard home');
-  await page.click('button:has-text("Back to Login")');
+  await page.click('button.btn-ghost:has-text("Sign In")');
   await page.waitForSelector('#loginEmail', { timeout: 5000 });
-  await page.click('button:has-text("Use dev login")');
+  await page.fill('#loginEmail', 'test@example.com');
+  await page.fill('#loginPassword', 'secret');
+  await page.click('button[type="submit"]:has-text("Sign In")');
   await page.waitForSelector('.dashboard-root', { timeout: NAV_TIMEOUT });
   await page.waitForLoadState('networkidle');
   await shot(page, '04-dashboard');

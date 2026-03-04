@@ -37,6 +37,7 @@ jobs:
       - name: Start backend
         env:
           TAVERNTAILS_DATABASE_URL: sqlite:///./taverntails_screenshots.db
+          TAVERNTAILS_SEED_DEV_USER: '1'
         run: |
           python -m uvicorn server.main:app --host 127.0.0.1 --port 8000 \
             > /tmp/backend.log 2>&1 &
@@ -124,7 +125,14 @@ jobs:
         run: |
           git clone \
             "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git" \
-            wiki
+            wiki || {
+            echo "Wiki repo not yet initialised – creating local repo"
+            mkdir -p wiki
+            cd wiki
+            git init -b master
+            git remote add origin \
+              "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git"
+          }
 
       - name: Generate wiki pages
         run: node tools/update_wiki.mjs wiki
@@ -139,5 +147,5 @@ jobs:
             echo "No wiki changes to commit"
           else
             git commit -m "docs: refresh wiki pages [skip ci]"
-            git push
+            git push origin HEAD:master
           fi
