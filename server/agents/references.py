@@ -1,3 +1,4 @@
+import datetime
 import html as _html_stdlib
 import json
 import logging
@@ -33,6 +34,9 @@ class ReferenceMeta(BaseModel):
     filename: str
     pages: int
     system_ref: bool = False  # admin/agent-only; never visible to players
+    game_system: str = "global"  # e.g. "D&D 5e", "Pathfinder 2e", or "global" for cross-system docs
+    size_bytes: int = 0
+    created_at: str = ""  # ISO 8601 UTC timestamp
 
 
 class ReferenceListItem(BaseModel):
@@ -232,6 +236,7 @@ async def upload_reference(
     file: UploadFile = File(...),
     title: str = Form(None),
     system_ref: bool = Form(False),
+    game_system: str = Form("global"),
     current_user=Depends(get_current_user),
 ):
     """Upload a reference document for AI lookup.
@@ -284,7 +289,17 @@ async def upload_reference(
     for idx, text in enumerate(pages):
         pages_json.append({"page": idx + 1, "text": text, "snippet": _make_snippet(text)})
 
-    meta = {"title": title or filename, "filename": filename, "pages": len(pages), "system_ref": bool(system_ref)}
+    size_bytes = dest_file.stat().st_size if dest_file.exists() else 0
+    created_at = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    meta = {
+        "title": title or filename,
+        "filename": filename,
+        "pages": len(pages),
+        "system_ref": bool(system_ref),
+        "game_system": game_system or "global",
+        "size_bytes": size_bytes,
+        "created_at": created_at,
+    }
     (dest_dir / "metadata.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     (dest_dir / "pages.json").write_text(json.dumps(pages_json, ensure_ascii=False), encoding="utf-8")
 
@@ -328,6 +343,15 @@ async def list_references(current_user=Depends(get_current_user)):
                 meta = {"title": directory.name, "filename": "", "pages": 0, "system_ref": False}
         else:
             meta = {"title": directory.name, "filename": "", "pages": 0, "system_ref": False}
+        # Back-fill size_bytes / created_at for documents uploaded before these fields existed.
+        if not meta.get("size_bytes"):
+            for f in directory.iterdir():
+                if f.suffix.lower() not in (".json",):
+                    meta["size_bytes"] = f.stat().st_size
+                    break
+        if not meta.get("created_at"):
+            ts = directory.stat().st_mtime
+            meta["created_at"] = datetime.datetime.utcfromtimestamp(ts).strftime("%Y-%m-%dT%H:%M:%SZ")
         # System references are never listed to non-admin users.
         if meta.get("system_ref") and not is_admin:
             continue
@@ -496,6 +520,24 @@ def reindex_reference(ref_id: str, current_user=Depends(get_current_user)):
     except Exception:
         logger.exception("Reindex failed")
         raise HTTPException(status_code=500, detail="Reindex failed") from None
+
+
+@router.delete("/{ref_id}", status_code=204)
+def delete_reference(ref_id: str, current_user=Depends(get_current_user)):
+    """Delete a reference document and all its indexed data. Admin only."""
+    import shutil
+
+    if not _db.is_admin_user(current_user):
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    # Sanitise ref_id: must be a plain directory name with no path traversal.
+    # Allow dots (e.g. folders named after filenames) but never allow "..".
+    if not re.match(r"^[A-Za-z0-9_.\-]+$", ref_id) or ".." in ref_id:
+        raise HTTPException(status_code=400, detail="Invalid reference id.")
+    root = _storage_root()
+    directory = root / ref_id
+    if not directory.exists() or not directory.is_dir():
+        raise HTTPException(status_code=404, detail="Reference not found")
+    shutil.rmtree(str(directory))
 
 
 def search_query(q: str, top_k: int = 5, *, system_only: bool = False, include_system: bool = True):

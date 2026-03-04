@@ -149,6 +149,8 @@ export default function ImportCharacterView({
     const heritage = typeof sheet?.heritage === 'string' ? sheet.heritage : null
     const classDc = typeof sheet?.class_dc === 'number' ? sheet.class_dc : null
     const focusPoints = (sheet?.focus_points && typeof sheet.focus_points === 'object') ? sheet.focus_points as { max?: number; current?: number } : null
+    const staAttributes = (sheet?.attributes && typeof sheet.attributes === 'object') ? sheet.attributes as Record<string, number> : null
+    const staDisciplines = (sheet?.disciplines && typeof sheet.disciplines === 'object') ? sheet.disciplines as Record<string, number> : null
 
     return {
       stats,
@@ -164,6 +166,8 @@ export default function ImportCharacterView({
       heritage,
       classDc,
       focusPoints,
+      staAttributes,
+      staDisciplines,
     }
   }, [previewSource, preview])
 
@@ -571,16 +575,43 @@ export default function ImportCharacterView({
                 ) : null}
 
                 <div className="row-wrap" style={{ gap: 14 }}>
-                  <div className="stack" style={{ gap: 6, minWidth: 200 }}>
-                    <div className="muted">Ability scores</div>
-                    <div className="row-wrap" style={{ gap: 8 }}>
-                      {(['str', 'dex', 'con', 'int', 'wis', 'cha'] as const).map((k) => (
-                        <div key={k} className="input input-mono" style={{ padding: '6px 8px' }}>
-                          <strong>{k.toUpperCase()}:</strong> {typeof (pdfPreview.stats as any)[k] === 'number' ? (pdfPreview.stats as any)[k] : '—'}
+                  {pdfPreview.staAttributes ? (
+                    <>
+                      <div className="stack" style={{ gap: 6, minWidth: 200 }}>
+                        <div className="muted">Attributes</div>
+                        <div className="row-wrap" style={{ gap: 8 }}>
+                          {(['control', 'daring', 'fitness', 'insight', 'presence', 'reason'] as const).map((k) => (
+                            <div key={k} className="input input-mono" style={{ padding: '6px 8px' }}>
+                              <strong>{k.slice(0, 3).charAt(0).toUpperCase() + k.slice(1, 3)}:</strong> {typeof (pdfPreview.staAttributes as any)[k] === 'number' ? (pdfPreview.staAttributes as any)[k] : '—'}
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      </div>
+                      {pdfPreview.staDisciplines ? (
+                        <div className="stack" style={{ gap: 6, minWidth: 200 }}>
+                          <div className="muted">Disciplines</div>
+                          <div className="row-wrap" style={{ gap: 8 }}>
+                            {(['command', 'conn', 'engineering', 'medicine', 'science', 'security'] as const).map((k) => (
+                              <div key={k} className="input input-mono" style={{ padding: '6px 8px' }}>
+                                <strong>{k.slice(0, 3).charAt(0).toUpperCase() + k.slice(1, 3)}:</strong> {typeof (pdfPreview.staDisciplines as any)[k] === 'number' ? (pdfPreview.staDisciplines as any)[k] : '—'}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                    </>
+                  ) : (
+                    <div className="stack" style={{ gap: 6, minWidth: 200 }}>
+                      <div className="muted">Ability scores</div>
+                      <div className="row-wrap" style={{ gap: 8 }}>
+                        {(['str', 'dex', 'con', 'int', 'wis', 'cha'] as const).map((k) => (
+                          <div key={k} className="input input-mono" style={{ padding: '6px 8px' }}>
+                            <strong>{k.toUpperCase()}:</strong> {typeof (pdfPreview.stats as any)[k] === 'number' ? (pdfPreview.stats as any)[k] : '—'}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
                   <div className="stack" style={{ gap: 6, minWidth: 180 }}>
                     <div className="muted">Combat</div>
                     <div><strong>AC:</strong> {pdfPreview.ac ?? '—'}</div>

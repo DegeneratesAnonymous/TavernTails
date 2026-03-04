@@ -132,8 +132,9 @@ def _extract_fields_from_pdf_widgets(fields: Dict[str, str]) -> tuple[str | None
     if not fields:
         return None, None, None
 
-    _name_keys = ("CharacterName", "CHARACTER NAME", "Character Name", "Investigator Name", "INVESTIGATOR NAME")
-    name = next((fields[k] for k in _name_keys if fields.get(k)), None)
+    _name_keys = ("CharacterName", "CHARACTER NAME", "Character Name", "Investigator Name", "INVESTIGATOR NAME", "Name", "name")
+    _boilerplate_re = re.compile(r"[\u00a9\u2122\u00ae]|copyright|\bstudios?\b|\bpublishing\b|\bgames?\s+inc\b", re.I)
+    name = next((fields[k] for k in _name_keys if fields.get(k) and not _boilerplate_re.search(str(fields[k]))), None)
 
     # All known class names (5e + PF2e + Starfinder) used for conservative matching.
     candidates = [
@@ -3606,12 +3607,16 @@ def _extract_fields_from_text(text: str | None) -> tuple[str | None, int | None,
                 break
 
     # Heuristic for name: pick the first short line that is not a template heading
+    _name_boilerplate = re.compile(r"[\u00a9\u2122\u00ae]|copyright|\bstudios?\b|\bpublishing\b|\bgames?\s+inc\b", re.I)
     for line in lines[:6]:
         up = line.upper()
         if any(x in up for x in ("CLASS", "LEVEL", "PLAYER NAME", "CHARACTER NAME", "SPECIES", "BACKGROUND")):
             continue
         # Avoid lines that look like page headers/metadata (contain too many digits or slashes)
         if re.search(r"\d", line) and len(re.findall(r"[A-Za-z]", line)) < 3:
+            continue
+        # Skip copyright/trademark/legal boilerplate lines
+        if _name_boilerplate.search(line):
             continue
         # Accept short single-line names
         if 1 <= len(line) <= 60:
