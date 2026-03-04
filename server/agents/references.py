@@ -9,7 +9,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from pypdf import PdfReader
 
@@ -538,6 +538,7 @@ def delete_reference(ref_id: str, current_user=Depends(get_current_user)):
     if not directory.exists() or not directory.is_dir():
         raise HTTPException(status_code=404, detail="Reference not found")
     shutil.rmtree(str(directory))
+    return Response(status_code=204)
 
 
 def search_query(q: str, top_k: int = 5, *, system_only: bool = False, include_system: bool = True):
