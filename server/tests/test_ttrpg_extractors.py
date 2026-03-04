@@ -174,49 +174,49 @@ class TestCoCExtractor:
 
     def test_characteristics(self):
         result = _extract_coc_fields_from_widgets(self._fields())
-        chars = result["coc_characteristics"]
+        chars = result["characteristics"]
         assert chars["str"] == 60
         assert chars["edu"] == 80
 
     def test_hp(self):
         result = _extract_coc_fields_from_widgets(self._fields())
-        assert result["coc_hp"] == {"max": 12, "current": 10}
+        assert result["hp"] == {"max": 12, "current": 10}
 
     def test_magic_points(self):
         result = _extract_coc_fields_from_widgets(self._fields())
-        assert result["coc_magic_points"] == 13
+        assert result["magic_points"]["current"] == 13
 
     def test_sanity(self):
         result = _extract_coc_fields_from_widgets(self._fields())
-        san = result["coc_sanity"]
+        san = result["sanity"]
         assert san["current"] == 60
         assert san["max"] == 65
 
     def test_luck(self):
         result = _extract_coc_fields_from_widgets(self._fields())
-        assert result["coc_luck"] == 55
+        assert result["luck"] == 55
 
     def test_derived_combat(self):
         result = _extract_coc_fields_from_widgets(self._fields())
-        assert result["coc_dodge"] == 35
-        assert result["coc_build"] == "+1"
-        assert result["coc_damage_bonus"] == "+1D4"
-        assert result["coc_move"] == 8
+        assert result["dodge"] == 35
+        assert result["build"] == "+1"
+        assert result["damage_bonus"] == "+1D4"
+        assert result["move"] == 8
 
     def test_occupation_and_background(self):
         result = _extract_coc_fields_from_widgets(self._fields())
-        assert result["coc_occupation"] == "Professor"
-        assert "Miskatonic" in result["coc_background"]
+        assert result["occupation"] == "Professor"
+        assert "Miskatonic" in result["background"]
 
     def test_skills(self):
         result = _extract_coc_fields_from_widgets(self._fields())
-        skills = result["coc_skills"]
+        skills = result["skills"]
         assert skills["library use"] == 65
         assert skills["spot hidden"] == 55
 
     def test_weapons(self):
         result = _extract_coc_fields_from_widgets(self._fields())
-        weapons = result["coc_weapons"]
+        weapons = result["weapons"]
         assert len(weapons) == 1
         assert weapons[0]["name"] == "Revolver"
         assert weapons[0]["skill_pct"] == 45
@@ -671,9 +671,9 @@ class TestShadowrunExtractor:
     def test_attributes(self):
         result = _extract_shadowrun_fields_from_widgets(self._fields())
         attrs = result["shadowrun_attributes"]
-        assert attrs["BOD"] == 4
-        assert attrs["AGI"] == 5
-        assert attrs["LOG"] == 6
+        assert attrs["body"] == 4
+        assert attrs["agility"] == 5
+        assert attrs["logic"] == 6
 
     def test_metatype_and_essence(self):
         result = _extract_shadowrun_fields_from_widgets(self._fields())
