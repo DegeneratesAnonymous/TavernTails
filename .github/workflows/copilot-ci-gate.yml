@@ -1,0 +1,112 @@
+name: Copilot CI Gate
+
+# Triggered automatically after the main CI workflow completes on a copilot/** branch push.
+# Posts a status comment on the associated PR so Copilot (and reviewers) can see
+# whether all required checks passed without manually inspecting the Actions tab.
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: ['copilot/**']
+
+permissions:
+  pull-requests: write
+  checks: read
+
+jobs:
+  post-ci-status:
+    name: Post CI Status to PR
+    runs-on: ubuntu-latest
+    # Only comment when CI was triggered by a push (not already by a pull_request event,
+    # which would produce its own status checks natively on the PR).
+    if: github.event.workflow_run.event == 'push'
+    steps:
+      - name: Find associated pull request
+        id: find-pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branch = context.payload.workflow_run.head_branch;
+            const sha    = context.payload.workflow_run.head_sha;
+
+            const { data: prs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              head:  `${context.repo.owner}:${branch}`,
+              state: 'open',
+            });
+
+            if (prs.length === 0) {
+              console.log(`No open PR found for branch ${branch} – skipping comment.`);
+              return null;
+            }
+
+            const pr = prs[0];
+            core.setOutput('pr_number', pr.number);
+            core.setOutput('pr_url',    pr.html_url);
+            return pr.number;
+
+      - name: Post CI result comment
+        if: steps.find-pr.outputs.pr_number != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber   = Number('${{ steps.find-pr.outputs.pr_number }}');
+            const conclusion = context.payload.workflow_run.conclusion;
+            const runUrl     = context.payload.workflow_run.html_url;
+            const branch     = context.payload.workflow_run.head_branch;
+            const sha        = context.payload.workflow_run.head_sha.slice(0, 7);
+
+            const icon  = conclusion === 'success' ? '✅' : conclusion === 'cancelled' ? '⚠️' : '❌';
+            const label = conclusion === 'success' ? 'All checks passed'
+                        : conclusion === 'cancelled' ? 'CI was cancelled'
+                        : 'One or more checks failed';
+
+            const callout = conclusion === 'success'
+              ? '> 🟢 All required checks passed. This PR is ready for review.'
+              : conclusion === 'cancelled'
+              ? '> ⚠️ The CI run was cancelled. Re-run the workflow or push a new commit to retry.'
+              : '> 🔴 Some checks failed. Review the [CI run](' + runUrl + ') for details, then push a fix or re-run the failed jobs.';
+
+            const lines = [
+              '## ' + icon + ' Copilot CI Gate — ' + label,
+              '',
+              '<!-- copilot-ci-gate-comment -->',
+              '**Branch:** `' + branch + '`  **Commit:** `' + sha + '`',
+              '',
+              '| Status | Details |',
+              '|--------|---------|',
+              '| ' + icon + ' ' + label + ' | [View CI run](' + runUrl + ') |',
+              '',
+              callout,
+              '',
+              '---',
+              '_Automatically posted by the Copilot CI Gate workflow._',
+            ];
+            const body = lines.join('\n');
+
+            // Avoid duplicate comments: delete any previous Copilot CI Gate comment for this PR.
+            const { data: comments } = await github.rest.issues.listComments({
+              owner:        context.repo.owner,
+              repo:         context.repo.repo,
+              issue_number: prNumber,
+            });
+
+            for (const c of comments) {
+              if (c.user.login === 'github-actions[bot]' &&
+                  c.body.includes('<!-- copilot-ci-gate-comment -->')) {
+                await github.rest.issues.deleteComment({
+                  owner:      context.repo.owner,
+                  repo:       context.repo.repo,
+                  comment_id: c.id,
+                });
+              }
+            }
+
+            await github.rest.issues.createComment({
+              owner:        context.repo.owner,
+              repo:         context.repo.repo,
+              issue_number: prNumber,
+              body,
+            });
