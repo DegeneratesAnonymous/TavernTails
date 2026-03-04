@@ -147,8 +147,49 @@ async function main() {
     await page.waitForSelector('.gameplay-root, .gameplay-panel', { timeout: NAV_TIMEOUT });
     await page.waitForTimeout(800);
     await shot(page, '10-gameplay');
+    // Return to dashboard home before taking remaining screenshots.
+    const backBtnCount = await page.locator('button:has-text("Back to Dashboard"), button:has-text("Exit Session"), button[aria-label="Back"]').count();
+    if (backBtnCount > 0) {
+      await page.locator('button:has-text("Back to Dashboard"), button:has-text("Exit Session"), button[aria-label="Back"]').first().click();
+      await page.waitForTimeout(600);
+    }
   } else {
     console.log('  ⚠ No session start button visible – skipping');
+  }
+
+  // ── 11. Documents ─────────────────────────────────────────────────────────
+  console.log('Capturing: documents');
+  await navTo(page, 'Documents');
+  await page.waitForTimeout(400);
+  await shot(page, '11-documents');
+
+  // ── 12. Explore ───────────────────────────────────────────────────────────
+  console.log('Capturing: explore');
+  await navTo(page, 'Explore');
+  await page.waitForTimeout(400);
+  await shot(page, '12-explore');
+
+  // ── 13. Guides ────────────────────────────────────────────────────────────
+  console.log('Capturing: guides');
+  await navTo(page, 'Guides');
+  await page.waitForTimeout(400);
+  await shot(page, '13-guides');
+
+  // ── 14. Account settings ──────────────────────────────────────────────────
+  console.log('Capturing: account settings');
+  await page.click('[aria-label="Account"]');
+  await page.waitForTimeout(600);
+  await shot(page, '14-account');
+
+  // ── 15. Beyond 20 integration ─────────────────────────────────────────────
+  console.log('Capturing: beyond 20');
+  const beyond20BtnCount = await page.locator('button:has-text("Beyond 20 settings")').count();
+  if (beyond20BtnCount > 0) {
+    await page.locator('button:has-text("Beyond 20 settings")').first().click();
+    await page.waitForTimeout(600);
+    await shot(page, '15-beyond20');
+  } else {
+    console.log('  ⚠ No "Beyond 20 settings" button visible – skipping');
   }
 
   await browser.close();
