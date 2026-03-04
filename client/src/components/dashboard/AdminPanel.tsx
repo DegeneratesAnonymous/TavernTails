@@ -1080,7 +1080,7 @@ export default function AdminPanel({ onBack }: Props) {
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={6} style={{ textAlign: 'center', opacity: 0.5 }}>No references match the current filter.</td></tr>
+                  <tr><td colSpan={8} style={{ textAlign: 'center', opacity: 0.5 }}>No references match the current filter.</td></tr>
                 ) : filtered.map((r) => (
                   <tr key={r.id}>
                     <td style={{ fontWeight: 600 }}>{r.meta.title || r.id}</td>

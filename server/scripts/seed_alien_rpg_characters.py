@@ -197,12 +197,12 @@ def seed_alien_rpg_characters() -> None:
         logger.warning("server.db not available — skipping Alien RPG character seed")
         return
 
-    _SEEDS = [
+    seeds = [
         ("bilbo@example.com", _ZOE_HENDRICKS),
         ("admin@example.com", _LT_TORRES),
     ]
 
-    for email, seed in _SEEDS:
+    for email, seed in seeds:
         try:
             user = db.get_user_by_identifier(email)
             if user is None:

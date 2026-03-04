@@ -23,13 +23,8 @@ import io
 import os
 import sys
 
-# ---------------------------------------------------------------------------
-# Bootstrap path so the script can be run directly from the repo root.
-# ---------------------------------------------------------------------------
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-
-from server import db  # noqa: E402 — after sys.path fixup
-from server.agents.characters import _build_character_import_sheet_from_pdf  # noqa: E402
+from server import db
+from server.agents.characters import _build_character_import_sheet_from_pdf
 
 # ---------------------------------------------------------------------------
 # Ja'pel fixture fields — mirrors server/tests/fixtures/sta/generate_japel.py
@@ -175,5 +170,7 @@ def seed(dry_run: bool = False) -> None:
 
 
 if __name__ == "__main__":
+    # Bootstrap path when the script is run directly (not via python -m).
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
     dry_run = "--dry-run" in sys.argv
     seed(dry_run=dry_run)
