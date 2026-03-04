@@ -132,9 +132,11 @@ def _extract_fields_from_pdf_widgets(fields: Dict[str, str]) -> tuple[str | None
     if not fields:
         return None, None, None
 
-    name = fields.get("CharacterName") or fields.get("CHARACTER NAME") or fields.get("Character Name")
+    _name_keys = ("CharacterName", "CHARACTER NAME", "Character Name", "Investigator Name", "INVESTIGATOR NAME", "Name", "name")
+    _boilerplate_re = re.compile(r"[\u00a9\u2122\u00ae]|copyright|\bstudios?\b|\bpublishing\b|\bgames?\s+inc\b", re.I)
+    name = next((fields[k] for k in _name_keys if fields.get(k) and not _boilerplate_re.search(str(fields[k]))), None)
 
-    # All known class names (5e + PF2e) used for conservative matching.
+    # All known class names (5e + PF2e + Starfinder) used for conservative matching.
     candidates = [
         # D&D 5e
         "Artificer", "Barbarian", "Bard", "Cleric", "Druid", "Fighter",
@@ -143,6 +145,10 @@ def _extract_fields_from_pdf_widgets(fields: Dict[str, str]) -> tuple[str | None
         "Alchemist", "Champion", "Investigator", "Magus", "Oracle", "Psychic",
         "Summoner", "Swashbuckler", "Thaumaturge", "Witch",
         "Animist", "Exemplar", "Commander", "Guardian",
+        # Starfinder
+        "Biohacker", "Envoy", "Evolutionist", "Mechanic", "Mystic",
+        "Nanocyte", "Operative", "Precog", "Solarian", "Soldier",
+        "Technomancer", "Vanguard", "Witchwarper",
     ]
 
     # Find a key that looks like it contains both Class and Level.
@@ -287,6 +293,369 @@ def _extract_stats_from_pdf_widgets(fields: Dict[str, str]) -> Dict[str, int]:
 
 
 # ---------------------------------------------------------------------------
+# Shadowrun (SR6e) field extraction
+# ---------------------------------------------------------------------------
+# Canonical Shadowrun 6e attribute abbreviations as they appear on the
+# Catalyst Game Labs fillable PDF.
+_SR_ATTRIBUTE_KEYS = ["BOD", "AGI", "REA", "STR", "WIL", "LOG", "INT", "CHA", "EDG"]
+# Optional magic/tech attributes — only one is non-zero per character.
+_SR_MAGIC_KEYS = ["MAG", "RES"]
+# Essence is a float (cyberware reduces it from 6.0).
+_SR_ESSENCE_KEYS = ["ESS", "Essence"]
+# Upper bound for Nuyen validation; high-level SR characters can have hundreds
+# of thousands of ¥, but values above 10 M are likely data entry errors.
+_MAX_NUYEN_VALUE = 10_000_000
+
+
+def _is_shadowrun_sheet(widget_values: Dict[str, str]) -> bool:
+    """Return True if the widget keys strongly suggest a Shadowrun character sheet.
+
+    Requires at least 5 of the 9 core SR attribute abbreviations (BOD, AGI,
+    REA, STR, WIL, LOG, INT, CHA, EDG) to be present as widget keys.  This
+    combination is unique to Shadowrun sheets and not found on any other TTRPG
+    sheet supported by TavernTAIls.
+    """
+    matches = sum(1 for k in widget_values if k.upper() in _SR_ATTRIBUTE_KEYS)
+    return matches >= 5
+
+
+def _extract_shadowrun_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, Any]:
+    """Extract Shadowrun 6e-specific fields from PDF widget key/value pairs.
+
+    All keys are namespaced under ``shadowrun_*`` to avoid overloading shared
+    keys like ``hp``.  Fields that have no D&D 5e equivalent (condition
+    monitors, essence, nuyen, matrix stats) are stored here rather than in
+    the generic sheet keys.
+
+    Returns a dict with the following top-level keys:
+    - ``shadowrun_attributes`` – core + magic/resonance attribute ratings
+    - ``shadowrun_essence``    – Essence rating (float, reduced by cyberware)
+    - ``shadowrun_condition_monitor`` – physical and stun damage tracks
+    - ``shadowrun_skills``     – list of {name, rating, specialization?}
+    - ``shadowrun_qualities``  – {positive: [...], negative: [...]}
+    - ``shadowrun_cyberware``  – list of cyberware/bioware strings
+    - ``shadowrun_nuyen``      – Nuyen balance (int)
+    - ``shadowrun_lifestyle``  – current lifestyle tier string
+    - ``shadowrun_contacts``   – list of {name, loyalty?, connection?}
+    - ``shadowrun_matrix``     – matrix persona stats (Decker/Technomancer)
+    """
+    if not fields:
+        return {}
+
+    def _find_first(patterns: list[str]) -> str | None:
+        for k, v in fields.items():
+            if not v:
+                continue
+            for pat in patterns:
+                if re.search(pat, str(k), re.I):
+                    return _as_str(v)
+        return None
+
+    def _find_int(patterns: list[str], *, min_val: int = 0, max_val: int = 99) -> int | None:
+        raw = _find_first(patterns)
+        if raw is None:
+            return None
+        m = re.search(r"-?\d+", str(raw))
+        if m:
+            n = int(m.group(0))
+            return n if min_val <= n <= max_val else None
+        return None
+
+    def _find_float(patterns: list[str]) -> float | None:
+        raw = _find_first(patterns)
+        if raw is None:
+            return None
+        m = re.search(r"\d+(\.\d+)?", str(raw))
+        return float(m.group(0)) if m else None
+
+    result: Dict[str, Any] = {}
+
+    # ------------------------------------------------------------------
+    # Core attributes
+    # ------------------------------------------------------------------
+    attrs: Dict[str, Any] = {}
+    _attr_map = {
+        "body": ["^BOD$", r"\bbody\b"],
+        "agility": ["^AGI$", r"\bagility\b"],
+        "reaction": ["^REA$", r"\breaction\b"],
+        "strength": ["^STR$", r"\bstrength\b"],
+        "willpower": ["^WIL$", r"\bwillpower\b"],
+        "logic": ["^LOG$", r"\blogic\b"],
+        "intuition": ["^INT$", r"\bintuition\b"],
+        "charisma": ["^CHA$", r"\bcharisma\b"],
+        "edge": ["^EDG$", r"\bedge\b"],
+    }
+    for attr_name, pats in _attr_map.items():
+        val = _find_int(pats, min_val=1, max_val=12)
+        if val is not None:
+            attrs[attr_name] = val
+
+    # Magic or Resonance (mutually exclusive)
+    mag = _find_int(["^MAG$", r"\bmagic\b(?!.*point)"], min_val=1, max_val=12)
+    if mag is not None:
+        attrs["magic"] = mag
+    res = _find_int(["^RES$", r"\bresonance\b"], min_val=1, max_val=12)
+    if res is not None:
+        attrs["resonance"] = res
+
+    if attrs:
+        result["shadowrun_attributes"] = attrs
+
+    # ------------------------------------------------------------------
+    # Essence
+    # ------------------------------------------------------------------
+    essence = _find_float([r"^ESS$", r"\bessence\b"])
+    # Essence 0.0 means the character died from cyberware overload — not valid.
+    if essence is not None and 0.0 < essence <= 6.0:
+        result["shadowrun_essence"] = essence
+
+    # ------------------------------------------------------------------
+    # Condition monitors
+    # ------------------------------------------------------------------
+    phys_max = _find_int([r"\bphys(ical)?\s*(cond(ition)?\s*)?(mon(itor)?\s*)?max\b",
+                          r"\bphys(ical)?\s*dmg\s*max\b",
+                          r"^PhysMonMax$", r"^PhysMax$"], min_val=1, max_val=20)
+    stun_max = _find_int([r"\bstun\s*(cond(ition)?\s*)?(mon(itor)?\s*)?max\b",
+                          r"\bstun\s*dmg\s*max\b",
+                          r"^StunMonMax$", r"^StunMax$"], min_val=1, max_val=20)
+    # Current damage filled (boxes checked)
+    phys_dmg = _find_int([r"\bphys(ical)?\s*(dmg|damage|filled)\b",
+                          r"^PhysDmg$", r"^PhysicalDmg$"], min_val=0, max_val=20)
+    stun_dmg = _find_int([r"\bstun\s*(dmg|damage|filled)\b",
+                          r"^StunDmg$"], min_val=0, max_val=20)
+    cmon: Dict[str, Any] = {}
+    if phys_max is not None or phys_dmg is not None:
+        cmon["physical"] = {}
+        if phys_max is not None:
+            cmon["physical"]["max"] = phys_max
+        if phys_dmg is not None:
+            cmon["physical"]["damage"] = phys_dmg
+    if stun_max is not None or stun_dmg is not None:
+        cmon["stun"] = {}
+        if stun_max is not None:
+            cmon["stun"]["max"] = stun_max
+        if stun_dmg is not None:
+            cmon["stun"]["damage"] = stun_dmg
+    if cmon:
+        result["shadowrun_condition_monitor"] = cmon
+
+    # ------------------------------------------------------------------
+    # Skills (numbered rows: Skill1Name / Skill1Rating / Skill1Spec)
+    # ------------------------------------------------------------------
+    skills: list[Dict[str, Any]] = []
+    seen_skills: set[str] = set()
+    for i in range(1, 30):
+        name_val = None
+        rating_val = None
+        spec_val = None
+        for k, v in fields.items():
+            if not v:
+                continue
+            kn = k.strip()
+            # Match patterns like Skill1Name, skill_1_name, SkillName1, Skill 1 Name
+            if re.match(rf"^skill\s*{i}\s*name$", kn, re.I) or re.match(rf"^skill\s*name\s*{i}$", kn, re.I):
+                name_val = _as_str(v)
+            elif re.match(rf"^skill\s*{i}\s*rating$", kn, re.I) or re.match(rf"^skill\s*rating\s*{i}$", kn, re.I):
+                m_int = re.search(r"\d+", str(v))
+                if m_int:
+                    rating_val = int(m_int.group(0))
+            elif re.match(rf"^skill\s*{i}\s*spec(iali[sz]ation)?$", kn, re.I):
+                spec_val = _as_str(v)
+        if name_val:
+            lname = name_val.lower()
+            if lname not in seen_skills:
+                seen_skills.add(lname)
+                entry: Dict[str, Any] = {"name": name_val}
+                if rating_val is not None:
+                    entry["rating"] = rating_val
+                if spec_val:
+                    entry["specialization"] = spec_val
+                skills.append(entry)
+    if skills:
+        result["shadowrun_skills"] = skills
+
+    # ------------------------------------------------------------------
+    # Qualities
+    # ------------------------------------------------------------------
+    pos_quals: list[str] = []
+    neg_quals: list[str] = []
+    seen_quals: set[str] = set()
+    for i in range(1, 20):
+        for k, v in fields.items():
+            if not v:
+                continue
+            kn = k.strip()
+            if re.match(rf"^pos(itive)?\s*qual(ity)?\s*{i}$", kn, re.I):
+                q = _as_str(v)
+                if q and q.lower() not in seen_quals:
+                    seen_quals.add(q.lower())
+                    pos_quals.append(q)
+            elif re.match(rf"^neg(ative)?\s*qual(ity)?\s*{i}$", kn, re.I):
+                q = _as_str(v)
+                if q and q.lower() not in seen_quals:
+                    seen_quals.add(q.lower())
+                    neg_quals.append(q)
+    if pos_quals or neg_quals:
+        result["shadowrun_qualities"] = {"positive": pos_quals, "negative": neg_quals}
+
+    # ------------------------------------------------------------------
+    # Cyberware / Bioware
+    # ------------------------------------------------------------------
+    cyberware: list[str] = []
+    seen_cyber: set[str] = set()
+    for i in range(1, 20):
+        for k, v in fields.items():
+            if not v:
+                continue
+            kn = k.strip()
+            if re.match(rf"^(cyber|bio)ware\s*{i}(name)?$", kn, re.I):
+                item = _as_str(v)
+                if item and item.lower() not in seen_cyber:
+                    seen_cyber.add(item.lower())
+                    cyberware.append(item)
+    if cyberware:
+        result["shadowrun_cyberware"] = cyberware
+
+    # ------------------------------------------------------------------
+    # Nuyen and Lifestyle
+    # ------------------------------------------------------------------
+    nuyen = _find_int([r"\bnuyen\b", r"^¥$", r"^Nuyen$"], min_val=0, max_val=_MAX_NUYEN_VALUE)
+    if nuyen is not None:
+        result["shadowrun_nuyen"] = nuyen
+
+    lifestyle = _find_first([r"\blifestyle\b"])
+    if lifestyle:
+        result["shadowrun_lifestyle"] = lifestyle
+
+    # ------------------------------------------------------------------
+    # Contacts
+    # ------------------------------------------------------------------
+    contacts: list[Dict[str, Any]] = []
+    seen_contacts: set[str] = set()
+    for i in range(1, 20):
+        cname = None
+        loyalty = None
+        connection = None
+        for k, v in fields.items():
+            if not v:
+                continue
+            kn = k.strip()
+            if re.match(rf"^contact\s*{i}\s*name$", kn, re.I) or re.match(rf"^contact\s*name\s*{i}$", kn, re.I):
+                cname = _as_str(v)
+            elif re.match(rf"^contact\s*{i}\s*loyalty$", kn, re.I):
+                m_int = re.search(r"\d+", str(v))
+                if m_int:
+                    loyalty = int(m_int.group(0))
+            elif re.match(rf"^contact\s*{i}\s*connection$", kn, re.I):
+                m_int = re.search(r"\d+", str(v))
+                if m_int:
+                    connection = int(m_int.group(0))
+        if cname:
+            lname = cname.lower()
+            if lname not in seen_contacts:
+                seen_contacts.add(lname)
+                entry_c: Dict[str, Any] = {"name": cname}
+                if loyalty is not None:
+                    entry_c["loyalty"] = loyalty
+                if connection is not None:
+                    entry_c["connection"] = connection
+                contacts.append(entry_c)
+    if contacts:
+        result["shadowrun_contacts"] = contacts
+
+    # ------------------------------------------------------------------
+    # Matrix persona stats (Decker / Technomancer)
+    # Attack, Sleaze, DataProcessing, Firewall
+    # ------------------------------------------------------------------
+    matrix: Dict[str, Any] = {}
+    for mkey, pats in [
+        ("attack", [r"^Attack$", r"^ATK$", r"\bmatrix\s*attack\b"]),
+        ("sleaze", [r"^Sleaze$", r"^SLZ$", r"\bmatrix\s*sleaze\b"]),
+        ("data_processing", [r"^DataProcessing$", r"^DP$", r"\bdata\s*proc(essing)?\b"]),
+        ("firewall", [r"^Firewall$", r"^FW$", r"\bmatrix\s*firewall\b"]),
+    ]:
+        mv = _find_int(pats, min_val=1, max_val=12)
+        if mv is not None:
+            matrix[mkey] = mv
+    if matrix:
+        result["shadowrun_matrix"] = matrix
+
+    # ------------------------------------------------------------------
+    # Metatype (Human/Elf/Dwarf/Ork/Troll + exotic)
+    # ------------------------------------------------------------------
+    metatype = _find_first([r"\bmetatype\b", r"\brace\b", r"\bspecies\b"])
+    if metatype:
+        result["shadowrun_metatype"] = metatype
+
+    # ------------------------------------------------------------------
+    # Karma (advancement currency)
+    # ------------------------------------------------------------------
+    karma_total = _find_int([r"\btotal\s*karma\b", r"\bkarma\s*total\b"], min_val=0, max_val=9999)
+    karma_current = _find_int([r"\bcurrent\s*karma\b", r"\bkarma\s*current\b"], min_val=0, max_val=9999)
+    karma: Dict[str, Any] = {}
+    if karma_total is not None:
+        karma["total"] = karma_total
+    if karma_current is not None:
+        karma["current"] = karma_current
+    if karma:
+        result["shadowrun_karma"] = karma
+
+    # ------------------------------------------------------------------
+    # Initiative
+    # ------------------------------------------------------------------
+    init_base = _find_int([r"\binitiative\s*base\b", r"\binit\s*base\b"], min_val=1, max_val=30)
+    init_dice = _find_int([r"\binitiative\s*dice\b", r"\binit\s*dice\b"], min_val=1, max_val=5)
+    if init_base is not None or init_dice is not None:
+        initiative: Dict[str, Any] = {}
+        if init_base is not None:
+            initiative["base"] = init_base
+        if init_dice is not None:
+            initiative["dice"] = init_dice
+        result["shadowrun_initiative"] = initiative
+
+    # ------------------------------------------------------------------
+    # Knowledge skills
+    # ------------------------------------------------------------------
+    knowledge_skills: list[Dict[str, Any]] = []
+    ks_name_keys = [k for k in fields if re.search(r"\bknowledge\s*skill\s*\d+\s*name\b", k, re.I)]
+    for ksk in ks_name_keys:
+        ksname = _as_str(fields.get(ksk))
+        if not ksname:
+            continue
+        idx_m = re.search(r"\d+", ksk)
+        idx = idx_m.group(0) if idx_m else ""
+        ks_entry: Dict[str, Any] = {"name": ksname}
+        for k2, v2 in fields.items():
+            if not v2:
+                continue
+            if re.search(rf"\bknowledge\s*skill\s*{idx}\s*rating\b", k2, re.I):
+                r_val = _as_int(str(v2).strip())
+                if isinstance(r_val, int):
+                    ks_entry["rating"] = r_val
+        knowledge_skills.append(ks_entry)
+    if knowledge_skills:
+        result["shadowrun_knowledge_skills"] = knowledge_skills
+
+    # ------------------------------------------------------------------
+    # Adept powers (Awakened adepts)
+    # ------------------------------------------------------------------
+    adept_powers: list[str] = []
+    seen_ap: set[str] = set()
+    for k, v in fields.items():
+        if not v:
+            continue
+        if re.search(r"\badept\s*power\b", str(k), re.I):
+            ap = _as_str(v)
+            if ap and ap.lower() not in seen_ap:
+                seen_ap.add(ap.lower())
+                adept_powers.append(ap)
+    if adept_powers:
+        result["shadowrun_adept_powers"] = adept_powers
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Star Trek Adventures (STA) field extraction
 # ---------------------------------------------------------------------------
 _STA_ATTRIBUTES = ["Control", "Daring", "Fitness", "Insight", "Presence", "Reason"]
@@ -381,6 +750,243 @@ def _extract_sta_list_fields_from_widgets(
                             seen.add(lv)
                             items.append(part)
     return items[:max_items]
+
+
+# ---------------------------------------------------------------------------
+# Call of Cthulhu (CoC 7e) field extraction
+# ---------------------------------------------------------------------------
+_COC_CHARACTERISTICS = ["STR", "CON", "SIZ", "DEX", "APP", "INT", "POW", "EDU"]
+# CoC-unique characteristics that don't appear in D&D/PF sheets
+_COC_UNIQUE_STATS = {"POW", "APP", "SIZ", "EDU"}
+
+
+def _is_coc_sheet(widget_values: Dict[str, str]) -> bool:
+    """Return True if the widget keys strongly suggest a Call of Cthulhu character sheet.
+
+    Requires at least 2 of the CoC-unique characteristic field names (POW, APP, SIZ, EDU)
+    or the presence of CoC-specific derived stat keys (Sanity Points, Magic Points, Luck).
+    """
+    normed_keys = {k.lower().strip() for k in widget_values}
+    _coc_unique_lower = {s.lower() for s in _COC_UNIQUE_STATS}
+    unique_matches = sum(1 for k in normed_keys if k in _coc_unique_lower)
+    if unique_matches >= 2:
+        return True
+    coc_signals = {"sanity points", "magic points", "cthulhu mythos", "investigator name"}
+    return bool(coc_signals & normed_keys)
+
+
+def _extract_coc_characteristics_from_widgets(fields: Dict[str, str]) -> Dict[str, int]:
+    """Extract CoC 7e characteristic scores (STR/CON/SIZ/DEX/APP/INT/POW/EDU).
+
+    Values are percentile integers (typically 15–99).
+    """
+    result: Dict[str, int] = {}
+    for char in _COC_CHARACTERISTICS:
+        # Each characteristic may have variants like "STR", "STR Score", "Strength"
+        n = _extract_pdf_widget_int(fields, [char, f"{char} Score", f"{char} score"], min_value=1, max_value=99)
+        if isinstance(n, int):
+            result[char.lower()] = n
+    return result
+
+
+def _extract_coc_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, Any]:
+    """Extract Call of Cthulhu 7e-specific fields from PDF widget key/value pairs.
+
+    Returns a dict with CoC-namespaced keys:
+    - ``characteristics``: dict of str/con/siz/dex/app/int/pow/edu
+    - ``hp``: {current, max}  (Hit Points — CON+SIZ derived)
+    - ``magic_points``: {current, max}  (MP — POW derived; CoC-specific, not D&D)
+    - ``sanity``: {current, max}  (SAN — POW×5 derived; CoC-specific)
+    - ``luck``: int  (3d6×5; CoC-specific)
+    - ``skills``: dict of skill_name → percentage (int)
+    - ``occupation``: str  (replaces D&D class; CoC-specific)
+    - ``background``: str
+    """
+    if not fields:
+        return {}
+
+    result: Dict[str, Any] = {}
+
+    # Characteristics
+    characteristics = _extract_coc_characteristics_from_widgets(fields)
+    if characteristics:
+        result["characteristics"] = characteristics
+
+    # Hit Points (CON+SIZ / 10, rounded down; stored here for schema consistency)
+    hp_current = _extract_pdf_widget_int(
+        fields,
+        ["Hit Points", "HP", "Hit Points Current", "Current HP", "HitPoints", "HP Current"],
+        min_value=0,
+        max_value=99,
+    )
+    hp_max = _extract_pdf_widget_int(
+        fields,
+        ["Hit Points Max", "HP Max", "Maximum HP", "Max Hit Points", "HitPointsMax"],
+        min_value=0,
+        max_value=99,
+    )
+    hp: Dict[str, int] = {}
+    if isinstance(hp_current, int):
+        hp["current"] = hp_current
+    if isinstance(hp_max, int):
+        hp["max"] = hp_max
+    if hp:
+        result["hp"] = hp
+
+    # Magic Points (POW / 5; CoC-specific resource — do NOT overload D&D hp)
+    mp_current = _extract_pdf_widget_int(
+        fields,
+        ["Magic Points", "MP", "Magic Points Current", "Current MP", "MagicPoints"],
+        min_value=0,
+        max_value=99,
+    )
+    mp_max = _extract_pdf_widget_int(
+        fields,
+        ["Magic Points Max", "MP Max", "Maximum MP", "Max Magic Points", "MagicPointsMax"],
+        min_value=0,
+        max_value=99,
+    )
+    mp: Dict[str, int] = {}
+    if isinstance(mp_current, int):
+        mp["current"] = mp_current
+    if isinstance(mp_max, int):
+        mp["max"] = mp_max
+    if mp:
+        result["magic_points"] = mp
+
+    # Sanity (POW×5; CoC-specific — stored under "sanity", not "stress" or "hp")
+    san_current = _extract_pdf_widget_int(
+        fields,
+        ["Sanity Points", "Sanity", "SAN", "Current Sanity", "Sanity Current", "SanityPoints"],
+        min_value=0,
+        max_value=99,
+    )
+    san_max = _extract_pdf_widget_int(
+        fields,
+        ["Sanity Points Max", "Max Sanity", "Maximum Sanity", "Sanity Max", "SanityMax"],
+        min_value=0,
+        max_value=99,
+    )
+    san: Dict[str, int] = {}
+    if isinstance(san_current, int):
+        san["current"] = san_current
+    if isinstance(san_max, int):
+        san["max"] = san_max
+    if san:
+        result["sanity"] = san
+
+    # Luck (3d6×5; CoC-specific)
+    luck = _extract_pdf_widget_int(
+        fields,
+        ["Luck", "Current Luck", "Starting Luck"],
+        min_value=0,
+        max_value=99,
+    )
+    if isinstance(luck, int):
+        result["luck"] = luck
+
+    # Derived combat stats (CoC-specific)
+    dodge = _extract_pdf_widget_int(fields, ["Dodge", "Dodge %"], min_value=1, max_value=99)
+    if isinstance(dodge, int):
+        result["dodge"] = dodge
+    for build_key in ("Build", "build"):
+        if fields.get(build_key) and str(fields[build_key]).strip():
+            result["build"] = _as_str(fields[build_key])
+            break
+    for db_key in ("Damage Bonus", "DB", "DamageBonus"):
+        if fields.get(db_key) and str(fields[db_key]).strip():
+            result["damage_bonus"] = _as_str(fields[db_key])
+            break
+    move = _extract_pdf_widget_int(fields, ["Move Rate", "MOV", "Movement", "Move"], min_value=1, max_value=20)
+    if isinstance(move, int):
+        result["move"] = move
+
+    # Age
+    age = _extract_pdf_widget_int(fields, ["Age", "age"], min_value=1, max_value=130)
+    if isinstance(age, int):
+        result["age"] = age
+
+    # Cash / assets
+    cash = _extract_pdf_widget_int(fields, ["Cash", "Cash on Hand", "Spending Level"], min_value=0, max_value=9999999)
+    if isinstance(cash, int):
+        result["cash"] = cash
+    for assets_key in ("Assets", "assets", "Savings"):
+        if fields.get(assets_key) and str(fields[assets_key]).strip():
+            result["assets"] = _as_str(fields[assets_key])
+            break
+
+    # Occupation (replaces class in CoC — stored separately to avoid conflating with D&D class)
+    for k, v in fields.items():
+        if re.match(r"^(occupation|Occupation|OCCUPATION)$", k) and v and v.strip():
+            result["occupation"] = _as_str(v)
+            break
+
+    # Background / backstory
+    for k, v in fields.items():
+        kl = k.lower().strip()
+        if kl in ("background", "backstory", "personal description", "description") and v and v.strip():
+            result["background"] = _as_str(v)
+            break
+
+    # Skills (percentile integers, keyed by skill name)
+    # Collect all widget keys that look like skill names with a numeric value.
+    # CoC skill names are well-known; we capture any key whose value is 1–99.
+    _coc_known_skills: set[str] = {
+        "accounting", "anthropology", "appraise", "archaeology",
+        "art/craft", "charm", "climb", "computer use", "credit rating",
+        "cthulhu mythos", "disguise", "dodge", "drive auto",
+        "electrical repair", "fast talk", "fighting", "first aid",
+        "history", "hypnosis", "intimidate", "jump", "language",
+        "law", "library use", "listen", "locksmith",
+        "mechanical repair", "medicine", "natural world", "navigate",
+        "occult", "operate heavy machinery", "persuade", "photography",
+        "pilot", "psychology", "psychoanalysis", "ride", "science",
+        "sleight of hand", "spot hidden", "stealth", "swim",
+        "throw", "track",
+        # weapon groups
+        "firearms", "firearms (handgun)", "firearms (rifle)", "firearms (shotgun)",
+        "brawl", "fighting (brawl)",
+    }
+    skills: Dict[str, int] = {}
+    for k, v in fields.items():
+        if not v:
+            continue
+        kl = k.lower().strip()
+        if kl in _coc_known_skills:
+            pct = _as_int(str(v).strip())
+            if isinstance(pct, int) and 1 <= pct <= 99:
+                skills[k] = pct
+    if skills:
+        result["skills"] = skills
+
+    # Weapons (numbered list: Weapon N Name / Weapon N Skill / Weapon N Damage)
+    weapons: list[Dict[str, Any]] = []
+    weapon_name_keys = [k for k in fields if re.search(r"\bweapon\s*\d+\s*name\b", k, re.I)]
+    for wk in weapon_name_keys:
+        wname = _as_str(fields.get(wk))
+        if not wname:
+            continue
+        idx_m = re.search(r"\d+", wk)
+        idx = idx_m.group(0) if idx_m else ""
+        skill_pct = None
+        damage = None
+        for k2, v2 in fields.items():
+            if not v2:
+                continue
+            if re.search(rf"\bweapon\s*{idx}\s*skill\b|\bweapon\s*skill\s*{idx}\b", k2, re.I):
+                skill_pct = _as_int(str(v2).strip())
+            elif re.search(rf"\bweapon\s*{idx}\s*damage\b|\bweapon\s*damage\s*{idx}\b", k2, re.I):
+                damage = _as_str(v2)
+        entry: Dict[str, Any] = {"name": wname}
+        if isinstance(skill_pct, int):
+            entry["skill_pct"] = skill_pct
+        if damage:
+            entry["damage"] = damage
+        weapons.append(entry)
+    if weapons:
+        result["weapons"] = weapons
+
+    return result
 
 
 def _extract_ac_from_pdf_widgets(fields: Dict[str, str]) -> int | None:
@@ -1133,6 +1739,203 @@ def _extract_pf1e_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, Any]:
     return result
 
 
+# ---------------------------------------------------------------------------
+# D&D 5e-specific field extraction
+# ---------------------------------------------------------------------------
+
+def _extract_dnd5e_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, Any]:
+    """Extract D&D 5e-specific fields from PDF widget key/value pairs.
+
+    Returns a dict with 5e-only keys: race, background, proficiency_bonus,
+    initiative, saves (with proficiency flag), skills (dict with proficiency
+    and expertise flags), spell_slots (keyed by level string), features
+    (flat list), hit_dice, inspiration, and death_saves.
+
+    Fields with no D&D 5e equivalent that map to system-namespaced keys
+    (e.g. ``d&d_stress``) are not emitted; HP / AC / stats are handled by
+    the shared extractors already called by the main import builder.
+    """
+    if not fields:
+        return {}
+
+    def _find_first(patterns: list[str]) -> str | None:
+        for k, v in fields.items():
+            if not v:
+                continue
+            for pat in patterns:
+                if re.search(pat, str(k), re.I):
+                    return _as_str(v)
+        return None
+
+    def _find_int(patterns: list[str]) -> int | None:
+        val = _find_first(patterns)
+        if val is None:
+            return None
+        m = re.search(r"-?\d+", str(val))
+        return int(m.group(0)) if m else _as_int(val)
+
+    def _find_bool(patterns: list[str]) -> bool | None:
+        val = _find_first(patterns)
+        if val is None:
+            return None
+        v = str(val).strip().lower()
+        if v in ("yes", "true", "1", "on"):
+            return True
+        if v in ("no", "false", "0", "off", ""):
+            return False
+        return None
+
+    result: Dict[str, Any] = {}
+
+    # Race / Species (D&D 5e uses Race; "species" already extracted by the shared builder
+    # but we also store the raw widget value under "race" for schema consistency).
+    race = _find_first([r"\brace\b", r"\bspecies\b", r"\bsubrace\b"])
+    if race:
+        result["race"] = race
+
+    # Proficiency Bonus
+    prof_bonus = _find_int([r"\bprof(?:iciency)?\s*bonus\b", r"\bprofbonus\b"])
+    if prof_bonus is not None:
+        result["proficiency_bonus"] = prof_bonus
+
+    # Initiative (D&D 5e tracks this as a separate field; typically = DEX mod)
+    initiative = _find_int([r"\binitiative\b"])
+    if initiative is not None:
+        result["initiative"] = initiative
+
+    # Inspiration (boolean)
+    inspiration = _find_bool([r"\binspiration\b", r"\binspired\b"])
+    if inspiration is not None:
+        result["inspiration"] = inspiration
+
+    # Hit Dice (e.g. "d8" or "5d8"; D&D 5e tracks hit die type per level)
+    hit_dice = _find_first([r"\bhit\s*dice\b", r"\bhd\s*type\b", r"\bhd\s*total\b", r"\bhdtotal\b", r"\bhit_dice\b"])
+    if hit_dice:
+        result["hit_dice"] = hit_dice
+
+    # Death Saves (successes / failures counts)
+    ds_successes = _find_int([r"\bdeath\s*save\s*success", r"\bds\s*success", r"\bdeathsavesuccess"])
+    ds_failures = _find_int([r"\bdeath\s*save\s*fail", r"\bds\s*fail", r"\bdeathsavefail"])
+    death_saves: Dict[str, Any] = {}
+    if ds_successes is not None:
+        death_saves["successes"] = ds_successes
+    if ds_failures is not None:
+        death_saves["failures"] = ds_failures
+    if death_saves:
+        result["death_saves"] = death_saves
+
+    # Saving throws — D&D 5e has 6 ability-score saves, each with a proficiency flag.
+    saves: Dict[str, Any] = {}
+    for save_key, patterns_total, patterns_prof in [
+        ("str", [r"\bstr\s*save\b", r"\bstrength\s*save\b", r"\bst\s*strength\b"],
+                [r"\bstr\s*save\s*prof\b", r"\bstsaveprof\b"]),
+        ("dex", [r"\bdex\s*save\b", r"\bdexterity\s*save\b", r"\bst\s*dexterity\b"],
+                [r"\bdex\s*save\s*prof\b"]),
+        ("con", [r"\bcon\s*save\b", r"\bconstitution\s*save\b", r"\bst\s*constitution\b"],
+                [r"\bcon\s*save\s*prof\b"]),
+        ("int", [r"\bint\s*save\b", r"\bintelligence\s*save\b", r"\bst\s*intelligence\b"],
+                [r"\bint\s*save\s*prof\b"]),
+        ("wis", [r"\bwis\s*save\b", r"\bwisdom\s*save\b", r"\bst\s*wisdom\b"],
+                [r"\bwis\s*save\s*prof\b"]),
+        ("cha", [r"\bcha\s*save\b", r"\bcharisma\s*save\b", r"\bst\s*charisma\b"],
+                [r"\bcha\s*save\s*prof\b"]),
+    ]:
+        save_entry: Dict[str, Any] = {}
+        total = _find_int(patterns_total)
+        if total is not None:
+            save_entry["total"] = total
+        prof = _find_bool(patterns_prof)
+        if prof is not None:
+            save_entry["proficient"] = prof
+        if save_entry:
+            saves[save_key] = save_entry
+    if saves:
+        result["saves"] = saves
+
+    # Skills — D&D 5e has 18 skills each with a modifier, proficiency flag, and
+    # optional expertise flag.
+    dnd5e_skills = [
+        "Acrobatics", "Animal Handling", "Arcana", "Athletics",
+        "Deception", "History", "Insight", "Intimidation",
+        "Investigation", "Medicine", "Nature", "Perception",
+        "Performance", "Persuasion", "Religion", "Sleight of Hand",
+        "Stealth", "Survival",
+    ]
+    skills: Dict[str, Any] = {}
+    for skill_name in dnd5e_skills:
+        skill_entry: Dict[str, Any] = {}
+        # Widget key variants seen on D&D Beyond and community fillable PDFs:
+        #   "Acrobatics", "AcrobaticsBonus", "Acrobatics Total"
+        safe = re.escape(skill_name)
+        mod_val = _find_int([
+            rf"\b{safe}\s*(bonus|modifier|total|mod)\b",
+            rf"\b{safe}\b",
+        ])
+        if mod_val is not None:
+            skill_entry["modifier"] = mod_val
+        prof = _find_bool([rf"\b{safe}\s*prof(?:iciency)?\b"])
+        if prof is not None:
+            skill_entry["proficient"] = prof
+        exp = _find_bool([rf"\b{safe}\s*exp(?:ertise)?\b"])
+        if exp is not None:
+            skill_entry["expertise"] = exp
+        if skill_entry:
+            skills[skill_name] = skill_entry
+    if skills:
+        result["skills"] = skills
+
+    # Spell slots keyed by level string ("1"–"9").
+    # Matches D&D Beyond PDF widgets ("SlotsTotal1", "SlotsRemaining1"),
+    # community fillable sheet variants ("SpellSlots1", "Spell Slot L1"),
+    # and the plain "Spell Slots Total 1" format.
+    # Capturing group 1 = the level digit.
+    _spell_slot_pattern = re.compile(
+        r"(?:spell\s*slots?\s*(?:total|max)?|slots?\s*total|spell\s*slot\s*(?:l|lvl|level)?\s*)(\d)$",
+        re.I,
+    )
+    spell_slots: Dict[str, int] = {}
+    for k, v in fields.items():
+        if not v:
+            continue
+        m = _spell_slot_pattern.search(str(k))
+        if m:
+            slot_count = _as_int(str(v).strip())
+            if isinstance(slot_count, int) and slot_count >= 0:
+                spell_slots[m.group(1)] = slot_count
+    if spell_slots:
+        result["spell_slots"] = spell_slots
+
+    # Class features / traits (D&D 5e calls them "Features & Traits")
+    features: list[str] = []
+    seen_feats: set[str] = set()
+    for k, v in fields.items():
+        if not v:
+            continue
+        if re.search(r"\b(feature|trait|class\s*feature|racial\s*trait)\b", str(k), re.I):
+            feat_name = _as_str(v)
+            if feat_name and feat_name.lower() not in seen_feats:
+                seen_feats.add(feat_name.lower())
+                features.append(feat_name)
+    if features:
+        result["features"] = features
+
+    # Equipment / gear
+    equipment: list[str] = []
+    seen_items: set[str] = set()
+    for k, v in fields.items():
+        if not v:
+            continue
+        if re.search(r"\b(equipment|item|gear|weapon|armor)\b", str(k), re.I):
+            item_name = _as_str(v)
+            if item_name and item_name.lower() not in seen_items and len(item_name) > 1:
+                seen_items.add(item_name.lower())
+                equipment.append(item_name)
+    if equipment:
+        result["equipment"] = equipment
+
+    return result
+
+
 def _read_pdf_text(content: bytes) -> str | None:
     """Extract plain text from a PDF binary. Falls back to utf-8 decoding.
 
@@ -1492,222 +2295,6 @@ def _extract_dnd5e_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, Any]
 
     return result
 
-
-# ---------------------------------------------------------------------------
-# Call of Cthulhu (CoC 7e) field extraction
-# ---------------------------------------------------------------------------
-
-
-def _is_coc_sheet(widget_values: Dict[str, str]) -> bool:
-    """Detect CoC sheets by presence of CoC-unique stat widget keys."""
-    coc_unique = {"pow", "app", "siz", "edu", "mp", "san", "luck", "magic points", "sanity", "investigator"}
-    matched = sum(
-        1 for k in widget_values if any(re.search(rf"\b{re.escape(u)}\b", k, re.I) for u in coc_unique)
-    )
-    return matched >= 3
-
-
-def _extract_coc_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, Any]:
-    """Extract CoC 7e-specific fields.
-
-    Returns characteristics (STR/CON/SIZ/DEX/APP/INT/POW/EDU as percentiles),
-    hp, magic_points, sanity, luck, dodge, build, damage_bonus, move,
-    occupation, background, age, weapons (list), cash, skills (percentile dict).
-    All keys prefixed with 'coc_' to avoid collision.
-    """
-    if not fields:
-        return {}
-
-    def _find_first(patterns: list[str]) -> str | None:
-        for pat in patterns:
-            for k, v in fields.items():
-                if not v:
-                    continue
-                if re.search(pat, str(k), re.I):
-                    return _as_str(v)
-        return None
-
-    def _find_int(patterns: list[str]) -> int | None:
-        val = _find_first(patterns)
-        if val is None:
-            return None
-        m = re.search(r"\d+", str(val))
-        return int(m.group(0)) if m else _as_int(val)
-
-    result: Dict[str, Any] = {}
-
-    # 8 characteristics as percentile ints
-    coc_chars = ["STR", "CON", "SIZ", "DEX", "APP", "INT", "POW", "EDU"]
-    characteristics: Dict[str, int] = {}
-    for char in coc_chars:
-        val = _find_int([rf"\b{re.escape(char)}\b"])
-        if val is not None:
-            characteristics[char.lower()] = val
-    if characteristics:
-        result["coc_characteristics"] = characteristics
-
-    # Derived stats
-    hp_max = _find_int([r"\bhp\s*max\b", r"\bmax\s*hp\b", r"\bhit\s*points?\s*max\b"])
-    hp_cur = _find_int([r"\bhp\s*current\b", r"\bcurrent\s*hp\b", r"\bhit\s*points?\s*current\b", r"\bhit\s*points?\b"])
-    hp: Dict[str, Any] = {}
-    if hp_max is not None:
-        hp["max"] = hp_max
-    if hp_cur is not None:
-        hp["current"] = hp_cur
-    if hp:
-        result["coc_hp"] = hp
-
-    mp = _find_int([r"\bmagic\s*points?\b", r"\bmp\b"])
-    if mp is not None:
-        result["coc_magic_points"] = mp
-
-    san_cur = _find_int([r"\bsanity\s*current\b", r"\bcurrent\s*sanity\b", r"\bsan\s*current\b"])
-    san_max = _find_int([r"\bsanity\s*max\b", r"\bmax\s*sanity\b", r"\bsan\s*max\b"])
-    san_start = _find_int([r"\bstarting\s*sanity\b", r"\binitial\s*sanity\b"])
-    san: Dict[str, Any] = {}
-    if san_cur is not None:
-        san["current"] = san_cur
-    if san_max is not None:
-        san["max"] = san_max
-    if san_start is not None:
-        san["starting"] = san_start
-    if not san:
-        san_val = _find_int([r"\bsanity\b", r"\bsan\b"])
-        if san_val is not None:
-            san["current"] = san_val
-    if san:
-        result["coc_sanity"] = san
-
-    luck = _find_int([r"\bluck\b"])
-    if luck is not None:
-        result["coc_luck"] = luck
-
-    # Derived combat stats
-    dodge = _find_int([r"\bdodge\b"])
-    if dodge is not None:
-        result["coc_dodge"] = dodge
-
-    build = _find_first([r"\bbuild\b"])
-    if build:
-        result["coc_build"] = build
-
-    dmg_bonus = _find_first([r"\bdamage\s*bonus\b", r"\bdmg\s*bonus\b", r"\bdb\b"])
-    if dmg_bonus:
-        result["coc_damage_bonus"] = dmg_bonus
-
-    move = _find_int([r"\bmove\s*rate\b", r"\bmov\b", r"\bmovement\b"])
-    if move is not None:
-        result["coc_move"] = move
-
-    age = _find_int([r"\bage\b"])
-    if age is not None:
-        result["coc_age"] = age
-
-    # Occupation and background
-    occupation = _find_first([r"\boccupation\b"])
-    if occupation:
-        result["coc_occupation"] = occupation
-
-    background = _find_first([r"\bbackground\b", r"\bpersonal\s*description\b", r"\bbiography\b"])
-    if background:
-        result["coc_background"] = background
-
-    # Spending cash / assets
-    cash = _find_int([r"\bcash\b", r"\bspending\s*level\b", r"\bcash\s*on\s*hand\b"])
-    if cash is not None:
-        result["coc_cash"] = cash
-    assets = _find_first([r"\bassets\b", r"\bsavings\b"])
-    if assets:
-        result["coc_assets"] = assets
-
-    # Skills (percentile - look for skill widget keys)
-    skills: Dict[str, int] = {}
-    _coc_known_skills = {
-        "accounting",
-        "anthropology",
-        "appraise",
-        "archaeology",
-        "art",
-        "charm",
-        "climb",
-        "computer use",
-        "credit rating",
-        "cthulhu mythos",
-        "disguise",
-        "drive auto",
-        "electrical repair",
-        "fast talk",
-        "fighting",
-        "firearms",
-        "first aid",
-        "history",
-        "hypnosis",
-        "intimidate",
-        "jump",
-        "language",
-        "law",
-        "library use",
-        "listen",
-        "locksmith",
-        "mechanical repair",
-        "medicine",
-        "natural world",
-        "navigate",
-        "occult",
-        "operate heavy machinery",
-        "persuade",
-        "pilot",
-        "psychology",
-        "psychoanalysis",
-        "ride",
-        "science",
-        "sleight of hand",
-        "spot hidden",
-        "stealth",
-        "survival",
-        "swim",
-        "throw",
-        "track",
-    }
-    for k, v in fields.items():
-        if not v:
-            continue
-        kn = k.strip().lower()
-        if any(kn == skill or kn.startswith(skill) for skill in _coc_known_skills):
-            val = _as_int(str(v).strip())
-            if isinstance(val, int) and 0 <= val <= 100:
-                skills[kn] = val
-    if skills:
-        result["coc_skills"] = skills
-
-    # Weapons
-    weapons: list[Dict[str, Any]] = []
-    weapon_name_keys = [k for k in fields if re.search(r"weapon\s*\d*\s*name|weapon\s*name\s*\d*", k, re.I)]
-    for wk in weapon_name_keys:
-        wname = _as_str(fields.get(wk))
-        if not wname:
-            continue
-        idx_m = re.search(r"\d+", wk)
-        idx = idx_m.group(0) if idx_m else ""
-        skill_pct = None
-        damage = None
-        for k2, v2 in fields.items():
-            if not v2:
-                continue
-            if re.search(rf"weapon\s*{idx}\s*skill|weapon\s*skill\s*{idx}", k2, re.I):
-                skill_pct = _as_int(str(v2).strip())
-            elif re.search(rf"weapon\s*{idx}\s*damage|weapon\s*damage\s*{idx}", k2, re.I):
-                damage = _as_str(v2)
-        entry: Dict[str, Any] = {"name": wname}
-        if skill_pct is not None:
-            entry["skill_pct"] = skill_pct
-        if damage:
-            entry["damage"] = damage
-        weapons.append(entry)
-    if weapons:
-        result["coc_weapons"] = weapons
-
-    return result
 
 
 # ---------------------------------------------------------------------------
@@ -2183,23 +2770,30 @@ def _extract_wfrp_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, Any]:
     for abbr, full_name in char_full_names.items():
         char_entry: Dict[str, Any] = {}
         safe = re.escape(abbr)
-        initial = _find_int([rf"\b{safe}\s*initial\b", rf"\b{safe}\s*init\b", rf"\b{safe}\s*start\b"])
+        # Try labelled "WS Initial" first; fall back to plain exact key "WS" (common on real sheets)
+        initial = _find_int([rf"\b{safe}\s*initial\b", rf"\b{safe}\s*init\b", rf"\b{safe}\s*start\b", rf"^{safe}$"])
         if initial is not None:
             char_entry["initial"] = initial
-        advances = _find_int([rf"\b{safe}\s*advances?\b", rf"\b{safe}\s*adv\b"])
+        advances = _find_int([rf"\b{safe}\s*advances?\b", rf"\b{safe}\s*adv\b", rf"^{safe}\s*advances?$"])
         if advances is not None:
             char_entry["advances"] = advances
-        total = _find_int([rf"\b{safe}\s*total\b", rf"\b{safe}\s*current\b", rf"\b{safe}\b"])
-        if total is not None:
-            char_entry["total"] = total
+        # Compute total from initial + advances when both available; otherwise read from widget
+        if initial is not None and advances is not None:
+            char_entry["total"] = initial + advances
+        elif initial is not None:
+            char_entry["total"] = initial
+        else:
+            total = _find_int([rf"\b{safe}\s*total\b", rf"\b{safe}\s*current\b"])
+            if total is not None:
+                char_entry["total"] = total
         if char_entry:
             characteristics[full_name] = char_entry
     if characteristics:
         result["warhammer_characteristics"] = characteristics
 
     # Wounds (WFRP HP equivalent)
-    wounds_max = _find_int([r"\bwounds\s*max\b", r"\bmax\s*wounds\b", r"\bwounds\s*total\b"])
-    wounds_cur = _find_int([r"\bwounds\s*current\b", r"\bcurrent\s*wounds\b", r"\bwounds\b"])
+    wounds_max = _find_int([r"\bwounds\s*max\b", r"\bmax\s*wounds\b", r"\bwounds\s*total\b", r"^wounds$"])
+    wounds_cur = _find_int([r"\bwounds\s*current\b", r"\bcurrent\s*wounds\b", r"^current\s*wounds$"])
     wounds: Dict[str, Any] = {}
     if wounds_max is not None:
         wounds["max"] = wounds_max
@@ -2236,9 +2830,9 @@ def _extract_wfrp_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, Any]:
         result["warhammer_corruption"] = corruption
 
     # Experience
-    xp_total = _find_int([r"\bxp\s*total\b", r"\btotal\s*xp\b", r"\bexperience\s*total\b"])
+    xp_total = _find_int([r"\bxp\s*total\b", r"\btotal\s*xp\b", r"\bexperience\s*total\b", r"^experience$"])
     xp_spent = _find_int([r"\bxp\s*spent\b", r"\bspent\s*xp\b", r"\bexperience\s*spent\b"])
-    xp_current = _find_int([r"\bxp\s*current\b", r"\bcurrent\s*xp\b", r"\bexperience\b"])
+    xp_current = _find_int([r"\bxp\s*current\b", r"\bcurrent\s*xp\b"])
     xp: Dict[str, Any] = {}
     if xp_total is not None:
         xp["total"] = xp_total
@@ -2251,7 +2845,14 @@ def _extract_wfrp_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, Any]:
 
     # Career
     career_name = _find_first([r"\bcareer\s*name\b", r"\bcareer\b"])
-    career_level = _find_int([r"\bcareer\s*level\b"])
+    _raw_career_level = _find_first([r"\bcareer\s*level\b"])
+    if _raw_career_level is not None:
+        try:
+            career_level: Any = int(_raw_career_level.strip())
+        except (ValueError, AttributeError):
+            career_level = _raw_career_level
+    else:
+        career_level = None
     career_status = _find_first([r"\bcareer\s*status\b", r"\bstatus\b"])
     career: Dict[str, Any] = {}
     if career_name:
@@ -2282,9 +2883,9 @@ def _extract_wfrp_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, Any]:
         for k2, v2 in fields.items():
             if not v2:
                 continue
-            if re.search(rf"\bskill\s*{idx}\s*char(?:acteristic)?\b", k2, re.I):
+            if re.search(rf"\bskill\s*{idx}\s*char(?:acteristic)?\b|\bskill\s*char(?:acteristic)?\s*{idx}\b", k2, re.I):
                 char_key = _as_str(v2)
-            elif re.search(rf"\bskill\s*{idx}\s*adv(?:ances?)?\b", k2, re.I):
+            elif re.search(rf"\bskill\s*{idx}\s*adv(?:ances?)?\b|\bskill\s*adv(?:ances?)?\s*{idx}\b", k2, re.I):
                 advances = _as_int(str(v2).strip())
         entry: Dict[str, Any] = {"name": sname}
         if char_key:
@@ -2320,7 +2921,7 @@ def _extract_wfrp_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, Any]:
     for k, v in fields.items():
         if not v:
             continue
-        if re.search(r"\btrapping\b|\bequipment\b|\bitem\b|\bgear\b", str(k), re.I):
+        if re.search(r"\btrapping\b|\bequipment\b|\bitem\b|\bgear\b|\bweapon\b", str(k), re.I):
             t = _as_str(v)
             if t and t.lower() not in seen_tr and len(t) > 1:
                 seen_tr.add(t.lower())
@@ -2599,282 +3200,6 @@ def _extract_alien_rpg_fields(fields: Dict[str, str]) -> Dict[str, Any]:
     return result
 
 
-# ---------------------------------------------------------------------------
-# Shadowrun (SR6e) field extraction
-# ---------------------------------------------------------------------------
-
-_SR_CORE_ATTRIBUTES = ["BOD", "AGI", "REA", "STR", "WIL", "LOG", "INT", "CHA", "EDG"]
-_MAX_NUYEN_VALUE = 10_000_000
-
-
-def _is_shadowrun_sheet(widget_values: Dict[str, str]) -> bool:
-    """Detect SR6e sheets by requiring ≥5 of 9 core attribute abbreviations."""
-    matched = sum(
-        1 for abbr in _SR_CORE_ATTRIBUTES if any(re.search(rf"\b{re.escape(abbr)}\b", k, re.I) for k in widget_values)
-    )
-    return matched >= 5
-
-
-def _extract_shadowrun_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, Any]:
-    """Extract Shadowrun 6e-specific fields.
-
-    Returns shadowrun_attributes (9 core + MAG/RES), shadowrun_metatype,
-    shadowrun_essence, shadowrun_condition_monitor, shadowrun_skills,
-    shadowrun_qualities, shadowrun_cyberware, shadowrun_nuyen,
-    shadowrun_lifestyle, shadowrun_contacts, shadowrun_matrix,
-    shadowrun_karma, shadowrun_armor, shadowrun_initiative,
-    shadowrun_knowledge_skills, shadowrun_adept_powers.
-    """
-    if not fields:
-        return {}
-
-    def _find_first(patterns: list[str]) -> str | None:
-        for pat in patterns:
-            for k, v in fields.items():
-                if not v:
-                    continue
-                if re.search(pat, str(k), re.I):
-                    return _as_str(v)
-        return None
-
-    def _find_int(patterns: list[str]) -> int | None:
-        val = _find_first(patterns)
-        if val is None:
-            return None
-        m = re.search(r"-?\d+", str(val))
-        return int(m.group(0)) if m else _as_int(val)
-
-    def _find_float(patterns: list[str]) -> float | None:
-        val = _find_first(patterns)
-        if val is None:
-            return None
-        m = re.search(r"-?\d+(?:\.\d+)?", str(val))
-        if m:
-            try:
-                return float(m.group(0))
-            except ValueError:
-                return None
-        return None
-
-    result: Dict[str, Any] = {}
-
-    # Core attributes
-    attrs: Dict[str, int] = {}
-    for abbr in _SR_CORE_ATTRIBUTES + ["MAG", "RES"]:
-        for k, v in fields.items():
-            if re.search(rf"\b{re.escape(abbr)}\b", k, re.I) and v:
-                n = _as_int(str(v).strip())
-                if isinstance(n, int) and 0 <= n <= 12:
-                    attrs[abbr] = n
-                    break
-    if attrs:
-        result["shadowrun_attributes"] = attrs
-
-    # Metatype (Human/Elf/Dwarf/Ork/Troll + exotic)
-    metatype = _find_first([r"\bmetatype\b", r"\brace\b", r"\bspecies\b"])
-    if metatype:
-        result["shadowrun_metatype"] = metatype
-
-    # Essence (reduced by cyberware) — valid range 0.01–6.0.
-    # Essence 0.0 means the character has died from cyberware overload and is
-    # not a playable state; treat as out-of-range to avoid importing garbage.
-    essence = _find_float([r"\bessence\b", r"\bess\b"])
-    if essence is not None and 0.0 < essence <= 6.0:
-        result["shadowrun_essence"] = essence
-
-    # Condition monitors
-    phys_max = _find_int([r"\bphys(?:ical)?\s*mon(?:itor)?\s*max\b", r"\bphysmonmax\b"])
-    phys_dmg = _find_int([r"\bphys(?:ical)?\s*(?:damage|dmg|boxes?)\b", r"\bphysdmg\b"])
-    stun_max = _find_int([r"\bstun\s*mon(?:itor)?\s*max\b", r"\bstunmonmax\b"])
-    stun_dmg = _find_int([r"\bstun\s*(?:damage|dmg|boxes?)\b", r"\bstundmg\b"])
-    cmon: Dict[str, Any] = {}
-    if phys_max is not None or phys_dmg is not None:
-        cmon["physical"] = {k2: v2 for k2, v2 in [("max", phys_max), ("damage", phys_dmg)] if v2 is not None}
-    if stun_max is not None or stun_dmg is not None:
-        cmon["stun"] = {k2: v2 for k2, v2 in [("max", stun_max), ("damage", stun_dmg)] if v2 is not None}
-    if cmon:
-        result["shadowrun_condition_monitor"] = cmon
-
-    # Skills with rating and optional specialization
-    skills: list[Dict[str, Any]] = []
-    skill_name_keys = [k for k in fields if re.search(r"\bskill\s*\d*\s*name\b", k, re.I)]
-    seen_skills_sr: set[str] = set()
-    for sk in skill_name_keys:
-        sname = _as_str(fields.get(sk))
-        if not sname or sname.lower() in seen_skills_sr:
-            continue
-        seen_skills_sr.add(sname.lower())
-        idx_m = re.search(r"\d+", sk)
-        idx = idx_m.group(0) if idx_m else ""
-        rating = None
-        spec = None
-        for k2, v2 in fields.items():
-            if not v2:
-                continue
-            if re.search(rf"\bskill\s*{idx}\s*rating\b|\bskill\s*{idx}\s*level\b", k2, re.I):
-                rating = _as_int(str(v2).strip())
-            elif re.search(rf"\bskill\s*{idx}\s*spec(?:ialization)?\b", k2, re.I):
-                spec = _as_str(v2)
-        entry: Dict[str, Any] = {"name": sname}
-        if rating is not None:
-            entry["rating"] = rating
-        if spec:
-            entry["specialization"] = spec
-        skills.append(entry)
-    if skills:
-        result["shadowrun_skills"] = skills
-
-    # Qualities
-    pos_quals: list[str] = []
-    neg_quals: list[str] = []
-    for k, v in fields.items():
-        if not v:
-            continue
-        kl = str(k).lower()
-        if "positive" in kl and "qual" in kl:
-            q = _as_str(v)
-            if q:
-                pos_quals.append(q)
-        elif "negative" in kl and "qual" in kl:
-            q = _as_str(v)
-            if q:
-                neg_quals.append(q)
-    if pos_quals or neg_quals:
-        result["shadowrun_qualities"] = {"positive": pos_quals, "negative": neg_quals}
-
-    # Cyberware / augmentations
-    cyberware: list[str] = []
-    seen_cw: set[str] = set()
-    for k, v in fields.items():
-        if not v:
-            continue
-        if re.search(r"\bcyber(?:ware)?\b|\baugment(?:ation)?\b|\bbioware\b", str(k), re.I):
-            cw = _as_str(v)
-            if cw and cw.lower() not in seen_cw and len(cw) > 1:
-                seen_cw.add(cw.lower())
-                cyberware.append(cw)
-    if cyberware:
-        result["shadowrun_cyberware"] = cyberware
-
-    # Nuyen (SR currency) — bounded to avoid garbage
-    nuyen = _find_int([r"\bnuyen\b", r"\bny\b", r"\bcash\b"])
-    if nuyen is not None and 0 <= nuyen <= _MAX_NUYEN_VALUE:
-        result["shadowrun_nuyen"] = nuyen
-
-    # Lifestyle
-    lifestyle = _find_first([r"\blifestyle\b"])
-    if lifestyle:
-        result["shadowrun_lifestyle"] = lifestyle
-
-    # Contacts
-    contacts: list[Dict[str, Any]] = []
-    contact_name_keys = [k for k in fields if re.search(r"\bcontact\s*\d*\s*name\b", k, re.I)]
-    for ck in contact_name_keys:
-        cname = _as_str(fields.get(ck))
-        if not cname:
-            continue
-        idx_m = re.search(r"\d+", ck)
-        idx = idx_m.group(0) if idx_m else ""
-        loyalty = None
-        connection = None
-        for k2, v2 in fields.items():
-            if not v2:
-                continue
-            if re.search(rf"\bcontact\s*{idx}\s*loyalty\b", k2, re.I):
-                loyalty = _as_int(str(v2).strip())
-            elif re.search(rf"\bcontact\s*{idx}\s*connection\b", k2, re.I):
-                connection = _as_int(str(v2).strip())
-        entry: Dict[str, Any] = {"name": cname}
-        if loyalty is not None:
-            entry["loyalty"] = loyalty
-        if connection is not None:
-            entry["connection"] = connection
-        contacts.append(entry)
-    if contacts:
-        result["shadowrun_contacts"] = contacts
-
-    # Matrix stats (Decker/Technomancer)
-    attack = _find_int([r"\battack\b"])
-    sleaze = _find_int([r"\bsleaze\b"])
-    dp = _find_int([r"\bdata\s*processing\b", r"\bdataprocessing\b"])
-    firewall = _find_int([r"\bfirewall\b"])
-    matrix: Dict[str, Any] = {}
-    if attack is not None:
-        matrix["attack"] = attack
-    if sleaze is not None:
-        matrix["sleaze"] = sleaze
-    if dp is not None:
-        matrix["data_processing"] = dp
-    if firewall is not None:
-        matrix["firewall"] = firewall
-    if matrix:
-        result["shadowrun_matrix"] = matrix
-
-    # Karma (character advancement currency)
-    karma_total = _find_int([r"\btotal\s*karma\b", r"\bkarma\s*total\b"])
-    karma_current = _find_int([r"\bcurrent\s*karma\b", r"\bkarma\s*current\b", r"\bkarma\b"])
-    karma: Dict[str, Any] = {}
-    if karma_total is not None:
-        karma["total"] = karma_total
-    if karma_current is not None:
-        karma["current"] = karma_current
-    if karma:
-        result["shadowrun_karma"] = karma
-
-    # Armor
-    armor = _find_int([r"\barmor\s*rating\b", r"\barmour\s*rating\b", r"\barmor\b"])
-    if armor is not None:
-        result["shadowrun_armor"] = armor
-
-    # Initiative (dice pool and base)
-    init_base = _find_int([r"\binitiative\s*base\b", r"\binit\s*base\b"])
-    init_dice = _find_int([r"\binitiative\s*dice\b", r"\binit\s*dice\b", r"\binitiative\b"])
-    if init_base is not None or init_dice is not None:
-        initiative: Dict[str, Any] = {}
-        if init_base is not None:
-            initiative["base"] = init_base
-        if init_dice is not None:
-            initiative["dice"] = init_dice
-        result["shadowrun_initiative"] = initiative
-
-    # Knowledge skills
-    knowledge_skills: list[Dict[str, Any]] = []
-    ks_name_keys = [k for k in fields if re.search(r"\bknowledge\s*skill\s*\d*\s*name\b", k, re.I)]
-    for ksk in ks_name_keys:
-        ksname = _as_str(fields.get(ksk))
-        if not ksname:
-            continue
-        idx_m = re.search(r"\d+", ksk)
-        idx = idx_m.group(0) if idx_m else ""
-        rating = None
-        for k2, v2 in fields.items():
-            if not v2:
-                continue
-            if re.search(rf"\bknowledge\s*skill\s*{idx}\s*rating\b", k2, re.I):
-                rating = _as_int(str(v2).strip())
-        ks_entry: Dict[str, Any] = {"name": ksname}
-        if rating is not None:
-            ks_entry["rating"] = rating
-        knowledge_skills.append(ks_entry)
-    if knowledge_skills:
-        result["shadowrun_knowledge_skills"] = knowledge_skills
-
-    # Adept powers (for Awakened adepts)
-    adept_powers: list[str] = []
-    seen_ap: set[str] = set()
-    for k, v in fields.items():
-        if not v:
-            continue
-        if re.search(r"\badept\s*power\b", str(k), re.I):
-            ap = _as_str(v)
-            if ap and ap.lower() not in seen_ap:
-                seen_ap.add(ap.lower())
-                adept_powers.append(ap)
-    if adept_powers:
-        result["shadowrun_adept_powers"] = adept_powers
-
-    return result
-
 
 def _extract_fields_from_text(text: str | None) -> tuple[str | None, int | None, str | None]:
     """Heuristic extraction of name, level, and class from arbitrary text.
@@ -2934,12 +3259,16 @@ def _extract_fields_from_text(text: str | None) -> tuple[str | None, int | None,
                 break
 
     # Heuristic for name: pick the first short line that is not a template heading
+    _name_boilerplate = re.compile(r"[\u00a9\u2122\u00ae]|copyright|\bstudios?\b|\bpublishing\b|\bgames?\s+inc\b", re.I)
     for line in lines[:6]:
         up = line.upper()
         if any(x in up for x in ("CLASS", "LEVEL", "PLAYER NAME", "CHARACTER NAME", "SPECIES", "BACKGROUND")):
             continue
         # Avoid lines that look like page headers/metadata (contain too many digits or slashes)
         if re.search(r"\d", line) and len(re.findall(r"[A-Za-z]", line)) < 3:
+            continue
+        # Skip copyright/trademark/legal boilerplate lines
+        if _name_boilerplate.search(line):
             continue
         # Accept short single-line names
         if 1 <= len(line) <= 60:
@@ -3460,6 +3789,16 @@ def _build_character_import_sheet_from_pdf(
         _sta_dept = _as_str(widget_values.get("Department")) or _as_str(widget_values.get("department"))
         if _sta_dept:
             final_class_name = _sta_dept
+    # For CoC sheets, fall back to the Occupation widget as the character's "class"
+    if not final_class_name:
+        _coc_occ = _as_str(widget_values.get("Occupation")) or _as_str(widget_values.get("occupation"))
+        if _coc_occ:
+            final_class_name = _coc_occ
+    # For WFRP sheets, fall back to the Career widget as the character's "class"
+    if not final_class_name:
+        _wfrp_career = _as_str(widget_values.get("Career")) or _as_str(widget_values.get("career"))
+        if _wfrp_career:
+            final_class_name = _wfrp_career
 
     class_features = _lines_from_blobs(class_blobs)
     racial_features = _lines_from_blobs(race_blobs)
@@ -3933,15 +4272,17 @@ def _build_character_import_sheet_from_pdf(
         pass
 
     # Detect TTRPG system from extracted sheet data.
-    # Include STA attributes in the stats dict so the STA signature can be scored
-    # even when the standard D&D ability-score widgets are absent.
+    # Include STA attributes and CoC characteristics in the stats dict so the
+    # respective signatures can be scored even when standard D&D ability-score
+    # widgets are absent.
     try:
         sta_attrs_for_detection = _extract_sta_attributes_from_widgets(widget_values)
+        coc_chars_for_detection = _extract_coc_characteristics_from_widgets(widget_values)
         detect_input = {
             "class_name": final_class_name,
             "multiclass": multiclass,
             "skills": skills_from_widgets,
-            "stats": {**stats_from_widgets, **sta_attrs_for_detection},
+            "stats": {**stats_from_widgets, **sta_attrs_for_detection, **coc_chars_for_detection},
             "raw_text": (combined_text or "")[:10000],
             "import": {"source": source, "ddb_url": ddb_url, "filename": filename},
             "widget_keys": list(widget_values.keys()),
@@ -4019,6 +4360,66 @@ def _build_character_import_sheet_from_pdf(
         if sta_equipment:
             sheet["equipment"] = sta_equipment
 
+    # Alien RPG-specific field population (only when the sheet is identified as Alien RPG).
+    if _is_alien_rpg_sheet(widget_values):
+        alien_attributes = _extract_alien_rpg_attributes_from_widgets(widget_values)
+        alien_skills = _extract_alien_rpg_skills_from_widgets(widget_values)
+        alien_health = _extract_alien_rpg_health_from_widgets(widget_values)
+        alien_stress = _extract_alien_rpg_stress_from_widgets(widget_values)
+
+        if alien_attributes:
+            sheet["alien_attributes"] = alien_attributes
+        if alien_skills:
+            sheet["alien_skills"] = alien_skills
+        if alien_health:
+            sheet["alien_health"] = alien_health
+        if alien_stress:
+            sheet["alien_stress"] = alien_stress
+
+        # Career maps to the sheet career field (analogous to class in D&D).
+        alien_career = _as_str(widget_values.get("Career") or widget_values.get("Job"))
+        if alien_career:
+            sheet["alien_career"] = alien_career
+
+        # Agenda is a unique Alien RPG field: the character's secret personal objective.
+        alien_agenda = _as_str(widget_values.get("Agenda"))
+        if alien_agenda:
+            sheet["agenda"] = alien_agenda
+
+        # Buddy / Rival — optional relational fields on the Alien RPG sheet.
+        alien_buddy = _as_str(widget_values.get("Buddy"))
+        if alien_buddy:
+            sheet["alien_buddy"] = alien_buddy
+        alien_rival = _as_str(widget_values.get("Rival"))
+        if alien_rival:
+            sheet["alien_rival"] = alien_rival
+
+        # Appearance / personal description.
+        alien_appearance = _as_str(widget_values.get("Appearance"))
+        if alien_appearance:
+            sheet["alien_appearance"] = alien_appearance
+
+        # Experience points.
+        alien_xp = _extract_pdf_widget_int(widget_values, ["Experience", "XP"], min_value=0, max_value=999)
+        if isinstance(alien_xp, int):
+            sheet["alien_experience"] = alien_xp
+
+        # Gear / equipment (numbered list, e.g. "Gear 1" … "Gear 10").
+        # Reuses _extract_sta_list_fields_from_widgets which is system-agnostic
+        # despite its name — it extracts any numbered widget prefix list.
+        alien_gear: list[str] = _extract_sta_list_fields_from_widgets(
+            widget_values, ["Gear", "Equipment", "Item", "Weapon"], max_items=10
+        )
+        if alien_gear:
+            sheet["equipment"] = alien_gear
+
+        # Critical injuries (numbered list).
+        alien_injuries: list[str] = _extract_sta_list_fields_from_widgets(
+            widget_values, ["Critical Injury", "Injury", "Critical"], max_items=8
+        )
+        if alien_injuries:
+            sheet["injuries"] = alien_injuries
+
     # Merge Pathfinder-specific fields extracted from widget keys.
     system_name = (sheet.get("system") or {}).get("name", "Unknown")
     if system_name == "Pathfinder 2e":
@@ -4057,6 +4458,31 @@ def _build_character_import_sheet_from_pdf(
         sr_fields = _extract_shadowrun_fields_from_widgets(widget_values)
         for k, v in sr_fields.items():
             sheet[k] = v
+
+    # Merge Call of Cthulhu-specific fields when the sheet is identified as CoC.
+    if _is_coc_sheet(widget_values) or system_name == "Call of Cthulhu":
+        coc_fields = _extract_coc_fields_from_widgets(widget_values)
+        for k, v in coc_fields.items():
+            sheet[k] = v
+
+    # Merge WFRP-specific fields when the sheet is identified as Warhammer Fantasy Roleplay.
+    # Both conditions are intentional:
+    #   - system_name check: covers manual system_override to WFRP even if widget keys differ
+    #   - _is_wfrp_sheet check: catches WFRP sheets where system detection scored it as Unknown
+    # _extract_wfrp_fields_from_widgets is only called once regardless of which branch fires.
+    if system_name == "Warhammer Fantasy Roleplay" or _is_wfrp_sheet(widget_values):
+        wfrp_fields = _extract_wfrp_fields_from_widgets(widget_values)
+        for k, v in wfrp_fields.items():
+            sheet[k] = v
+
+    # Merge Shadowrun-specific fields (only when sheet is identified as Shadowrun).
+    if _is_shadowrun_sheet(widget_values):
+        sr_fields = _extract_shadowrun_fields_from_widgets(widget_values)
+        for k, v in sr_fields.items():
+            sheet[k] = v
+        # Ensure sheet.system reflects Shadowrun even if detection confidence was low.
+        if sheet.get("system", {}).get("name") in (None, "Unknown"):
+            sheet["system"] = {"name": "Shadowrun", "publisher": "Catalyst Game Labs"}
 
     return final_name, safe_level, final_class_name, sheet
 

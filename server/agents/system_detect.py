@@ -56,6 +56,24 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
         "stats": {"str", "dex", "con", "int", "wis", "cha",
                   "strength", "dexterity", "constitution", "intelligence",
                   "wisdom", "charisma"},
+        # Widget keys that appear on D&D 5e official/D&D Beyond character sheets.
+        # Proficiency Bonus, Death Saves, Hit Dice, and Inspiration are D&D 5e–specific
+        # field labels that do not appear on Pathfinder sheets.
+        "widget_signals": {
+            "positive": {
+                "proficiency bonus", "profbonus",
+                "death saves", "death save",
+                "hit dice", "inspiration",
+                "spell slots total", "slotstotal",
+                "animal handling", "sleight of hand",
+            },
+            "negative": {
+                "ancestry", "heritage", "proficiency rank",
+                "focus points", "class dc", "bulk",
+                "bab", "base attack bonus", "cmb", "cmd",
+                "control", "daring", "fitness", "reason",
+            },
+        },
         "keywords": {
             "d&d", "dnd", "dungeons & dragons", "dungeons and dragons",
             "5e", "5th edition", "d&d beyond", "dndbeyond",
@@ -178,6 +196,18 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
             "starfinder", "sfrd", "pact worlds", "drift", "eox",
             "armada", "starship", "absalom station",
         },
+        # Widget keys that appear on Starfinder character sheets but not on PF or D&D sheets.
+        "widget_signals": {
+            "positive": {
+                "stamina points", "sp max", "sp current", "resolve points",
+                "rp max", "rp current", "eac", "kac", "theme",
+                "drift", "racial hp",
+            },
+            "negative": {
+                "proficiency rank", "ancestry", "heritage", "focus points",
+                "bab", "base attack bonus", "cmb", "cmd",
+            },
+        },
     },
     {
         "name": "Call of Cthulhu",
@@ -216,6 +246,14 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
             "strength", "dexterity", "constitution", "intelligence",
             "power", "appearance", "education", "size",
             "sanity", "luck", "hit points", "magic points",
+        },
+        # Widget keys that appear on CoC sheets but not on D&D/PF sheets.
+        "widget_signals": {
+            "positive": {
+                "sanity points", "magic points", "luck", "cthulhu mythos",
+                "pow", "app", "siz", "edu", "investigator name",
+            },
+            "negative": {"proficiency bonus", "spell slots", "ki points"},
         },
         "keywords": {
             "call of cthulhu", "coc", "cthulhu", "investigator",
@@ -267,6 +305,19 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
         },
         "skills": set(),
         "stats": {"strength", "agility", "intellect", "will"},
+        # Widget keys found on official SotDL character sheets (unique to this system).
+        "widget_signals": {
+            "positive": {
+                "corruption", "healing rate", "novice path", "expert path",
+                "master path", "insanity", "intellect", "will",
+                "boons", "banes",
+            },
+            "negative": {
+                "proficiency rank", "ancestry feat", "focus points", "class dc",
+                "base attack bonus", "cmb", "cmd", "stress", "determination",
+                "momentum", "spell slots",
+            },
+        },
         "keywords": {
             "shadow of the demon lord", "sotdl", "schwalb",
             "demon lord", "tradition",
@@ -308,6 +359,16 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
             "warhammer", "wfrp", "cubicle 7", "altdorf", "reikland",
             "sigmar", "old world", "chaos",
         },
+        # Widget key signals unique to Cubicle 7 WFRP 4e fillable PDF sheets.
+        # Used by infer_ttrpg_system when widget_keys are supplied in the sheet dict.
+        "widget_signals": {
+            "positive": {
+                "ws advances", "bs advances", "toughness advances", "wounds",
+                "fate points", "fortune points", "resilience", "resolve points",
+                "corruption", "career level", "skill advances",
+            },
+            "negative": {"armor class", "saving throw", "hit dice", "stress max"},
+        },
     },
     {
         "name": "Alien RPG",
@@ -334,6 +395,21 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
         "keywords": {
             "alien rpg", "alien", "free league", "xenomorph",
             "weyland-yutani", "nostromo",
+        },
+        # Widget keys that appear on Alien RPG character sheets (Year Zero Engine).
+        # Agility/Wits/Empathy and the skill names are distinctive; Panic and Agenda
+        # are unique to the Alien RPG.
+        "widget_signals": {
+            "positive": {
+                "wits", "empathy", "agenda", "panic",
+                "close combat", "heavy machinery", "comtech",
+                "ranged combat", "medical aid", "manipulation",
+                "stress", "colonial marine", "roughneck",
+            },
+            "negative": {
+                "proficiency bonus", "spell slots", "hit dice", "ki points",
+                "disciplines", "control", "daring",
+            },
         },
     },
     {
@@ -370,6 +446,15 @@ SYSTEM_SIGNATURES: List[Dict[str, Any]] = [
         "keywords": {
             "shadowrun", "sixth world", "nuyen", "matrix",
             "sprawl", "corp", "megacorp", "awakened", "otaku",
+        },
+        # Widget key signals from the Catalyst Game Labs SR6e fillable PDF.
+        # BOD/AGI/REA/EDG/ESS are unique to Shadowrun; condition monitors add
+        # further confidence.  D&D stat abbreviations (STR/INT/CHA) overlap so
+        # they are not scored here.
+        "widget_signals": {
+            "positive": {"BOD", "AGI", "REA", "EDG", "ESS", "Metatype",
+                         "Nuyen", "PhysMonMax", "StunMonMax"},
+            "negative": set(),
         },
     },
 ]

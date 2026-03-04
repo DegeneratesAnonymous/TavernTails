@@ -1,0 +1,12 @@
+# Keep indexed reference data (metadata + extracted pages) in version control.
+# Ignore the raw uploaded files — re-upload them via the Admin Panel if needed.
+*.pdf
+*.docx
+*.doc
+*.xlsx
+*.xls
+*.html
+*.htm
+*.txt
+*.md
+*.csv
