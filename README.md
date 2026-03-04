@@ -49,113 +49,26 @@ Here is the typical journey from first visit to active play:
 
 ---
 
-## App Pages — Screenshot Tour
+## App Pages
 
-> Screenshots are automatically updated whenever code is merged to `main` via the [screenshot-update](.github/workflows/screenshot-update.yml) workflow.
+Full per-page documentation — including an auto-updated screenshot for every screen — lives in the **[project wiki](https://github.com/DegeneratesAnonymous/TavernTails/wiki)**:
 
-### 1 · Landing Page
+| Page | Wiki link |
+|---|---|
+| Landing | [Page-Landing](https://github.com/DegeneratesAnonymous/TavernTails/wiki/Page-Landing) |
+| Login | [Page-Login](https://github.com/DegeneratesAnonymous/TavernTails/wiki/Page-Login) |
+| Sign Up | [Page-Sign-Up](https://github.com/DegeneratesAnonymous/TavernTails/wiki/Page-Sign-Up) |
+| Dashboard | [Page-Dashboard](https://github.com/DegeneratesAnonymous/TavernTails/wiki/Page-Dashboard) |
+| Characters | [Page-Characters](https://github.com/DegeneratesAnonymous/TavernTails/wiki/Page-Characters) |
+| Import Character | [Page-Import-Character](https://github.com/DegeneratesAnonymous/TavernTails/wiki/Page-Import-Character) |
+| Manage Campaigns | [Page-Manage-Campaigns](https://github.com/DegeneratesAnonymous/TavernTails/wiki/Page-Manage-Campaigns) |
+| New Campaign | [Page-New-Campaign](https://github.com/DegeneratesAnonymous/TavernTails/wiki/Page-New-Campaign) |
+| Campaign Settings | [Page-Campaign-Settings](https://github.com/DegeneratesAnonymous/TavernTails/wiki/Page-Campaign-Settings) |
+| Gameplay / Session View | [Page-Gameplay](https://github.com/DegeneratesAnonymous/TavernTails/wiki/Page-Gameplay) |
 
-![Landing page](docs/screenshots/01-landing.png)
-
-The public home page — the first thing any visitor sees. The headline ("Story-first AI GM, built for real tables") explains the product pitch. Below it are six shortcut tiles so returning users can jump directly to **Start New Game**, **Load a Game**, **Manage Characters**, **Manage Campaigns**, **Explore**, or **Guides**. The **Sign In** and **Create Account** buttons in the hero area are the primary call-to-action for new visitors.
-
----
-
-### 2 · Login
-
-![Login](docs/screenshots/02-login.png)
-
-A minimal login form with Email and Password fields. The **Sign up** button takes you to account creation. In local development a **"Use dev login"** button auto-fills `test@example.com / secret` so you can get into the app without typing credentials every time.
-
----
-
-### 3 · Sign Up
-
-![Sign up](docs/screenshots/03-signup.png)
-
-Account creation form. Enter a username, email address, and password to register. After sign-up, email verification is required before full access is granted. In dev mode both email verification and credential entry are bypassed automatically.
-
----
-
-### 4 · Dashboard
-
-![Dashboard home](docs/screenshots/04-dashboard.png)
-
-The authenticated home screen. Greets you by name ("Welcome, tester") and presents the same six quick-action tiles as the landing page, but now scoped to your account data:
-
-- **Start New Game** – Create a fresh campaign and jump into your adventure.
-- **Load a Game** – Continue from one of your existing campaigns.
-- **Manage Characters** – View, create, and import characters.
-- **Manage Campaigns** – Configure campaigns, players, and documents.
-- **Explore** – Browse lore and world details discovered in your campaigns.
-- **Guides** – Best practices and help for all TavernTAIls tools.
-
----
-
-### 5 · Characters
-
-![Characters](docs/screenshots/05-characters.png)
-
-Your character roster. The page lists every character attached to your account with options to **Create Character** (build from scratch) or **Import** (from a JSON export or D&D Beyond link). When you have characters, each card shows the character's key stats and lets you select one as the active character for an upcoming session.
-
----
-
-### 6 · Import Character
-
-![Import character](docs/screenshots/06-import-character.png)
-
-The character import wizard. Paste in a D&D Beyond character URL or upload a JSON export from your preferred VTT or character builder. TavernTAIls parses the data and creates a local character record that stays in sync with the campaign.
-
----
-
-### 7 · Manage Campaigns
-
-![Manage campaigns](docs/screenshots/07-campaigns.png)
-
-A list of every campaign you own or have joined. Each entry shows the campaign name, its current status, and quick links to open or configure it. The **New Campaign** button starts the creation flow.
-
----
-
-### 8 · New Campaign
-
-![New campaign](docs/screenshots/08-new-campaign.png)
-
-The campaign creation form. Give your campaign a name and description, choose an initial setting, and optionally attach reference documents (rule books, homebrew PDFs, world lore). Once saved, you're taken to Campaign Settings to finish configuration before the first session.
-
----
-
-### 9 · Campaign Settings
-
-![Campaign settings](docs/screenshots/09-campaign-settings.png)
-
-The host-only configuration panel for an existing campaign. From here you can:
-
-- **World & Story** — set the world name, write a setting summary, choose genre (Fantasy, Sci-Fi, Horror, etc.), and pick a tone (Heroic, Grim, Dark Fantasy, etc.).
-- **Rules** — select the ruleset (D&D 5e, Pathfinder 2e, Shadowrun, etc.) and configure the starting character level.
-- **Narrative Variables** — tune pacing (Slow / Moderate / Fast), narrative style (Epic, Intimate, Gritty, etc.), naming style hint, recurring story themes, and content rating.
-- **House Rules** — free-text rules the AI agents must respect during the session.
-- **Game Master** — assign the AI as GM or designate a player as GM (AI shifts to note-taking / organization mode).
-- **Player-run Mode** — toggle to disable all AI narration while keeping dice rolls, notes, and NPC tracking active.
-
-Only the campaign host sees this panel — players are directed to the session view.
-
----
-
-### 10 · Gameplay / Session View
-
-![Gameplay](docs/screenshots/10-gameplay.png)
-
-The main play screen — where the actual game happens. The layout is split into two panels:
-
-**Left panel — Scene area**
-- Displays the current scene image (AI-generated when the Image agent is active).
-- Shows the scene title (e.g., "Quickstart Campaign — Opening Scene") so everyone knows where in the story they are.
-- The **Continue** button in the header advances the narrative when using AI.
-
-**Right panel — Tools**
-- **Chat tab**: The primary input. Type messages, commands, or dice rolls like `1d20+3` directly in the text box and press **Send**. Roll results are logged inline with the chat history. Type `!notes` to request a session recap from the Notes agent (available with or without full AI enabled).
-- **Character tab**: Your full character sheet, always one click away without leaving the session.
-- **Journal tab**: Auto-generated and manually added session notes so nothing gets lost.
+> Screenshots are auto-updated on every merge to `main` by the
+> [screenshot-update](.github/workflows/screenshot-update.yml) workflow, which
+> also regenerates the wiki pages.
 
 ---
 
