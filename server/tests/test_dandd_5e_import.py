@@ -336,15 +336,20 @@ def test_dnd5e_pdf_import_extracts_saving_throws():
 
 
 def test_dnd5e_pdf_import_extracts_skills():
-    """Skill modifiers are stored under sheet['skills'] keyed by skill name."""
+    """Skill modifiers are stored in sheet['skills'] as a list of {name, modifier, ...} objects."""
     client = _client()
     _ensure_user(DND5E_EMAIL, DND5E_USERNAME)
     data = _import_thorin(client)
     skills = data["character"]["sheet"]["skills"]
-    assert "Athletics" in skills
-    assert skills["Athletics"]["modifier"] == 7
-    assert "Perception" in skills
-    assert skills["Perception"]["modifier"] == 4
+    # Skills may be stored as a list of objects or a dict; handle both.
+    if isinstance(skills, list):
+        skills_by_name = {s["name"]: s for s in skills if isinstance(s, dict) and "name" in s}
+    else:
+        skills_by_name = skills
+    assert "Athletics" in skills_by_name
+    assert skills_by_name["Athletics"]["modifier"] == 7
+    assert "Perception" in skills_by_name
+    assert skills_by_name["Perception"]["modifier"] == 4
 
 
 # ---------------------------------------------------------------------------
