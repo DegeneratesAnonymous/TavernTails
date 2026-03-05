@@ -5,6 +5,28 @@ import { apiFetch, API_BASE } from '../../api'
 
 import './CharacterSheetModal.css'
 
+// Matches section-header names like "Artificer Features", "Core Paladin Traits",
+// "Species Abilities", etc.  These should not appear as individual feature items.
+const FEATURE_CATEGORY_PATTERN = /\b(features?|traits?|abilities|proficiencies|class\s+features?|racial\s+traits?)\s*$/i
+const FEATURE_SKIP_NAMES = new Set(['proficiencies', 'features', 'traits', 'abilities', 'other proficiencies & languages', 'other proficiencies and languages'])
+
+function isFeatureCategoryHeader(name: string): boolean {
+  const lower = name.toLowerCase().trim()
+  if (FEATURE_SKIP_NAMES.has(lower)) return true
+  // Heuristic: names ending in "Features", "Traits", etc. are section headers, not features.
+  // The colon exclusion preserves items like "Infuse Item: Bag of Holding" which are real
+  // feature names that happen to describe a specific invocation or application.
+  if (FEATURE_CATEGORY_PATTERN.test(name) && !name.includes(':')) return true
+  return false
+}
+
+/** Extract a display name string from a feature value that may be a string or an object. */
+function featureItemName(v: any): string {
+  if (typeof v === 'string') return v.trim()
+  if (v && typeof v === 'object') return asString((v as any).name).trim()
+  return ''
+}
+
 type Character = {
   id: number
   name: string
@@ -594,6 +616,17 @@ export default function CharacterSheetModal({ open, character, loading = false, 
     if (Array.isArray(sheet?.spells) && !Array.isArray(mergedRaw.spells)) mergedRaw.spells = sheet.spells
     if (Array.isArray(sheet?.classFeatures) && !Array.isArray(mergedRaw.classFeatures)) mergedRaw.classFeatures = sheet.classFeatures
     if (Array.isArray(sheet?.racialFeatures) && !Array.isArray(mergedRaw.racialFeatures)) mergedRaw.racialFeatures = sheet.racialFeatures
+    // Expose spell slots so inferSpellSlotsFromRaw can find them for interactive tracking.
+    if ((sheet as any)?.spell_slots && typeof (sheet as any).spell_slots === 'object' && !mergedRaw.spell_slots) {
+      mergedRaw.spell_slots = (sheet as any).spell_slots
+    }
+    if ((sheet as any)?.spellSlots && typeof (sheet as any).spellSlots === 'object' && !mergedRaw.spellSlots) {
+      mergedRaw.spellSlots = (sheet as any).spellSlots
+    }
+    // Expose skills so they can be displayed from whatever format the importer stored them.
+    if ((sheet as any)?.skills && !mergedRaw.skills) {
+      mergedRaw.skills = (sheet as any).skills
+    }
 
     // Keep combined text available
     if (!mergedRaw.text) mergedRaw.text = sheet?.raw_text || importMeta?.extracted?.name || ''
@@ -642,9 +675,37 @@ export default function CharacterSheetModal({ open, character, loading = false, 
       spells: joinList(sheet?.spells).length ? joinList(sheet?.spells) : (inferredSpells.length ? uniqNonEmpty(inferredSpells) : inferredLists.spells),
       spellbook,
       spellSlots: inferredSpellSlots,
-      classFeatures: joinList((sheet as any)?.classFeatures).length ? joinList((sheet as any)?.classFeatures) : inferredFeatures.classFeatures,
-      racialFeatures: joinList((sheet as any)?.racialFeatures).length ? joinList((sheet as any)?.racialFeatures) : inferredFeatures.racialFeatures,
-      features: joinList(sheet?.features).length ? joinList(sheet?.features) : inferredFeatures.otherFeatures.length ? inferredFeatures.otherFeatures : inferredLists.features,
+      classFeatures: (() => {
+        // Get class features as string list, filtering out section-header lines.
+        const raw_cf = (sheet as any)?.classFeatures
+        const items = Array.isArray(raw_cf)
+          ? raw_cf.map(featureItemName).filter(Boolean)
+          : inferredFeatures.classFeatures
+        return uniqNonEmpty(items.filter((s: string) => !isFeatureCategoryHeader(s)))
+      })(),
+      racialFeatures: (() => {
+        const raw_rf = (sheet as any)?.racialFeatures
+        const items = Array.isArray(raw_rf)
+          ? raw_rf.map(featureItemName).filter(Boolean)
+          : inferredFeatures.racialFeatures
+        return uniqNonEmpty(items.filter((s: string) => !isFeatureCategoryHeader(s)))
+      })(),
+      features: (() => {
+        const raw_f = sheet?.features
+        const items = Array.isArray(raw_f)
+          ? raw_f.map(featureItemName).filter(Boolean)
+          : (inferredFeatures.otherFeatures.length ? inferredFeatures.otherFeatures : inferredLists.features)
+        return uniqNonEmpty(items.filter((s: string) => !isFeatureCategoryHeader(s)))
+      })(),
+      // For multiclass grouping: parse multiclass info from sheet
+      multiclassGroups: (() => {
+        const mc = (sheet as any)?.multiclass
+        if (!Array.isArray(mc) || mc.length < 2) return null
+        return mc.map((c: any) => ({
+          className: asString(c?.class_name || c?.name || '').trim(),
+          level: typeof c?.level === 'number' ? c.level : null,
+        })).filter((c: any) => c.className)
+      })(),
       // Actions / bonus actions (object with name + detail when available)
       actions: (() => {
         const rawActions = pick(raw, ['actions']) ?? pick(raw, ['attacks']) ?? pick(raw, ['specialAbilities'])
@@ -660,7 +721,34 @@ export default function CharacterSheetModal({ open, character, loading = false, 
         }
         return []
       })(),
-      skills: uniqNonEmpty([ ...toStringListLoose(pick(raw, ['skills'])), ...toStringListLoose(pick(raw, ['skillProficiencies'])), ...toStringListLoose(pick(raw, ['skill_proficiencies'])) ]),
+      skills: (() => {
+        // Handle skills as: array of strings, array of {name, modifier?, proficient?},
+        // or a dict {SkillName: {modifier, proficient}} (from D&D 5e extractor).
+        const rawSkills = pick(raw, ['skills']) ?? pick(raw, ['skillProficiencies']) ?? pick(raw, ['skill_proficiencies'])
+        if (!rawSkills) return []
+        if (Array.isArray(rawSkills)) {
+          return uniqNonEmpty(rawSkills.map((s: any) => {
+            if (typeof s === 'string') return s.trim()
+            if (s && typeof s === 'object') {
+              const name = asString((s as any).name).trim()
+              if (!name) return ''
+              const mod = typeof (s as any).modifier === 'number' ? (s as any).modifier : (typeof (s as any).mod === 'number' ? (s as any).mod : null)
+              return mod !== null ? `${name} (${mod >= 0 ? '+' : ''}${mod})` : name
+            }
+            return ''
+          }).filter(Boolean))
+        }
+        if (typeof rawSkills === 'object') {
+          // dict form: {SkillName: {modifier, proficient, expertise}}
+          return uniqNonEmpty(
+            Object.entries(rawSkills as Record<string, any>).map(([name, data]) => {
+              const mod = typeof (data as any)?.modifier === 'number' ? (data as any).modifier : null
+              return mod !== null ? `${name} (${mod >= 0 ? '+' : ''}${mod})` : name
+            })
+          )
+        }
+        return []
+      })(),
       movement: inferredMovement,
       deathSaves: inferredDeathSaves,
       rest: inferredRest,
@@ -1340,7 +1428,37 @@ export default function CharacterSheetModal({ open, character, loading = false, 
           {/* FEATURES TAB */}
           {activeTab === "features" ? (
             <>
-              {derived.classFeatures.length ? <ListPreview title="Class Features" items={derived.classFeatures} onItemClick={(it) => { const d = findDetailForFeature(it); setDetailTitle(it); setDetailText(d || it); setDetailOpen(true) }} /> : null}
+              {derived.classFeatures.length ? (() => {
+                // For multiclass characters with 2+ classes, try to split class features
+                // by class name using simple prefix matching.
+                const mc = derived.multiclassGroups
+                const onItemClick = (it: string) => { const d = findDetailForFeature(it); setDetailTitle(it); setDetailText(d || it); setDetailOpen(true) }
+                if (mc && mc.length >= 2) {
+                  const groups: Array<{ label: string; items: string[] }> = []
+                  const assigned = new Set<string>()
+                  for (const cls of mc) {
+                    const cname = cls.className.toLowerCase()
+                    const matching = derived.classFeatures.filter((f: string) => {
+                      if (assigned.has(f)) return false
+                      // Match if the feature name contains the class name, or a class-specific keyword
+                      return f.toLowerCase().includes(cname)
+                    })
+                    if (matching.length) {
+                      matching.forEach((f: string) => assigned.add(f))
+                      const label = cls.level ? `${cls.className} Features (Level ${cls.level})` : `${cls.className} Features`
+                      groups.push({ label, items: matching })
+                    }
+                  }
+                  // Remaining unassigned features go to a generic group
+                  const remaining = derived.classFeatures.filter((f: string) => !assigned.has(f))
+                  if (remaining.length) groups.push({ label: 'Class Features', items: remaining })
+                  // If grouping worked, show groups; otherwise show flat list
+                  if (groups.length > 1) {
+                    return <>{groups.map((g) => <ListPreview key={g.label} title={g.label} items={g.items} onItemClick={onItemClick} />)}</>
+                  }
+                }
+                return <ListPreview title="Class Features" items={derived.classFeatures} onItemClick={onItemClick} />
+              })() : null}
               {derived.racialFeatures.length ? <ListPreview title="Racial / Species Features" items={derived.racialFeatures} onItemClick={(it) => { const d = findDetailForFeature(it); setDetailTitle(it); setDetailText(d || it); setDetailOpen(true) }} /> : null}
               {!derived.classFeatures.length && !derived.racialFeatures.length && derived.features.length ? (
                 <ListPreview title="Features" items={derived.features} onItemClick={(it) => { const d = findDetailForFeature(it); setDetailTitle(it); setDetailText(d || it); setDetailOpen(true) }} />

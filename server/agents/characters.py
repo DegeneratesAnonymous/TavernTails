@@ -1127,9 +1127,22 @@ def _extract_features_from_pdf_widgets(fields: Dict[str, str]) -> list[str]:
         # Drop boilerplate headings and empty placeholders.
         if re.search(r"={2,}", s):
             return None
-        if s.upper() == s and len(s) <= 80 and any(k in s.upper() for k in ("SPECIES", "TRAITS", "FEATURES", "FEATS", "CLASS")):
+        # 80 chars: longest realistic section-header title (e.g. "Core Ranger Subclass Features").
+        # Anything longer is more likely descriptive text than a header.
+        max_header_len = 80
+        if s.upper() == s and len(s) <= max_header_len and any(k in s.upper() for k in ("SPECIES", "TRAITS", "FEATURES", "FEATS", "CLASS")):
             return None
         if s.lower() in {"features", "traits", "features & traits", "features and traits"}:
+            return None
+        # Drop section-header-style lines: strings that end with "Features", "Traits",
+        # "Abilities", "Proficiencies", etc. (with an optional class/species prefix).
+        # These are organisation headings like "Artificer Features" or "Core Paladin Traits",
+        # not actual feature names.
+        if re.search(
+            r"\b(features?|traits?|abilities|proficiencies|class\s+features?|racial\s+traits?)\s*$",
+            s,
+            re.I,
+        ) and len(s) <= max_header_len:
             return None
 
         # Strip common bullets/indentation.
@@ -1256,6 +1269,17 @@ def _extract_skills_from_pdf_widgets(fields: Dict[str, str]) -> list[Dict[str, A
         "level", "race", "class", "background", "name", "hp", "ac",
         "initiative", "speed", "proficiency", "proficiency bonus",
         "charactername", "playername", "experience", "alignment",
+        # D&D 5e modifier/save shortcuts that appear as widget names
+        "str mod", "dex mod", "con mod", "int mod", "wis mod", "cha mod",
+        "strength mod", "dexterity mod", "constitution mod", "intelligence mod",
+        "wisdom mod", "charisma mod",
+        "str save", "dex save", "con save", "int save", "wis save", "cha save",
+        "strength save", "dexterity save", "constitution save", "intelligence save",
+        "wisdom save", "charisma save",
+        "str modifier", "dex modifier", "con modifier", "int modifier",
+        "wis modifier", "cha modifier",
+        "str bonus", "dex bonus", "con bonus", "int bonus", "wis bonus", "cha bonus",
+        "class level", "classlevel", "total level", "character level",
     }
 
     def _norm(s: str) -> str:
@@ -1268,6 +1292,14 @@ def _extract_skills_from_pdf_widgets(fields: Dict[str, str]) -> list[Dict[str, A
         # Normalise key: strip non-alpha/space chars, lowercase
         key = _norm(raw_key)
         if not key or key in _skip_keys:
+            continue
+
+        # Skip keys that contain stat-modifier patterns even with extra words
+        # e.g. "STRmod", "strength_modifier", "DEX Save Bonus"
+        if re.match(
+            r"(str|dex|con|int|wis|cha|strength|dexterity|constitution|intelligence|wisdom|charisma)\s*(mod|modifier|save|bonus|score)",
+            key,
+        ):
             continue
 
         # Skip keys that match common metadata patterns
@@ -1889,21 +1921,43 @@ def _extract_dnd5e_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, Any]
     # community fillable sheet variants ("SpellSlots1", "Spell Slot L1"),
     # and the plain "Spell Slots Total 1" format.
     # Capturing group 1 = the level digit.
-    _spell_slot_pattern = re.compile(
+    _slot_total_pat = re.compile(
         r"(?:spell\s*slots?\s*(?:total|max)?|slots?\s*total|spell\s*slot\s*(?:l|lvl|level)?\s*)(\d)$",
         re.I,
     )
-    spell_slots: Dict[str, int] = {}
+    _slot_remaining_pat = re.compile(
+        r"(?:slots?\s*remaining|spell\s*slots?\s*(?:remaining|left|current)|remaining\s*slots?)(\d)$",
+        re.I,
+    )
+    spell_slots_max: Dict[str, int] = {}
+    spell_slots_remaining: Dict[str, int] = {}
     for k, v in fields.items():
         if not v:
             continue
-        m = _spell_slot_pattern.search(str(k))
+        m = _slot_total_pat.search(str(k))
         if m:
             slot_count = _as_int(str(v).strip())
             if isinstance(slot_count, int) and slot_count >= 0:
-                spell_slots[m.group(1)] = slot_count
-    if spell_slots:
-        result["spell_slots"] = spell_slots
+                spell_slots_max[m.group(1)] = slot_count
+            continue
+        m2 = _slot_remaining_pat.search(str(k))
+        if m2:
+            remaining = _as_int(str(v).strip())
+            if isinstance(remaining, int) and remaining >= 0:
+                spell_slots_remaining[m2.group(1)] = remaining
+    if spell_slots_max:
+        # Build a richer structure when both total and remaining are known,
+        # falling back to simple int when only total is available.
+        if spell_slots_remaining:
+            result["spell_slots"] = {
+                lvl: {
+                    "max": max_val,
+                    "used": max_val - spell_slots_remaining.get(lvl, max_val),
+                }
+                for lvl, max_val in spell_slots_max.items()
+            }
+        else:
+            result["spell_slots"] = spell_slots_max
 
     # Class features / traits (D&D 5e calls them "Features & Traits")
     features: list[str] = []
@@ -2203,22 +2257,42 @@ def _extract_dnd5e_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, Any]
     if skills:
         result["skills"] = skills
 
-    # Spell slots levels 1-9
-    _slot_pat = re.compile(
+    # Spell slots levels 1-9 with optional remaining-slot tracking.
+    _slot_total_pat = re.compile(
         r"(?:spell\s*slots?\s*(?:total|max)?|slots?\s*total|spell\s*slot\s*(?:l|lvl|level)?\s*)(\d)$",
         re.I,
     )
-    spell_slots: Dict[str, int] = {}
+    _slot_remaining_pat = re.compile(
+        r"(?:slots?\s*remaining|spell\s*slots?\s*(?:remaining|left|current)|remaining\s*slots?)(\d)$",
+        re.I,
+    )
+    spell_slots_max: Dict[str, int] = {}
+    spell_slots_remaining: Dict[str, int] = {}
     for k, v in fields.items():
         if not v:
             continue
-        m = _slot_pat.search(str(k))
+        m = _slot_total_pat.search(str(k))
         if m:
             slot_count = _as_int(str(v).strip())
             if isinstance(slot_count, int) and slot_count >= 0:
-                spell_slots[m.group(1)] = slot_count
-    if spell_slots:
-        result["spell_slots"] = spell_slots
+                spell_slots_max[m.group(1)] = slot_count
+            continue
+        m2 = _slot_remaining_pat.search(str(k))
+        if m2:
+            remaining = _as_int(str(v).strip())
+            if isinstance(remaining, int) and remaining >= 0:
+                spell_slots_remaining[m2.group(1)] = remaining
+    if spell_slots_max:
+        if spell_slots_remaining:
+            result["spell_slots"] = {
+                lvl: {
+                    "max": max_val,
+                    "used": max_val - spell_slots_remaining.get(lvl, max_val),
+                }
+                for lvl, max_val in spell_slots_max.items()
+            }
+        else:
+            result["spell_slots"] = spell_slots_max
 
     # Spellcasting bonus and save DC
     spell_atk = _find_int([r"\bspell\s*attack\s*(bonus|mod|modifier)\b", r"\bspellatk\b", r"\bspell\s*atk\b"])
@@ -3413,8 +3487,17 @@ def _extract_spellbook_from_text(text: str | None, debug: bool = False) -> list[
             continue
 
         if not in_table:
-            # Track cantrip/level headers
-            if re.match(r"^(cantrips?|\d+(st|nd|rd|th)\s+level)$", line, re.I):
+            # Track cantrip/level headers — broaden match to handle variants like
+            # "1st Level Spells", "6th-Level Spells", "CANTRIPS (AT WILL)", etc.
+            if re.match(
+                r"^(cantrips?(\s+\(at\s+will\))?|\d+(st|nd|rd|th)[\s\-]+level(\s+spells?)?)$",
+                line,
+                re.I,
+            ) or re.match(
+                r"^(cantrips?|\d+(st|nd|rd|th)[\s\-]+level)\s+spells?\s*$",
+                line,
+                re.I,
+            ):
                 current_header = line
             # If we see a recognizable spell-like line after a header, treat as simple list
             elif current_header and len(line) > 2 and not re.match(r"^[=\-]+$", line):
@@ -3732,15 +3815,27 @@ def _build_character_import_sheet_from_pdf(
     class_blobs: list[str] = []
     race_blobs: list[str] = []
     other_blobs: list[str] = []
+
+    # Patterns that identify class/level identifiers — these are NOT feature blobs.
+    # Matches things like "Fighter 5", "Artificer 6 Paladin 7", "Wizard/Sorcerer 3/4".
+    _class_level_pattern = re.compile(
+        r"^[\w\s/\\]+\s+\d{1,2}(\s*/?\s*[\w\s]+\s+\d{1,2})*$"
+    )
+
     for k, v in widget_values.items():
         if not v or not isinstance(v, str):
             continue
         kn = k.lower()
-        if "class" in kn and len(v.strip()) > 10:
+        stripped = v.strip()
+        if "class" in kn and len(stripped) > 10:
+            # Skip values that look like a plain "ClassName Level" or "Class1 N / Class2 M"
+            # (the class & level field) — these are identifiers, not feature lists.
+            if "\n" not in stripped and _class_level_pattern.match(stripped):
+                continue
             class_blobs.append(v)
-        elif any(x in kn for x in ("race", "species", "subrace", "racial")) and len(v.strip()) > 10:
+        elif any(x in kn for x in ("race", "species", "subrace", "racial")) and len(stripped) > 10:
             race_blobs.append(v)
-        elif any(x in kn for x in ("feature", "trait")) and len(v.strip()) > 10:
+        elif any(x in kn for x in ("feature", "trait")) and len(stripped) > 10:
             other_blobs.append(v)
 
     def _lines_from_blobs(blobs: list[str]) -> list[str]:
@@ -4434,6 +4529,15 @@ def _build_character_import_sheet_from_pdf(
         dnd5e_fields = _extract_dnd5e_fields_from_widgets(widget_values)
         for k, v in dnd5e_fields.items():
             sheet[k] = v
+        # Convert D&D 5e skills from dict → list so both LoggedInDashboard and
+        # CharacterSheetModal can handle them uniformly.
+        # Dict shape: {"Acrobatics": {"modifier": 3, "proficient": True}, ...}
+        # List shape: [{"name": "Acrobatics", "modifier": 3, "proficient": True}, ...]
+        if isinstance(sheet.get("skills"), dict):
+            sheet["skills"] = [
+                {"name": skill_name, **skill_data}
+                for skill_name, skill_data in sheet["skills"].items()
+            ]
     elif system_name == "Call of Cthulhu":
         coc_fields = _extract_coc_fields_from_widgets(widget_values)
         for k, v in coc_fields.items():

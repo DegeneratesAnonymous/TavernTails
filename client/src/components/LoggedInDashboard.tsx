@@ -258,16 +258,26 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     }
 
     const toSkillArray = (value: any): { name: string; mod: number }[] => {
-      if(!Array.isArray(value)) return []
-      return value
-        .map((raw: any) => {
-          if(typeof raw === 'string') return { name: raw, mod: 0 }
-          const name = String(raw?.name ?? '').trim()
-          const mod = toNum(raw?.mod ?? raw?.modifier) ?? 0
-          if(!name) return null
-          return { name, mod }
-        })
-        .filter(Boolean) as any
+      if(Array.isArray(value)) {
+        return value
+          .map((raw: any) => {
+            if(typeof raw === 'string') return { name: raw, mod: 0 }
+            const name = String(raw?.name ?? '').trim()
+            const mod = toNum(raw?.mod ?? raw?.modifier) ?? 0
+            if(!name) return null
+            return { name, mod }
+          })
+          .filter(Boolean) as any
+      }
+      // Handle dict format {SkillName: {modifier, proficient}} from D&D 5e extractor
+      if(value && typeof value === 'object') {
+        return Object.entries(value as Record<string, any>)
+          .map(([name, data]) => ({
+            name,
+            mod: toNum((data as any)?.modifier ?? (data as any)?.mod) ?? 0,
+          }))
+      }
+      return []
     }
 
     return characters.map((c: any) => {
