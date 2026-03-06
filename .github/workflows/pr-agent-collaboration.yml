@@ -41,7 +41,7 @@ ${prBody}
 
 ### 🧭 Tech Lead — Initial Assessment
 
-@DegeneratesAnonymous — **Tech Lead**, please provide an initial assessment of this PR and a suggested task breakdown by agent. Consider:
+**Tech Lead**, please provide an initial assessment of this PR and a suggested task breakdown by agent. Consider:
 
 - Does this PR align with the current roadmap and scope in \`PROJECT_PLAN.md\`?
 - Are there API/contract stability concerns?
@@ -51,8 +51,11 @@ ${prBody}
 > - **Backend**: _Review FastAPI endpoints, DB changes, auth/RBAC, pytest coverage_
 > - **Frontend**: _Review React components, TypeScript types, API integration_
 > - **QA**: _Verify test coverage, identify edge cases, check CI gates_
-> - **Security Reviewer**: _Assess auth/RBAC, input validation, secrets handling_
+> - **Security**: _Assess auth/RBAC, input validation, secrets handling_
 > - **DevOps**: _Review workflow changes, infra impact, CI/CD pipeline_
+> - **Reviewer**: _Final holistic sign-off against acceptance criteria_
+
+> 💡 Load \`.github/agents/TechLead.agent.md\` to activate Tech Lead mode.
 
 ---
 
@@ -60,7 +63,9 @@ ${prBody}
 
 All dev agents are requested to review this PR from their perspective, identify what actions are needed, and comment with their analysis.
 
-#### 🔧 Backend Agent
+> 💡 Load the corresponding \`.github/agents/*.agent.md\` file to activate each agent role in GitHub Copilot Agent mode.
+
+#### 🔧 Backend Agent  (\`.github/agents/backend.agent.md\`)
 Please review this PR and address the following:
 - FastAPI endpoint correctness, route structure, and error handling
 - DB model changes and migration impact
@@ -68,7 +73,7 @@ Please review this PR and address the following:
 - pytest coverage for new/changed code
 - Any concerns with data integrity or performance
 
-#### 🖥️ Frontend Agent
+#### 🖥️ Frontend Agent  (\`.github/agents/frontend.agent.md\`)
 Please review this PR and address the following:
 - React component structure and TypeScript correctness
 - API integration using \`apiFetch\` from \`lib/\`
@@ -76,14 +81,14 @@ Please review this PR and address the following:
 - Accessibility and responsive design considerations
 - Jest/RTL test coverage for new/changed components
 
-#### 🧪 QA Agent
+#### 🧪 QA Agent  (\`.github/agents/QA.agent.md\`)
 Please review this PR and address the following:
 - Test coverage completeness (backend \`pytest\` + frontend \`npm test\`)
 - Edge cases, error paths, and boundary conditions
 - CI gate compliance (see \`docs/CI_CHECKLIST.md\`)
 - Regression risk assessment
 
-#### 🔐 Security Reviewer Agent
+#### 🔐 Security Agent  (\`.github/agents/Security.agent.md\`)
 Please review this PR and address the following:
 - Authentication and authorization enforcement
 - Input validation and sanitization
@@ -91,7 +96,7 @@ Please review this PR and address the following:
 - RBAC boundary testing (host vs player permissions)
 - Any potential injection or data-exposure risks
 
-#### ⚙️ DevOps Agent
+#### ⚙️ DevOps Agent  (\`.github/agents/DevOPs.agent.md\`)
 Please review this PR and address the following:
 - GitHub Actions workflow changes (correctness, security, permissions)
 - Infrastructure or deployment impact
@@ -99,10 +104,18 @@ Please review this PR and address the following:
 - Dependency changes and version pinning
 - Build artifact and environment configuration
 
+#### 📝 Reviewer Agent  (\`.github/agents/Reviewer.agent.md\`)
+Please perform a final holistic review:
+- Scope matches work order / acceptance criteria
+- API/WebSocket contracts not broken
+- All blocking CI checks pass
+- No security footguns introduced
+- Documentation updated where needed
+
 ---
 
 > 💬 Agents: please reply in this thread with your analysis and any required actions. Coordinate with each other as needed before approving.
-> 📚 Reference: [\`docs/DEV_AGENTS.md\`](../blob/${baseBranch}/docs/DEV_AGENTS.md) | [\`docs/CI_CHECKLIST.md\`](../blob/${baseBranch}/docs/CI_CHECKLIST.md)
+> 📚 Reference: [\`docs/DEV_AGENTS.md\`](../blob/${baseBranch}/docs/DEV_AGENTS.md) | [\`docs/CI_CHECKLIST.md\`](../blob/${baseBranch}/docs/CI_CHECKLIST.md) | [\`.github/agents/\`](../blob/${baseBranch}/.github/agents)
 `;
 
             await github.rest.issues.createComment({

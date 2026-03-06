@@ -2,6 +2,8 @@
 
 This file provides context for GitHub Copilot and AI coding assistants working on TavernTAIls.
 
+> **GitHub Copilot Agent Mode**: Specialized agent-role prompts are in `.github/agents/`. Each `*.agent.md` file activates a specific dev-agent role (PM, Tech Lead, Backend, Frontend, QA, Security, DevOps, Documentation, Research, Reviewer, Integration, Observability, Performance). Load the appropriate file for your task.
+
 ## Project Overview
 
 **TavernTAIls** is an AI-assisted solo/co-op tabletop RPG companion that assembles a "Session AI" of cooperating agents (Narrative, Scene, NPC, Notes, Storyboard, Image) to run persistent campaigns. The application supports both AI-assisted gameplay and player-run sessions where AI is optional but automated organization (notes, NPC tracking, documents) remains available.
@@ -52,8 +54,47 @@ This file provides context for GitHub Copilot and AI coding assistants working o
 ```
 TavernTAIls/
 ├── .github/
-│   ├── copilot-instructions.md    # This file
-│   └── workflows/ci.yml           # CI/CD pipeline
+│   ├── agents/                        # GitHub Copilot Agent mode role configs
+│   │   ├── backend.agent.md           # Backend Agent (FastAPI, pytest)
+│   │   ├── frontend.agent.md          # Frontend Agent (React, TypeScript)
+│   │   ├── TechLead.agent.md          # Tech Lead Agent (planning, contracts)
+│   │   ├── Security.agent.md          # Security Agent (RBAC, auth, vulns)
+│   │   ├── QA.agent.md                # QA Agent (test plans, coverage)
+│   │   ├── DevOPs.agent.md            # DevOps Agent (CI/CD, infra)
+│   │   ├── Research.agent.md          # Research Agent (options, recommendations)
+│   │   ├── Documentation.agent.md     # Documentation Agent (README, docs/)
+│   │   ├── PM.agent.md                # PM Agent (scope, work orders)
+│   │   ├── Reviewer.agent.md          # Reviewer Agent (holistic PR review)
+│   │   ├── Integration.agent.md       # Integration Agent (WS, E2E flows)
+│   │   ├── Observability.agent.md     # Observability Agent (logs, traces)
+│   │   └── Performance.agent.md       # Performance Agent (load, hot paths)
+│   ├── ISSUE_TEMPLATE/
+│   │   ├── bug_report.yml
+│   │   ├── feature_request.yml
+│   │   ├── dev_agent_task.yml
+│   │   └── player_led_mode.yml
+│   ├── workflows/
+│   │   ├── ci.yml                     # Main CI pipeline (blocking checks)
+│   │   ├── auto-fix.yml               # Auto-fix lint issues on PRs
+│   │   ├── contract-tests.yml         # API contract validation
+│   │   ├── copilot-ci-gate.yml        # Posts CI status to copilot/** PRs
+│   │   ├── deploy-staging.yml         # Staging deployment
+│   │   ├── dev-agent-task-to-pr.yml   # Auto-creates draft PR from issues
+│   │   ├── issue-backfill.yml         # Backfills existing issues to templates
+│   │   ├── issue-confirm.yml          # Handles /proceed command on issues
+│   │   ├── issue-triage.yml           # Auto-triages new issues
+│   │   ├── label-sync.yml             # Syncs labels from labels.yml
+│   │   ├── pr-agent-collaboration.yml # Posts agent review request on PRs
+│   │   ├── pr-labeler.yml             # Auto-labels PRs by changed files
+│   │   ├── screenshot-update.yml      # Updates UI screenshots
+│   │   └── validate-issue-pr-format.yml # Validates issue/PR structure
+│   ├── CODEOWNERS                     # Code ownership rules
+│   ├── SECURITY.md                    # Vulnerability reporting policy
+│   ├── copilot-instructions.md        # This file
+│   ├── dependabot.yml                 # Automated dependency updates
+│   ├── labeler.yml                    # PR labeling rules
+│   ├── labels.yml                     # Label definitions
+│   └── pull_request_template.md       # PR template
 ├── client/                        # React frontend
 │   ├── public/                    # Static assets
 │   ├── src/
@@ -61,20 +102,25 @@ TavernTAIls/
 │   │   ├── components/            # UI components
 │   │   ├── lib/                   # Utilities (apiFetch, etc.)
 │   │   └── App.tsx               # Main app component
+│   ├── .npmrc                     # npm config (legacy-peer-deps=true)
 │   ├── package.json
 │   └── tsconfig.json
 ├── server/                        # FastAPI backend
 │   ├── agents/                    # Agent routers (narrative, scene, etc.)
 │   ├── storage/                   # Document/session storage
 │   ├── tests/                     # pytest test suite
+│   │   └── fixtures/              # Test fixture PDFs (gitignored)
+│   ├── tools/                     # Dev/CI tools (smoke_upload.py, init_db.py)
 │   ├── auth.py                    # JWT authentication
 │   ├── db.py                      # Database models
 │   ├── main.py                    # FastAPI app + router registration
 │   └── requirements.txt
+├── alembic/                       # Database migration scripts
 ├── docs/                          # Documentation
 │   ├── CI_CHECKLIST.md           # Quality gates
 │   ├── DEV_AGENTS.md             # Development workflow
-│   └── dev-agents/               # Role-based agent prompts
+│   └── dev-agents/               # Copy-paste prompts (human-use; canonical versions in .github/agents/)
+├── ruff.toml                      # Python linter config (120-char line length)
 ├── PROJECT_PLAN.md               # Canonical architecture & roadmap
 ├── MVP_DELIVERY_CHECKLIST.md     # MVP acceptance tracking
 ├── PROGRESS.md                   # Execution log
@@ -94,10 +140,41 @@ TavernTAIls/
   - `docs/CI_CHECKLIST.md` — Quality gates
 
 ### Development "Agents"
-We use role-based development agents (PM/Backend/Frontend/QA/Reviewer) as a workflow model:
+We use role-based development agents as a workflow model. Each agent has a dedicated prompt in `.github/agents/`:
+
+| Agent | File | Responsibility |
+|---|---|---|
+| **PM** | `PM.agent.md` | Scope, work orders, priorities |
+| **Research** | `Research.agent.md` | Options analysis, recommendations |
+| **Tech Lead** | `TechLead.agent.md` | Architecture, contracts, task breakdown |
+| **Backend** | `backend.agent.md` | FastAPI, DB, auth, pytest |
+| **Frontend** | `frontend.agent.md` | React, TypeScript, Jest/RTL |
+| **QA** | `QA.agent.md` | Test plans, coverage, acceptance criteria |
+| **Security** | `Security.agent.md` | Auth/RBAC, input validation, CVEs |
+| **DevOps** | `DevOPs.agent.md` | CI/CD, infra, dependency management |
+| **Documentation** | `Documentation.agent.md` | README, docs/, inline comments |
+| **Reviewer** | `Reviewer.agent.md` | Holistic PR review, sign-off |
+| **Integration** | `Integration.agent.md` | WebSocket/E2E smoke flows |
+| **Observability** | `Observability.agent.md` | Logging, traces, CI artifacts |
+| **Performance** | `Performance.agent.md` | Load testing, hot-path profiling |
+
+**Workflow cadence:** PM → Research → Tech Lead → Backend/Frontend/Security/DevOps (parallel) → QA → Reviewer → Documentation
+
 - **Playbook:** `docs/DEV_AGENTS.md`
 - **Work orders:** `docs/WORK_ORDER_TEMPLATE.md`
-- **Role prompts:** `docs/dev-agents/*.md`
+- **Agent mode configs:** `.github/agents/*.agent.md` (load in GitHub Copilot Agent mode)
+- **Copy-paste prompts for humans:** `docs/dev-agents/` (legacy; `.github/agents/` is canonical)
+
+### Automated GitHub Workflow
+
+New issues trigger an automated pipeline:
+
+1. **Issue filed** → `issue-triage.yml` labels + scaffolds the body, posts instructions
+2. **Author comments `/proceed`** → `issue-confirm.yml` applies `dev-agent-task` label
+3. **`dev-agent-task` label added** → `dev-agent-task-to-pr.yml` creates a draft branch + PR
+4. **PR opened/edited** → `pr-agent-collaboration.yml` posts an agent collaboration comment
+5. **PR pushed (copilot/** branch)** → `copilot-ci-gate.yml` posts CI pass/fail status to the PR
+6. **PR merged to `main`** → staging deploy (if configured)
 
 ### Definition of Done
 - ✅ Acceptance criteria met
@@ -108,7 +185,7 @@ We use role-based development agents (PM/Backend/Frontend/QA/Reviewer) as a work
 ## Code Style & Conventions
 
 ### Backend (Python)
-- **Line length:** 120 characters (configured in `ruff.toml`)
+- **Line length:** 120 characters (configured in `ruff.toml` at repo root)
 - **Linter:** Ruff (`ruff check server/`)
 - **Auto-fix:** `ruff check server/ --fix`
 - **Type hints:** Gradually typed; use mypy (`mypy server/ --ignore-missing-imports --check-untyped-defs`)
@@ -119,6 +196,7 @@ We use role-based development agents (PM/Backend/Frontend/QA/Reviewer) as a work
   - Use `Depends()` for dependency injection (e.g., auth, DB sessions)
   - Return Pydantic models or JSONResponse
   - Keep routers in `server/agents/` organized by domain
+- **Migrations:** Use Alembic (`alembic/` + `alembic.ini`). Always autogenerate revisions, never hand-edit migration files.
 
 ### Frontend (TypeScript/React)
 - **Linter:** ESLint with react-app config (`npm run lint`)
@@ -128,6 +206,7 @@ We use role-based development agents (PM/Backend/Frontend/QA/Reviewer) as a work
 - **State:** Prefer local state; use Context for shared global state
 - **API calls:** Use `apiFetch` from `lib/` (handles auth, errors)
 - **File naming:** PascalCase for components (e.g., `CharacterPanel.tsx`)
+- **Dependency install:** `client/.npmrc` sets `legacy-peer-deps=true` (required for react-scripts@5 + TypeScript 5). Always use `npm ci` in CI and `npm install` locally.
 
 ### Common Patterns
 
@@ -171,6 +250,8 @@ await broadcast_to_session(session_id, {
   - Use `TestClient` from FastAPI for integration tests
   - Mock external services (LLMs, S3) with pytest fixtures
   - Isolate test state (database fixtures, cleanup)
+  - Fixture PDFs are gitignored (`*.pdf`); tests generate them programmatically via `pypdf`
+  - Smoke tests use `pytest.skip` when real fixture PDFs are absent
 
 ### Frontend Tests
 - **Location:** `client/src/**/*.test.tsx`
@@ -230,10 +311,12 @@ npm run build                  # Production build
 
 ### CI/CD
 - **Workflow:** `.github/workflows/ci.yml`
-- **Triggers:** Push to `main`, PRs to `main`
-- **Jobs:** Backend (lint/test), Frontend (lint/typecheck/test/build), Smoke
-- **Blocking checks:** Backend tests, frontend build, linting
-- **Local equivalent:** `./ci.ps1` (Windows-safe runner for special paths)
+- **Triggers:** Push to `main`, `develop`, `copilot/**`; PRs to `main` or `develop`
+- **Jobs:** Backend (lint/test on Python 3.11 + 3.12), Frontend (lint/typecheck/test/build on Node 18 + 20), Smoke, E2E
+- **Blocking checks:** `backend` job (Python 3.11 tests) + `frontend` job (both Node versions) via `all-checks-passed`
+- **Non-blocking:** mypy, smoke upload, Playwright E2E (all `continue-on-error: true`)
+- **Auto-fix:** `auto-fix.yml` runs ruff + ESLint auto-fix and commits back to the PR branch
+- **Local equivalent:** `./ci.ps1` (Windows-safe runner)
 
 ## Security & RBAC
 
@@ -335,6 +418,8 @@ npm run check-port  # Identify what's using the port
 - **Development Model:** `docs/DEV_AGENTS.md` (role-based workflow)
 - **CI/CD Guide:** `docs/CI_CHECKLIST.md` (quality gates)
 - **Setup Guide:** `README.md` (getting started)
+- **Agent Mode Files:** `.github/agents/` (GitHub Copilot Agent mode role configs)
+- **Security Policy:** `.github/SECURITY.md` (vulnerability reporting)
 
 ## Contact & Support
 
