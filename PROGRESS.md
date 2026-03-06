@@ -1,5 +1,39 @@
 # TavernTAIls Progress Tracker
-_Last updated: 2026-02-17 by GitHub Copilot_
+_Last updated: 2026-03-06 by GitHub Copilot (Tech Lead + QA Assessment)_
+
+## Tech Lead & QA Assessment — 2026-03-06
+
+### Assessment Overview
+_Performed via AI-assisted codebase audit (model: gpt-4o)._
+
+**MVP Status: ✅ Complete**
+- Auth + campaigns + sessions + documents (RBAC + audit) + chat + dice + agent stubs + WebSockets + player-run mode — all functional.
+- 50+ test files, 6-test contract suite, CI pipeline enforcing lint/test/build.
+- Character import: 10+ TTRPG systems (D&D 5e, PF 1e/2e, Starfinder, STA, CoC, WFRP, SotDL, Alien, Shadowrun).
+
+**Key Findings — Gaps Addressed in This Sprint:**
+1. **`server/agents/generate.py`** had 3 open `# TODO: Integrate with LLM` items — all replaced with real LLM calls following the `narrative.py` pattern. Fallback to placeholder remains when no API key is set.
+2. **AI model default** upgraded from `gpt-4o-mini` → `gpt-4o` in `narrative.py` and `generate.py`; documented in `.env.example` and `.env.template` with full list of recommended models.
+3. **Campaign-level model override** (`ai_model` setting) now supported — individual campaigns can specify their preferred model without touching global env vars.
+4. **8 new LLM integration tests** added in `server/tests/test_generate_llm.py` covering LLM path, fallback, exception resilience, and campaign model override.
+
+**New Work Orders Distributed to Dev Agents:**
+| WO | Title | Agent | Priority |
+|----|-------|-------|----------|
+| WO-010 | Campaign Invite System | Backend + Frontend | High |
+| WO-011 | LLM Integration for Generate Endpoints | Backend | ✅ Done |
+| WO-012 | AI Model Configuration Upgrade | Backend | ✅ Done |
+| WO-013 | Document Upload UI Polish | Frontend | Medium |
+| WO-014 | Phase 1 Contract Tests Expansion | QA | Medium |
+| WO-015 | Responsive Session UI & Mobile Layout | Frontend | Medium |
+
+**Next Phase Priorities (Phase 1):**
+1. **WO-010** — Campaign invite/membership system (most-requested Phase 1 feature)
+2. **WO-013** — Document upload UX (upload retries, progress, thumbnails)
+3. **WO-014** — Contract test expansion (≥15 tests covering generate + documents + characters)
+4. **WO-015** — Responsive layout for tablet/mobile
+
+---
 
 ## Where Things Stand
 - **Sprint Focus:** Finish Sprint 1 deliverables (chat upgrades, turn queue, agent stubs, documentation).
@@ -115,12 +149,13 @@ _Last updated: 2026-02-17 by GitHub Copilot_
    - Added `docs/SECRET_MANAGEMENT.md` detailing secret inventory, rotation cadence, and runbooks for JWT, AWS, DB, and provider tokens.
    - README now links to the SOP so new contributors know how to handle `.env` files, GitHub secrets, and calendar reminders.
 
-## Immediate Next Steps (suggested order)
-1. **Player‑Run Mode switch** – add a campaign/session flag to disable AI outputs while keeping notes/NPC tracking active.
-2. **Documents UI polish** – add upload retries/cancel flows, inline thumbnail previews, and clearer failure messaging for presigned uploads.
-3. **Scene/NPC automation follow‑through** – connect cues to real dice triggers + NPC tracking data persisted per session.
-4. **CI coverage expansion** – extend GitHub Actions to lint/type-check the React app and pin/test boto3+moto compatibility for presign coverage.
-5. **LLM Agent Hardening** – capture structured prompts/results in storage ahead of multiplayer testing.
+## Immediate Next Steps (Phase 1 — suggested order)
+1. **WO-010: Campaign Invite System** – backend invite tokens + member endpoints + frontend accept-invite page. (Agent: Backend + Frontend)
+2. **WO-013: Document Upload UI Polish** – upload retries, progress bars, thumbnail previews. (Agent: Frontend)
+3. **WO-014: Contract Tests Expansion** – grow from 6 → ≥15 tests covering generate, documents, and characters. (Agent: QA)
+4. **WO-015: Responsive Session UI** – mobile-friendly layout at 375px/768px/1024px breakpoints. (Agent: Frontend)
+5. **Scene/NPC automation follow-through** – connect cues to real dice triggers + NPC tracking data persisted per session. (Agent: Backend)
+6. **CI coverage expansion** – mypy to blocking; Playwright smoke tests. (Agent: DevOps)
 
 ## S3 & Direct Upload Configuration
 1. **Prereqs:** Keep `boto3`/`moto` from `server/requirements.txt` installed and provision an S3 bucket with `Put/Get/Delete` rights.
