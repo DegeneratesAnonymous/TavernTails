@@ -8,7 +8,7 @@ import './CharacterSheetModal.css'
 // Matches section-header names like "Artificer Features", "Core Paladin Traits",
 // "Species Abilities", etc.  These should not appear as individual feature items.
 const FEATURE_CATEGORY_PATTERN = /\b(features?|traits?|abilities|proficiencies|class\s+features?|racial\s+traits?|species\s+traits?|subclass\s+features?)\s*$/i
-const FEATURE_SKIP_NAMES = new Set(['proficiencies', 'features', 'traits', 'abilities', 'other proficiencies & languages', 'other proficiencies and languages', 'class features', 'racial traits', 'species traits'])
+const FEATURE_SKIP_NAMES = new Set(['proficiencies', 'features', 'traits', 'abilities', 'other proficiencies & languages', 'other proficiencies and languages'])
 
 function isFeatureCategoryHeader(name: string): boolean {
   const lower = name.toLowerCase().trim()
