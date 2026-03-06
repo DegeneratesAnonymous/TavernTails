@@ -54,7 +54,7 @@ def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
             import openai
 
             openai.api_key = openai_key
-            model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+            model = os.environ.get("OPENAI_MODEL", "gpt-4o")
             max_tokens = int(os.environ.get("OPENAI_MAX_TOKENS", "500"))
             temp = float(os.environ.get("OPENAI_TEMPERATURE", "0.7"))
 
