@@ -352,6 +352,39 @@ def test_dnd5e_pdf_import_extracts_skills():
     assert skills_by_name["Perception"]["modifier"] == 4
 
 
+def test_dnd5e_pdf_import_skills_do_not_include_non_skill_items():
+    """sheet['skills'] for a D&D 5e character must not contain non-skill items.
+
+    The generic _extract_skills_from_pdf_widgets extractor is too permissive
+    and would include things like "ST Strength" (saving-throw widgets),
+    "ProfBonus", "HD Total", etc.  For a D&D 5e character these should be
+    filtered out so only the 18 canonical skill names remain.
+    """
+    client = _client()
+    _ensure_user(DND5E_EMAIL, DND5E_USERNAME)
+    data = _import_thorin(client)
+    skills = data["character"]["sheet"]["skills"]
+    assert isinstance(skills, list)
+    skill_names = {s["name"] for s in skills if isinstance(s, dict) and "name" in s}
+
+    # None of these non-skill widget keys should be present
+    for bad in ["St Strength", "St Dexterity", "St Constitution", "St Intelligence",
+                "St Wisdom", "St Charisma", "Profbonus", "Hd Total",
+                "Inspiration", "Slotstotal"]:
+        assert bad not in skill_names, f"Non-skill item '{bad}' found in skills list"
+
+    # All names that ARE present must be from the canonical D&D 5e skill list
+    canonical = {
+        "Acrobatics", "Animal Handling", "Arcana", "Athletics",
+        "Deception", "History", "Insight", "Intimidation",
+        "Investigation", "Medicine", "Nature", "Perception",
+        "Performance", "Persuasion", "Religion", "Sleight of Hand",
+        "Stealth", "Survival",
+    }
+    for name in skill_names:
+        assert name in canonical, f"Unexpected skill name '{name}' (not in D&D 5e canonical list)"
+
+
 # ---------------------------------------------------------------------------
 # 10. Race / Background
 # ---------------------------------------------------------------------------

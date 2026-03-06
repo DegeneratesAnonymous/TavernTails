@@ -116,6 +116,48 @@
   opacity: 0.85;
 }
 
+/* ── Skills (structured display with proficiency indicators) ─ */
+.tt-skills-grid{
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px 12px;
+}
+
+.tt-skill-item{
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  padding: 2px 0;
+}
+
+.tt-skill-pip{
+  font-size: 9px;
+  opacity: 0.4;
+  flex-shrink: 0;
+  width: 10px;
+}
+
+.tt-skill-item--proficient .tt-skill-pip{
+  opacity: 1;
+  color: var(--accent, #9b59b6);
+}
+
+.tt-skill-name{
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tt-skill-mod{
+  font-family: monospace;
+  font-size: 11px;
+  opacity: 0.85;
+  min-width: 28px;
+  text-align: right;
+}
+
 /* ── Spell slots ─────────────────────────────────────────── */
 .tt-spell-slots{
   display: flex;
