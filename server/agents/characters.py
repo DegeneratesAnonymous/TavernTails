@@ -19,6 +19,17 @@ from .system_detect import infer_ttrpg_system, list_ttrpg_systems, override_ttrp
 
 router = APIRouter(prefix="/characters", tags=["characters"])
 
+# Canonical D&D 5e skill names (all 18).  Used to filter out non-skill items
+# (e.g. saving-throw widgets, proficiency bonus) that the generic
+# _extract_skills_from_pdf_widgets extractor may inadvertently include.
+_DND5E_CANONICAL_SKILLS: frozenset[str] = frozenset({
+    "Acrobatics", "Animal Handling", "Arcana", "Athletics",
+    "Deception", "History", "Insight", "Intimidation",
+    "Investigation", "Medicine", "Nature", "Perception",
+    "Performance", "Persuasion", "Religion", "Sleight of Hand",
+    "Stealth", "Survival",
+})
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -4537,6 +4548,18 @@ def _build_character_import_sheet_from_pdf(
             sheet["skills"] = [
                 {"name": skill_name, **skill_data}
                 for skill_name, skill_data in sheet["skills"].items()
+            ]
+        elif isinstance(sheet.get("skills"), list):
+            # The D&D 5e–specific extractor did not supply a skills dict (no
+            # matching widget keys), so the generic _extract_skills_from_pdf_widgets
+            # result is still in place.  That generic extractor includes many
+            # non-skill items (saving-throw widgets, proficiency bonus, HD total,
+            # etc.) that share numeric values with real skills.  Filter the list
+            # down to the 18 canonical D&D 5e skills only.
+            _canonical_lower = {s.lower() for s in _DND5E_CANONICAL_SKILLS}
+            sheet["skills"] = [
+                s for s in sheet["skills"]
+                if isinstance(s, dict) and s.get("name", "").lower() in _canonical_lower
             ]
     elif system_name == "Call of Cthulhu":
         coc_fields = _extract_coc_fields_from_widgets(widget_values)

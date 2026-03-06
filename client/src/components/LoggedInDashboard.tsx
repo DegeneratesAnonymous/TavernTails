@@ -22,8 +22,8 @@ import Modal from './ui/Modal'
 import Toast from './ui/Toast'
 
 // Container category names that should not appear as individual features
-const FEATURE_CATEGORY_PATTERN = /\b(features|abilities|traits|proficiencies)\s*$/i
-const FEATURE_SKIP_NAMES = new Set(['proficiencies', 'features', 'traits', 'abilities', 'other proficiencies & languages', 'other proficiencies and languages'])
+const FEATURE_CATEGORY_PATTERN = /\b(features?|traits?|abilities|proficiencies|class\s+features?|racial\s+traits?|species\s+traits?|subclass\s+features?)\s*$/i
+const FEATURE_SKIP_NAMES = new Set(['proficiencies', 'features', 'traits', 'abilities', 'other proficiencies & languages', 'other proficiencies and languages', 'class features', 'racial traits', 'species traits'])
 
 type Props = {
   profile: any;
@@ -1537,22 +1537,62 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                               </div>
                               <div className="card card-pad characters-subcard" style={{ flex: '1 1 220px' }}>
                                 <div className="muted" style={{ marginBottom: 6 }}>Skills</div>
-                                {selectedSheetSummary.skills.items.length ? (
-                                  <ul style={{ margin: 0, paddingLeft: 18 }}>
-                                    {(showAllSummarySkills ? selectedSheetSummary.skills.all : selectedSheetSummary.skills.items).map((s) => <li key={s}>{s}</li>)}
-                                  </ul>
-                                ) : (
-                                  <div className="muted">No skills listed.</div>
-                                )}
-                                {!showAllSummarySkills && selectedSheetSummary.skills.more > 0 ? (
-                                  <button className="btn btn-quiet" style={{ fontSize: 12, marginTop: 6, padding: '2px 0', color: 'var(--tt-accent, #c084fc)' }} onClick={() => setShowAllSummarySkills(true)}>
-                                    + {selectedSheetSummary.skills.more} more — Show all
-                                  </button>
-                                ) : showAllSummarySkills && selectedSheetSummary.skills.more > 0 ? (
-                                  <button className="btn btn-quiet" style={{ fontSize: 12, marginTop: 6, padding: '2px 0', color: 'var(--tt-accent, #c084fc)' }} onClick={() => setShowAllSummarySkills(false)}>
-                                    ▲ Show less
-                                  </button>
-                                ) : null}
+                                {(() => {
+                                  // Prefer structured skill objects (with proficiency data) when available.
+                                  const rawSkillList: any[] = Array.isArray((selectedCharacter?.sheet as any)?.skills) ? (selectedCharacter?.sheet as any).skills : []
+                                  const hasObjects = rawSkillList.some((s) => s && typeof s === 'object' && 'name' in s)
+                                  if (hasObjects) {
+                                    const visibleSkills = showAllSummarySkills ? rawSkillList : rawSkillList.slice(0, 8)
+                                    const more = rawSkillList.length - visibleSkills.length
+                                    return (
+                                      <>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 8px' }}>
+                                          {visibleSkills.map((s: any) => {
+                                            const name = typeof s === 'string' ? s : String(s?.name || '')
+                                            if (!name) return null
+                                            const mod = typeof s?.modifier === 'number' ? s.modifier : (typeof s?.mod === 'number' ? s.mod : null)
+                                            const proficient = s?.proficient === true || s?.expertise === true
+                                            return (
+                                              <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, padding: '1px 0' }}>
+                                                <span style={{ fontSize: 9, opacity: proficient ? 1 : 0.35, color: proficient ? 'var(--tt-accent, #c084fc)' : undefined, width: 10, flexShrink: 0 }}>{proficient ? '●' : '○'}</span>
+                                                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+                                                <span style={{ fontFamily: 'monospace', fontSize: 11, opacity: 0.8 }}>{mod !== null ? (mod >= 0 ? `+${mod}` : String(mod)) : '—'}</span>
+                                              </div>
+                                            )
+                                          })}
+                                        </div>
+                                        {!showAllSummarySkills && more > 0 ? (
+                                          <button className="btn btn-quiet" style={{ fontSize: 12, marginTop: 6, padding: '2px 0', color: 'var(--tt-accent, #c084fc)' }} onClick={() => setShowAllSummarySkills(true)}>
+                                            + {more} more — Show all
+                                          </button>
+                                        ) : showAllSummarySkills && rawSkillList.length > 8 ? (
+                                          <button className="btn btn-quiet" style={{ fontSize: 12, marginTop: 6, padding: '2px 0', color: 'var(--tt-accent, #c084fc)' }} onClick={() => setShowAllSummarySkills(false)}>
+                                            ▲ Show less
+                                          </button>
+                                        ) : null}
+                                      </>
+                                    )
+                                  }
+                                  if (selectedSheetSummary.skills.items.length) {
+                                    return (
+                                      <>
+                                        <ul style={{ margin: 0, paddingLeft: 18 }}>
+                                          {(showAllSummarySkills ? selectedSheetSummary.skills.all : selectedSheetSummary.skills.items).map((s) => <li key={s}>{s}</li>)}
+                                        </ul>
+                                        {!showAllSummarySkills && selectedSheetSummary.skills.more > 0 ? (
+                                          <button className="btn btn-quiet" style={{ fontSize: 12, marginTop: 6, padding: '2px 0', color: 'var(--tt-accent, #c084fc)' }} onClick={() => setShowAllSummarySkills(true)}>
+                                            + {selectedSheetSummary.skills.more} more — Show all
+                                          </button>
+                                        ) : showAllSummarySkills && selectedSheetSummary.skills.more > 0 ? (
+                                          <button className="btn btn-quiet" style={{ fontSize: 12, marginTop: 6, padding: '2px 0', color: 'var(--tt-accent, #c084fc)' }} onClick={() => setShowAllSummarySkills(false)}>
+                                            ▲ Show less
+                                          </button>
+                                        ) : null}
+                                      </>
+                                    )
+                                  }
+                                  return <div className="muted">No skills listed.</div>
+                                })()}
                               </div>
                             </div>
                           ) : null}
@@ -1604,16 +1644,37 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                           {selectedCharacter ? (
                             (() => {
                               const sheet = (selectedCharacter?.sheet && typeof selectedCharacter.sheet === 'object') ? selectedCharacter.sheet : {}
-                              const rawSlots: Array<{ level: number; used?: number | null; max?: number | null }> = Array.isArray((sheet as any)?.spellSlots) ? (sheet as any).spellSlots : []
+                              // Read spell slots from either the camelCase array format (written by
+                              // CharacterSheetModal when the user clicks slot pips) or the underscore
+                              // object format written by the PDF importer (e.g. {"1": 4, "2": 3}).
+                              // Both formats are normalised to Array<{level, max, used}> here.
+                              const rawSlots: Array<{ level: number; used?: number | null; max?: number | null }> = (() => {
+                                if (Array.isArray((sheet as any)?.spellSlots)) return (sheet as any).spellSlots
+                                const snakeSlots = (sheet as any)?.spell_slots
+                                if (snakeSlots && typeof snakeSlots === 'object' && !Array.isArray(snakeSlots)) {
+                                  return Object.entries(snakeSlots as Record<string, any>).map(([k, v]) => {
+                                    const lvl = Number(k)
+                                    if (!Number.isFinite(lvl) || lvl < 1 || lvl > 9) return null
+                                    if (v && typeof v === 'object') {
+                                      return { level: lvl, max: (v as any).max ?? null, used: (v as any).used ?? null }
+                                    }
+                                    return { level: lvl, max: Number(v) || 0, used: null }
+                                  }).filter((s): s is { level: number; max: number | null; used: number | null } => s !== null)
+                                }
+                                return []
+                              })()
                               const spellbook = Array.isArray((sheet as any)?.spellbook) ? (sheet as any).spellbook : []
                               const spellNames = Array.isArray((sheet as any)?.spells) ? (sheet as any).spells : []
                               const rows = spellbook.length
                                 ? spellbook
                                 : spellNames.map((name: any) => ({ name: String(name) }))
 
-                              // Build slot map: level -> {max, used}
+                              // Build slot map: level -> {max, used}, filtering out zero-max levels
+                              // (e.g. a Fighter with SlotsTotal1: "0" should not show an empty row).
                               const slotMap = new Map<number, { max: number; used: number }>(
-                                rawSlots.map(s => [s.level, { max: s.max ?? 0, used: s.used ?? 0 }])
+                                rawSlots
+                                  .filter(s => (s.max ?? 0) > 0)
+                                  .map(s => [s.level, { max: s.max ?? 0, used: s.used ?? 0 }])
                               )
 
                               // Helper to parse level number from header string
@@ -1650,6 +1711,38 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
 
                               return (
                                 <>
+                                  {/* Standalone spell slot manager — shown when slots exist regardless of spell list */}
+                                  {slotMap.size > 0 ? (
+                                    <div style={{ marginBottom: 10 }}>
+                                      <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>Spell Slots <span style={{ opacity: 0.6 }}>(click to mark used/unused)</span></div>
+                                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                        {Array.from(slotMap.entries()).sort(([a], [b]) => a - b).map(([lvl, info]) => (
+                                          <div key={lvl} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                            <span className="muted" style={{ fontSize: 10, minWidth: 16 }}>L{lvl}</span>
+                                            {Array.from({ length: info.max }).map((_, i) => (
+                                              <button
+                                                key={i}
+                                                type="button"
+                                                title={`Level ${lvl} slot ${i + 1}: ${i < info.used ? 'used — click to restore' : 'available — click to use'}`}
+                                                onClick={() => toggleSpellSlot(lvl, i)}
+                                                style={{
+                                                  display: 'inline-block',
+                                                  width: 13,
+                                                  height: 13,
+                                                  borderRadius: '50%',
+                                                  border: '1.5px solid rgba(255,255,255,0.45)',
+                                                  background: i < info.used ? 'rgba(155,89,182,0.7)' : 'rgba(173,136,95,0.65)',
+                                                  cursor: 'pointer',
+                                                  padding: 0,
+                                                }}
+                                              />
+                                            ))}
+                                            <span className="muted" style={{ fontSize: 10, marginLeft: 1 }}>{info.used}/{info.max}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ) : null}
                                   {rows.length === 0 ? (
                                     <div className="muted">No spells parsed.</div>
                                   ) : (

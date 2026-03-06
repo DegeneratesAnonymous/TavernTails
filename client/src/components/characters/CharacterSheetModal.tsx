@@ -7,8 +7,8 @@ import './CharacterSheetModal.css'
 
 // Matches section-header names like "Artificer Features", "Core Paladin Traits",
 // "Species Abilities", etc.  These should not appear as individual feature items.
-const FEATURE_CATEGORY_PATTERN = /\b(features?|traits?|abilities|proficiencies|class\s+features?|racial\s+traits?)\s*$/i
-const FEATURE_SKIP_NAMES = new Set(['proficiencies', 'features', 'traits', 'abilities', 'other proficiencies & languages', 'other proficiencies and languages'])
+const FEATURE_CATEGORY_PATTERN = /\b(features?|traits?|abilities|proficiencies|class\s+features?|racial\s+traits?|species\s+traits?|subclass\s+features?)\s*$/i
+const FEATURE_SKIP_NAMES = new Set(['proficiencies', 'features', 'traits', 'abilities', 'other proficiencies & languages', 'other proficiencies and languages', 'class features', 'racial traits', 'species traits'])
 
 function isFeatureCategoryHeader(name: string): boolean {
   const lower = name.toLowerCase().trim()
@@ -770,7 +770,9 @@ export default function CharacterSheetModal({ open, character, loading = false, 
   useEffect(() => {
     if (!open || !character) return
     const slots = derived.spellSlots
-    setLocalSpellSlots(slots.length ? cloneJson(slots) : [])
+    // Filter out zero-max slots (e.g. a Fighter with SlotsTotal1: "0" should not
+    // show an empty Level 1 row).
+    setLocalSpellSlots(slots.length ? cloneJson(slots.filter((s) => (s.max ?? 0) > 0)) : [])
     const sheetPrepared: string[] = Array.isArray((sheet as any)?.preparedSpells) ? (sheet as any).preparedSpells : []
     const derivedPrepared = derived.spellbook
       .filter((s: any) => {
@@ -1146,14 +1148,54 @@ export default function CharacterSheetModal({ open, character, loading = false, 
                 </div>
               ) : null}
 
-              {derived.skills && derived.skills.length ? (
-                <div className="card tt-sheet-card">
-                  <div className="muted" style={{ marginBottom: 6 }}>Skills</div>
-                  <ul style={{ margin: 0, paddingLeft: 18 }}>
-                    {derived.skills.map((s) => <li key={s}>{s}</li>)}
-                  </ul>
-                </div>
-              ) : null}
+              {(() => {
+                // Prefer the structured skill objects (with proficiency data) stored in
+                // sheet.skills over the pre-flattened derived.skills string list.
+                const rawSkillList: any[] = Array.isArray((sheet as any)?.skills) ? (sheet as any).skills : []
+                const hasObjects = rawSkillList.some(
+                  (s) => s && typeof s === 'object' && 'name' in s
+                )
+                if (hasObjects) {
+                  return (
+                    <div className="card tt-sheet-card">
+                      <div className="muted" style={{ marginBottom: 6 }}>Skills</div>
+                      <div className="tt-skills-grid">
+                        {rawSkillList.map((s: any) => {
+                          const name = typeof s === 'string' ? s : asString((s as any)?.name)
+                          if (!name) return null
+                          const mod =
+                            typeof (s as any)?.modifier === 'number'
+                              ? (s as any).modifier
+                              : typeof (s as any)?.mod === 'number'
+                              ? (s as any).mod
+                              : null
+                          const proficient = (s as any)?.proficient === true || (s as any)?.expertise === true
+                          return (
+                            <div key={name} className={`tt-skill-item ${proficient ? 'tt-skill-item--proficient' : ''}`}>
+                              <span className="tt-skill-pip">{proficient ? '●' : '○'}</span>
+                              <span className="tt-skill-name">{name}</span>
+                              <span className="tt-skill-mod">
+                                {mod !== null ? (mod >= 0 ? `+${mod}` : String(mod)) : '—'}
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                }
+                if (derived.skills && derived.skills.length) {
+                  return (
+                    <div className="card tt-sheet-card">
+                      <div className="muted" style={{ marginBottom: 6 }}>Skills</div>
+                      <ul style={{ margin: 0, paddingLeft: 18 }}>
+                        {derived.skills.map((s) => <li key={s}>{s}</li>)}
+                      </ul>
+                    </div>
+                  )
+                }
+                return null
+              })()}
 
               {showRaw ? (
                 <div className="card tt-sheet-card">
