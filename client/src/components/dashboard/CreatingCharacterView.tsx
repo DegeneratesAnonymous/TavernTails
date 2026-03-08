@@ -6,6 +6,7 @@ type Props = {
   onDone: () => void
   onGoToImportPdf: () => void
   onGoToQuickCreate: () => void
+  onGoToWizard: () => void
   notificationsPending?: boolean
   onNotificationsClick?: () => void
 }
@@ -14,6 +15,7 @@ export default function CreatingCharacterView({
   onDone,
   onGoToImportPdf,
   onGoToQuickCreate,
+  onGoToWizard,
   notificationsPending,
   onNotificationsClick,
 }: Props) {
@@ -41,6 +43,19 @@ export default function CreatingCharacterView({
         </div>
         <div className="muted" style={{ fontSize: 12 }}>
           Tip: In D&amp;D Beyond, open the character sheet and use Print/Export to download a PDF.
+        </div>
+      </div>
+
+      <div className="card card-pad stack" style={{ maxWidth: 980 }}>
+        <div style={{ fontWeight: 750 }}>Guided character creation wizard</div>
+        <div className="muted" style={{ fontSize: 13 }}>
+          Answer a short series of scenario questions to build your character's backstory, skill
+          proficiencies, languages, and background — adapted to your chosen game system.
+        </div>
+        <div className="row-wrap">
+          <button className="btn" type="button" onClick={onGoToWizard}>
+            Launch Wizard
+          </button>
         </div>
       </div>
 

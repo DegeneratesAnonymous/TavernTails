@@ -4775,6 +4775,1506 @@ def list_characters(current_user=Depends(get_current_user)):
     return {"characters": [_serialize(row) for row in rows]}
 
 
+# ---------------------------------------------------------------------------
+# Character creation wizard configuration
+# ---------------------------------------------------------------------------
+
+_WIZARD_SYSTEM_CONFIGS: List[Dict[str, Any]] = [
+    {
+        "name": "D&D 5e",
+        "publisher": "Wizards of the Coast",
+        "classes": [
+            "Barbarian", "Bard", "Cleric", "Druid", "Fighter", "Monk",
+            "Paladin", "Ranger", "Rogue", "Sorcerer", "Warlock", "Wizard",
+        ],
+        "ability_scores": [
+            {"key": "str", "label": "Strength"},
+            {"key": "dex", "label": "Dexterity"},
+            {"key": "con", "label": "Constitution"},
+            {"key": "int", "label": "Intelligence"},
+            {"key": "wis", "label": "Wisdom"},
+            {"key": "cha", "label": "Charisma"},
+        ],
+        "standard_array": [15, 14, 13, 12, 10, 8],
+        "point_buy_budget": 27,
+        "point_buy_min": 8,
+        "point_buy_max": 15,
+        "questions": [
+            {
+                "id": "q1",
+                "text": "Bandits are blocking the road ahead — they haven't spotted you yet. What do you do?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Approach and talk your way through",
+                        "skills": ["Persuasion", "Deception"],
+                        "narrative": "You have always known that words can be mightier than any blade.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Slip around them undetected",
+                        "skills": ["Stealth", "Sleight of Hand"],
+                        "narrative": "Patience and cunning have kept you alive more than once.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Confront them head-on",
+                        "skills": ["Athletics", "Intimidation"],
+                        "narrative": "You face danger without flinching, letting your presence do the talking.",
+                    },
+                ],
+            },
+            {
+                "id": "q2",
+                "text": "You find a wounded stranger on the roadside. How do you respond?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Tend to their wounds immediately",
+                        "skills": ["Medicine", "Insight"],
+                        "narrative": "You believe every life has value and act without hesitation to help those in need.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Survey the area for danger before helping",
+                        "skills": ["Perception", "Investigation"],
+                        "narrative": "Caution has kept you safe — you assess a situation before rushing in.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Keep moving — you cannot risk the delay",
+                        "skills": ["Survival", "Athletics"],
+                        "narrative": "Hard experience has taught you that survival sometimes requires difficult choices.",
+                    },
+                ],
+            },
+            {
+                "id": "q3",
+                "text": "You arrive in a new city with a few hours to spare. Where do you head first?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "The local library or temple",
+                        "skills": ["History", "Religion"],
+                        "narrative": "Knowledge is power, and you never pass up an opportunity to learn.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "The nearest tavern to gather gossip",
+                        "skills": ["Insight", "Deception"],
+                        "narrative": "Information flows freely where drinks flow — you know how to listen between the lines.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "The market stalls and guild halls",
+                        "skills": ["Persuasion", "Arcana"],
+                        "narrative": "Trade and connection are the lifeblood of civilization, and you know how to thrive in that world.",
+                    },
+                ],
+            },
+            {
+                "id": "q4",
+                "text": "A noble publicly humiliates you at a banquet. What do you do?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Respond with a sharp, witty remark",
+                        "skills": ["Performance", "Deception"],
+                        "narrative": "Words are your sharpest weapon, and you know exactly how to wield them.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Smile and remember the insult for later",
+                        "skills": ["Insight", "Persuasion"],
+                        "narrative": "Patience is its own kind of power — you play the long game.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Challenge them to prove yourself",
+                        "skills": ["Athletics", "Intimidation"],
+                        "narrative": "You do not back down from a challenge and refuse to let anyone diminish you.",
+                    },
+                ],
+            },
+            {
+                "id": "q5",
+                "text": "Which best describes your early life?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Raised among scholars, merchants, or nobility in a city",
+                        "skills": ["History", "Investigation"],
+                        "narrative": "The city shaped you — its knowledge, politics, and hidden corridors are as familiar as home.",
+                        "background": "Sage",
+                        "languages": "Two languages of your choice",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Grew up in the wilds or a small rural village",
+                        "skills": ["Survival", "Nature"],
+                        "narrative": "The open road and wild places feel more like home than any city ever could.",
+                        "background": "Folk Hero",
+                        "languages": "One language of your choice",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Trained in a guild, temple, or military order",
+                        "skills": ["Athletics", "Religion"],
+                        "narrative": "Discipline, purpose, and camaraderie defined your formative years — you know the value of earned trust.",
+                        "background": "Soldier",
+                        "languages": "One language of your choice",
+                    },
+                ],
+            },
+        ],
+    },
+    {
+        "name": "Pathfinder 2e",
+        "publisher": "Paizo",
+        "classes": [
+            "Alchemist", "Barbarian", "Bard", "Champion", "Cleric", "Druid",
+            "Fighter", "Investigator", "Monk", "Oracle", "Psychic", "Ranger",
+            "Rogue", "Sorcerer", "Swashbuckler", "Witch", "Wizard",
+        ],
+        "ability_scores": [
+            {"key": "str", "label": "Strength"},
+            {"key": "dex", "label": "Dexterity"},
+            {"key": "con", "label": "Constitution"},
+            {"key": "int", "label": "Intelligence"},
+            {"key": "wis", "label": "Wisdom"},
+            {"key": "cha", "label": "Charisma"},
+        ],
+        "standard_array": [16, 14, 13, 12, 10, 8],
+        "point_buy_budget": 0,
+        "point_buy_min": 8,
+        "point_buy_max": 18,
+        "questions": [
+            {
+                "id": "q1",
+                "text": "Bandits are blocking the road ahead — they haven't spotted you yet. What do you do?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Approach and talk your way through",
+                        "skills": ["Diplomacy", "Deception"],
+                        "narrative": "You have always known that words can be mightier than any blade.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Slip around them undetected",
+                        "skills": ["Stealth", "Thievery"],
+                        "narrative": "Patience and cunning have kept you alive more than once.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Confront them head-on",
+                        "skills": ["Athletics", "Intimidation"],
+                        "narrative": "You face danger without flinching, letting your presence do the talking.",
+                    },
+                ],
+            },
+            {
+                "id": "q2",
+                "text": "You find a wounded stranger on the roadside. How do you respond?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Tend to their wounds immediately",
+                        "skills": ["Medicine", "Society"],
+                        "narrative": "You believe every life has value and act without hesitation to help those in need.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Survey the area for danger before helping",
+                        "skills": ["Perception", "Survival"],
+                        "narrative": "Caution has kept you safe — you assess a situation before rushing in.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Keep moving — you cannot risk the delay",
+                        "skills": ["Survival", "Athletics"],
+                        "narrative": "Hard experience has taught you that survival sometimes requires difficult choices.",
+                    },
+                ],
+            },
+            {
+                "id": "q3",
+                "text": "You arrive in a new city with a few hours to spare. Where do you head first?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "The local library or temple",
+                        "skills": ["Occultism", "Religion"],
+                        "narrative": "Knowledge is power, and you never pass up an opportunity to learn.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "The nearest tavern to gather gossip",
+                        "skills": ["Society", "Deception"],
+                        "narrative": "Information flows freely where drinks flow — you know how to listen between the lines.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "The market stalls and guild halls",
+                        "skills": ["Diplomacy", "Crafting"],
+                        "narrative": "Trade and connection are the lifeblood of civilization, and you know how to thrive in that world.",
+                    },
+                ],
+            },
+            {
+                "id": "q4",
+                "text": "A noble publicly humiliates you at a banquet. What do you do?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Respond with a sharp, witty remark",
+                        "skills": ["Performance", "Deception"],
+                        "narrative": "Words are your sharpest weapon, and you know exactly how to wield them.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Smile and remember the insult for later",
+                        "skills": ["Society", "Diplomacy"],
+                        "narrative": "Patience is its own kind of power — you play the long game.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Challenge them to prove yourself",
+                        "skills": ["Athletics", "Intimidation"],
+                        "narrative": "You do not back down from a challenge and refuse to let anyone diminish you.",
+                    },
+                ],
+            },
+            {
+                "id": "q5",
+                "text": "Which best describes your early life?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Raised among scholars, merchants, or nobility in a city",
+                        "skills": ["Arcana", "Society"],
+                        "narrative": "The city shaped you — its knowledge, politics, and hidden corridors are as familiar as home.",
+                        "background": "Scholar",
+                        "languages": "Two languages of your choice",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Grew up in the wilds or a small rural village",
+                        "skills": ["Survival", "Nature"],
+                        "narrative": "The open road and wild places feel more like home than any city ever could.",
+                        "background": "Farmhand",
+                        "languages": "One language of your choice",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Trained in a guild, temple, or military order",
+                        "skills": ["Athletics", "Religion"],
+                        "narrative": "Discipline, purpose, and camaraderie defined your formative years — you know the value of earned trust.",
+                        "background": "Guard",
+                        "languages": "One language of your choice",
+                    },
+                ],
+            },
+        ],
+    },
+    {
+        "name": "Pathfinder 1e",
+        "publisher": "Paizo",
+        "classes": [
+            "Barbarian", "Bard", "Cleric", "Druid", "Fighter", "Monk",
+            "Paladin", "Ranger", "Rogue", "Sorcerer", "Wizard",
+        ],
+        "ability_scores": [
+            {"key": "str", "label": "Strength"},
+            {"key": "dex", "label": "Dexterity"},
+            {"key": "con", "label": "Constitution"},
+            {"key": "int", "label": "Intelligence"},
+            {"key": "wis", "label": "Wisdom"},
+            {"key": "cha", "label": "Charisma"},
+        ],
+        "standard_array": [15, 14, 13, 12, 10, 8],
+        "point_buy_budget": 20,
+        "point_buy_min": 7,
+        "point_buy_max": 18,
+        "questions": [
+            {
+                "id": "q1",
+                "text": "Bandits are blocking the road ahead — they haven't spotted you yet. What do you do?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Approach and talk your way through",
+                        "skills": ["Diplomacy", "Bluff"],
+                        "narrative": "You have always known that words can be mightier than any blade.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Slip around them undetected",
+                        "skills": ["Stealth", "Sleight of Hand"],
+                        "narrative": "Patience and cunning have kept you alive more than once.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Confront them head-on",
+                        "skills": ["Intimidate", "Climb"],
+                        "narrative": "You face danger without flinching, letting your presence do the talking.",
+                    },
+                ],
+            },
+            {
+                "id": "q2",
+                "text": "You find a wounded stranger on the roadside. How do you respond?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Tend to their wounds immediately",
+                        "skills": ["Heal", "Sense Motive"],
+                        "narrative": "You believe every life has value and act without hesitation to help those in need.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Survey the area for danger before helping",
+                        "skills": ["Perception", "Survival"],
+                        "narrative": "Caution has kept you safe — you assess a situation before rushing in.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Keep moving — you cannot risk the delay",
+                        "skills": ["Survival", "Acrobatics"],
+                        "narrative": "Hard experience has taught you that survival sometimes requires difficult choices.",
+                    },
+                ],
+            },
+            {
+                "id": "q3",
+                "text": "You arrive in a new city with a few hours to spare. Where do you head first?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "The local library or temple",
+                        "skills": ["Knowledge (history)", "Knowledge (religion)"],
+                        "narrative": "Knowledge is power, and you never pass up an opportunity to learn.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "The nearest tavern to gather gossip",
+                        "skills": ["Sense Motive", "Bluff"],
+                        "narrative": "Information flows freely where drinks flow — you know how to listen between the lines.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "The market stalls and guild halls",
+                        "skills": ["Diplomacy", "Appraise"],
+                        "narrative": "Trade and connection are the lifeblood of civilization, and you know how to thrive in that world.",
+                    },
+                ],
+            },
+            {
+                "id": "q4",
+                "text": "A noble publicly humiliates you at a banquet. What do you do?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Respond with a sharp, witty remark",
+                        "skills": ["Perform", "Bluff"],
+                        "narrative": "Words are your sharpest weapon, and you know exactly how to wield them.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Smile and remember the insult for later",
+                        "skills": ["Sense Motive", "Diplomacy"],
+                        "narrative": "Patience is its own kind of power — you play the long game.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Challenge them to prove yourself",
+                        "skills": ["Intimidate", "Swim"],
+                        "narrative": "You do not back down from a challenge and refuse to let anyone diminish you.",
+                    },
+                ],
+            },
+            {
+                "id": "q5",
+                "text": "Which best describes your early life?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Raised among scholars, merchants, or nobility in a city",
+                        "skills": ["Knowledge (history)", "Knowledge (arcana)"],
+                        "narrative": "The city shaped you — its knowledge, politics, and hidden corridors are as familiar as home.",
+                        "background": "Scholar",
+                        "languages": "Two languages of your choice",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Grew up in the wilds or a small rural village",
+                        "skills": ["Survival", "Knowledge (nature)"],
+                        "narrative": "The open road and wild places feel more like home than any city ever could.",
+                        "background": "Wanderer",
+                        "languages": "One language of your choice",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Trained in a guild, temple, or military order",
+                        "skills": ["Profession", "Knowledge (religion)"],
+                        "narrative": "Discipline, purpose, and camaraderie defined your formative years — you know the value of earned trust.",
+                        "background": "Soldier",
+                        "languages": "One language of your choice",
+                    },
+                ],
+            },
+        ],
+    },
+    {
+        "name": "Starfinder",
+        "publisher": "Paizo",
+        "classes": [
+            "Biohacker", "Envoy", "Evolutionist", "Mechanic", "Mystic",
+            "Nanocyte", "Operative", "Precog", "Soldier", "Solarian",
+            "Technomancer", "Vanguard", "Witchwarper",
+        ],
+        "ability_scores": [
+            {"key": "str", "label": "Strength"},
+            {"key": "dex", "label": "Dexterity"},
+            {"key": "con", "label": "Constitution"},
+            {"key": "int", "label": "Intelligence"},
+            {"key": "wis", "label": "Wisdom"},
+            {"key": "cha", "label": "Charisma"},
+        ],
+        "standard_array": [16, 14, 13, 12, 10, 8],
+        "point_buy_budget": 10,
+        "point_buy_min": 8,
+        "point_buy_max": 18,
+        "questions": [
+            {
+                "id": "q1",
+                "text": "Pirates are blocking the landing bay — they haven't spotted you yet. What do you do?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Open a comms channel and negotiate",
+                        "skills": ["Diplomacy", "Bluff"],
+                        "narrative": "In the Pact Worlds, a smooth talker can go further than a soldier.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Find a maintenance shaft and slip through",
+                        "skills": ["Stealth", "Sleight of Hand"],
+                        "narrative": "The galaxy rewards those who can move unseen through its corridors.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Draw your weapon and charge",
+                        "skills": ["Athletics", "Intimidate"],
+                        "narrative": "When there's no time for talk, you let your resolve speak for you.",
+                    },
+                ],
+            },
+            {
+                "id": "q2",
+                "text": "A distress beacon activates nearby. What is your first instinct?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Respond immediately and render aid",
+                        "skills": ["Medicine", "Mysticism"],
+                        "narrative": "Every life — biological or digital — has worth in the Pact Worlds.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Scan the area for threats before approaching",
+                        "skills": ["Perception", "Computers"],
+                        "narrative": "Caution is a survival skill in the outer reaches.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Continue on your course — it could be a trap",
+                        "skills": ["Survival", "Piloting"],
+                        "narrative": "Experience has taught you to trust your instincts over your impulses.",
+                    },
+                ],
+            },
+            {
+                "id": "q3",
+                "text": "You have downtime on Absalom Station. How do you spend it?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Visit the libraries and research centers",
+                        "skills": ["Culture", "Life Science"],
+                        "narrative": "The universe is vast and full of secrets worth uncovering.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Hit the bars and listen for rumors",
+                        "skills": ["Perception", "Bluff"],
+                        "narrative": "The most valuable intelligence is what people say when they think no one is listening.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Upgrade your gear and work on your ship",
+                        "skills": ["Engineering", "Computers"],
+                        "narrative": "In space, your equipment is your life — and you keep it sharp.",
+                    },
+                ],
+            },
+            {
+                "id": "q4",
+                "text": "A corporate executive disrespects you in a crowded docking bay. How do you react?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Match their verbal game and win the room",
+                        "skills": ["Diplomacy", "Bluff"],
+                        "narrative": "Politics and performance are just another form of combat — and you excel at both.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Note their name and move on",
+                        "skills": ["Culture", "Perception"],
+                        "narrative": "Every slight is information. You'll find a use for it eventually.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Make it clear that disrespect has consequences",
+                        "skills": ["Intimidate", "Athletics"],
+                        "narrative": "Reputation is everything in the Pact Worlds, and yours is not to be trifled with.",
+                    },
+                ],
+            },
+            {
+                "id": "q5",
+                "text": "Which best describes your background?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Grew up in a major station or city among academics",
+                        "skills": ["Culture", "Life Science"],
+                        "narrative": "The bustle of civilization and the weight of knowledge shaped your worldview.",
+                        "background": "Scholar",
+                        "languages": "Two languages of your choice",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Raised on a frontier colony or in the Drift",
+                        "skills": ["Survival", "Piloting"],
+                        "narrative": "The frontier demanded self-reliance — and you delivered.",
+                        "background": "Colonist",
+                        "languages": "One language of your choice",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Served in a military or corporate security force",
+                        "skills": ["Athletics", "Intimidate"],
+                        "narrative": "Discipline and chain of command shaped you — even if you've since broken free of it.",
+                        "background": "Mercenary",
+                        "languages": "One language of your choice",
+                    },
+                ],
+            },
+        ],
+    },
+    {
+        "name": "Call of Cthulhu",
+        "publisher": "Chaosium",
+        "classes": [
+            "Antiquarian", "Artist", "Author", "Clergy", "Criminal",
+            "Detective", "Doctor", "Drifter", "Engineer",
+            "Journalist", "Librarian", "Professor", "Soldier",
+        ],
+        "ability_scores": [
+            {"key": "str", "label": "Strength"},
+            {"key": "dex", "label": "Dexterity"},
+            {"key": "con", "label": "Constitution"},
+            {"key": "int", "label": "Intelligence"},
+            {"key": "siz", "label": "Size"},
+            {"key": "app", "label": "Appearance"},
+            {"key": "pow", "label": "Power"},
+            {"key": "edu", "label": "Education"},
+        ],
+        "standard_array": [70, 60, 60, 50, 50, 50, 40, 30],
+        "point_buy_budget": 0,
+        "point_buy_min": 15,
+        "point_buy_max": 90,
+        "questions": [
+            {
+                "id": "q1",
+                "text": "You spot suspicious figures outside an old mansion at night. What do you do?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Approach and ask questions",
+                        "skills": ["Fast Talk", "Psychology"],
+                        "narrative": "Your instinct is always to seek answers, even when the answers are dangerous.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Watch and take notes from a distance",
+                        "skills": ["Spot Hidden", "Stealth"],
+                        "narrative": "Observation has always been your greatest asset.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Report it to the authorities",
+                        "skills": ["Persuade", "Psychology"],
+                        "narrative": "You trust the systems of society — at least until you learn better.",
+                    },
+                ],
+            },
+            {
+                "id": "q2",
+                "text": "You discover an unusual tome in a library. What do you do?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Study it carefully, cross-referencing other sources",
+                        "skills": ["Library Use", "Occult"],
+                        "narrative": "Knowledge — even forbidden knowledge — must be understood to be faced.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Note its details and ask discreetly about its origins",
+                        "skills": ["History", "Persuade"],
+                        "narrative": "Context matters. You want to know what you're dealing with.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Leave it and report the discovery",
+                        "skills": ["Psychology", "First Aid"],
+                        "narrative": "Some things are better left alone — and you have the wisdom to know it.",
+                    },
+                ],
+            },
+            {
+                "id": "q3",
+                "text": "A colleague begins behaving erratically after a dig in the countryside. What do you do?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Take them to a doctor and investigate what they found",
+                        "skills": ["Medicine", "Archaeology"],
+                        "narrative": "Your care for others is matched only by your need to understand.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Try to speak with them and understand what they experienced",
+                        "skills": ["Psychoanalysis", "Persuade"],
+                        "narrative": "The mind is as important to protect as the body.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Return to the dig site yourself to investigate",
+                        "skills": ["Archaeology", "Spot Hidden"],
+                        "narrative": "The answers lie at the source. You will find them.",
+                    },
+                ],
+            },
+            {
+                "id": "q4",
+                "text": "You are confronted by something impossible — something that defies reality. How do you react?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Stay calm and document everything you observe",
+                        "skills": ["Science (Any)", "Library Use"],
+                        "narrative": "Evidence and documentation are the only weapons that truly matter.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Run and regroup — survival comes first",
+                        "skills": ["Dodge", "First Aid"],
+                        "narrative": "You cannot fight what you do not yet understand. You will return prepared.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Stand your ground and face it",
+                        "skills": ["Fighting", "Firearms"],
+                        "narrative": "Fear is just another obstacle. You have faced worse.",
+                    },
+                ],
+            },
+            {
+                "id": "q5",
+                "text": "Which best describes your background?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Educated professional with a love of books and research",
+                        "skills": ["Library Use", "History"],
+                        "narrative": "Academia shaped your mind and gave you the tools to face the unknown.",
+                        "background": "Academic",
+                        "languages": "Latin and one modern language of your choice",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Worldly traveler who has seen strange things",
+                        "skills": ["Navigate", "Survival"],
+                        "narrative": "The world is strange and dangerous — you have learned this firsthand.",
+                        "background": "Adventurer",
+                        "languages": "Two languages of your choice",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Working-class person with street-level experience",
+                        "skills": ["Fighting", "Persuade"],
+                        "narrative": "Life has been hard, but it has made you resilient.",
+                        "background": "Working Class",
+                        "languages": "One language of your choice",
+                    },
+                ],
+            },
+        ],
+    },
+    {
+        "name": "Shadowrun",
+        "publisher": "Catalyst Game Labs",
+        "classes": [
+            "Street Samurai", "Decker", "Rigger", "Mage",
+            "Shaman", "Face", "Adept", "Technomancer",
+        ],
+        "ability_scores": [
+            {"key": "bod", "label": "Body"},
+            {"key": "agi", "label": "Agility"},
+            {"key": "rea", "label": "Reaction"},
+            {"key": "str", "label": "Strength"},
+            {"key": "wil", "label": "Willpower"},
+            {"key": "log", "label": "Logic"},
+            {"key": "int", "label": "Intuition"},
+            {"key": "cha", "label": "Charisma"},
+            {"key": "edg", "label": "Edge"},
+        ],
+        "standard_array": [5, 5, 4, 4, 3, 3, 2, 2, 1],
+        "point_buy_budget": 25,
+        "point_buy_min": 1,
+        "point_buy_max": 6,
+        "questions": [
+            {
+                "id": "q1",
+                "text": "A gang is blocking the exit of the extraction zone. What do you do?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Talk them down or bluff your way past",
+                        "skills": ["Con", "Etiquette"],
+                        "narrative": "In the Sixth World, your tongue can be sharper than any mono-blade.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Find a shadow route and slip through",
+                        "skills": ["Stealth", "Perception"],
+                        "narrative": "Shadows are a runner's best friend.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Hit them fast and hard before they react",
+                        "skills": ["Firearms", "Athletics"],
+                        "narrative": "Speed and aggression can end a fight before it starts.",
+                    },
+                ],
+            },
+            {
+                "id": "q2",
+                "text": "Your fixer contacts you about a high-risk job with excellent pay. What concerns you most?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Who the Johnson is and if they can be trusted",
+                        "skills": ["Con", "Etiquette"],
+                        "narrative": "In the shadows, information is the only real currency.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "The security systems you will need to bypass",
+                        "skills": ["Hacking", "Electronic Warfare"],
+                        "narrative": "Every system has a weakness. You will find it.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Whether your team has the firepower to handle complications",
+                        "skills": ["Firearms", "Pilot Ground Craft"],
+                        "narrative": "Hope for the best, prepare for a firefight.",
+                    },
+                ],
+            },
+            {
+                "id": "q3",
+                "text": "Between runs, how do you spend your downtime?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Diving into the Matrix and digging up intel",
+                        "skills": ["Hacking", "Electronic Warfare"],
+                        "narrative": "The Matrix is a second world, and you move through it like a ghost.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Building contacts and networking in the shadows",
+                        "skills": ["Etiquette", "Con"],
+                        "narrative": "Your network is your safety net — and you invest in it.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Training and maintaining your edge",
+                        "skills": ["Athletics", "Perception"],
+                        "narrative": "Your body and reflexes are your most important tools.",
+                    },
+                ],
+            },
+            {
+                "id": "q4",
+                "text": "A mega-corp executive publicly insults your crew. How do you respond?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Use social engineering to expose something damaging about them",
+                        "skills": ["Con", "Etiquette"],
+                        "narrative": "Leverage is everything in the Sixth World.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Hack their files and use what you find",
+                        "skills": ["Hacking", "Electronic Warfare"],
+                        "narrative": "Everyone has secrets. You just know where to look.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Let your reputation speak — and sharpen it",
+                        "skills": ["Athletics", "Intimidation"],
+                        "narrative": "In the shadows, your reputation is your shield.",
+                    },
+                ],
+            },
+            {
+                "id": "q5",
+                "text": "Which best describes your background?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Corporate wage-slave turned runner",
+                        "skills": ["Etiquette", "Con"],
+                        "narrative": "You know how the corps think — because you used to be one of their tools.",
+                        "background": "Corporate Defector",
+                        "languages": "Two languages of your choice",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Street kid who clawed their way up",
+                        "skills": ["Stealth", "Perception"],
+                        "narrative": "The streets taught you everything. You owe no one your loyalty.",
+                        "background": "Street Rat",
+                        "languages": "One language of your choice",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Ex-military or security specialist",
+                        "skills": ["Firearms", "Athletics"],
+                        "narrative": "Discipline and training gave you an edge that the corps couldn't take away.",
+                        "background": "Ex-Military",
+                        "languages": "One language of your choice",
+                    },
+                ],
+            },
+        ],
+    },
+    {
+        "name": "Alien RPG",
+        "publisher": "Free League Publishing",
+        "classes": [
+            "Colonial Marshal", "Company Agent", "Kid", "Medic",
+            "Pilot", "Roughneck", "Scientist",
+        ],
+        "ability_scores": [
+            {"key": "str", "label": "Strength"},
+            {"key": "agi", "label": "Agility"},
+            {"key": "wits", "label": "Wits"},
+            {"key": "emp", "label": "Empathy"},
+        ],
+        "standard_array": [5, 4, 3, 2],
+        "point_buy_budget": 14,
+        "point_buy_min": 1,
+        "point_buy_max": 5,
+        "questions": [
+            {
+                "id": "q1",
+                "text": "You detect a distress signal from a derelict vessel. Your crew wants to investigate. What do you do?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Assess the risks and lead the team in cautiously",
+                        "skills": ["Command", "Observation"],
+                        "narrative": "Leadership means being the one who walks in first — and brings everyone out.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Run a full systems scan before anyone boards",
+                        "skills": ["Comtech", "Observation"],
+                        "narrative": "Data doesn't lie. You trust readings over gut feelings.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Board immediately — someone might be alive",
+                        "skills": ["Mobility", "Stamina"],
+                        "narrative": "You can calculate risk later. Right now, someone needs you.",
+                    },
+                ],
+            },
+            {
+                "id": "q2",
+                "text": "A crew member is gravely wounded. What is your first action?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Stabilize them using every skill and tool available",
+                        "skills": ["Medical Aid", "Stamina"],
+                        "narrative": "You refuse to lose a crewmate when there is any chance of saving them.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Keep the threat neutralized while others provide aid",
+                        "skills": ["Ranged Combat", "Mobility"],
+                        "narrative": "Protection is your contribution — you hold the line so others can help.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Coordinate the response and assign roles",
+                        "skills": ["Command", "Medical Aid"],
+                        "narrative": "In a crisis, clear leadership saves lives.",
+                    },
+                ],
+            },
+            {
+                "id": "q3",
+                "text": "During shore leave at a station, how do you spend your time?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Maintaining and upgrading the ship",
+                        "skills": ["Heavy Machinery", "Comtech"],
+                        "narrative": "A well-maintained ship is the difference between making it home and not.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Gathering intelligence and making connections",
+                        "skills": ["Manipulation", "Observation"],
+                        "narrative": "Every port has secrets. You make a point of collecting them.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Training and staying combat-ready",
+                        "skills": ["Ranged Combat", "Stamina"],
+                        "narrative": "The galaxy is hostile. You stay ready for the next threat.",
+                    },
+                ],
+            },
+            {
+                "id": "q4",
+                "text": "You discover that your employer has been lying about the mission. How do you respond?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Confront them directly and demand answers",
+                        "skills": ["Command", "Manipulation"],
+                        "narrative": "You will not be used. You demand the truth.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Dig deeper — find all the evidence you can",
+                        "skills": ["Comtech", "Observation"],
+                        "narrative": "Knowledge is leverage. You want the full picture before you act.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Protect your crew first and ask questions later",
+                        "skills": ["Ranged Combat", "Mobility"],
+                        "narrative": "Crew first. Always.",
+                    },
+                ],
+            },
+            {
+                "id": "q5",
+                "text": "Which best describes your background?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Born on a colony, raised with hard work and frontier values",
+                        "skills": ["Stamina", "Heavy Machinery"],
+                        "narrative": "The colony life was never easy, but it made you tough and self-reliant.",
+                        "background": "Colonial",
+                        "languages": "One language of your choice",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Trained in a corporate facility and deployed on contract work",
+                        "skills": ["Comtech", "Command"],
+                        "narrative": "The Company gave you skills and resources — and you've never fully trusted it since.",
+                        "background": "Corporate",
+                        "languages": "Two languages of your choice",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Military veteran with combat experience across multiple theaters",
+                        "skills": ["Ranged Combat", "Stamina"],
+                        "narrative": "War leaves marks that never fully heal — but you carry yours with purpose.",
+                        "background": "Military",
+                        "languages": "One language of your choice",
+                    },
+                ],
+            },
+        ],
+    },
+    {
+        "name": "Warhammer Fantasy Roleplay",
+        "publisher": "Cubicle 7",
+        "classes": [
+            "Soldier", "Scholar", "Rogue", "Ranger", "Performer", "Mystic",
+        ],
+        "ability_scores": [
+            {"key": "ws", "label": "Weapon Skill"},
+            {"key": "bs", "label": "Ballistic Skill"},
+            {"key": "s", "label": "Strength"},
+            {"key": "t", "label": "Toughness"},
+            {"key": "i", "label": "Initiative"},
+            {"key": "ag", "label": "Agility"},
+            {"key": "dex", "label": "Dexterity"},
+            {"key": "int", "label": "Intelligence"},
+            {"key": "wp", "label": "Willpower"},
+            {"key": "fel", "label": "Fellowship"},
+        ],
+        "standard_array": [45, 40, 35, 35, 30, 30, 25, 25, 20, 15],
+        "point_buy_budget": 0,
+        "point_buy_min": 10,
+        "point_buy_max": 60,
+        "questions": [
+            {
+                "id": "q1",
+                "text": "Beastmen are lurking on the road ahead. You spot them before they see you. What do you do?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Find a way around using the treeline",
+                        "skills": ["Stealth", "Outdoor Survival"],
+                        "narrative": "In the Old World, discretion is a virtue — and often a lifesaver.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Signal nearby travelers to warn them",
+                        "skills": ["Intuition", "Charm"],
+                        "narrative": "Community and vigilance are the only defenses against the darkness.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Take up a defensive position and prepare to fight",
+                        "skills": ["Melee", "Endurance"],
+                        "narrative": "The Empire is built on those willing to hold the line against Chaos.",
+                    },
+                ],
+            },
+            {
+                "id": "q2",
+                "text": "A nobleman offers you coin to deliver a sealed letter — no questions asked. What do you do?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Accept the coin and deliver the letter faithfully",
+                        "skills": ["Endurance", "Navigation"],
+                        "narrative": "A job is a job. You don't ask what you don't want to know.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Ask a few careful questions before accepting",
+                        "skills": ["Intuition", "Charm"],
+                        "narrative": "You have learned that the most dangerous words are 'no questions asked.'",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Decline politely — such work brings trouble",
+                        "skills": ["Charm", "Gossip"],
+                        "narrative": "Some coin is not worth the risk. You prefer to keep your head.",
+                    },
+                ],
+            },
+            {
+                "id": "q3",
+                "text": "You are in Altdorf with a free evening. How do you spend it?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Visit the Great Library of Altdorf",
+                        "skills": ["Lore (Any)", "Language (Classical)"],
+                        "narrative": "Knowledge of history is the best weapon against the horrors of the present.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Carouse at a riverside tavern and make contacts",
+                        "skills": ["Gossip", "Charm"],
+                        "narrative": "News travels fast in the Empire — especially through tankards of ale.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Practice at the training yard",
+                        "skills": ["Melee", "Dodge"],
+                        "narrative": "Chaos doesn't wait for you to be ready. You stay prepared.",
+                    },
+                ],
+            },
+            {
+                "id": "q4",
+                "text": "A Witch Hunter accuses a friend of yours of consorting with dark forces. What do you do?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Speak in their defense with evidence and reason",
+                        "skills": ["Charm", "Lore (Law)"],
+                        "narrative": "Injustice demands a voice. You provide one.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Help your friend disappear until the matter is resolved",
+                        "skills": ["Stealth", "Navigation"],
+                        "narrative": "Sometimes the best legal strategy is a head start.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Investigate to find the true source of suspicion",
+                        "skills": ["Intuition", "Lore (Any)"],
+                        "narrative": "Smoke implies fire — but not always where people think.",
+                    },
+                ],
+            },
+            {
+                "id": "q5",
+                "text": "Which best describes your early life?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Grew up in a city, surrounded by trade and politics",
+                        "skills": ["Gossip", "Lore (Any)"],
+                        "narrative": "The city made you street-smart, politically aware, and deeply suspicious.",
+                        "background": "Urban",
+                        "languages": "Reikspiel and one trade language",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Raised on a rural estate or wilderness holding",
+                        "skills": ["Outdoor Survival", "Animal Care"],
+                        "narrative": "The land and its creatures taught you patience, resilience, and respect.",
+                        "background": "Rural",
+                        "languages": "Reikspiel and one regional dialect",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Trained in a military regiment, guild, or religious order",
+                        "skills": ["Endurance", "Melee"],
+                        "narrative": "Structure and purpose defined your formative years. You know what it means to serve something greater.",
+                        "background": "Institutional",
+                        "languages": "Reikspiel and Classical",
+                    },
+                ],
+            },
+        ],
+    },
+    {
+        "name": "Star Trek Adventures",
+        "publisher": "Modiphius",
+        "classes": ["Command", "Conn", "Security", "Engineering", "Science", "Medical"],
+        "ability_scores": [
+            {"key": "control", "label": "Control"},
+            {"key": "daring", "label": "Daring"},
+            {"key": "fitness", "label": "Fitness"},
+            {"key": "insight", "label": "Insight"},
+            {"key": "presence", "label": "Presence"},
+            {"key": "reason", "label": "Reason"},
+        ],
+        "standard_array": [11, 10, 10, 9, 9, 8],
+        "point_buy_budget": 57,
+        "point_buy_min": 7,
+        "point_buy_max": 12,
+        "questions": [
+            {
+                "id": "q1",
+                "text": "An unknown vessel drops out of warp ahead of your ship. How do you respond?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Hail them and attempt first contact",
+                        "skills": ["Command", "Diplomacy"],
+                        "narrative": "Every unknown vessel is a new opportunity for contact — and understanding.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Run a full sensor sweep and analyze their configuration",
+                        "skills": ["Science", "Engineering"],
+                        "narrative": "Information before action — the tricorder is your first weapon.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Raise shields and go to yellow alert",
+                        "skills": ["Security", "Conn"],
+                        "narrative": "Caution never cost a starship. Carelessness has.",
+                    },
+                ],
+            },
+            {
+                "id": "q2",
+                "text": "A crew member is behaving irrationally after an away mission. What do you do?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Talk with them and try to understand their experience",
+                        "skills": ["Medicine", "Empathy"],
+                        "narrative": "Starfleet officers carry psychological burdens as well as physical ones.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Analyze their behavior against known mission stressors",
+                        "skills": ["Science", "Medicine"],
+                        "narrative": "Understanding the cause is the first step toward solving the problem.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Report it to the CMO and continue the mission",
+                        "skills": ["Command", "Security"],
+                        "narrative": "Proper channels exist for a reason — and you trust them.",
+                    },
+                ],
+            },
+            {
+                "id": "q3",
+                "text": "Shore leave on a Federation station. How do you spend it?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Running holodeck training simulations",
+                        "skills": ["Security", "Conn"],
+                        "narrative": "A Starfleet officer's work is never truly done.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Attending lectures and exploring the station's science facilities",
+                        "skills": ["Science", "Engineering"],
+                        "narrative": "There is always more to learn. You take every opportunity.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Building relationships with crew and station personnel",
+                        "skills": ["Command", "Diplomacy"],
+                        "narrative": "A crew that trusts each other survives anything.",
+                    },
+                ],
+            },
+            {
+                "id": "q4",
+                "text": "You discover that a superior officer has been falsifying mission reports. What do you do?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Confront them privately and give them a chance to correct it",
+                        "skills": ["Command", "Diplomacy"],
+                        "narrative": "Integrity matters — but so does giving people the chance to do the right thing.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Compile all evidence before taking action",
+                        "skills": ["Science", "Engineering"],
+                        "narrative": "You will not act on suspicion alone. You gather the facts.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Report it to the chain of command immediately",
+                        "skills": ["Security", "Command"],
+                        "narrative": "Starfleet's integrity is not negotiable. You act without hesitation.",
+                    },
+                ],
+            },
+            {
+                "id": "q5",
+                "text": "Which best describes your background?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Raised on a core Federation world in a scientific or academic family",
+                        "skills": ["Science", "Medicine"],
+                        "narrative": "The pursuit of knowledge was your birthright — you have never stopped pursuing it.",
+                        "background": "Academic",
+                        "languages": "Federation Standard and one alien language",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Born on a frontier colony or non-Federation world",
+                        "skills": ["Conn", "Security"],
+                        "narrative": "The frontier taught you self-reliance and resilience that the Academy refined.",
+                        "background": "Frontier",
+                        "languages": "Federation Standard and one regional language",
+                    },
+                    {
+                        "id": "c",
+                        "text": "From a family with a long Starfleet tradition",
+                        "skills": ["Command", "Engineering"],
+                        "narrative": "Starfleet is in your blood. You grew up knowing what you wanted to be.",
+                        "background": "Starfleet Legacy",
+                        "languages": "Federation Standard and one alien language",
+                    },
+                ],
+            },
+        ],
+    },
+    {
+        "name": "Shadow of the Demon Lord",
+        "publisher": "Schwalb Entertainment",
+        "classes": ["Warrior", "Priest", "Magician", "Rogue"],
+        "ability_scores": [
+            {"key": "str", "label": "Strength"},
+            {"key": "agi", "label": "Agility"},
+            {"key": "int", "label": "Intellect"},
+            {"key": "wil", "label": "Will"},
+            {"key": "per", "label": "Perception"},
+        ],
+        "standard_array": [12, 11, 10, 10, 9],
+        "point_buy_budget": 0,
+        "point_buy_min": 8,
+        "point_buy_max": 14,
+        "questions": [
+            {
+                "id": "q1",
+                "text": "Cultists are blocking the road, chanting over a strange symbol. What do you do?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Approach them carefully and try to talk",
+                        "skills": ["Persuasion", "Sense Magic"],
+                        "narrative": "Even the darkest souls can sometimes be reasoned with — or at least stalled.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Observe from a distance and try to understand what they're doing",
+                        "skills": ["Perception", "Sense Magic"],
+                        "narrative": "Knowledge of the dark arts is the only true protection against them.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Charge in and disrupt the ritual",
+                        "skills": ["Athletics", "Melee"],
+                        "narrative": "Every moment you wait, the darkness grows stronger.",
+                    },
+                ],
+            },
+            {
+                "id": "q2",
+                "text": "A wounded traveler begs for aid at your campfire. What do you do?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Help them without hesitation",
+                        "skills": ["Healing", "Persuasion"],
+                        "narrative": "In a world consumed by darkness, small acts of mercy matter.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Assess them carefully for signs of corruption first",
+                        "skills": ["Perception", "Sense Magic"],
+                        "narrative": "Not everything wounded is innocent — the Demon Lord's taint runs deep.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Send them on their way — you cannot afford the risk",
+                        "skills": ["Survival", "Stealth"],
+                        "narrative": "The world is ending. You cannot save everyone.",
+                    },
+                ],
+            },
+            {
+                "id": "q3",
+                "text": "You find an ancient tome in a ruined library. What do you do?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Study it carefully for useful knowledge",
+                        "skills": ["Arcana", "Lore"],
+                        "narrative": "Ancient knowledge may be the only hope against ancient evil.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Pass it to someone more qualified to assess it",
+                        "skills": ["Persuasion", "Insight"],
+                        "narrative": "Wisdom is knowing the limits of your own knowledge.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Destroy it — some knowledge is too dangerous",
+                        "skills": ["Determination", "Melee"],
+                        "narrative": "Not all that is old is worth preserving.",
+                    },
+                ],
+            },
+            {
+                "id": "q4",
+                "text": "A demon offers you power in exchange for a 'small' service. What do you do?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Negotiate — gather more information before deciding",
+                        "skills": ["Persuasion", "Sense Magic"],
+                        "narrative": "Even demons can be played — if you are careful.",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Refuse immediately and prepare to fight",
+                        "skills": ["Determination", "Melee"],
+                        "narrative": "There is no bargain with evil that does not cost your soul.",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Hear them out — the world may need you to be stronger",
+                        "skills": ["Arcana", "Sense Magic"],
+                        "narrative": "The Demon Lord must be stopped. Perhaps any means are justified.",
+                    },
+                ],
+            },
+            {
+                "id": "q5",
+                "text": "Which best describes your early life?",
+                "choices": [
+                    {
+                        "id": "a",
+                        "text": "Scholar or apprentice in a place of learning",
+                        "skills": ["Arcana", "Lore"],
+                        "narrative": "The books shaped your mind — and the darkness outside the library shaped your fear.",
+                        "background": "Scholar",
+                        "languages": "Two languages of your choice",
+                    },
+                    {
+                        "id": "b",
+                        "text": "Villager surviving at the edge of a crumbling empire",
+                        "skills": ["Survival", "Perception"],
+                        "narrative": "You know what it means to have everything taken from you by the dark.",
+                        "background": "Commoner",
+                        "languages": "The Common Tongue",
+                    },
+                    {
+                        "id": "c",
+                        "text": "Soldier or guard in service to a dying lord",
+                        "skills": ["Melee", "Athletics"],
+                        "narrative": "You served faithfully until there was nothing left to serve.",
+                        "background": "Soldier",
+                        "languages": "The Common Tongue and one other",
+                    },
+                ],
+            },
+        ],
+    },
+]
+
+
+@router.get("/wizard/config", summary="Get character creation wizard configuration")
+def get_wizard_config() -> dict:
+    """Return per-system configuration for the guided character creation wizard.
+
+    The response includes classes, ability score schemas, standard arrays,
+    point-buy parameters, and system-adapted questionnaire questions.
+    """
+    return {"systems": _WIZARD_SYSTEM_CONFIGS}
+
+
 @router.delete("/purge", summary="Delete characters for current user by name tokens")
 def purge_characters(name_like: str | None = None, current_user=Depends(get_current_user)):
     if not db.is_admin_user(current_user):

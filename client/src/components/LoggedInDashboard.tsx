@@ -7,6 +7,7 @@ import { apiFetch, buildApiUrl } from '../api'
 import { CharacterSummary } from './CharacterPanel'
 import ImportCharacterView from './dashboard/ImportCharacterView'
 import CreatingCharacterView from './dashboard/CreatingCharacterView'
+import CharacterWizardView from './dashboard/CharacterWizardView'
 import Beyond20View from './dashboard/Beyond20View'
 import CampaignSetupView from './dashboard/CampaignSetupView'
 import DashboardHome from './dashboard/DashboardHome'
@@ -2266,6 +2267,23 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             onGoToImportPdf={() => {
               setImportInitialMode('pdf')
               setView('import-character')
+            }}
+            onGoToWizard={() => {
+              setCharacterCreateOrigin('nav')
+              setView('character-wizard')
+            }}
+          />
+        )}
+
+        {view === 'character-wizard' && (
+          <CharacterWizardView
+            activeSessionId={activeSession}
+            onRefreshCharacters={fetchCharacters}
+            onAssignCharacterToSession={assignCharacterToSession}
+            onSetActiveCharacterId={setActiveCharacterId}
+            onDone={() => setView('view-characters')}
+            onGoToGameplay={() => {
+              setView('gameplay')
             }}
           />
         )}
