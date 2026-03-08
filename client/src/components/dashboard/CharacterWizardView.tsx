@@ -200,7 +200,7 @@ export default function CharacterWizardView({
   const pointBuySpent = useMemo<number>(() => {
     if (!systemConfig) return 0
     return Object.values(pointBuyValues).reduce((sum, v) => {
-      const isDnd5e = systemConfig.game_system === 'dnd5e'
+      const isDnd5e = systemConfig.name === 'D&D 5e'
       const baseCost = Math.max(0, v - systemConfig.point_buy_min)
       const cost = isDnd5e ? (DND5E_POINT_COSTS[v] ?? baseCost) : baseCost
       return sum + cost
@@ -302,6 +302,8 @@ export default function CharacterWizardView({
         const err = await res.json().catch(() => ({}))
         setSaveError(err?.detail ?? 'Failed to create character.')
       }
+    } catch (err) {
+      setSaveError('A network error occurred. Please try again.')
     } finally {
       setSaving(false)
     }
