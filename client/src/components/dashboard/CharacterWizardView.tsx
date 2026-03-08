@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { apiFetch } from '../../api'
 import PageHeader from '../ui/PageHeader'
+import './CharacterWizardView.css'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -310,61 +311,37 @@ export default function CharacterWizardView({
   }
 
   // ---------------------------------------------------------------------------
-  // Step renderers
+  // Step renderers — "Tome of Origins" parchment aesthetic
   // ---------------------------------------------------------------------------
 
+  const STEP_TRAIL: { key: WizardStep; label: string }[] = [
+    { key: 'system',       label: 'System' },
+    { key: 'basics',       label: 'Basics' },
+    { key: 'abilities',    label: 'Abilities' },
+    { key: 'mode',         label: 'Mode' },
+    { key: creationMode === 'helper' ? 'questionnaire' : 'manual',
+      label: creationMode === 'helper' ? 'Tome' : 'Details' },
+    { key: 'review',       label: 'Review' },
+  ]
+
   function renderStepIndicator() {
-    const steps: { key: WizardStep; label: string }[] = [
-      { key: 'system', label: 'System' },
-      { key: 'basics', label: 'Basics' },
-      { key: 'abilities', label: 'Abilities' },
-      { key: 'mode', label: 'Mode' },
-      { key: creationMode === 'helper' ? 'questionnaire' : 'manual', label: creationMode === 'helper' ? 'Questions' : 'Details' },
-      { key: 'review', label: 'Review' },
-    ]
+    const activeIdx = STEP_TRAIL.findIndex((s) => s.key === step)
     return (
-      <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
-        {steps.map(({ key, label }, i) => {
-          const isActive = step === key
-          const isDone =
-            steps.findIndex((s) => s.key === step) > i
+      <div className="wiz-step-trail" role="navigation" aria-label="Wizard steps">
+        {STEP_TRAIL.map(({ key, label }, i) => {
+          const isActive = i === activeIdx
+          const isDone   = i < activeIdx
           return (
-            <div
-              key={key}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                fontSize: 13,
-                color: isActive ? 'var(--color-accent, #E09A4F)' : isDone ? 'var(--color-text-muted, #8a7963)' : 'var(--color-text-muted, #8a7963)',
-                fontWeight: isActive ? 700 : 400,
-              }}
-            >
-              <span
-                style={{
-                  width: 22,
-                  height: 22,
-                  borderRadius: '50%',
-                  background: isActive
-                    ? 'var(--color-accent, #E09A4F)'
-                    : isDone
-                    ? 'var(--color-accent-faint, #5a4a35)'
-                    : 'var(--color-surface-3, #2e2822)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: isActive ? '#fff' : isDone ? 'var(--color-accent, #E09A4F)' : 'var(--color-text-muted, #8a7963)',
-                  fontSize: 11,
-                  fontWeight: 700,
-                  flexShrink: 0,
-                }}
-              >
-                {isDone ? '✓' : i + 1}
-              </span>
-              {label}
-              {i < steps.length - 1 && (
-                <span style={{ color: 'var(--color-text-muted, #8a7963)', marginLeft: 4 }}>›</span>
-              )}
+            <div key={key} className="wiz-trail-item">
+              <div className="wiz-trail-dot">
+                <div className={`wiz-trail-gem${isActive ? ' is-active' : isDone ? ' is-done' : ''}`}>
+                  {isDone ? '✓' : i + 1}
+                </div>
+                <span className={`wiz-trail-label${isActive ? ' is-active' : isDone ? ' is-done' : ''}`}>
+                  {label}
+                </span>
+              </div>
+              {i < STEP_TRAIL.length - 1 && <div className="wiz-trail-line" />}
             </div>
           )
         })}
@@ -372,143 +349,147 @@ export default function CharacterWizardView({
     )
   }
 
+  // ---- System ----
   function renderSystemStep() {
     return (
-      <div className="card card-pad stack" style={{ maxWidth: 640 }}>
-        <div style={{ fontWeight: 700, fontSize: 16 }}>Choose a game system</div>
-        <div className="muted" style={{ fontSize: 13 }}>
+      <div className="wiz-card" style={{ maxWidth: 600 }}>
+        <div className="wiz-card-eyebrow">Step I — Origin</div>
+        <h2 className="wiz-card-title">Choose a Game System</h2>
+        <p className="wiz-card-subtitle">
           Select the tabletop RPG system this character is built for. The wizard will adapt
-          classes, ability scores, and questions to match your choice.
-        </div>
-        {configError && <div className="muted" style={{ color: 'var(--color-error, #e05050)' }}>{configError}</div>}
-        <div style={{ display: 'grid', gap: 8 }}>
+          classes, ability scores, and lore questions to match your choice.
+        </p>
+        <div className="wiz-divider"><div className="wiz-divider-line"/><div className="wiz-divider-gem"/><div className="wiz-divider-line"/></div>
+
+        {configError && <div className="wiz-error">{configError}</div>}
+
+        <div className="wiz-system-grid wiz-gap-md">
           {systems.map((sys) => (
             <button
               key={sys.name}
               type="button"
-              className={`card card-pad${gameSystem === sys.name ? ' card-selected' : ''}`}
-              style={{
-                textAlign: 'left',
-                cursor: 'pointer',
-                border: gameSystem === sys.name
-                  ? '2px solid var(--color-accent, #E09A4F)'
-                  : '2px solid transparent',
-                background: gameSystem === sys.name
-                  ? 'var(--color-surface-2, #2a2420)'
-                  : undefined,
-              }}
+              className={`wiz-system-chip${gameSystem === sys.name ? ' is-selected' : ''}`}
               onClick={() => setGameSystem(sys.name)}
             >
-              <div style={{ fontWeight: 600 }}>{sys.name}</div>
-              <div className="muted" style={{ fontSize: 12 }}>{sys.publisher}</div>
+              <span className="wiz-chip-name">{sys.name}</span>
+              <span className="wiz-chip-pub">{sys.publisher}</span>
             </button>
           ))}
         </div>
-        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-          <button className="btn btn-quiet" type="button" onClick={onDone}>
-            Cancel
-          </button>
-          <button
-            className="btn"
-            type="button"
-            disabled={!gameSystem}
-            onClick={() => {
-              if (systemConfig) initAbilities(systemConfig)
-              setStep('basics')
-            }}
-          >
-            Next
-          </button>
+
+        <div className="wiz-nav">
+          <div className="wiz-nav-left">
+            <button className="wiz-btn-back" type="button" onClick={onDone}>Cancel</button>
+          </div>
+          <div className="wiz-nav-right">
+            <button
+              className="wiz-btn-next"
+              type="button"
+              disabled={!gameSystem}
+              onClick={() => { if (systemConfig) initAbilities(systemConfig); setStep('basics') }}
+            >
+              Continue →
+            </button>
+          </div>
         </div>
       </div>
     )
   }
 
+  // ---- Basics ----
   function renderBasicsStep() {
     const classes = systemConfig?.classes ?? []
     return (
-      <div className="card card-pad stack" style={{ maxWidth: 480 }}>
-        <div style={{ fontWeight: 700, fontSize: 16 }}>Character basics</div>
-        <div className="muted" style={{ fontSize: 13 }}>
-          Give your character a name, pick a class, and choose a starting level.
-        </div>
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>Name *</span>
+      <div className="wiz-card" style={{ maxWidth: 520 }}>
+        <div className="wiz-card-eyebrow">Step II — Identity</div>
+        <h2 className="wiz-card-title">Who Is Your Character?</h2>
+        <p className="wiz-card-subtitle">
+          Give your hero a name, choose their class, and set their starting level.
+        </p>
+        <div className="wiz-divider"><div className="wiz-divider-line"/><div className="wiz-divider-gem"/><div className="wiz-divider-line"/></div>
+
+        <div className="wiz-field">
+          <span className="wiz-label">Name *</span>
           <input
-            className="input"
-            placeholder="Enter character name"
+            className="wiz-input"
+            placeholder="Enter character name…"
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
-        </label>
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>Class</span>
+        </div>
+
+        <div className="wiz-field">
+          <span className="wiz-label">Class</span>
           {classes.length > 0 ? (
             <select
-              className="input"
+              className="wiz-select"
               value={characterClass}
               onChange={(e) => setCharacterClass(e.target.value)}
             >
               <option value="">— Select class —</option>
-              {classes.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
+              {classes.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           ) : (
             <input
-              className="input"
+              className="wiz-input"
               placeholder="Class (optional)"
               value={characterClass}
               onChange={(e) => setCharacterClass(e.target.value)}
             />
           )}
-        </label>
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>Level</span>
+        </div>
+
+        <div className="wiz-field">
+          <span className="wiz-label">Starting Level</span>
           <input
-            className="input"
+            className="wiz-input wiz-input-sm"
             type="number"
             min={1}
             max={20}
             value={level}
             onChange={(e) => setLevel(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
-            style={{ maxWidth: 100 }}
           />
-        </label>
-        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-          <button className="btn btn-quiet" type="button" onClick={() => setStep('system')}>
-            Back
-          </button>
-          <button
-            className="btn"
-            type="button"
-            disabled={!name.trim()}
-            onClick={() => setStep('abilities')}
-          >
-            Next
-          </button>
+        </div>
+
+        <div className="wiz-nav">
+          <div className="wiz-nav-left">
+            <button className="wiz-btn-back" type="button" onClick={() => setStep('system')}>← Back</button>
+          </div>
+          <div className="wiz-nav-right">
+            <button
+              className="wiz-btn-next"
+              type="button"
+              disabled={!name.trim()}
+              onClick={() => setStep('abilities')}
+            >
+              Continue →
+            </button>
+          </div>
         </div>
       </div>
     )
   }
 
+  // ---- Abilities ----
   function renderAbilitiesStep() {
     const config = systemConfig
     if (!config) return null
     const unassigned = config.standard_array.filter(
       (v) => !Object.values(arrayAssignments).includes(v),
     )
-
     return (
-      <div className="card card-pad stack" style={{ maxWidth: 600 }}>
-        <div style={{ fontWeight: 700, fontSize: 16 }}>Ability scores</div>
-        <div className="muted" style={{ fontSize: 13 }}>
-          Choose how to generate ability scores for your character.
-        </div>
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+      <div className="wiz-card" style={{ maxWidth: 580 }}>
+        <div className="wiz-card-eyebrow">Step III — Attributes</div>
+        <h2 className="wiz-card-title">Ability Scores</h2>
+        <p className="wiz-card-subtitle">
+          Every hero is defined by six core attributes. Choose how to set yours.
+        </p>
+        <div className="wiz-divider"><div className="wiz-divider-line"/><div className="wiz-divider-gem"/><div className="wiz-divider-line"/></div>
+
+        <div className="wiz-method-tabs wiz-gap-md">
           <button
             type="button"
-            className={`btn${abilityMethod === 'standard-array' ? '' : ' btn-secondary'}`}
+            className={`wiz-method-tab${abilityMethod === 'standard-array' ? ' is-active' : ''}`}
             onClick={() => setAbilityMethod('standard-array')}
           >
             Standard Array
@@ -516,7 +497,7 @@ export default function CharacterWizardView({
           {config.point_buy_budget > 0 && (
             <button
               type="button"
-              className={`btn${abilityMethod === 'point-buy' ? '' : ' btn-secondary'}`}
+              className={`wiz-method-tab${abilityMethod === 'point-buy' ? ' is-active' : ''}`}
               onClick={() => setAbilityMethod('point-buy')}
             >
               Point Buy
@@ -525,28 +506,25 @@ export default function CharacterWizardView({
         </div>
 
         {abilityMethod === 'standard-array' && (
-          <div>
-            <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
-              Assign each value from the standard array [{config.standard_array.join(', ')}] to an ability score.
-            </div>
-            <div style={{ display: 'grid', gap: 8 }}>
+          <>
+            <p className="wiz-hint">
+              Assign each value from [{config.standard_array.join(', ')}] to one ability.
+            </p>
+            <div className="wiz-ability-grid wiz-gap-md">
               {config.ability_scores.map((score) => (
-                <div key={score.key} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span style={{ minWidth: 120, fontSize: 13, fontWeight: 600 }}>{score.label}</span>
+                <div key={score.key} className="wiz-ability-row">
+                  <span className="wiz-ability-label">{score.label}</span>
                   <select
-                    className="input"
-                    style={{ maxWidth: 100 }}
+                    className="wiz-select"
+                    style={{ maxWidth: 110 }}
                     value={arrayAssignments[score.key] ?? ''}
                     onChange={(e) => {
                       const newVal = e.target.value === '' ? null : Number(e.target.value)
                       setArrayAssignments((prev) => {
                         const next = { ...prev }
-                        // De-assign other abilities that have this value
                         if (newVal != null) {
                           for (const k of Object.keys(next)) {
-                            if (next[k] === newVal && k !== score.key) {
-                              next[k] = null
-                            }
+                            if (next[k] === newVal && k !== score.key) next[k] = null
                           }
                         }
                         next[score.key] = newVal
@@ -556,10 +534,9 @@ export default function CharacterWizardView({
                   >
                     <option value="">— pick —</option>
                     {config.standard_array.map((v) => {
-                      const taken =
-                        Object.entries(arrayAssignments).some(
-                          ([k, vv]) => vv === v && k !== score.key,
-                        )
+                      const taken = Object.entries(arrayAssignments).some(
+                        ([k, vv]) => vv === v && k !== score.key,
+                      )
                       return (
                         <option key={v} value={v} disabled={taken}>
                           {v}{taken ? ' (taken)' : ''}
@@ -568,510 +545,446 @@ export default function CharacterWizardView({
                     })}
                   </select>
                   {arrayAssignments[score.key] != null && (
-                    <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-accent, #E09A4F)' }}>
-                      {arrayAssignments[score.key]}
-                    </span>
+                    <span className="wiz-ability-value">{arrayAssignments[score.key]}</span>
                   )}
                 </div>
               ))}
             </div>
             {unassigned.length > 0 && (
-              <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-                Unassigned values: [{unassigned.join(', ')}]
-              </div>
+              <p className="wiz-hint">Unassigned: [{unassigned.join(', ')}]</p>
             )}
-          </div>
+          </>
         )}
 
         {abilityMethod === 'point-buy' && (
-          <div>
-            <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
-              Spend {config.point_buy_budget} points. Each ability starts at {config.point_buy_min}.
-              Budget remaining: <strong>{pointBuyRemaining}</strong>
-            </div>
-            <div style={{ display: 'grid', gap: 8 }}>
+          <>
+            <p className="wiz-hint">
+              Budget: <strong>{config.point_buy_budget}</strong> points — remaining:{' '}
+              <strong>{pointBuyRemaining}</strong>. Each ability starts at {config.point_buy_min}.
+            </p>
+            <div className="wiz-ability-grid wiz-gap-md">
               {config.ability_scores.map((score) => {
                 const val = pointBuyValues[score.key] ?? config.point_buy_min
-                const canIncrease =
-                  val < config.point_buy_max && pointBuyRemaining > 0
+                const canIncrease = val < config.point_buy_max && pointBuyRemaining > 0
                 const canDecrease = val > config.point_buy_min
                 return (
-                  <div key={score.key} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <span style={{ minWidth: 120, fontSize: 13, fontWeight: 600 }}>
-                      {score.label}
-                    </span>
+                  <div key={score.key} className="wiz-ability-row">
+                    <span className="wiz-ability-label">{score.label}</span>
                     <button
                       type="button"
-                      className="btn btn-quiet"
-                      style={{ padding: '2px 8px', minWidth: 28 }}
+                      className="wiz-ability-btn"
                       disabled={!canDecrease}
-                      onClick={() =>
-                        setPointBuyValues((prev) => ({ ...prev, [score.key]: val - 1 }))
-                      }
-                    >
-                      −
-                    </button>
-                    <span style={{ minWidth: 28, textAlign: 'center', fontWeight: 700 }}>{val}</span>
+                      onClick={() => setPointBuyValues((prev) => ({ ...prev, [score.key]: val - 1 }))}
+                    >−</button>
+                    <span className="wiz-ability-value">{val}</span>
                     <button
                       type="button"
-                      className="btn btn-quiet"
-                      style={{ padding: '2px 8px', minWidth: 28 }}
+                      className="wiz-ability-btn"
                       disabled={!canIncrease}
-                      onClick={() =>
-                        setPointBuyValues((prev) => ({ ...prev, [score.key]: val + 1 }))
-                      }
-                    >
-                      +
-                    </button>
+                      onClick={() => setPointBuyValues((prev) => ({ ...prev, [score.key]: val + 1 }))}
+                    >+</button>
                   </div>
                 )
               })}
             </div>
-          </div>
+          </>
         )}
 
-        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-          <button className="btn btn-quiet" type="button" onClick={() => setStep('basics')}>
-            Back
-          </button>
-          <button
-            className="btn"
-            type="button"
-            onClick={() => setStep('mode')}
-          >
-            Next
-          </button>
+        <div className="wiz-nav">
+          <div className="wiz-nav-left">
+            <button className="wiz-btn-back" type="button" onClick={() => setStep('basics')}>← Back</button>
+          </div>
+          <div className="wiz-nav-right">
+            <button className="wiz-btn-next" type="button" onClick={() => setStep('mode')}>Continue →</button>
+          </div>
         </div>
       </div>
     )
   }
 
+  // ---- Mode ----
   function renderModeStep() {
     return (
-      <div className="card card-pad stack" style={{ maxWidth: 560 }}>
-        <div style={{ fontWeight: 700, fontSize: 16 }}>Choose your creation style</div>
-        <div className="muted" style={{ fontSize: 13 }}>
-          How would you like to flesh out your character's background, skills, and story?
-        </div>
-        <div style={{ display: 'grid', gap: 12 }}>
+      <div className="wiz-card" style={{ maxWidth: 560 }}>
+        <div className="wiz-card-eyebrow">Step IV — Path</div>
+        <h2 className="wiz-card-title">Choose Your Path</h2>
+        <p className="wiz-card-subtitle">
+          How would you like to shape your character's history, skills, and purpose?
+        </p>
+        <div className="wiz-divider"><div className="wiz-divider-line"/><div className="wiz-divider-gem"/><div className="wiz-divider-line"/></div>
+
+        <div className="wiz-mode-grid wiz-gap-md">
           <button
             type="button"
-            className="card card-pad"
-            style={{
-              textAlign: 'left',
-              cursor: 'pointer',
-              border: creationMode === 'helper'
-                ? '2px solid var(--color-accent, #E09A4F)'
-                : '2px solid transparent',
-            }}
+            className={`wiz-mode-card${creationMode === 'helper' ? ' is-selected' : ''}`}
             onClick={() => setCreationMode('helper')}
           >
-            <div style={{ fontWeight: 700 }}>🎲 Helper Mode — Guided Questionnaire</div>
-            <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
-              Answer a short series of scenario questions. Your choices will automatically
-              determine skill proficiencies, background, and weave a backstory for your character.
-            </div>
+            <span className="wiz-mode-title">📜 The Tome — Guided Questionnaire</span>
+            <span className="wiz-mode-desc">
+              Answer a short series of scenario questions drawn from the old book of origins.
+              Your choices weave a backstory and determine your proficiencies.
+            </span>
           </button>
           <button
             type="button"
-            className="card card-pad"
-            style={{
-              textAlign: 'left',
-              cursor: 'pointer',
-              border: creationMode === 'manual'
-                ? '2px solid var(--color-accent, #E09A4F)'
-                : '2px solid transparent',
-            }}
+            className={`wiz-mode-card${creationMode === 'manual' ? ' is-selected' : ''}`}
             onClick={() => setCreationMode('manual')}
           >
-            <div style={{ fontWeight: 700 }}>✏️ Manual Mode — Full Control</div>
-            <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
-              Enter all character details by hand. Choose exactly which skills, languages, and
-              background traits define your character.
-            </div>
+            <span className="wiz-mode-title">✒ Scribe's Quill — Full Manual Control</span>
+            <span className="wiz-mode-desc">
+              Write your character's history directly. Choose every skill, language, and
+              background trait by hand.
+            </span>
           </button>
         </div>
-        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-          <button className="btn btn-quiet" type="button" onClick={() => setStep('abilities')}>
-            Back
-          </button>
-          <button
-            className="btn"
-            type="button"
-            onClick={() => {
-              setAnswers({})
-              setQuestionIndex(0)
-              setStep(creationMode === 'helper' ? 'questionnaire' : 'manual')
-            }}
-          >
-            Next
-          </button>
+
+        <div className="wiz-nav">
+          <div className="wiz-nav-left">
+            <button className="wiz-btn-back" type="button" onClick={() => setStep('abilities')}>← Back</button>
+          </div>
+          <div className="wiz-nav-right">
+            <button
+              className="wiz-btn-next"
+              type="button"
+              onClick={() => {
+                setAnswers({})
+                setQuestionIndex(0)
+                setStep(creationMode === 'helper' ? 'questionnaire' : 'manual')
+              }}
+            >
+              Continue →
+            </button>
+          </div>
         </div>
       </div>
     )
   }
 
+  // ---- Questionnaire (full Tome treatment) ----
   function renderQuestionnaireStep() {
     const questions = systemConfig?.questions ?? []
     if (questions.length === 0) {
       return (
-        <div className="card card-pad stack" style={{ maxWidth: 560 }}>
-          <div className="muted">No questionnaire available for this system.</div>
-          <button className="btn" type="button" onClick={goToReview}>Continue to Review</button>
+        <div className="wiz-card" style={{ maxWidth: 520 }}>
+          <p className="wiz-card-subtitle">No questionnaire available for this system.</p>
+          <div className="wiz-nav">
+            <div className="wiz-nav-left" />
+            <div className="wiz-nav-right">
+              <button className="wiz-btn-reveal" type="button" onClick={goToReview}>Review Character</button>
+            </div>
+          </div>
         </div>
       )
     }
-    const question = questions[questionIndex]
+
+    const question      = questions[questionIndex]
     const totalQuestions = questions.length
-    const progress = Math.round(((questionIndex) / totalQuestions) * 100)
+    const progressPct  = Math.round(((questionIndex + 1) / totalQuestions) * 100)
+    const isLast       = questionIndex === totalQuestions - 1
+    const hasAnswer    = !!answers[question.id]
+
+    const chapterNumerals = ['I','II','III','IV','V','VI','VII','VIII','IX','X',
+                             'XI','XII','XIII','XIV','XV','XVI','XVII','XVIII','XIX','XX']
 
     return (
-      <div className="card card-pad stack" style={{ maxWidth: 600 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ fontWeight: 700, fontSize: 16 }}>Question {questionIndex + 1} of {totalQuestions}</div>
-          <div className="muted" style={{ fontSize: 12 }}>{progress}% complete</div>
+      <div className="wiz-card" style={{ maxWidth: 620 }}>
+        {/* Progress */}
+        <div className="wiz-progress-wrap">
+          <div className="wiz-progress-meta">
+            <span>Chapter {chapterNumerals[questionIndex] ?? questionIndex + 1}</span>
+            <span>{questionIndex + 1} / {totalQuestions}</span>
+          </div>
+          <div className="wiz-progress-track">
+            <div className="wiz-progress-fill" style={{ width: `${progressPct}%` }} />
+          </div>
+          <div className="wiz-chapter-dots">
+            {questions.map((_, i) => (
+              <div
+                key={i}
+                className={`wiz-chapter-dot${
+                  i === questionIndex ? ' is-active' : i < questionIndex || answers[questions[i].id] ? ' is-done' : ''
+                }`}
+              />
+            ))}
+          </div>
         </div>
-        <div
-          style={{
-            height: 4,
-            background: 'var(--color-surface-3, #2e2822)',
-            borderRadius: 2,
-            overflow: 'hidden',
-          }}
-        >
-          <div
-            style={{
-              height: '100%',
-              width: `${progress}%`,
-              background: 'var(--color-accent, #E09A4F)',
-              transition: 'width 0.3s ease',
-            }}
-          />
-        </div>
-        <div style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.5 }}>{question.text}</div>
-        <div style={{ display: 'grid', gap: 10 }}>
+
+        {/* Question */}
+        <div className="wiz-card-eyebrow">{question.id.replace(/_/g, ' ')}</div>
+        <div className="wiz-q-text">{question.text}</div>
+
+        {/* Options */}
+        <div className="wiz-options">
           {question.choices.map((choice) => {
             const selected = answers[question.id] === choice.id
             return (
               <button
                 key={choice.id}
                 type="button"
-                className="card card-pad"
-                style={{
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                  border: selected
-                    ? '2px solid var(--color-accent, #E09A4F)'
-                    : '2px solid transparent',
-                  background: selected ? 'var(--color-surface-2, #2a2420)' : undefined,
-                }}
-                onClick={() =>
-                  setAnswers((prev) => ({ ...prev, [question.id]: choice.id }))
-                }
+                className={`wiz-option${selected ? ' is-selected' : ''}`}
+                onClick={() => setAnswers((prev) => ({ ...prev, [question.id]: choice.id }))}
               >
-                <div style={{ fontWeight: selected ? 700 : 400 }}>{choice.text}</div>
-                {selected && (
-                  <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-                    Skills: {choice.skills.join(', ')}
-                  </div>
-                )}
+                <div style={{ flex: 1 }}>
+                  <div className="wiz-option-title">{choice.text}</div>
+                  {choice.narrative && (
+                    <div className="wiz-option-desc">{choice.narrative}</div>
+                  )}
+                  {selected && choice.skills.length > 0 && (
+                    <div className="wiz-option-skills">
+                      ⚔ Skills: {choice.skills.join(', ')}
+                    </div>
+                  )}
+                </div>
               </button>
             )
           })}
         </div>
-        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-          <button
-            className="btn btn-quiet"
-            type="button"
-            onClick={() => {
-              if (questionIndex === 0) {
-                setStep('mode')
-              } else {
-                setQuestionIndex((i) => i - 1)
-              }
-            }}
-          >
-            Back
-          </button>
-          {questionIndex < totalQuestions - 1 ? (
+
+        {/* Nav */}
+        <div className="wiz-nav">
+          <div className="wiz-nav-left">
             <button
-              className="btn"
+              className="wiz-btn-back"
               type="button"
-              disabled={!answers[question.id]}
-              onClick={() => setQuestionIndex((i) => i + 1)}
+              onClick={() => {
+                if (questionIndex === 0) setStep('mode')
+                else setQuestionIndex((i) => i - 1)
+              }}
             >
-              Next Question
+              ← Back
             </button>
-          ) : (
-            <button
-              className="btn"
-              type="button"
-              disabled={!answers[question.id]}
-              onClick={goToReview}
-            >
-              Review Character
-            </button>
-          )}
+          </div>
+          <div className="wiz-nav-right">
+            {isLast ? (
+              <button
+                className={hasAnswer ? 'wiz-btn-reveal' : 'wiz-btn-next'}
+                type="button"
+                disabled={!hasAnswer}
+                onClick={goToReview}
+              >
+                ✦ Review Character ✦
+              </button>
+            ) : (
+              <button
+                className="wiz-btn-next"
+                type="button"
+                disabled={!hasAnswer}
+                onClick={() => setQuestionIndex((i) => i + 1)}
+              >
+                Continue →
+              </button>
+            )}
+          </div>
         </div>
       </div>
     )
   }
 
+  // ---- Manual ----
   function renderManualStep() {
     return (
-      <div className="card card-pad stack" style={{ maxWidth: 560 }}>
-        <div style={{ fontWeight: 700, fontSize: 16 }}>Character details</div>
-        <div className="muted" style={{ fontSize: 13 }}>
-          Fill in your character's background, proficiencies, and story.
-        </div>
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>Skill Proficiencies</span>
+      <div className="wiz-card" style={{ maxWidth: 560 }}>
+        <div className="wiz-card-eyebrow">Step V — Chronicle</div>
+        <h2 className="wiz-card-title">Write Your Chronicle</h2>
+        <p className="wiz-card-subtitle">
+          Fill in the details of your character's history, training, and tongue.
+        </p>
+        <div className="wiz-divider"><div className="wiz-divider-line"/><div className="wiz-divider-gem"/><div className="wiz-divider-line"/></div>
+
+        <div className="wiz-field">
+          <span className="wiz-label">Skill Proficiencies</span>
           <input
-            className="input"
+            className="wiz-input"
             placeholder="e.g. Stealth, Persuasion, Athletics"
             value={manualSkills}
             onChange={(e) => setManualSkills(e.target.value)}
           />
-          <span className="muted" style={{ fontSize: 11 }}>Comma-separated list of skills.</span>
-        </label>
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>Background</span>
+          <span className="wiz-label-hint">Comma-separated list of skills.</span>
+        </div>
+
+        <div className="wiz-field">
+          <span className="wiz-label">Background</span>
           <input
-            className="input"
+            className="wiz-input"
             placeholder="e.g. Soldier, Sage, Folk Hero"
             value={manualBackground}
             onChange={(e) => setManualBackground(e.target.value)}
           />
-        </label>
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>Languages</span>
+        </div>
+
+        <div className="wiz-field">
+          <span className="wiz-label">Languages</span>
           <input
-            className="input"
+            className="wiz-input"
             placeholder="e.g. Common, Elvish"
             value={manualLanguages}
             onChange={(e) => setManualLanguages(e.target.value)}
           />
-        </label>
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>Starting Equipment</span>
+        </div>
+
+        <div className="wiz-field">
+          <span className="wiz-label">Starting Equipment</span>
           <input
-            className="input"
+            className="wiz-input"
             placeholder="e.g. Longsword, chain mail, explorer's pack"
             value={manualEquipment}
             onChange={(e) => setManualEquipment(e.target.value)}
           />
-        </label>
-        <label style={{ display: 'grid', gap: 4 }}>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>Backstory</span>
+        </div>
+
+        <div className="wiz-field">
+          <span className="wiz-label">Backstory</span>
           <textarea
-            className="input"
+            className="wiz-textarea"
             placeholder="Describe your character's history, motivations, and personality…"
             value={manualBackstory}
             onChange={(e) => setManualBackstory(e.target.value)}
-            rows={4}
-            style={{ resize: 'vertical' }}
+            rows={5}
           />
-        </label>
-        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-          <button className="btn btn-quiet" type="button" onClick={() => setStep('mode')}>
-            Back
-          </button>
-          <button className="btn" type="button" onClick={goToReview}>
-            Review Character
-          </button>
+        </div>
+
+        <div className="wiz-nav">
+          <div className="wiz-nav-left">
+            <button className="wiz-btn-back" type="button" onClick={() => setStep('mode')}>← Back</button>
+          </div>
+          <div className="wiz-nav-right">
+            <button className="wiz-btn-reveal" type="button" onClick={goToReview}>
+              ✦ Review Character ✦
+            </button>
+          </div>
         </div>
       </div>
     )
   }
 
+  // ---- Review ----
   function renderReviewStep() {
     const abilityScores = systemConfig?.ability_scores ?? []
     return (
-      <div className="card card-pad stack" style={{ maxWidth: 640 }}>
-        <div style={{ fontWeight: 700, fontSize: 16 }}>Review your character</div>
-        <div className="muted" style={{ fontSize: 13 }}>
-          Make any final adjustments before confirming. All fields are editable.
+      <div className="wiz-card" style={{ maxWidth: 640 }}>
+        <div className="wiz-card-eyebrow">Step VI — Seal of Fate</div>
+        <h2 className="wiz-card-title">Review Your Character</h2>
+        <p className="wiz-card-subtitle">
+          All fields are editable. Make any final adjustments before your fate is sealed.
+        </p>
+        <div className="wiz-divider"><div className="wiz-divider-line"/><div className="wiz-divider-gem"/><div className="wiz-divider-line"/></div>
+
+        {saveError && <div className="wiz-error">{saveError}</div>}
+
+        {/* Identity */}
+        <div className="wiz-review-section wiz-gap-md">
+          <div className="wiz-review-section-title">✦ Identity</div>
+          <div className="wiz-review-2col">
+            <div className="wiz-field">
+              <span className="wiz-label">Name</span>
+              <input className="wiz-input" value={reviewName} onChange={(e) => setReviewName(e.target.value)} />
+            </div>
+            <div className="wiz-field">
+              <span className="wiz-label">Class</span>
+              <input className="wiz-input" value={reviewClass} onChange={(e) => setReviewClass(e.target.value)} />
+            </div>
+            <div className="wiz-field">
+              <span className="wiz-label">Level</span>
+              <input
+                className="wiz-input wiz-input-sm"
+                type="number" min={1} max={20}
+                value={reviewLevel}
+                onChange={(e) => setReviewLevel(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
+              />
+            </div>
+            <div className="wiz-field">
+              <span className="wiz-label">System</span>
+              <input className="wiz-input" value={gameSystem} readOnly />
+            </div>
+          </div>
         </div>
 
-        {saveError && (
-          <div style={{ color: 'var(--color-error, #e05050)', fontSize: 13 }}>{saveError}</div>
+        {/* Ability Scores */}
+        {abilityScores.length > 0 && (
+          <div className="wiz-review-section wiz-gap-md">
+            <div className="wiz-review-section-title">✦ Ability Scores</div>
+            <div className="wiz-ability-chips">
+              {abilityScores.map((score) => {
+                const val = finalAbilityScores[score.key]
+                return (
+                  <div key={score.key} className="wiz-ability-chip">
+                    <div className="wiz-ability-chip-key">{score.label.substring(0, 3).toUpperCase()}</div>
+                    <div className={`wiz-ability-chip-val${val == null ? ' is-empty' : ''}`}>
+                      {val != null ? val : '—'}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            {Object.values(finalAbilityScores).length < abilityScores.length && (
+              <p className="wiz-hint">⚠ Some ability scores are unassigned — you can go back to assign them.</p>
+            )}
+          </div>
         )}
 
-        <div style={{ display: 'grid', gap: 16 }}>
-          {/* Identity */}
-          <div className="card card-pad stack" style={{ gap: 8 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, borderBottom: '1px solid var(--color-border, #3a3025)', paddingBottom: 6 }}>
-              Identity
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <label style={{ display: 'grid', gap: 4 }}>
-                <span style={{ fontSize: 12, fontWeight: 600 }}>Name</span>
-                <input
-                  className="input"
-                  value={reviewName}
-                  onChange={(e) => setReviewName(e.target.value)}
-                />
-              </label>
-              <label style={{ display: 'grid', gap: 4 }}>
-                <span style={{ fontSize: 12, fontWeight: 600 }}>Class</span>
-                <input
-                  className="input"
-                  value={reviewClass}
-                  onChange={(e) => setReviewClass(e.target.value)}
-                />
-              </label>
-              <label style={{ display: 'grid', gap: 4 }}>
-                <span style={{ fontSize: 12, fontWeight: 600 }}>Level</span>
-                <input
-                  className="input"
-                  type="number"
-                  min={1}
-                  max={20}
-                  value={reviewLevel}
-                  onChange={(e) =>
-                    setReviewLevel(Math.max(1, Math.min(20, Number(e.target.value) || 1)))
-                  }
-                  style={{ maxWidth: 80 }}
-                />
-              </label>
-              <label style={{ display: 'grid', gap: 4 }}>
-                <span style={{ fontSize: 12, fontWeight: 600 }}>System</span>
-                <input className="input" value={gameSystem} readOnly />
-              </label>
-            </div>
+        {/* Traits */}
+        <div className="wiz-review-section wiz-gap-md">
+          <div className="wiz-review-section-title">✦ Traits &amp; Proficiencies</div>
+          <div className="wiz-field">
+            <span className="wiz-label">Skill Proficiencies</span>
+            <input className="wiz-input" value={reviewSkills} onChange={(e) => setReviewSkills(e.target.value)} placeholder="e.g. Stealth, Persuasion" />
           </div>
-
-          {/* Ability Scores */}
-          {abilityScores.length > 0 && (
-            <div className="card card-pad stack" style={{ gap: 8 }}>
-              <div style={{ fontWeight: 600, fontSize: 14, borderBottom: '1px solid var(--color-border, #3a3025)', paddingBottom: 6 }}>
-                Ability Scores
-              </div>
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
-                  gap: 8,
-                }}
-              >
-                {abilityScores.map((score) => {
-                  const val = finalAbilityScores[score.key]
-                  return (
-                    <div
-                      key={score.key}
-                      style={{
-                        textAlign: 'center',
-                        padding: '8px 4px',
-                        background: 'var(--color-surface-3, #2e2822)',
-                        borderRadius: 6,
-                      }}
-                    >
-                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted, #8a7963)' }}>
-                        {score.label.substring(0, 3).toUpperCase()}
-                      </div>
-                      <div style={{ fontSize: 20, fontWeight: 700, color: val != null ? 'var(--color-accent, #E09A4F)' : 'var(--color-text-muted, #8a7963)' }}>
-                        {val != null ? val : '—'}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-              {Object.values(finalAbilityScores).length < abilityScores.length && (
-                <div className="muted" style={{ fontSize: 12 }}>
-                  ⚠ Some ability scores are unassigned. You can go back to assign them or continue without.
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Character traits */}
-          <div className="card card-pad stack" style={{ gap: 8 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, borderBottom: '1px solid var(--color-border, #3a3025)', paddingBottom: 6 }}>
-              Traits &amp; Proficiencies
-            </div>
-            <label style={{ display: 'grid', gap: 4 }}>
-              <span style={{ fontSize: 12, fontWeight: 600 }}>Skill Proficiencies</span>
-              <input
-                className="input"
-                value={reviewSkills}
-                onChange={(e) => setReviewSkills(e.target.value)}
-                placeholder="e.g. Stealth, Persuasion"
-              />
-            </label>
-            <label style={{ display: 'grid', gap: 4 }}>
-              <span style={{ fontSize: 12, fontWeight: 600 }}>Background</span>
-              <input
-                className="input"
-                value={reviewBackground}
-                onChange={(e) => setReviewBackground(e.target.value)}
-                placeholder="e.g. Soldier"
-              />
-            </label>
-            <label style={{ display: 'grid', gap: 4 }}>
-              <span style={{ fontSize: 12, fontWeight: 600 }}>Languages</span>
-              <input
-                className="input"
-                value={reviewLanguages}
-                onChange={(e) => setReviewLanguages(e.target.value)}
-                placeholder="e.g. Common, Elvish"
-              />
-            </label>
-            <label style={{ display: 'grid', gap: 4 }}>
-              <span style={{ fontSize: 12, fontWeight: 600 }}>Starting Equipment</span>
-              <input
-                className="input"
-                value={reviewEquipment}
-                onChange={(e) => setReviewEquipment(e.target.value)}
-                placeholder="e.g. Longsword, chain mail"
-              />
-            </label>
+          <div className="wiz-field">
+            <span className="wiz-label">Background</span>
+            <input className="wiz-input" value={reviewBackground} onChange={(e) => setReviewBackground(e.target.value)} placeholder="e.g. Soldier" />
           </div>
-
-          {/* Backstory */}
-          <div className="card card-pad stack" style={{ gap: 8 }}>
-            <div style={{ fontWeight: 600, fontSize: 14, borderBottom: '1px solid var(--color-border, #3a3025)', paddingBottom: 6 }}>
-              Backstory
-            </div>
-            <label style={{ display: 'grid', gap: 4 }}>
-              <span style={{ fontSize: 12, fontWeight: 600 }}>Character backstory</span>
-              <textarea
-                className="input"
-                value={reviewBackstory}
-                onChange={(e) => setReviewBackstory(e.target.value)}
-                placeholder="Your character's history and motivations…"
-                rows={4}
-                style={{ resize: 'vertical' }}
-              />
-            </label>
+          <div className="wiz-field">
+            <span className="wiz-label">Languages</span>
+            <input className="wiz-input" value={reviewLanguages} onChange={(e) => setReviewLanguages(e.target.value)} placeholder="e.g. Common, Elvish" />
+          </div>
+          <div className="wiz-field">
+            <span className="wiz-label">Starting Equipment</span>
+            <input className="wiz-input" value={reviewEquipment} onChange={(e) => setReviewEquipment(e.target.value)} placeholder="e.g. Longsword, chain mail" />
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-          <button
-            className="btn btn-quiet"
-            type="button"
-            onClick={() =>
-              setStep(creationMode === 'helper' ? 'questionnaire' : 'manual')
-            }
-          >
-            Back
-          </button>
-          <button
-            className="btn btn-secondary"
-            type="button"
-            disabled={saving || !reviewName.trim()}
-            onClick={() => save(false)}
-          >
-            {saving ? 'Saving…' : 'Confirm'}
-          </button>
-          <button
-            className="btn"
-            type="button"
-            disabled={saving || !reviewName.trim()}
-            onClick={() => save(true)}
-          >
-            {saving ? 'Saving…' : 'Confirm &amp; Play'}
-          </button>
+        {/* Backstory */}
+        <div className="wiz-review-section wiz-gap-md">
+          <div className="wiz-review-section-title">✦ Backstory</div>
+          <div className="wiz-field">
+            <textarea
+              className="wiz-textarea"
+              value={reviewBackstory}
+              onChange={(e) => setReviewBackstory(e.target.value)}
+              placeholder="Your character's history and motivations…"
+              rows={5}
+            />
+          </div>
+        </div>
+
+        <div className="wiz-nav">
+          <div className="wiz-nav-left">
+            <button
+              className="wiz-btn-back"
+              type="button"
+              onClick={() => setStep(creationMode === 'helper' ? 'questionnaire' : 'manual')}
+            >
+              ← Back
+            </button>
+          </div>
+          <div className="wiz-nav-right">
+            <button
+              className="wiz-btn-secondary"
+              type="button"
+              disabled={saving || !reviewName.trim()}
+              onClick={() => save(false)}
+            >
+              {saving ? 'Saving…' : 'Confirm'}
+            </button>
+            <button
+              className="wiz-btn-reveal"
+              type="button"
+              disabled={saving || !reviewName.trim()}
+              onClick={() => save(true)}
+            >
+              {saving ? 'Saving…' : '✦ Confirm & Play ✦'}
+            </button>
+          </div>
         </div>
       </div>
     )
@@ -1081,10 +994,10 @@ export default function CharacterWizardView({
   // Render
   // ---------------------------------------------------------------------------
   return (
-    <section className="dashboard-panel stack">
+    <section className="dashboard-panel stack wiz-root">
       <PageHeader
         title="Create Character"
-        subtitle={`Guided character creation wizard${gameSystem ? ` — ${gameSystem}` : ''}`}
+        subtitle={`Guided character creation${gameSystem ? ` — ${gameSystem}` : ''}`}
         actions={
           <button className="btn btn-quiet" type="button" onClick={onDone}>
             Cancel
@@ -1092,13 +1005,13 @@ export default function CharacterWizardView({
         }
       />
       {renderStepIndicator()}
-      {step === 'system' && renderSystemStep()}
-      {step === 'basics' && renderBasicsStep()}
-      {step === 'abilities' && renderAbilitiesStep()}
-      {step === 'mode' && renderModeStep()}
+      {step === 'system'        && renderSystemStep()}
+      {step === 'basics'        && renderBasicsStep()}
+      {step === 'abilities'     && renderAbilitiesStep()}
+      {step === 'mode'          && renderModeStep()}
       {step === 'questionnaire' && renderQuestionnaireStep()}
-      {step === 'manual' && renderManualStep()}
-      {step === 'review' && renderReviewStep()}
+      {step === 'manual'        && renderManualStep()}
+      {step === 'review'        && renderReviewStep()}
     </section>
   )
 }

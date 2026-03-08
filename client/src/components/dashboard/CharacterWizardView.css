@@ -1,0 +1,870 @@
+/* ============================================================
+   CharacterWizardView.css — "Tome of Origins" parchment aesthetic
+   All classes are scoped under .wiz-* to avoid bleed into the rest of the app.
+   ============================================================ */
+
+/* ---- Colour tokens (local only) ---- */
+.wiz-root {
+  --wiz-parchment:      #f4e9c9;
+  --wiz-parchment-mid:  #ecdcb0;
+  --wiz-parchment-dark: #e0cc95;
+  --wiz-ink:            #2a1a0a;
+  --wiz-ink-faded:      #5c3d1e;
+  --wiz-gold:           #c8941a;
+  --wiz-gold-light:     #f0c040;
+  --wiz-blood:          #8b1a1a;
+  --wiz-blood-hover:    #a02020;
+  --wiz-shadow:         rgba(0, 0, 0, 0.75);
+  --wiz-card-border:    rgba(200, 148, 26, 0.30);
+  --wiz-card-glow:      rgba(200, 148, 26, 0.12);
+  --wiz-radius:         2px;
+  --wiz-transition:     0.2s ease;
+}
+
+/* ---- Section wrapper ---- */
+.wiz-root {
+  width: 100%;
+}
+
+/* ---- Step indicator (dot trail) ---- */
+.wiz-step-trail {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-bottom: 28px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.wiz-trail-item {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 0;
+}
+
+.wiz-trail-dot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+.wiz-trail-gem {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: 'Cinzel', serif;
+  border: 2px solid rgba(200, 148, 26, 0.25);
+  background: rgba(200, 148, 26, 0.08);
+  color: rgba(200, 148, 26, 0.5);
+  transition: all var(--wiz-transition);
+  flex-shrink: 0;
+}
+
+.wiz-trail-gem.is-done {
+  border-color: var(--wiz-gold);
+  background: rgba(200, 148, 26, 0.2);
+  color: var(--wiz-gold);
+}
+
+.wiz-trail-gem.is-active {
+  border-color: var(--wiz-gold-light);
+  background: var(--wiz-gold);
+  color: #fff;
+  box-shadow: 0 0 12px rgba(200, 148, 26, 0.6);
+}
+
+.wiz-trail-label {
+  font-family: 'Cinzel', serif;
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: rgba(200, 148, 26, 0.45);
+  transition: color var(--wiz-transition);
+  white-space: nowrap;
+}
+
+.wiz-trail-label.is-active { color: var(--wiz-gold-light); }
+.wiz-trail-label.is-done   { color: var(--wiz-gold); }
+
+.wiz-trail-line {
+  flex: 1;
+  min-width: 20px;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(200,148,26,0.2), rgba(200,148,26,0.2));
+  margin: 0 6px;
+  margin-bottom: 18px; /* align with gem centres */
+}
+
+/* ---- Parchment card (base) ---- */
+.wiz-card {
+  background: linear-gradient(160deg, #fdf3d0 0%, var(--wiz-parchment) 35%, #e8d5a3 100%);
+  border-radius: var(--wiz-radius);
+  padding: 40px 44px;
+  position: relative;
+  box-shadow:
+    0 0 0 1px var(--wiz-card-border),
+    0 0 0 4px var(--wiz-card-glow),
+    0 24px 64px var(--wiz-shadow);
+  max-width: 640px;
+  animation: wizCardIn 0.35s ease both;
+  color: var(--wiz-ink);
+}
+
+@keyframes wizCardIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.99); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.wiz-card::before {
+  content: '✦';
+  position: absolute;
+  top: 14px;
+  left: 18px;
+  color: var(--wiz-gold);
+  font-size: 11px;
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.wiz-card::after {
+  content: '✦';
+  position: absolute;
+  bottom: 14px;
+  right: 18px;
+  color: var(--wiz-gold);
+  font-size: 11px;
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* ---- Card typography ---- */
+.wiz-card-eyebrow {
+  font-family: 'Cinzel', serif;
+  font-size: 10px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: var(--wiz-blood);
+  margin-bottom: 6px;
+  opacity: 0.85;
+}
+
+.wiz-card-title {
+  font-family: 'Cinzel Decorative', serif;
+  font-size: clamp(18px, 3vw, 26px);
+  color: var(--wiz-ink);
+  line-height: 1.25;
+  margin-bottom: 4px;
+}
+
+.wiz-card-subtitle {
+  font-family: 'IM Fell English', serif;
+  font-style: italic;
+  font-size: 14px;
+  color: var(--wiz-ink-faded);
+  margin-bottom: 20px;
+  line-height: 1.6;
+}
+
+.wiz-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0;
+}
+
+.wiz-divider-line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--wiz-gold), transparent);
+  opacity: 0.3;
+}
+
+.wiz-divider-gem {
+  width: 7px;
+  height: 7px;
+  background: var(--wiz-gold);
+  transform: rotate(45deg);
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+/* ---- Question-specific ---- */
+.wiz-q-scene {
+  font-family: 'IM Fell English', serif;
+  font-style: italic;
+  font-size: 13px;
+  color: var(--wiz-ink-faded);
+  line-height: 1.7;
+  padding: 10px 14px;
+  border-left: 2px solid rgba(139, 26, 26, 0.35);
+  background: rgba(42, 26, 10, 0.05);
+  margin-bottom: 16px;
+  border-radius: 0 var(--wiz-radius) var(--wiz-radius) 0;
+}
+
+.wiz-q-text {
+  font-family: 'Cinzel', serif;
+  font-size: clamp(15px, 2.2vw, 19px);
+  color: var(--wiz-ink);
+  line-height: 1.5;
+  font-weight: 600;
+  margin-bottom: 24px;
+}
+
+/* ---- Progress bar (questionnaire) ---- */
+.wiz-progress-wrap {
+  margin-bottom: 10px;
+}
+
+.wiz-progress-meta {
+  display: flex;
+  justify-content: space-between;
+  font-family: 'Cinzel', serif;
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--wiz-gold);
+  opacity: 0.75;
+  margin-bottom: 7px;
+}
+
+.wiz-progress-track {
+  height: 3px;
+  background: rgba(200, 148, 26, 0.15);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.wiz-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--wiz-gold), var(--wiz-gold-light));
+  border-radius: 2px;
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 6px var(--wiz-gold);
+}
+
+/* Chapter dots (questionnaire dots row) */
+.wiz-chapter-dots {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.wiz-chapter-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(200, 148, 26, 0.15);
+  border: 1px solid rgba(200, 148, 26, 0.25);
+  transition: all 0.3s ease;
+  flex-shrink: 0;
+}
+
+.wiz-chapter-dot.is-done {
+  background: var(--wiz-gold);
+  box-shadow: 0 0 6px var(--wiz-gold);
+  border-color: var(--wiz-gold);
+}
+
+.wiz-chapter-dot.is-active {
+  background: var(--wiz-gold-light);
+  box-shadow: 0 0 10px var(--wiz-gold-light);
+  border-color: var(--wiz-gold-light);
+  transform: scale(1.5);
+}
+
+/* ---- Option buttons ---- */
+.wiz-options {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-bottom: 24px;
+}
+
+.wiz-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 13px 16px;
+  cursor: pointer;
+  border: 1px solid rgba(42, 26, 10, 0.14);
+  border-radius: var(--wiz-radius);
+  background: rgba(244, 233, 201, 0.55);
+  transition: all var(--wiz-transition);
+  text-align: left;
+  width: 100%;
+  outline: none;
+  position: relative;
+  overflow: hidden;
+}
+
+.wiz-option::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 3px;
+  height: 100%;
+  background: var(--wiz-gold);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--wiz-transition);
+}
+
+.wiz-option:hover {
+  border-color: rgba(200, 148, 26, 0.45);
+  background: rgba(244, 233, 201, 0.85);
+  transform: translateX(3px);
+  box-shadow: -3px 0 0 var(--wiz-gold), 2px 2px 8px rgba(0,0,0,0.08);
+}
+
+.wiz-option:hover::before { transform: scaleX(1); }
+
+.wiz-option.is-selected {
+  border-color: var(--wiz-gold);
+  background: rgba(200, 148, 26, 0.10);
+  transform: translateX(3px);
+  box-shadow: -3px 0 0 var(--wiz-gold), 0 2px 12px rgba(200, 148, 26, 0.18);
+}
+
+.wiz-option.is-selected::before { transform: scaleX(1); }
+
+.wiz-option-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+  width: 28px;
+  text-align: center;
+  margin-top: 2px;
+}
+
+.wiz-option-title {
+  font-family: 'Cinzel', serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--wiz-ink);
+  margin-bottom: 3px;
+}
+
+.wiz-option-desc {
+  font-family: 'IM Fell English', serif;
+  font-style: italic;
+  font-size: 13px;
+  color: var(--wiz-ink-faded);
+  line-height: 1.55;
+}
+
+/* Skill reveal (shown when selected) */
+.wiz-option-skills {
+  font-family: 'Cinzel', serif;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--wiz-blood);
+  margin-top: 6px;
+  opacity: 0.8;
+}
+
+/* ---- System-select chips ---- */
+.wiz-system-grid {
+  display: grid;
+  gap: 9px;
+  margin-bottom: 24px;
+}
+
+.wiz-system-chip {
+  display: flex;
+  flex-direction: column;
+  padding: 14px 18px;
+  cursor: pointer;
+  border: 1px solid rgba(42, 26, 10, 0.14);
+  border-radius: var(--wiz-radius);
+  background: rgba(244, 233, 201, 0.55);
+  transition: all var(--wiz-transition);
+  text-align: left;
+  outline: none;
+}
+
+.wiz-system-chip:hover {
+  border-color: rgba(200, 148, 26, 0.45);
+  background: rgba(244, 233, 201, 0.85);
+  transform: translateX(3px);
+  box-shadow: -3px 0 0 var(--wiz-gold);
+}
+
+.wiz-system-chip.is-selected {
+  border-color: var(--wiz-gold);
+  background: rgba(200, 148, 26, 0.10);
+  transform: translateX(3px);
+  box-shadow: -3px 0 0 var(--wiz-gold);
+}
+
+.wiz-chip-name {
+  font-family: 'Cinzel', serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--wiz-ink);
+  margin-bottom: 3px;
+}
+
+.wiz-chip-pub {
+  font-family: 'IM Fell English', serif;
+  font-style: italic;
+  font-size: 13px;
+  color: var(--wiz-ink-faded);
+}
+
+/* ---- Mode cards (helper/manual selection) ---- */
+.wiz-mode-grid {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.wiz-mode-card {
+  display: flex;
+  flex-direction: column;
+  padding: 16px 20px;
+  cursor: pointer;
+  border: 1px solid rgba(42, 26, 10, 0.14);
+  border-radius: var(--wiz-radius);
+  background: rgba(244, 233, 201, 0.55);
+  transition: all var(--wiz-transition);
+  text-align: left;
+  outline: none;
+}
+
+.wiz-mode-card:hover {
+  border-color: rgba(200, 148, 26, 0.45);
+  background: rgba(244, 233, 201, 0.85);
+  box-shadow: -3px 0 0 var(--wiz-gold);
+}
+
+.wiz-mode-card.is-selected {
+  border-color: var(--wiz-gold);
+  background: rgba(200, 148, 26, 0.10);
+  box-shadow: -3px 0 0 var(--wiz-gold), 0 2px 12px rgba(200, 148, 26, 0.18);
+}
+
+.wiz-mode-title {
+  font-family: 'Cinzel', serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--wiz-ink);
+  margin-bottom: 5px;
+}
+
+.wiz-mode-desc {
+  font-family: 'IM Fell English', serif;
+  font-style: italic;
+  font-size: 13px;
+  color: var(--wiz-ink-faded);
+  line-height: 1.6;
+}
+
+/* ---- Form fields on parchment ---- */
+.wiz-field {
+  display: grid;
+  gap: 5px;
+  margin-bottom: 14px;
+}
+
+.wiz-label {
+  font-family: 'Cinzel', serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--wiz-ink-faded);
+}
+
+.wiz-label-hint {
+  font-family: 'IM Fell English', serif;
+  font-style: italic;
+  font-size: 11px;
+  color: var(--wiz-ink-faded);
+  opacity: 0.7;
+}
+
+.wiz-input,
+.wiz-select,
+.wiz-textarea {
+  font-family: 'IM Fell English', serif;
+  font-size: 14px;
+  color: var(--wiz-ink);
+  background: rgba(244, 233, 201, 0.7);
+  border: 1px solid rgba(42, 26, 10, 0.2);
+  border-radius: var(--wiz-radius);
+  padding: 9px 12px;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color var(--wiz-transition), box-shadow var(--wiz-transition);
+  box-shadow: inset 0 1px 3px rgba(42,26,10,0.08);
+}
+
+.wiz-input:focus,
+.wiz-select:focus,
+.wiz-textarea:focus {
+  outline: none;
+  border-color: var(--wiz-gold);
+  box-shadow: inset 0 1px 3px rgba(42,26,10,0.08), 0 0 0 3px rgba(200,148,26,0.15);
+}
+
+.wiz-input::placeholder,
+.wiz-textarea::placeholder {
+  color: var(--wiz-ink-faded);
+  opacity: 0.5;
+  font-style: italic;
+}
+
+.wiz-textarea {
+  resize: vertical;
+  min-height: 90px;
+}
+
+/* Ability score number input (small) */
+.wiz-input-sm {
+  max-width: 90px;
+}
+
+/* ---- Ability score grid ---- */
+.wiz-ability-grid {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.wiz-ability-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.wiz-ability-label {
+  min-width: 130px;
+  font-family: 'Cinzel', serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--wiz-ink);
+}
+
+.wiz-ability-value {
+  font-family: 'Cinzel Decorative', serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--wiz-blood);
+  min-width: 28px;
+  text-align: center;
+}
+
+.wiz-ability-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  background: rgba(42, 26, 10, 0.08);
+  border: 1px solid rgba(42, 26, 10, 0.2);
+  color: var(--wiz-ink);
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--wiz-transition);
+  flex-shrink: 0;
+  font-family: inherit;
+  box-shadow: none;
+  line-height: 1;
+}
+
+.wiz-ability-btn:hover:not(:disabled) {
+  background: rgba(200, 148, 26, 0.2);
+  border-color: var(--wiz-gold);
+}
+
+.wiz-ability-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* Array-mode tab */
+.wiz-method-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+.wiz-method-tab {
+  font-family: 'Cinzel', serif;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  padding: 8px 20px;
+  border-radius: var(--wiz-radius);
+  border: 1px solid rgba(42, 26, 10, 0.2);
+  background: rgba(244, 233, 201, 0.4);
+  color: var(--wiz-ink-faded);
+  cursor: pointer;
+  transition: all var(--wiz-transition);
+  box-shadow: none;
+}
+
+.wiz-method-tab:hover {
+  border-color: var(--wiz-gold);
+  background: rgba(200, 148, 26, 0.1);
+  color: var(--wiz-ink);
+}
+
+.wiz-method-tab.is-active {
+  background: var(--wiz-blood);
+  border-color: var(--wiz-blood);
+  color: var(--wiz-parchment);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.wiz-hint {
+  font-family: 'IM Fell English', serif;
+  font-style: italic;
+  font-size: 12px;
+  color: var(--wiz-ink-faded);
+  opacity: 0.75;
+  margin-top: -6px;
+  margin-bottom: 12px;
+}
+
+/* ---- Review step ---- */
+.wiz-review-section {
+  background: rgba(42, 26, 10, 0.04);
+  border: 1px solid rgba(42, 26, 10, 0.1);
+  border-radius: var(--wiz-radius);
+  padding: 16px 20px;
+  margin-bottom: 14px;
+}
+
+.wiz-review-section-title {
+  font-family: 'Cinzel', serif;
+  font-size: 10px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--wiz-blood);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(139, 26, 26, 0.2);
+}
+
+.wiz-review-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.wiz-ability-chips {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.wiz-ability-chip {
+  text-align: center;
+  padding: 8px 6px;
+  background: rgba(42, 26, 10, 0.06);
+  border: 1px solid rgba(42, 26, 10, 0.12);
+  border-radius: var(--wiz-radius);
+}
+
+.wiz-ability-chip-key {
+  font-family: 'Cinzel', serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--wiz-ink-faded);
+  margin-bottom: 4px;
+}
+
+.wiz-ability-chip-val {
+  font-family: 'Cinzel Decorative', serif;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--wiz-blood);
+}
+
+.wiz-ability-chip-val.is-empty {
+  color: rgba(42, 26, 10, 0.25);
+}
+
+/* ---- Navigation buttons ---- */
+.wiz-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+  gap: 8px;
+}
+
+.wiz-nav-left {
+  display: flex;
+  gap: 8px;
+}
+
+.wiz-nav-right {
+  display: flex;
+  gap: 8px;
+}
+
+.wiz-btn-back {
+  font-family: 'Cinzel', serif;
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  padding: 10px 22px;
+  background: transparent;
+  color: var(--wiz-ink-faded);
+  border: 1px solid rgba(42, 26, 10, 0.2);
+  border-radius: var(--wiz-radius);
+  cursor: pointer;
+  transition: all var(--wiz-transition);
+  box-shadow: none;
+}
+
+.wiz-btn-back:hover {
+  background: rgba(42, 26, 10, 0.06);
+  color: var(--wiz-ink);
+  border-color: rgba(42, 26, 10, 0.35);
+}
+
+.wiz-btn-next {
+  font-family: 'Cinzel', serif;
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  padding: 10px 26px;
+  background: linear-gradient(135deg, var(--wiz-blood), #6b0f0f);
+  color: var(--wiz-parchment);
+  border: 1px solid rgba(139, 26, 26, 0.5);
+  border-radius: var(--wiz-radius);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.08);
+  transition: all var(--wiz-transition);
+}
+
+.wiz-btn-next:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--wiz-blood-hover), var(--wiz-blood));
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+}
+
+.wiz-btn-next:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.wiz-btn-reveal {
+  font-family: 'Cinzel', serif;
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  padding: 10px 26px;
+  background: linear-gradient(135deg, var(--wiz-gold), #9a6e10);
+  color: #1a0f00;
+  border: 1px solid var(--wiz-gold-light);
+  border-radius: var(--wiz-radius);
+  cursor: pointer;
+  font-weight: 700;
+  box-shadow: 0 0 18px rgba(200,148,26,0.3), 0 4px 12px rgba(0,0,0,0.3);
+  transition: all var(--wiz-transition);
+}
+
+.wiz-btn-reveal:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 0 28px rgba(200,148,26,0.5), 0 6px 16px rgba(0,0,0,0.4);
+}
+
+.wiz-btn-reveal:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.wiz-btn-secondary {
+  font-family: 'Cinzel', serif;
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  padding: 10px 22px;
+  background: rgba(42, 26, 10, 0.08);
+  color: var(--wiz-ink);
+  border: 1px solid rgba(42, 26, 10, 0.25);
+  border-radius: var(--wiz-radius);
+  cursor: pointer;
+  transition: all var(--wiz-transition);
+  box-shadow: none;
+}
+
+.wiz-btn-secondary:hover:not(:disabled) {
+  background: rgba(42, 26, 10, 0.14);
+  border-color: rgba(42, 26, 10, 0.4);
+}
+
+.wiz-btn-secondary:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+/* ---- Error message ---- */
+.wiz-error {
+  font-family: 'IM Fell English', serif;
+  font-style: italic;
+  font-size: 13px;
+  color: var(--wiz-blood);
+  padding: 8px 12px;
+  background: rgba(139, 26, 26, 0.07);
+  border: 1px solid rgba(139, 26, 26, 0.2);
+  border-radius: var(--wiz-radius);
+  margin-bottom: 12px;
+}
+
+/* ---- Utility ---- */
+.wiz-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.wiz-gap-sm { margin-bottom: 8px; }
+.wiz-gap-md { margin-bottom: 16px; }
+.wiz-gap-lg { margin-bottom: 24px; }
+
+.wiz-muted {
+  font-family: 'IM Fell English', serif;
+  font-style: italic;
+  font-size: 12px;
+  color: var(--wiz-ink-faded);
+  opacity: 0.8;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 600px) {
+  .wiz-card {
+    padding: 28px 22px;
+  }
+  .wiz-review-2col {
+    grid-template-columns: 1fr;
+  }
+  .wiz-ability-chips {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
