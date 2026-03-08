@@ -5188,7 +5188,7 @@ _WIZARD_SYSTEM_CONFIGS: List[Dict[str, Any]] = [
                     {
                         "id": "c",
                         "text": "Challenge them to prove yourself",
-                        "skills": ["Intimidate", "Swim"],
+                        "skills": ["Intimidate", "Acrobatics"],
                         "narrative": "You do not back down from a challenge and refuse to let anyone diminish you.",
                     },
                 ],

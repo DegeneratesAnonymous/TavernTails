@@ -1060,26 +1060,14 @@ export default function CharacterWizardView({
           >
             {saving ? 'Saving…' : 'Confirm'}
           </button>
-          {activeSessionId && (
-            <button
-              className="btn"
-              type="button"
-              disabled={saving || !reviewName.trim()}
-              onClick={() => save(true)}
-            >
-              {saving ? 'Saving…' : 'Confirm &amp; Play'}
-            </button>
-          )}
-          {!activeSessionId && (
-            <button
-              className="btn"
-              type="button"
-              disabled={saving || !reviewName.trim()}
-              onClick={() => save(true)}
-            >
-              {saving ? 'Saving…' : 'Confirm &amp; Play'}
-            </button>
-          )}
+          <button
+            className="btn"
+            type="button"
+            disabled={saving || !reviewName.trim()}
+            onClick={() => save(true)}
+          >
+            {saving ? 'Saving…' : 'Confirm &amp; Play'}
+          </button>
         </div>
       </div>
     )

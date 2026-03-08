@@ -1,5 +1,5 @@
 import React from 'react'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import CharacterWizardView from './CharacterWizardView'
 import * as api from '../../api'
 
@@ -115,50 +115,41 @@ describe('CharacterWizardView', () => {
   it('renders the system selection step initially', async () => {
     render(<CharacterWizardView {...defaultProps} />)
     expect(screen.getByText('Create Character')).toBeInTheDocument()
-    await waitFor(() => {
-      expect(screen.getByText('Choose a game system')).toBeInTheDocument()
-    })
+    expect(await screen.findByText('Choose a game system')).toBeInTheDocument()
   })
 
   it('shows loaded game systems', async () => {
     render(<CharacterWizardView {...defaultProps} />)
-    await waitFor(() => {
-      expect(screen.getByText('D&D 5e')).toBeInTheDocument()
-      expect(screen.getByText('Pathfinder 2e')).toBeInTheDocument()
-    })
+    expect(await screen.findByText('D&D 5e')).toBeInTheDocument()
+    expect(screen.getByText('Pathfinder 2e')).toBeInTheDocument()
   })
 
   it('disables Next button until a system is selected', async () => {
     render(<CharacterWizardView {...defaultProps} />)
-    await waitFor(() => screen.getByText('Choose a game system'))
+    await screen.findByText('Choose a game system')
     const nextBtn = screen.getByRole('button', { name: 'Next' })
     expect(nextBtn).toBeDisabled()
   })
 
   it('enables Next button after selecting a system', async () => {
     render(<CharacterWizardView {...defaultProps} />)
-    await waitFor(() => screen.getByText('D&D 5e'))
-    fireEvent.click(screen.getByText('D&D 5e'))
+    fireEvent.click(await screen.findByText('D&D 5e'))
     const nextBtn = screen.getByRole('button', { name: 'Next' })
     expect(nextBtn).not.toBeDisabled()
   })
 
   it('advances to basics step after selecting a system and clicking Next', async () => {
     render(<CharacterWizardView {...defaultProps} />)
-    await waitFor(() => screen.getByText('D&D 5e'))
-    fireEvent.click(screen.getByText('D&D 5e'))
+    fireEvent.click(await screen.findByText('D&D 5e'))
     fireEvent.click(screen.getByRole('button', { name: 'Next' }))
-    await waitFor(() => {
-      expect(screen.getByText('Character basics')).toBeInTheDocument()
-    })
+    expect(await screen.findByText('Character basics')).toBeInTheDocument()
   })
 
   it('disables Next on basics step when name is empty', async () => {
     render(<CharacterWizardView {...defaultProps} />)
-    await waitFor(() => screen.getByText('D&D 5e'))
-    fireEvent.click(screen.getByText('D&D 5e'))
+    fireEvent.click(await screen.findByText('D&D 5e'))
     fireEvent.click(screen.getByRole('button', { name: 'Next' }))
-    await waitFor(() => screen.getByText('Character basics'))
+    await screen.findByText('Character basics')
     const nextBtn = screen.getByRole('button', { name: 'Next' })
     expect(nextBtn).toBeDisabled()
   })
@@ -166,42 +157,39 @@ describe('CharacterWizardView', () => {
   it('advances through the full wizard in helper mode and shows review', async () => {
     render(<CharacterWizardView {...defaultProps} />)
     // Step 1: select system
-    await waitFor(() => screen.getByText('D&D 5e'))
-    fireEvent.click(screen.getByText('D&D 5e'))
+    fireEvent.click(await screen.findByText('D&D 5e'))
     fireEvent.click(screen.getByRole('button', { name: 'Next' }))
 
     // Step 2: basics
-    await waitFor(() => screen.getByText('Character basics'))
+    await screen.findByText('Character basics')
     fireEvent.change(screen.getByPlaceholderText('Enter character name'), { target: { value: 'Arin' } })
     fireEvent.click(screen.getByRole('button', { name: 'Next' }))
 
     // Step 3: abilities
-    await waitFor(() => screen.getByText('Ability scores'))
+    await screen.findByText('Ability scores')
     fireEvent.click(screen.getByRole('button', { name: 'Next' }))
 
     // Step 4: mode (Helper is default)
-    await waitFor(() => screen.getByText('Choose your creation style'))
+    await screen.findByText('Choose your creation style')
     fireEvent.click(screen.getByRole('button', { name: 'Next' }))
 
     // Step 5a: questionnaire — answer q1
-    await waitFor(() => screen.getByText(/Question 1/))
+    await screen.findByText(/Question 1/)
     fireEvent.click(screen.getByText('Talk your way through'))
     fireEvent.click(screen.getByRole('button', { name: 'Next Question' }))
 
     // Answer q2 (last question)
-    await waitFor(() => screen.getByText(/Question 2/))
+    await screen.findByText(/Question 2/)
     fireEvent.click(screen.getByText('Grew up in the wilds'))
     fireEvent.click(screen.getByRole('button', { name: 'Review Character' }))
 
     // Step 6: review
-    await waitFor(() => {
-      expect(screen.getByText('Review your character')).toBeInTheDocument()
-    })
+    expect(await screen.findByText('Review your character')).toBeInTheDocument()
   })
 
   it('shows step progress indicator', async () => {
     render(<CharacterWizardView {...defaultProps} />)
-    await waitFor(() => screen.getByText('Choose a game system'))
+    await screen.findByText('Choose a game system')
     expect(screen.getByText('System')).toBeInTheDocument()
     expect(screen.getByText('Basics')).toBeInTheDocument()
     expect(screen.getByText('Review')).toBeInTheDocument()
@@ -209,43 +197,37 @@ describe('CharacterWizardView', () => {
 
   it('can navigate back from basics to system', async () => {
     render(<CharacterWizardView {...defaultProps} />)
-    await waitFor(() => screen.getByText('D&D 5e'))
-    fireEvent.click(screen.getByText('D&D 5e'))
+    fireEvent.click(await screen.findByText('D&D 5e'))
     fireEvent.click(screen.getByRole('button', { name: 'Next' }))
-    await waitFor(() => screen.getByText('Character basics'))
+    await screen.findByText('Character basics')
     fireEvent.click(screen.getByRole('button', { name: 'Back' }))
-    await waitFor(() => {
-      expect(screen.getByText('Choose a game system')).toBeInTheDocument()
-    })
+    expect(await screen.findByText('Choose a game system')).toBeInTheDocument()
   })
 
   it('cancels and calls onDone when Cancel is clicked', async () => {
     const onDone = jest.fn()
     render(<CharacterWizardView {...defaultProps} onDone={onDone} />)
-    await waitFor(() => screen.getByText('Choose a game system'))
+    await screen.findByText('Choose a game system')
     fireEvent.click(screen.getAllByRole('button', { name: 'Cancel' })[0])
     expect(onDone).toHaveBeenCalled()
   })
 
   it('shows manual mode form when manual mode is selected', async () => {
     render(<CharacterWizardView {...defaultProps} />)
-    await waitFor(() => screen.getByText('D&D 5e'))
-    fireEvent.click(screen.getByText('D&D 5e'))
+    fireEvent.click(await screen.findByText('D&D 5e'))
     fireEvent.click(screen.getByRole('button', { name: 'Next' }))
 
-    await waitFor(() => screen.getByText('Character basics'))
+    await screen.findByText('Character basics')
     fireEvent.change(screen.getByPlaceholderText('Enter character name'), { target: { value: 'Galindra' } })
     fireEvent.click(screen.getByRole('button', { name: 'Next' }))
 
-    await waitFor(() => screen.getByText('Ability scores'))
+    await screen.findByText('Ability scores')
     fireEvent.click(screen.getByRole('button', { name: 'Next' }))
 
-    await waitFor(() => screen.getByText('Choose your creation style'))
+    await screen.findByText('Choose your creation style')
     fireEvent.click(screen.getByText('✏️ Manual Mode — Full Control'))
     fireEvent.click(screen.getByRole('button', { name: 'Next' }))
 
-    await waitFor(() => {
-      expect(screen.getByText('Character details')).toBeInTheDocument()
-    })
+    expect(await screen.findByText('Character details')).toBeInTheDocument()
   })
 })
