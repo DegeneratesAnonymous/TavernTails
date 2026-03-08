@@ -21,6 +21,7 @@ import PageHeader from './ui/PageHeader'
 import EmptyState from './ui/EmptyState'
 import Modal from './ui/Modal'
 import Toast from './ui/Toast'
+import ThemeSelector from './ui/ThemeSelector'
 
 // Container category names that should not appear as individual features
 const FEATURE_CATEGORY_PATTERN = /\b(features?|traits?|abilities|proficiencies|class\s+features?|racial\s+traits?|species\s+traits?|subclass\s+features?)\s*$/i
@@ -1154,6 +1155,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
               <span className="notif-badge">{unreadCount > 99 ? '99+' : unreadCount}</span>
             )}
           </button>
+          <ThemeSelector />
           <button
             className="topbar-icon-btn"
             type="button"

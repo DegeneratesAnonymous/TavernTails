@@ -3,8 +3,10 @@ import React, { useMemo, useState } from 'react';
 import './App.css';
 import LoginSignupAgent from './agents/LoginSignupAgent';
 import HomePage from './components/HomePage';
+import { ThemeProvider } from './context/ThemeContext';
+import EmberParticles from './components/ui/EmberParticles';
 
-function App() {
+function AppInner() {
   const hasToken = useMemo(() => {
     if (typeof window === 'undefined') return false
     return Boolean(window.localStorage.getItem('access_token'))
@@ -14,6 +16,7 @@ function App() {
 
   return (
     <div className="App">
+      <EmberParticles />
       {showAuth ? (
         <LoginSignupAgent initialMode={initialMode} />
       ) : (
@@ -33,6 +36,14 @@ function App() {
         />
       )}
     </div>
+  );
+}
+
+function App() {
+  return (
+    <ThemeProvider>
+      <AppInner />
+    </ThemeProvider>
   );
 }
 

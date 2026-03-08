@@ -1,0 +1,115 @@
+/* ── ThemeSelector popover ─────────────────────────────────────────────── */
+
+.theme-sel {
+  position: relative;
+}
+
+/* The dropdown panel */
+.theme-sel__panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 9999;
+  min-width: 230px;
+  background: linear-gradient(160deg, #fdf3d0 0%, var(--parchment, #f4e9c9) 35%, #edddb0 100%);
+  color: var(--ink, #2a1a0a);
+  border: 1px solid rgba(200, 148, 26, 0.45);
+  border-radius: 2px;
+  box-shadow:
+    0 0 0 2px rgba(200, 148, 26, 0.12),
+    0 12px 36px rgba(0, 0, 0, 0.65);
+  animation: theme-panel-appear 0.18s ease both;
+  overflow: hidden;
+}
+
+@keyframes theme-panel-appear {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);    }
+}
+
+/* Header & footer labels */
+.theme-sel__header,
+.theme-sel__footer {
+  font-family: 'Cinzel', serif;
+  font-size: 9px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--gold, #c8941a);
+  padding: 10px 16px 8px;
+  opacity: 0.75;
+  border-bottom: 1px solid rgba(200, 148, 26, 0.2);
+}
+
+.theme-sel__footer {
+  font-style: italic;
+  border-bottom: none;
+  border-top: 1px solid rgba(200, 148, 26, 0.2);
+  padding: 8px 16px 10px;
+  color: var(--ink-faded, #5c3d1e);
+  font-family: 'IM Fell English', serif;
+  letter-spacing: 0;
+  font-size: 11px;
+}
+
+/* Each theme option row */
+.theme-sel__option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 120ms ease;
+  color: var(--ink, #2a1a0a);
+}
+
+.theme-sel__option:hover {
+  background: rgba(200, 148, 26, 0.14);
+  border-color: transparent;
+  transform: none;
+}
+
+.theme-sel__option--active {
+  background: rgba(200, 148, 26, 0.1);
+}
+
+.theme-sel__icon {
+  font-size: 18px;
+  flex-shrink: 0;
+  width: 24px;
+  text-align: center;
+}
+
+.theme-sel__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.theme-sel__label {
+  font-family: 'Cinzel', serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink, #2a1a0a);
+}
+
+.theme-sel__desc {
+  font-family: 'IM Fell English', serif;
+  font-style: italic;
+  font-size: 11px;
+  color: var(--ink-faded, #5c3d1e);
+  line-height: 1.4;
+}
+
+.theme-sel__check {
+  font-size: 11px;
+  color: var(--gold, #c8941a);
+  flex-shrink: 0;
+  margin-left: auto;
+}

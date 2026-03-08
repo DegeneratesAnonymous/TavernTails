@@ -1,55 +1,98 @@
 /* ─────────────────────────────────────────────────────
-   TavernTails — Parchment / Dark-Tavern Global Theme
+   TavernTails — Global Theme System
+   Each theme is a [data-theme="<id>"] block on <html>.
+   ThemeContext.tsx applies the attribute; theme.css
+   defines the palette for each theme.
    ───────────────────────────────────────────────────── */
-:root {
-  /* ── Core palette ─────────────────────────────────── */
-  --bg-color:        #1a1008;   /* tavern-night floor */
-  --grid-color:      rgba(200, 148, 26, 0.045); /* faint gold grid */
-  --surface:         #2d1d0e;   /* dark wood panel */
-  --surface-dark:    #1e1408;   /* deeper wood */
-  --surface-neutral: #3d2b15;   /* medium wood */
-  --surface-muted:   #4a3520;   /* muted wood */
-  --muted-surface:   #6b4e2a;   /* warm muted */
 
-  /* ── Parchment tokens (cards, modals, forms) ─────── */
+/* ── Theme-neutral variables (shared by all themes) ──── */
+:root {
+  --radius:    12px;
+  --shadow-1:  0 6px 24px rgba(0, 0, 0, 0.75);
+  /* Parchment palette as the `:root` fallback so the app
+     renders correctly even before JS runs.             */
+  --bg-color:        #1a1008;
+  --grid-color:      rgba(200, 148, 26, 0.045);
+  --surface:         #2d1d0e;
+  --surface-dark:    #1e1408;
+  --surface-neutral: #3d2b15;
+  --surface-muted:   #4a3520;
+  --muted-surface:   #6b4e2a;
   --parchment:       #f4e9c9;
   --parchment-mid:   #ecdcb0;
   --parchment-dark:  #e0cc95;
-
-  /* ── Ink tokens ───────────────────────────────────── */
   --ink:             #2a1a0a;
   --ink-faded:       #5c3d1e;
-
-  /* ── Accent tokens ────────────────────────────────── */
   --gold:            #c8941a;
   --gold-light:      #f0c040;
   --blood:           #8b1a1a;
   --blood-hover:     #a02020;
-
-  /* ── Legacy mapped vars (keep backward-compat) ───── */
   --accent:          var(--gold);
   --accent-secondary: var(--blood);
-  --text:            #f4e9c9;    /* parchment white */
+  --text:            #f4e9c9;
   --muted-text:      rgba(244, 233, 201, 0.65);
   --error:           #c0392b;
   --highlight:       var(--gold-light);
-  --radius:          12px;
-  --shadow-1:        0 6px 24px rgba(0, 0, 0, 0.75);
   --shadow-glow:     0 0 12px rgba(200, 148, 26, 0.25);
+  /* Body background image — themed via data-theme blocks below */
+  --body-bg-image:   none;
 }
 
-/* ── Page background: warm dark-wood grid ────────────── */
+/* ══════════════════════════════════════════════════════
+   THEME: Parchment  (warm tavern / dark-wood aesthetic)
+   ══════════════════════════════════════════════════════ */
+html[data-theme="parchment"] {
+  --bg-color:        #1a1008;
+  --grid-color:      rgba(200, 148, 26, 0.045);
+  --surface:         #2d1d0e;
+  --surface-dark:    #1e1408;
+  --surface-neutral: #3d2b15;
+  --surface-muted:   #4a3520;
+  --muted-surface:   #6b4e2a;
+  --parchment:       #f4e9c9;
+  --parchment-mid:   #ecdcb0;
+  --parchment-dark:  #e0cc95;
+  --ink:             #2a1a0a;
+  --ink-faded:       #5c3d1e;
+  --gold:            #c8941a;
+  --gold-light:      #f0c040;
+  --blood:           #8b1a1a;
+  --blood-hover:     #a02020;
+  --accent:          var(--gold);
+  --accent-secondary: var(--blood);
+  --text:            #f4e9c9;
+  --muted-text:      rgba(244, 233, 201, 0.65);
+  --error:           #c0392b;
+  --highlight:       var(--gold-light);
+  --shadow-glow:     0 0 12px rgba(200, 148, 26, 0.25);
+  /* Warm gold grid used as the body background texture  */
+  --body-bg-image:
+    linear-gradient(0deg,  transparent 24%, var(--grid-color) 25%, var(--grid-color) 26%, transparent 27%,
+                           transparent 74%, var(--grid-color) 75%, var(--grid-color) 76%, transparent 77%, transparent),
+    linear-gradient(90deg, transparent 24%, var(--grid-color) 25%, var(--grid-color) 26%, transparent 27%,
+                           transparent 74%, var(--grid-color) 75%, var(--grid-color) 76%, transparent 77%, transparent);
+}
+
+/* ══════════════════════════════════════════════════════
+   FUTURE THEME STUB — uncomment and populate to add one:
+   ══════════════════════════════════════════════════════
+html[data-theme="scifi"] {
+  --bg-color:    #050a0f;
+  --surface:     #0d1520;
+  ...
+  --body-bg-image: linear-gradient(...);
+}
+   ══════════════════════════════════════════════════════ */
+
+/* ── Page background ──────────────────────────────────── */
 html, body, #root {
   height: 100%;
 }
 body {
   margin: 0;
   background-color: var(--bg-color);
-  background-image:
-    linear-gradient(0deg,  transparent 24%, var(--grid-color) 25%, var(--grid-color) 26%, transparent 27%,
-                           transparent 74%, var(--grid-color) 75%, var(--grid-color) 76%, transparent 77%, transparent),
-    linear-gradient(90deg, transparent 24%, var(--grid-color) 25%, var(--grid-color) 26%, transparent 27%,
-                           transparent 74%, var(--grid-color) 75%, var(--grid-color) 76%, transparent 77%, transparent);
+  /* background-image is driven by the active theme's --body-bg-image */
+  background-image: var(--body-bg-image, none);
   background-size: 55px 55px;
   color: var(--text);
   font-family: 'Cinzel', 'Segoe UI', 'Roboto', 'Ubuntu', sans-serif;

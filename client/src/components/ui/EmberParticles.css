@@ -1,0 +1,22 @@
+/* ── Floating ember / spark particles ─────────────────────────────────────
+   Appended directly to <body> by EmberParticles.tsx.
+   They must sit below all other page content. */
+
+.tt-ember-particle {
+  position: fixed;
+  bottom: 0;             /* start at the bottom; animation moves it up  */
+  border-radius: 50%;
+  background: var(--gold-light, #f0c040);
+  pointer-events: none;
+  z-index: 0;            /* behind everything */
+  opacity: 0;
+  animation: tt-ember-float linear infinite;
+}
+
+@keyframes tt-ember-float {
+  0%   { transform: translateY(0)       translateX(0);   opacity: 0;   }
+  10%  { opacity: 0.7; }
+  50%  { transform: translateY(-50vh)   translateX(20px); }
+  90%  { opacity: 0.25; }
+  100% { transform: translateY(-110vh)  translateX(40px); opacity: 0;   }
+}
