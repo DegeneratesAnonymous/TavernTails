@@ -14,8 +14,8 @@
   position: relative;
   border-radius: 12px;
   overflow: hidden;
-  background: #0f0f11;
-  border: 1px solid rgba(255,255,255,0.06);
+  background: #0a0604;
+  border: 1px solid rgba(200, 148, 26, 0.15);
 }
 
 .narrative-scene img{
@@ -31,8 +31,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(255,255,255,0.35);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  color: rgba(200, 148, 26, 0.30);
+  font-family: 'Cinzel', serif;
+  letter-spacing: 0.08em;
+  font-size: 0.9rem;
 }
 
 .narrative-overlay{
@@ -49,9 +51,9 @@
   margin-top: 4vh;
   padding: 18px 18px;
   border-radius: 14px;
-  background: rgba(0,0,0,0.72);
-  border: 1px solid rgba(120,255,200,0.14);
-  box-shadow: 0 16px 70px rgba(0,0,0,0.55);
+  background: rgba(12, 8, 3, 0.88);
+  border: 1px solid rgba(200, 148, 26, 0.22);
+  box-shadow: 0 16px 70px rgba(0,0,0,0.65), 0 0 20px rgba(200, 148, 26, 0.08);
   max-height: calc(100% - 8vh);
   overflow: auto;
   overscroll-behavior: contain;
@@ -59,16 +61,20 @@
 
 .narrative-title{
   margin: 0 0 10px 0;
-  font-weight: 800;
-  letter-spacing: 0.01em;
+  font-weight: 700;
+  font-family: 'Cinzel', serif;
+  letter-spacing: 0.06em;
+  color: var(--parchment, #f4e9c9);
+  text-shadow: 0 0 16px rgba(200, 148, 26, 0.25);
 }
 
 .narrative-text{
   margin: 0;
   white-space: pre-wrap;
-  line-height: 1.55;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  font-size: 0.98rem;
+  line-height: 1.65;
+  font-family: 'IM Fell English', 'Georgia', serif;
+  font-size: 1rem;
+  color: rgba(244, 233, 201, 0.90);
 }
 
 .narrative-choices{
@@ -89,29 +95,31 @@
   align-self: flex-start;
   padding: 6px 10px;
   border-radius: 999px;
-  background: rgba(255,255,255,0.05);
-  color: rgba(255,255,255,0.85);
-  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(42, 26, 10, 0.60);
+  color: var(--parchment, #f4e9c9);
+  border: 1px solid rgba(200, 148, 26, 0.25);
   font-weight: 650;
   font-size: 0.85rem;
+  transition: background 120ms, border-color 120ms;
 }
 
 .narrative-choices-toggle:hover{
-  border-color: rgba(120,255,200,0.22);
-  background: rgba(120,255,200,0.06);
+  border-color: rgba(200, 148, 26, 0.50);
+  background: rgba(200, 148, 26, 0.15);
 }
 
 .narrative-choice-btn{
   padding: 8px 14px;
   border-radius: 10px;
-  background: rgba(255,255,255,0.06);
-  color: inherit;
-  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(42, 26, 10, 0.65);
+  color: var(--parchment, #f4e9c9);
+  border: 1px solid rgba(200, 148, 26, 0.20);
   font-weight: 600;
+  transition: background 120ms, border-color 120ms;
 }
 
 .narrative-choice-btn:hover{
-  border-color: rgba(120,255,200,0.20);
-  background: rgba(120,255,200,0.06);
+  border-color: rgba(200, 148, 26, 0.45);
+  background: rgba(200, 148, 26, 0.15);
 }
 

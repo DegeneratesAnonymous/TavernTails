@@ -1,4 +1,6 @@
-/* Auth page — full-screen layout matching the HomePage aesthetic */
+/* ─────────────────────────────────────────────────────
+   Auth page — Parchment Tome aesthetic
+   ───────────────────────────────────────────────────── */
 .tt-auth {
   min-height: 100vh;
   position: relative;
@@ -7,20 +9,275 @@
   align-items: center;
   justify-content: center;
   padding: 48px 20px;
-  background: #0a0f1f;
-  color: #eef2ff;
+  background: #0d0805;
+  color: #f4e9c9;
 }
 
+/* Warm arcane background glow */
 .tt-auth-bg {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(circle at top right, rgba(94, 92, 230, 0.20), transparent 45%),
-    radial-gradient(circle at 20% 80%, rgba(0, 196, 255, 0.10), transparent 40%),
-    linear-gradient(135deg, rgba(10, 15, 31, 0.98), rgba(14, 20, 41, 0.98));
-  opacity: 0.9;
+    radial-gradient(ellipse at 70% 20%, rgba(200, 148, 26, 0.12), transparent 50%),
+    radial-gradient(ellipse at 20% 80%, rgba(139, 26, 26, 0.10), transparent 45%),
+    radial-gradient(ellipse at 50% 50%, rgba(42, 26, 10, 0.95), transparent 80%);
   pointer-events: none;
 }
+
+.tt-auth-inner {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Branding header */
+.tt-auth-brand {
+  text-align: center;
+}
+
+.tt-auth-tag {
+  text-transform: uppercase;
+  letter-spacing: 0.35em;
+  font-size: 11px;
+  font-family: 'Cinzel', serif;
+  color: rgba(200, 148, 26, 0.75);
+  margin-bottom: 8px;
+}
+
+.tt-auth-title {
+  font-size: clamp(22px, 4vw, 30px);
+  font-weight: 700;
+  margin: 0;
+  font-family: 'Cinzel Decorative', 'Cinzel', serif;
+  letter-spacing: 0.04em;
+  color: #f4e9c9;
+  text-shadow: 0 0 24px rgba(200, 148, 26, 0.35);
+}
+
+/* Parchment card */
+.tt-auth-card {
+  background: linear-gradient(160deg, #fdf3d0 0%, #f4e9c9 50%, #ecdcb0 100%);
+  border: 1px solid rgba(200, 148, 26, 0.40);
+  border-radius: 14px;
+  padding: 28px 28px 24px;
+  box-shadow:
+    0 12px 48px rgba(0, 0, 0, 0.65),
+    0 0 0 1px rgba(200, 148, 26, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  color: #2a1a0a;
+}
+
+.tt-auth-card-title {
+  font-size: 17px;
+  font-weight: 700;
+  margin: 0 0 20px;
+  font-family: 'Cinzel', serif;
+  letter-spacing: 0.06em;
+  color: #2a1a0a;
+  text-transform: uppercase;
+  border-bottom: 1px solid rgba(42, 26, 10, 0.15);
+  padding-bottom: 12px;
+}
+
+/* Form fields */
+.tt-auth-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tt-auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.tt-auth-label {
+  font-size: 12px;
+  font-weight: 700;
+  font-family: 'Cinzel', serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #5c3d1e;
+}
+
+.tt-auth-input {
+  width: 100%;
+  min-height: 42px;
+  background: rgba(244, 233, 201, 0.70);
+  border: 1px solid rgba(42, 26, 10, 0.22);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 15px;
+  font-family: 'IM Fell English', 'Georgia', serif;
+  color: #2a1a0a;
+  box-sizing: border-box;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+  outline: none;
+  box-shadow: inset 0 1px 3px rgba(42, 26, 10, 0.10);
+}
+
+.tt-auth-input::placeholder {
+  color: rgba(42, 26, 10, 0.35);
+  font-style: italic;
+}
+
+.tt-auth-input:focus {
+  border-color: rgba(200, 148, 26, 0.65);
+  box-shadow: 0 0 0 3px rgba(200, 148, 26, 0.18), inset 0 1px 3px rgba(42, 26, 10, 0.10);
+  background: rgba(253, 243, 208, 0.85);
+}
+
+/* Actions row */
+.tt-auth-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+  flex-wrap: wrap;
+}
+
+.tt-auth-actions .btn {
+  flex: 1;
+  min-width: 0;
+  /* Override parchment background for buttons inside parchment card */
+  background: var(--blood, #8b1a1a);
+  color: var(--parchment, #f4e9c9);
+  font-family: 'Cinzel', serif;
+  letter-spacing: 0.06em;
+  border: 1px solid rgba(139, 26, 26, 0.50);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+.tt-auth-actions .btn:hover:not(:disabled) {
+  background: var(--blood-hover, #a02020);
+  border-color: rgba(139, 26, 26, 0.70);
+}
+
+.tt-auth-actions .btn-secondary {
+  background: var(--gold, #c8941a);
+  color: #2a1a0a;
+  border-color: rgba(200, 148, 26, 0.50);
+}
+
+.tt-auth-actions .btn-secondary:hover:not(:disabled) {
+  background: var(--gold-light, #f0c040);
+}
+
+/* Error / info message */
+.tt-auth-message {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  font-family: 'IM Fell English', serif;
+}
+
+.tt-auth-message--error {
+  background: rgba(139, 26, 26, 0.12);
+  border: 1px solid rgba(139, 26, 26, 0.35);
+  color: #7a1010;
+}
+
+.tt-auth-message--info {
+  background: rgba(200, 148, 26, 0.10);
+  border: 1px solid rgba(200, 148, 26, 0.28);
+  color: #5c3d1e;
+}
+
+/* Email verification section */
+.tt-auth-verify {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(42, 26, 10, 0.15);
+}
+
+.tt-auth-verify-label {
+  font-size: 12px;
+  color: rgba(42, 26, 10, 0.55);
+}
+
+.tt-auth-verify-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Footer switch */
+.tt-auth-footer {
+  text-align: center;
+  font-size: 13px;
+  color: rgba(244, 233, 201, 0.60);
+}
+
+.tt-auth-footer-link {
+  color: var(--gold-light, #f0c040);
+  font-weight: 600;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  box-shadow: none;
+  letter-spacing: normal;
+  font-family: inherit;
+}
+
+.tt-auth-footer-link:hover {
+  color: #fff5c0;
+  background: none;
+}
+
+/* Dev helper (subdued) */
+.tt-auth-dev {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(42, 26, 10, 0.12);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tt-auth-dev-label {
+  font-size: 11px;
+  color: rgba(42, 26, 10, 0.40);
+}
+
+/* Accessibility */
+.sr-only {
+  position: absolute !important;
+  height: 1px;
+  width: 1px;
+  overflow: hidden;
+  clip: rect(1px, 1px, 1px, 1px);
+  white-space: nowrap;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .tt-auth-input { transition: none !important; }
+}
+
+/* Mobile */
+@media (max-width: 480px) {
+  .tt-auth {
+    padding: 32px 16px;
+    align-items: flex-start;
+  }
+  .tt-auth-card {
+    padding: 22px 18px 18px;
+  }
+}
+
 
 .tt-auth-inner {
   position: relative;

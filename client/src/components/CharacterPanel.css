@@ -20,7 +20,7 @@
   gap: 12px;
   padding: 10px;
   border-radius: 12px;
-  background: radial-gradient(circle at 15% 10%, rgba(94,158,182,0.18), rgba(43,51,54,0.45));
+  background: radial-gradient(circle at 15% 10%, rgba(200,148,26,0.14), rgba(30,20,8,0.55));
   border: 1px solid var(--tt-border);
   margin-bottom: 10px;
 }
@@ -29,8 +29,8 @@
   width: 56px;
   height: 56px;
   border-radius: 999px;
-  background: radial-gradient(circle at 30% 30%, rgba(173,136,95,0.25), rgba(43,51,54,0.45));
-  border: 1px solid var(--tt-border);
+  background: radial-gradient(circle at 30% 30%, rgba(200,148,26,0.25), rgba(30,20,8,0.55));
+  border: 1px solid rgba(200,148,26,0.30);
   display: grid;
   place-items: center;
 }
@@ -70,15 +70,16 @@
 .character-vital{
   padding: 8px 10px;
   border-radius: 12px;
-  background: rgba(71,66,61,0.45);
+  background: rgba(42,26,10,0.55);
   border: 1px solid var(--tt-border);
 }
 
 .character-vital-label{
   font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.10em;
-  color: rgba(255,255,255,0.65);
+  letter-spacing: 0.12em;
+  font-family: 'Cinzel', serif;
+  color: rgba(200,148,26,0.65);
   margin-bottom: 4px;
 }
 
@@ -130,9 +131,9 @@
   place-items: center;
   font-weight: 900;
   letter-spacing: 0.06em;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.10);
-  color: rgba(255,255,255,0.85);
+  background: rgba(42, 26, 10, 0.55);
+  border: 1px solid rgba(200,148,26,0.18);
+  color: var(--parchment, #f4e9c9);
 }
 
 .character-ability-tile--button{
@@ -151,9 +152,9 @@
 }
 
 .character-icon-card--active .character-icon-badge{
-  background: rgba(94, 158, 182, 0.24);
-  border-color: rgba(94, 158, 182, 0.32);
-  color: rgba(255, 255, 255, 0.95);
+  background: rgba(200, 148, 26, 0.22);
+  border-color: rgba(200, 148, 26, 0.40);
+  color: var(--parchment, #f4e9c9);
 }
 
 /* Only expand to a 6-wide ability row when there's actually room */
@@ -190,7 +191,7 @@
 .character-ability-tile{
   padding: 10px;
   border-radius: 12px;
-  background: rgba(71,66,61,0.45);
+  background: rgba(42,26,10,0.55);
   border: 1px solid var(--tt-border);
   display: flex;
   flex-direction: column;

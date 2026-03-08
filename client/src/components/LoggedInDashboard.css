@@ -18,8 +18,8 @@
   gap: 12px;
   padding: 10px 20px;
   background: var(--surface-dark);
-  border-bottom: 1px solid var(--tt-border);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  border-bottom: 1px solid rgba(200, 148, 26, 0.25);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.55);
 }
 
 .topbar-right {
@@ -42,7 +42,7 @@
 }
 
 .topbar-icon-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(200, 148, 26, 0.15);
 }
 
 .notif-badge {
@@ -53,8 +53,8 @@
   height: 18px;
   padding: 0 4px;
   border-radius: 999px;
-  background: #E09A4F;
-  color: #1a1108;
+  background: var(--gold, #c8941a);
+  color: var(--ink, #2a1a0a);
   font-size: 11px;
   font-weight: 700;
   display: flex;
@@ -72,8 +72,8 @@
   height: 18px;
   padding: 0 5px;
   border-radius: 999px;
-  background: #E09A4F;
-  color: #1a1108;
+  background: var(--gold, #c8941a);
+  color: var(--ink, #2a1a0a);
   font-size: 11px;
   font-weight: 700;
   margin-left: 8px;
@@ -90,10 +90,10 @@
   width: 320px;
   max-width: 92vw;
   background: var(--surface-dark);
-  border-left: 1px solid var(--tt-border);
+  border-left: 1px solid rgba(200, 148, 26, 0.22);
   display: flex;
   flex-direction: column;
-  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.5);
+  box-shadow: -4px 0 32px rgba(0, 0, 0, 0.65);
   transform: translateX(100%);
   transition: transform 220ms ease;
 }
@@ -133,7 +133,7 @@
 }
 
 .drawer-toggle:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(200, 148, 26, 0.15);
 }
 
 .drawer-toggle-icon {
@@ -161,13 +161,13 @@
   z-index: 400;
   width: 240px;
   background: var(--surface-dark);
-  border-right: 1px solid var(--tt-border);
+  border-right: 1px solid rgba(200, 148, 26, 0.22);
   padding: 0 0 24px;
   display: flex;
   flex-direction: column;
   gap: 0;
   color: var(--text);
-  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);
+  box-shadow: 4px 0 32px rgba(0, 0, 0, 0.65);
   transform: translateX(-100%);
   transition: transform 220ms ease;
 }
@@ -221,20 +221,24 @@
 }
 
 .dashboard-brand {
-  font-size: 14px;
-  letter-spacing: 0.08em;
+  font-size: 13px;
+  letter-spacing: 0.12em;
   font-weight: 700;
+  font-family: 'Cinzel Decorative', 'Cinzel', serif;
   text-transform: uppercase;
+  color: var(--gold, #c8941a);
 }
 
 .topbar-brand {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 14px;
-  letter-spacing: 0.08em;
+  font-size: 13px;
+  letter-spacing: 0.12em;
   font-weight: 700;
+  font-family: 'Cinzel Decorative', 'Cinzel', serif;
   text-transform: uppercase;
+  color: var(--gold, #c8941a);
   pointer-events: none;
   user-select: none;
 }
@@ -252,7 +256,7 @@
 }
 
 .nav-btn {
-  background: rgba(94, 158, 182, 0.16);
+  background: rgba(42, 26, 10, 0.50);
   color: var(--text);
   border: none;
   padding: 8px 10px;
@@ -260,13 +264,16 @@
   text-align: left;
   cursor: pointer;
   font-size: 13px;
-  letter-spacing: 0.02em;
+  font-family: 'Cinzel', serif;
+  letter-spacing: 0.04em;
   transition: background 120ms ease;
 }
 
 .nav-btn.active {
-  background: rgba(173, 136, 95, 0.35);
+  background: rgba(200, 148, 26, 0.25);
+  border-left: 2px solid var(--gold, #c8941a);
   font-weight: 600;
+  color: var(--parchment, #f4e9c9);
 }
 
 .nav-btn:disabled,
@@ -282,13 +289,15 @@
 }
 
 .btn-logout {
-  background: var(--error);
-  color: #332A21;
-  border: none;
+  background: var(--blood, #8b1a1a);
+  color: var(--parchment, #f4e9c9);
+  border: 1px solid rgba(139, 26, 26, 0.45);
   padding: 8px 14px;
   border-radius: 6px;
   cursor: pointer;
   width: 100%;
+  font-family: 'Cinzel', serif;
+  letter-spacing: 0.05em;
 }
 
 .dashboard-main {
@@ -304,13 +313,16 @@
 .dashboard-panel {
   padding: 32px;
   margin: 0;
-  background: rgba(71, 66, 61, 0.72);
+  background: rgba(35, 22, 8, 0.72);
   border-radius: var(--radius);
-  box-shadow: inset 0 0 0 1px var(--tt-border);
+  box-shadow: inset 0 0 0 1px rgba(200, 148, 26, 0.15), 0 8px 32px rgba(0,0,0,0.45);
 }
 
 .dashboard-panel h2 {
   margin-top: 0;
+  font-family: 'Cinzel', serif;
+  letter-spacing: 0.06em;
+  color: var(--parchment, #f4e9c9);
 }
 
 .gameplay-panel {
@@ -320,8 +332,8 @@
   min-height: 0;
   margin: 0;
   border-radius: var(--radius);
-  background: rgba(43, 51, 54, 0.65);
-  box-shadow: inset 0 0 0 1px var(--tt-border);
+  background: rgba(26, 16, 8, 0.80);
+  box-shadow: inset 0 0 0 1px rgba(200, 148, 26, 0.15), 0 8px 32px rgba(0,0,0,0.45);
   overflow: hidden;
 }
 
@@ -330,13 +342,15 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 24px 12px;
-  border-bottom: 1px solid var(--tt-border);
+  border-bottom: 1px solid rgba(200, 148, 26, 0.18);
 }
 
 .gameplay-toolbar-title {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 700;
-  letter-spacing: 0.02em;
+  font-family: 'Cinzel', serif;
+  letter-spacing: 0.06em;
+  color: var(--parchment, #f4e9c9);
 }
 
 .session-label {
@@ -387,13 +401,14 @@
   width: 48px;
   height: 48px;
   border-radius: 14px;
-  background: rgba(173, 136, 95, 0.35);
-  color: #fff;
+  background: rgba(200, 148, 26, 0.25);
+  color: var(--parchment, #f4e9c9);
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
   letter-spacing: 0.04em;
+  border: 1px solid rgba(200, 148, 26, 0.30);
 }
 
 .account-name {
@@ -416,7 +431,7 @@
 }
 
 .account-pill {
-  background: rgba(95, 128, 139, 0.35);
+  background: rgba(42, 26, 10, 0.55);
   border: 1px solid var(--tt-border);
   border-radius: 999px;
   padding: 4px 10px;
@@ -435,7 +450,7 @@
   gap: 12px;
   padding: 10px 12px;
   border-radius: 10px;
-  background: rgba(71, 66, 61, 0.5);
+  background: rgba(42, 26, 10, 0.55);
   border: 1px solid var(--tt-border);
 }
 
@@ -465,8 +480,9 @@
 }
 
 .character-list-item.is-active {
-  background: rgba(173, 136, 95, 0.35);
-  color: #0b1a1d;
+  background: rgba(200, 148, 26, 0.22);
+  color: var(--parchment, #f4e9c9);
+  border-left: 2px solid var(--gold, #c8941a);
 }
 
 .characters-detail-card {
@@ -481,9 +497,9 @@
 }
 
 .character-tab.active {
-  background: rgba(173, 136, 95, 0.35);
-  border-color: rgba(173, 136, 95, 0.6);
-  color: #0b1a1d;
+  background: rgba(200, 148, 26, 0.22);
+  border-color: rgba(200, 148, 26, 0.50);
+  color: var(--parchment, #f4e9c9);
 }
 
 .home-panel {
@@ -497,7 +513,7 @@
 }
 
 .home-qa-card {
-  background: var(--surface-dark);
+  background: rgba(42, 26, 10, 0.60);
   border: 1px solid var(--tt-border);
   border-radius: 10px;
   padding: 18px 16px;
@@ -511,8 +527,8 @@
 }
 
 .home-qa-card:hover {
-  background: rgba(173, 136, 95, 0.18);
-  border-color: rgba(173, 136, 95, 0.45);
+  background: rgba(200, 148, 26, 0.15);
+  border-color: rgba(200, 148, 26, 0.40);
   transform: translateY(-2px);
 }
 
@@ -523,12 +539,16 @@
 }
 
 .home-qa-label {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
+  font-family: 'Cinzel', serif;
+  letter-spacing: 0.04em;
 }
 
 .home-qa-desc {
   font-size: 12px;
+  font-family: 'IM Fell English', serif;
+  font-style: italic;
   opacity: 0.65;
   line-height: 1.4;
 }
@@ -539,15 +559,15 @@
 }
 
 .home-friend.is-active {
-  background: rgba(173, 136, 95, 0.35);
-  color: #0b1a1d;
+  background: rgba(200, 148, 26, 0.20);
+  color: var(--parchment, #f4e9c9);
 }
 
 .account-debug {
   border: 1px solid var(--tt-border);
   border-radius: 10px;
   padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(20, 12, 4, 0.55);
 }
 
 .account-debug summary {

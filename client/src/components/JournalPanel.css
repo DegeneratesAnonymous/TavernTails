@@ -15,15 +15,19 @@
 }
 
 .journal-section{
-  border: 1px solid rgba(255,255,255,0.06);
+  border: 1px solid rgba(200, 148, 26, 0.15);
   border-radius: 12px;
-  background: rgba(10,10,12,0.55);
+  background: rgba(16, 10, 4, 0.65);
   padding: 12px;
 }
 
 .journal-section-title{
   font-weight: 800;
-  letter-spacing: 0.02em;
+  font-family: 'Cinzel', serif;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--gold, #c8941a);
+  font-size: 0.85rem;
   margin-bottom: 10px;
 }
 
@@ -46,13 +50,14 @@
   margin: 0;
   padding: 10px;
   border-radius: 10px;
-  background: rgba(0,0,0,0.35);
-  border: 1px solid rgba(255,255,255,0.06);
+  background: rgba(12, 8, 3, 0.55);
+  border: 1px solid rgba(200, 148, 26, 0.12);
   white-space: pre-wrap;
   word-break: break-word;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-family: 'IM Fell English', 'Georgia', serif;
   font-size: 0.9rem;
-  line-height: 1.45;
+  line-height: 1.55;
+  color: rgba(244, 233, 201, 0.85);
   max-height: 240px;
   overflow: auto;
 }
@@ -66,8 +71,8 @@
 .journal-story-entry{
   padding: 10px;
   border-radius: 10px;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.06);
+  background: rgba(42, 26, 10, 0.45);
+  border: 1px solid rgba(200, 148, 26, 0.12);
 }
 
 .journal-story-meta{
@@ -79,22 +84,27 @@
 
 .journal-story-type{
   font-size: 0.75rem;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.10em;
   text-transform: uppercase;
-  color: rgba(255,255,255,0.65);
+  font-family: 'Cinzel', serif;
+  color: rgba(200, 148, 26, 0.65);
 }
 
 .journal-story-ts{
   font-size: 0.78rem;
-  color: rgba(255,255,255,0.55);
+  color: rgba(244, 233, 201, 0.45);
 }
 
 .journal-story-text{
   white-space: pre-wrap;
-  line-height: 1.5;
+  line-height: 1.55;
+  font-family: 'IM Fell English', 'Georgia', serif;
+  color: rgba(244, 233, 201, 0.88);
 }
 
 .journal-empty{
-  color: rgba(255,255,255,0.65);
+  color: rgba(244, 233, 201, 0.45);
   font-size: 0.9rem;
+  font-style: italic;
+  font-family: 'IM Fell English', serif;
 }

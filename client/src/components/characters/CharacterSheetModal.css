@@ -55,7 +55,7 @@
 .tt-sheet-tabs{
   display: flex;
   gap: 4px;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  border-bottom: 1px solid rgba(200, 148, 26, 0.20);
   margin-bottom: 12px;
   flex-wrap: wrap;
 }
@@ -65,20 +65,22 @@
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
-  color: rgba(255,255,255,0.55);
+  color: rgba(244, 233, 201, 0.50);
   font-size: 13px;
+  font-family: 'Cinzel', serif;
+  letter-spacing: 0.04em;
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
   margin-bottom: -1px;
 }
 
 .tt-sheet-tab:hover{
-  color: rgba(255,255,255,0.85);
+  color: rgba(244, 233, 201, 0.85);
 }
 
 .tt-sheet-tab--active{
-  color: #fff;
-  border-bottom-color: var(--accent, #9b59b6);
+  color: var(--parchment, #f4e9c9);
+  border-bottom-color: var(--gold, #c8941a);
 }
 
 /* ── Saving throws ───────────────────────────────────────── */
