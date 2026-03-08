@@ -1,103 +1,80 @@
-/* ─────────────────────────────────────────────────────
+/* ─────────────────────────────────────────────────────────────────────────
    TavernTails — Global Theme System
-   Each theme is a [data-theme="<id>"] block on <html>.
-   ThemeContext.tsx applies the attribute; theme.css
-   defines the palette for each theme.
-   ───────────────────────────────────────────────────── */
+   ─────────────────────────────────────────────────────────────────────────
+   HOW THEMING WORKS
+   ─────────────────
+   1. ThemeContext.tsx writes  data-theme="<id>"  onto <html>
+   2. Each theme's CSS lives in  src/themes/<id>.css
+      — variables defined under  html[data-theme="<id>"] { ... }
+      — every theme file follows the format in  src/themes/_template.css
+   3. Theme files are imported below (one @import per theme).
+   4. src/themes/index.ts  holds the metadata array used by the UI selector.
 
-/* ── Theme-neutral variables (shared by all themes) ──── */
+   ADDING A THEME: see src/themes/_template.css for full instructions.
+   ─────────────────────────────────────────────────────────────────────── */
+
+/* ── Theme CSS files (one import per theme) ─────────────────────────────── */
+@import './themes/parchment.css';
+/* @import './themes/scifi.css'; */
+
+/* ── :root fallback — matches Parchment so the UI renders before JS runs ── */
 :root {
-  --radius:    12px;
-  --shadow-1:  0 6px 24px rgba(0, 0, 0, 0.75);
-  /* Parchment palette as the `:root` fallback so the app
-     renders correctly even before JS runs.             */
-  --bg-color:        #1a1008;
-  --grid-color:      rgba(200, 148, 26, 0.045);
-  --surface:         #2d1d0e;
-  --surface-dark:    #1e1408;
-  --surface-neutral: #3d2b15;
-  --surface-muted:   #4a3520;
-  --muted-surface:   #6b4e2a;
-  --parchment:       #f4e9c9;
-  --parchment-mid:   #ecdcb0;
-  --parchment-dark:  #e0cc95;
-  --ink:             #2a1a0a;
-  --ink-faded:       #5c3d1e;
-  --gold:            #c8941a;
-  --gold-light:      #f0c040;
-  --blood:           #8b1a1a;
-  --blood-hover:     #a02020;
-  --accent:          var(--gold);
-  --accent-secondary: var(--blood);
-  --text:            #f4e9c9;
-  --muted-text:      rgba(244, 233, 201, 0.65);
-  --error:           #c0392b;
-  --highlight:       var(--gold-light);
-  --shadow-glow:     0 0 12px rgba(200, 148, 26, 0.25);
-  /* Body background image — themed via data-theme blocks below */
-  --body-bg-image:   none;
+  --radius:              12px;
+  --shadow-1:            0 6px 24px rgba(0, 0, 0, 0.75);
+  --bg-color:            #1a1a1a;
+  --body-bg-grid:        none;
+  --body-bg-grid-size:   55px 55px;
+  --body-bg-radial:      none;
+  --surface:             #2d1d0e;
+  --surface-dark:        #1e1408;
+  --surface-neutral:     #3d2b15;
+  --surface-muted:       #4a3520;
+  --muted-surface:       #6b4e2a;
+  --parchment:           #f4e9c9;
+  --parchment-mid:       #ecdcb0;
+  --parchment-dark:      #e0cc95;
+  --text:                #f4e9c9;
+  --muted-text:          rgba(244, 233, 201, 0.65);
+  --ink:                 #2a1a0a;
+  --ink-faded:           #5c3d1e;
+  --gold:                #c8941a;
+  --gold-light:          #f0c040;
+  --blood:               #8b1a1a;
+  --blood-hover:         #a02020;
+  --accent:              var(--gold);
+  --accent-secondary:    var(--blood);
+  --error:               #c0392b;
+  --highlight:           var(--gold-light);
+  --shadow-glow:         0 0 12px rgba(200, 148, 26, 0.25);
 }
 
-/* ══════════════════════════════════════════════════════
-   THEME: Parchment  (warm tavern / dark-wood aesthetic)
-   ══════════════════════════════════════════════════════ */
-html[data-theme="parchment"] {
-  --bg-color:        #1a1008;
-  --grid-color:      rgba(200, 148, 26, 0.045);
-  --surface:         #2d1d0e;
-  --surface-dark:    #1e1408;
-  --surface-neutral: #3d2b15;
-  --surface-muted:   #4a3520;
-  --muted-surface:   #6b4e2a;
-  --parchment:       #f4e9c9;
-  --parchment-mid:   #ecdcb0;
-  --parchment-dark:  #e0cc95;
-  --ink:             #2a1a0a;
-  --ink-faded:       #5c3d1e;
-  --gold:            #c8941a;
-  --gold-light:      #f0c040;
-  --blood:           #8b1a1a;
-  --blood-hover:     #a02020;
-  --accent:          var(--gold);
-  --accent-secondary: var(--blood);
-  --text:            #f4e9c9;
-  --muted-text:      rgba(244, 233, 201, 0.65);
-  --error:           #c0392b;
-  --highlight:       var(--gold-light);
-  --shadow-glow:     0 0 12px rgba(200, 148, 26, 0.25);
-  /* Warm gold grid used as the body background texture  */
-  --body-bg-image:
-    linear-gradient(0deg,  transparent 24%, var(--grid-color) 25%, var(--grid-color) 26%, transparent 27%,
-                           transparent 74%, var(--grid-color) 75%, var(--grid-color) 76%, transparent 77%, transparent),
-    linear-gradient(90deg, transparent 24%, var(--grid-color) 25%, var(--grid-color) 26%, transparent 27%,
-                           transparent 74%, var(--grid-color) 75%, var(--grid-color) 76%, transparent 77%, transparent);
-}
-
-/* ══════════════════════════════════════════════════════
-   FUTURE THEME STUB — uncomment and populate to add one:
-   ══════════════════════════════════════════════════════
-html[data-theme="scifi"] {
-  --bg-color:    #050a0f;
-  --surface:     #0d1520;
-  ...
-  --body-bg-image: linear-gradient(...);
-}
-   ══════════════════════════════════════════════════════ */
-
-/* ── Page background ──────────────────────────────────── */
+/* ── Page structure ─────────────────────────────────────────────────────── */
 html, body, #root {
   height: 100%;
 }
+
 body {
   margin: 0;
+  /* Solid base colour from the active theme */
   background-color: var(--bg-color);
-  /* background-image is driven by the active theme's --body-bg-image */
-  background-image: var(--body-bg-image, none);
-  background-size: 55px 55px;
+  /* Repeating grid texture (theme-controlled) */
+  background-image: var(--body-bg-grid, none);
+  background-size:  var(--body-bg-grid-size, 55px 55px);
   color: var(--text);
   font-family: 'Cinzel', 'Segoe UI', 'Roboto', 'Ubuntu', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Ambient radial colour-field — fixed behind everything.                    */
+/* Ember particles (z-index: 0) sit on top of this; .App (z-index: 1) above. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: var(--body-bg-radial, none);
+  pointer-events: none;
+  z-index: 0;
 }
 
 /* ── Base form controls ───────────────────────────────── */

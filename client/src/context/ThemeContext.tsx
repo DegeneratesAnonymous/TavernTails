@@ -4,34 +4,15 @@
  * Usage:
  *   const { theme, setTheme, themes } = useTheme();
  *
- * Adding a new theme later:
- *   1. Add an entry to THEMES below.
- *   2. Add a [data-theme="<id>"] block in theme.css with the new palette.
+ * Adding a new theme: see src/themes/_template.css and src/themes/index.ts.
  */
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-
-export type ThemeId = 'parchment'; // extend union as new themes are added, e.g. | 'scifi'
-
-export interface ThemeInfo {
-  id: ThemeId;
-  label: string;
-  icon: string;
-  description: string;
-}
-
-export const THEMES: ThemeInfo[] = [
-  {
-    id: 'parchment',
-    label: 'Parchment',
-    icon: '📜',
-    description: 'Warm tavern parchment & candlelight',
-  },
-  // Future themes go here, e.g.:
-  // { id: 'scifi', label: 'Cyberpunk', icon: '🤖', description: 'Neon grid / holographic UI' },
-];
+import { THEMES, DEFAULT_THEME } from '../themes/index';
+import type { ThemeId, ThemeInfo } from '../themes/index';
+export type { ThemeId, ThemeInfo } from '../themes/index';
+export { THEMES };
 
 const STORAGE_KEY = 'tt-ui-theme';
-const DEFAULT_THEME: ThemeId = 'parchment';
 
 interface ThemeContextValue {
   theme: ThemeId;

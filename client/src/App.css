@@ -1,3 +1,7 @@
 .App {
+  /* Stacking context above body::before (z-index: 0) and ember
+     particles (z-index: 0), keeping them behind all UI panels.  */
+  position: relative;
+  z-index: 1;
   height: 100%;
 }

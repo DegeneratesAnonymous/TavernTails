@@ -1,0 +1,73 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   TavernTails Theme — "Parchment"
+   Warm candlelight tavern.  Dark neutral-grey base; warm wood surfaces;
+   gold accents; blood-red actions; parchment card areas.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+html[data-theme="parchment"] {
+
+  /* ── Background ─────────────────────────────────────────────────────────── */
+  /* Dark neutral grey — surfaces and warm-wood panels pop against this      */
+  --bg-color:            #1a1a1a;
+
+  /* Subtle gold grid texture sitting on top of the solid background          */
+  --body-bg-grid:
+    linear-gradient(
+      0deg,
+      transparent 24%,
+      rgba(200, 148, 26, 0.06) 25%, rgba(200, 148, 26, 0.06) 26%,
+      transparent 27%, transparent 74%,
+      rgba(200, 148, 26, 0.06) 75%, rgba(200, 148, 26, 0.06) 76%,
+      transparent 77%
+    ),
+    linear-gradient(
+      90deg,
+      transparent 24%,
+      rgba(200, 148, 26, 0.06) 25%, rgba(200, 148, 26, 0.06) 26%,
+      transparent 27%, transparent 74%,
+      rgba(200, 148, 26, 0.06) 75%, rgba(200, 148, 26, 0.06) 76%,
+      transparent 77%
+    );
+  --body-bg-grid-size:   55px 55px;
+
+  /* Ambient radial colour-field glows (rendered via body::before, fixed)     */
+  /* Gold warmth top-left, deep ember centre-right, blood-red hint top-right */
+  --body-bg-radial:
+    radial-gradient(ellipse at 18% 28%, rgba(200, 148,  26, 0.10) 0%, transparent 52%),
+    radial-gradient(ellipse at 82% 68%, rgba(120,  55,  15, 0.13) 0%, transparent 52%),
+    radial-gradient(ellipse at 58% 10%, rgba(139,  26,  26, 0.07) 0%, transparent 40%);
+
+  /* ── Surfaces ───────────────────────────────────────────────────────────── */
+  --surface:             #2d1d0e;   /* warm dark-wood panel                   */
+  --surface-dark:        #1e1408;   /* deeper wood                            */
+  --surface-neutral:     #3d2b15;   /* medium wood                            */
+  --surface-muted:       #4a3520;   /* muted wood                             */
+  --muted-surface:       #6b4e2a;   /* lightest wood                          */
+
+  /* ── Parchment / card area tokens ───────────────────────────────────────── */
+  --parchment:           #f4e9c9;
+  --parchment-mid:       #ecdcb0;
+  --parchment-dark:      #e0cc95;
+
+  /* ── Typography ─────────────────────────────────────────────────────────── */
+  --text:                #f4e9c9;
+  --muted-text:          rgba(244, 233, 201, 0.65);
+  --ink:                 #2a1a0a;
+  --ink-faded:           #5c3d1e;
+
+  /* ── Accent colours ─────────────────────────────────────────────────────── */
+  --gold:                #c8941a;
+  --gold-light:          #f0c040;
+  --blood:               #8b1a1a;
+  --blood-hover:         #a02020;
+
+  /* ── Semantic aliases ───────────────────────────────────────────────────── */
+  --accent:              var(--gold);
+  --accent-secondary:    var(--blood);
+  --error:               #c0392b;
+  --highlight:           var(--gold-light);
+
+  /* ── Shadows & glows ────────────────────────────────────────────────────── */
+  --shadow-1:            0 6px 24px rgba(0, 0, 0, 0.75);
+  --shadow-glow:         0 0 12px rgba(200, 148, 26, 0.25);
+}

@@ -1,0 +1,109 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   TavernTails — Theme CSS Template
+   ───────────────────────────────────────────────────────────────────────────
+   HOW TO CREATE A NEW THEME
+   ─────────────────────────
+   1. Copy this file to  src/themes/<id>.css
+   2. Replace every  <PLACEHOLDER>  value with your chosen value.
+   3. Add a corresponding entry to  src/themes/index.ts:
+        { id: '<id>', label: '...', icon: '🎨', description: '...' }
+   4. Import the new CSS at the bottom of  src/theme.css:
+        @import './themes/<id>.css';
+   That's it — the ThemeSelector UI will pick it up automatically.
+
+   VARIABLE REFERENCE
+   ──────────────────
+   All variables below MUST be defined.  Optional ones are noted with [OPT].
+
+   Background layers
+     --bg-color         : solid base colour of <html>/<body>
+     --body-bg-grid     : CSS gradient(s) for the repeating grid texture
+     --body-bg-grid-size: background-size for the grid layers
+     --body-bg-radial   : fixed radial ambient glow(s), rendered via body::before
+
+   Surface colours (panels, cards, sidebars)
+     --surface          : default panel background
+     --surface-dark     : deeper / darker variant
+     --surface-neutral  : mid-tone variant
+     --surface-muted    : muted / low-contrast variant
+     --muted-surface    : same family, slightly lighter
+
+   Parchment / card tokens (light-coloured card content areas)
+     --parchment        : lightest card background
+     --parchment-mid    : mid card background
+     --parchment-dark   : darkest card background
+
+   Typography on dark surfaces
+     --text             : primary text colour (on dark backgrounds)
+     --muted-text       : secondary / placeholder text colour
+
+   Typography on parchment / light surfaces
+     --ink              : primary ink colour (on light/parchment surfaces)
+     --ink-faded        : secondary ink colour
+
+   Accent colours
+     --gold             : primary accent (borders, labels, active states)
+     --gold-light       : hover / highlight variant of gold
+     --blood            : primary action / CTA button colour
+     --blood-hover      : button hover variant
+
+   Semantic aliases (keep these, components use them)
+     --accent           : maps to --gold (or your primary accent)
+     --accent-secondary : maps to --blood (or your secondary accent)
+     --error            : destructive / error states
+     --highlight        : text / UI highlight colour
+
+   Shadows & glows
+     --shadow-1         : standard box-shadow on elevated elements
+     --shadow-glow      : glow effect used on focus / hover states
+
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+html[data-theme="<THEME_ID>"] {
+
+  /* ── Background ─────────────────────────────────────────────────────────── */
+  --bg-color:            <DARK_BASE_COLOR>;
+
+  /* Repeating grid / texture layered over --bg-color.
+     Must end with the actual gradient value(s); leave as `none` if not used. */
+  --body-bg-grid:        none;
+  --body-bg-grid-size:   55px 55px;
+
+  /* Soft ambient radial gradients rendered via body::before (fixed, z-index 0).
+     Layer multiple radials for colour-field depth.  Use `none` to disable.   */
+  --body-bg-radial:      none;
+
+  /* ── Surfaces ───────────────────────────────────────────────────────────── */
+  --surface:             <SURFACE_COLOR>;
+  --surface-dark:        <SURFACE_DARK_COLOR>;
+  --surface-neutral:     <SURFACE_NEUTRAL_COLOR>;
+  --surface-muted:       <SURFACE_MUTED_COLOR>;
+  --muted-surface:       <MUTED_SURFACE_COLOR>;
+
+  /* ── Parchment / card area tokens ───────────────────────────────────────── */
+  --parchment:           <CARD_LIGHT_COLOR>;
+  --parchment-mid:       <CARD_MID_COLOR>;
+  --parchment-dark:      <CARD_DARK_COLOR>;
+
+  /* ── Typography ─────────────────────────────────────────────────────────── */
+  --text:                <PRIMARY_TEXT_ON_DARK>;
+  --muted-text:          <SECONDARY_TEXT_ON_DARK>;  /* rgba recommended */
+  --ink:                 <PRIMARY_TEXT_ON_LIGHT>;
+  --ink-faded:           <SECONDARY_TEXT_ON_LIGHT>;
+
+  /* ── Accent colours ─────────────────────────────────────────────────────── */
+  --gold:                <PRIMARY_ACCENT>;
+  --gold-light:          <PRIMARY_ACCENT_HOVER>;
+  --blood:               <CTA_COLOR>;
+  --blood-hover:         <CTA_HOVER_COLOR>;
+
+  /* ── Semantic aliases — update if you renamed your accents ─────────────── */
+  --accent:              var(--gold);
+  --accent-secondary:    var(--blood);
+  --error:               <ERROR_COLOR>;
+  --highlight:           var(--gold-light);
+
+  /* ── Shadows & glows ────────────────────────────────────────────────────── */
+  --shadow-1:            0 6px 24px rgba(0, 0, 0, 0.75);
+  --shadow-glow:         0 0 12px <PRIMARY_ACCENT_RGBA_025>;
+}
