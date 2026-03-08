@@ -1,6 +1,7 @@
 import React from 'react'
 
 import './HomePage.css'
+import ThemeToggle from './ui/ThemeToggle'
 
 type Props = {
   onGetStarted: () => void
@@ -58,6 +59,9 @@ export default function HomePage({ onGetStarted, onSignIn, onSignUp }: Props) {
   return (
     <div className="tt-home">
       <div className="tt-home-bg" />
+      <div className="tt-home-theme-toggle">
+        <ThemeToggle />
+      </div>
       <div className="tt-home-content">
         <div className="tt-home-hero">
           <div className="tt-home-tag">TavernTails</div>

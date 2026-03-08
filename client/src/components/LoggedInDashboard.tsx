@@ -20,6 +20,7 @@ import PageHeader from './ui/PageHeader'
 import EmptyState from './ui/EmptyState'
 import Modal from './ui/Modal'
 import Toast from './ui/Toast'
+import ThemeToggle from './ui/ThemeToggle'
 
 // Container category names that should not appear as individual features
 const FEATURE_CATEGORY_PATTERN = /\b(features?|traits?|abilities|proficiencies|class\s+features?|racial\s+traits?|species\s+traits?|subclass\s+features?)\s*$/i
@@ -1142,6 +1143,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
         </button>
         <span className="topbar-brand">TavernTails</span>
         <div className="topbar-right">
+          <ThemeToggle />
           <button
             className="topbar-icon-btn topbar-notif-btn"
             type="button"

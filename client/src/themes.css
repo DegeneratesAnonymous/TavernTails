@@ -1,0 +1,283 @@
+/*
+ * TavernTails — Themed CSS Variable Definitions
+ *
+ * Apply a theme by setting `data-theme` on <html>:
+ *   document.documentElement.setAttribute('data-theme', 'medieval')
+ *
+ * Available themes: medieval | scifi | startrek | neutral
+ */
+
+/* ─────────────────────────────────────────────────────────────
+   MEDIEVAL  — Tavern lanterns, parchment glow, blood & gold
+   ───────────────────────────────────────────────────────────── */
+
+[data-theme="medieval"] {
+  /* Core palette */
+  --bg-color: #0d0805;
+  --grid-color: rgba(200, 148, 26, 0.04);
+  --surface: #1e1208;
+  --muted-surface: #2a1a0a;
+  --accent: #c8941a;
+  --accent-secondary: #8b1a1a;
+  --surface-dark: #150d05;
+  --surface-neutral: #3a2a1a;
+  --surface-muted: #2a1a0a;
+  --text: #f4e9c9;
+  --error: #c8401a;
+  --highlight: #f0c040;
+  --muted-text: rgba(244, 233, 201, 0.62);
+
+  /* Layout */
+  --radius: 3px;
+  --shadow-1: 0 8px 32px rgba(0, 0, 0, 0.8), 0 2px 8px rgba(0, 0, 0, 0.6);
+
+  /* Border system */
+  --tt-border: rgba(200, 148, 26, 0.18);
+  --tt-border-strong: rgba(200, 148, 26, 0.42);
+  --tt-surface-2: #2a1a0a;
+  --tt-focus: rgba(200, 148, 26, 0.28);
+
+  /* Typography */
+  --font-heading: 'Cinzel Decorative', 'Cinzel', Georgia, serif;
+  --font-ui: 'Cinzel', Georgia, serif;
+  --font-body: 'IM Fell English', 'Palatino Linotype', Georgia, serif;
+  --font-mono: 'Courier New', Courier, monospace;
+
+  /* Ambient background overlay (applied via body::before in theme.css) */
+  --bg-radial-1: radial-gradient(ellipse at 20% 30%, rgba(200, 148, 26, 0.10) 0%, transparent 55%);
+  --bg-radial-2: radial-gradient(ellipse at 80% 70%, rgba(139, 26, 26, 0.12) 0%, transparent 55%);
+  --bg-radial-3: radial-gradient(ellipse at 50% 10%, rgba(200, 148, 26, 0.06) 0%, transparent 40%);
+}
+
+/* Card parchment style for medieval */
+[data-theme="medieval"] .card {
+  background: linear-gradient(160deg, #1f1208 0%, #1a0f06 60%, #160c04 100%);
+  border: 1px solid rgba(200, 148, 26, 0.22);
+  box-shadow:
+    0 0 0 1px rgba(200, 148, 26, 0.10),
+    0 12px 40px rgba(0, 0, 0, 0.7),
+    inset 0 1px 0 rgba(200, 148, 26, 0.08);
+  border-radius: var(--radius);
+}
+
+[data-theme="medieval"] h1,
+[data-theme="medieval"] h2,
+[data-theme="medieval"] h3,
+[data-theme="medieval"] .section-title,
+[data-theme="medieval"] .page-title,
+[data-theme="medieval"] .topbar-brand,
+[data-theme="medieval"] .dashboard-brand {
+  font-family: var(--font-ui);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+[data-theme="medieval"] .btn {
+  font-family: var(--font-ui);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 12px;
+  border-radius: var(--radius);
+}
+
+[data-theme="medieval"] .btn-secondary {
+  background: linear-gradient(135deg, #8b1a1a, #6b0f0f);
+  border-color: rgba(139, 26, 26, 0.5);
+  color: #f4e9c9;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="medieval"] .btn-secondary:hover {
+  background: linear-gradient(135deg, #a02020, #8b1a1a);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   SCI-FI  — Deep space neon, cyan circuits, void black
+   ───────────────────────────────────────────────────────────── */
+
+[data-theme="scifi"] {
+  --bg-color: #000814;
+  --grid-color: rgba(0, 180, 216, 0.07);
+  --surface: #001233;
+  --muted-surface: #001845;
+  --accent: #00b4d8;
+  --accent-secondary: #7209b7;
+  --surface-dark: #000a1a;
+  --surface-neutral: #023e8a;
+  --surface-muted: #03045e;
+  --text: #caf0f8;
+  --error: #e63946;
+  --highlight: #48cae4;
+  --muted-text: rgba(202, 240, 248, 0.60);
+
+  --radius: 4px;
+  --shadow-1: 0 8px 32px rgba(0, 0, 0, 0.9), 0 0 16px rgba(0, 180, 216, 0.08);
+
+  --tt-border: rgba(0, 180, 216, 0.20);
+  --tt-border-strong: rgba(0, 180, 216, 0.48);
+  --tt-surface-2: #001845;
+  --tt-focus: rgba(0, 180, 216, 0.32);
+
+  --font-heading: 'Orbitron', 'Exo 2', system-ui, sans-serif;
+  --font-ui: 'Exo 2', 'Rajdhani', system-ui, sans-serif;
+  --font-body: 'Exo 2', system-ui, sans-serif;
+  --font-mono: 'Share Tech Mono', 'Courier New', monospace;
+
+  --bg-radial-1: radial-gradient(ellipse at 15% 50%, rgba(0, 180, 216, 0.12) 0%, transparent 50%);
+  --bg-radial-2: radial-gradient(ellipse at 85% 30%, rgba(114, 9, 183, 0.14) 0%, transparent 50%);
+  --bg-radial-3: radial-gradient(ellipse at 50% 90%, rgba(0, 180, 216, 0.06) 0%, transparent 40%);
+}
+
+[data-theme="scifi"] .card {
+  background: linear-gradient(160deg, #001233 0%, #000e28 100%);
+  border: 1px solid rgba(0, 180, 216, 0.20);
+  box-shadow:
+    0 0 0 1px rgba(0, 180, 216, 0.06),
+    0 12px 40px rgba(0, 0, 0, 0.8),
+    inset 0 1px 0 rgba(0, 180, 216, 0.06);
+}
+
+[data-theme="scifi"] h1,
+[data-theme="scifi"] h2,
+[data-theme="scifi"] h3,
+[data-theme="scifi"] .section-title,
+[data-theme="scifi"] .page-title,
+[data-theme="scifi"] .topbar-brand,
+[data-theme="scifi"] .dashboard-brand {
+  font-family: var(--font-heading);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+[data-theme="scifi"] .btn {
+  font-family: var(--font-ui);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 12px;
+}
+
+[data-theme="scifi"] .btn-secondary {
+  background: linear-gradient(135deg, #7209b7, #560bad);
+  border-color: rgba(114, 9, 183, 0.6);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   STAR TREK  — LCARS panels, starship orange & coral
+   ───────────────────────────────────────────────────────────── */
+
+[data-theme="startrek"] {
+  --bg-color: #000000;
+  --grid-color: rgba(255, 153, 0, 0.04);
+  --surface: #160820;
+  --muted-surface: #1f0d2e;
+  --accent: #ff9900;
+  --accent-secondary: #cc6699;
+  --surface-dark: #0a0014;
+  --surface-neutral: #3d1a5c;
+  --surface-muted: #1a1a2e;
+  --text: #f0e6ff;
+  --error: #cc3333;
+  --highlight: #ffcc00;
+  --muted-text: rgba(240, 230, 255, 0.60);
+
+  --radius: 0px;
+  --shadow-1: 0 8px 32px rgba(0, 0, 0, 0.95);
+
+  --tt-border: rgba(255, 153, 0, 0.28);
+  --tt-border-strong: rgba(255, 153, 0, 0.60);
+  --tt-surface-2: #1f0d2e;
+  --tt-focus: rgba(255, 153, 0, 0.32);
+
+  --font-heading: 'Antonio', 'Rajdhani', system-ui, sans-serif;
+  --font-ui: 'Antonio', 'Rajdhani', system-ui, sans-serif;
+  --font-body: system-ui, 'Segoe UI', sans-serif;
+  --font-mono: 'Share Tech Mono', 'Courier New', monospace;
+
+  --bg-radial-1: radial-gradient(ellipse at 0% 100%, rgba(255, 153, 0, 0.12) 0%, transparent 45%);
+  --bg-radial-2: radial-gradient(ellipse at 100% 0%, rgba(204, 102, 153, 0.10) 0%, transparent 45%);
+  --bg-radial-3: radial-gradient(ellipse at 50% 50%, rgba(61, 26, 92, 0.20) 0%, transparent 60%);
+}
+
+/* LCARS-style card: thick left border, flat corners */
+[data-theme="startrek"] .card {
+  background: #0d0020;
+  border: 1px solid rgba(255, 153, 0, 0.28);
+  border-left: 4px solid var(--accent);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.9);
+  border-radius: 0;
+}
+
+[data-theme="startrek"] h1,
+[data-theme="startrek"] h2,
+[data-theme="startrek"] h3,
+[data-theme="startrek"] .section-title,
+[data-theme="startrek"] .page-title,
+[data-theme="startrek"] .topbar-brand,
+[data-theme="startrek"] .dashboard-brand {
+  font-family: var(--font-heading);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+[data-theme="startrek"] .btn {
+  font-family: var(--font-ui);
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  border-radius: 0;
+}
+
+[data-theme="startrek"] .btn-secondary {
+  background: #cc6699;
+  border-color: rgba(204, 102, 153, 0.6);
+  color: #000;
+}
+
+[data-theme="startrek"] .btn-secondary:hover {
+  background: #d977aa;
+}
+
+/* LCARS topbar: orange left panel block */
+[data-theme="startrek"] .dashboard-topbar {
+  border-bottom: 2px solid var(--accent);
+}
+
+[data-theme="startrek"] .dashboard-drawer {
+  border-right: 4px solid var(--accent);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   NEUTRAL  — Current dark baseline, unchanged
+   ───────────────────────────────────────────────────────────── */
+
+[data-theme="neutral"] {
+  --bg-color: #332A21;
+  --grid-color: rgba(95, 128, 139, 0.08);
+  --surface: #2E4A52;
+  --muted-surface: #7A6C5C;
+  --accent: #E09A4F;
+  --accent-secondary: #AD885F;
+  --surface-dark: #2B3336;
+  --surface-neutral: #525D61;
+  --surface-muted: #47423D;
+  --text: #ffffff;
+  --error: #E09A4F;
+  --highlight: #AD885F;
+  --muted-text: rgba(255, 255, 255, 0.72);
+
+  --radius: 12px;
+  --shadow-1: 0 6px 18px rgba(0, 0, 0, 0.6);
+
+  --tt-border: rgba(255, 255, 255, 0.10);
+  --tt-border-strong: rgba(255, 255, 255, 0.18);
+  --tt-surface-2: #7A6C5C;
+  --tt-focus: rgba(173, 136, 95, 0.25);
+
+  --font-heading: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-ui: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-body: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  --bg-radial-1: none;
+  --bg-radial-2: none;
+  --bg-radial-3: none;
+}
