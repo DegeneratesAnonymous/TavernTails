@@ -200,7 +200,9 @@ export default function CharacterWizardView({
   const pointBuySpent = useMemo<number>(() => {
     if (!systemConfig) return 0
     return Object.values(pointBuyValues).reduce((sum, v) => {
-      const cost = DND5E_POINT_COSTS[v] ?? Math.max(0, v - systemConfig.point_buy_min)
+      const isDnd5e = systemConfig.game_system === 'dnd5e'
+      const baseCost = Math.max(0, v - systemConfig.point_buy_min)
+      const cost = isDnd5e ? (DND5E_POINT_COSTS[v] ?? baseCost) : baseCost
       return sum + cost
     }, 0)
   }, [pointBuyValues, systemConfig])
