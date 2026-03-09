@@ -52,24 +52,25 @@
   --accent-text: #1a0f06;
   --accent-secondary-text: #f4e9c9;
 
-  /* Dark wood card system */
-  --card-bg: linear-gradient(160deg, #2e1c0b 0%, #251408 60%, #1c0f05 100%);
+  /* Warm amber-wood card system (dashboard cards) */
+  --card-bg: linear-gradient(160deg, #3a200c 0%, #2e1808 55%, #221205 100%);
   --card-text: #f4e9c9;
-  --card-text-muted: rgba(244, 233, 201, 0.68);
-  --card-border: rgba(200, 148, 26, 0.28);
-  --card-border-strong: rgba(200, 148, 26, 0.55);
+  --card-text-muted: rgba(244, 233, 201, 0.72);
+  --card-border: rgba(200, 148, 26, 0.32);
+  --card-border-strong: rgba(200, 148, 26, 0.58);
   --card-shadow:
-    0 0 0 1px rgba(200, 148, 26, 0.14),
-    0 4px 20px rgba(0, 0, 0, 0.55),
-    0 24px 64px rgba(0, 0, 0, 0.75),
-    inset 0 1px 0 rgba(200, 148, 26, 0.10);
-  --input-bg: rgba(0, 0, 0, 0.25);
+    0 0 0 1px rgba(200, 148, 26, 0.16),
+    0 4px 20px rgba(0, 0, 0, 0.50),
+    0 24px 64px rgba(0, 0, 0, 0.72),
+    inset 0 1px 0 rgba(200, 148, 26, 0.12);
+  --input-bg: rgba(0, 0, 0, 0.22);
   --input-text: #f4e9c9;
-  --input-placeholder: rgba(244, 233, 201, 0.38);
-  --input-border: rgba(200, 148, 26, 0.22);
+  --input-placeholder: rgba(244, 233, 201, 0.40);
+  --input-border: rgba(200, 148, 26, 0.24);
   --input-focus-border: rgba(200, 148, 26, 0.65);
   --input-focus-shadow: rgba(200, 148, 26, 0.22);
-  --label-text: rgba(244, 233, 201, 0.68);
+  --label-text: rgba(244, 233, 201, 0.72);
+  --card-link: #7a3a0a;
 }
 
 /* ── Medieval ember particles ── */
@@ -77,7 +78,7 @@
   position: fixed;
   inset: 0;
   pointer-events: none;
-  z-index: 1;
+  z-index: 0;
   overflow: hidden;
 }
 
@@ -99,7 +100,30 @@
   100% { transform: translateY(-105vh) translateX(44px); opacity: 0; }
 }
 
-/* Card — uses --card-bg vars defined above; no override needed */
+/* Auth card — parchment surface, dark ink children via scoped var inheritance */
+[data-theme="medieval"] .tt-auth-card {
+  background: linear-gradient(160deg, #fef4d4 0%, #f4e9c9 35%, #eadcb0 100%);
+  color: #2a1a0a;
+  border-color: rgba(139, 86, 18, 0.38);
+  box-shadow:
+    0 0 0 1px rgba(200, 148, 26, 0.22),
+    0 4px 20px rgba(0, 0, 0, 0.50),
+    0 24px 64px rgba(0, 0, 0, 0.72),
+    inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  /* Scope dark-ink vars — all children inherit these */
+  --card-text: #2a1a0a;
+  --card-text-muted: #5c3d1e;
+  --input-bg: rgba(42, 26, 10, 0.07);
+  --input-text: #2a1a0a;
+  --input-placeholder: rgba(42, 26, 10, 0.40);
+  --input-border: rgba(42, 26, 10, 0.22);
+  --input-focus-border: rgba(139, 74, 16, 0.55);
+  --input-focus-shadow: rgba(200, 148, 26, 0.18);
+  --label-text: #5c3d1e;
+  --card-link: #7a3a0a;
+}
+
+/* General cards — dark warm wood */
 
 /* ── Sci-Fi star twinkle particles ── */
 .tt-star-container {

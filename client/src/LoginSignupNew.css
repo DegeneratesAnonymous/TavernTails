@@ -191,7 +191,7 @@
 }
 
 .tt-auth-footer-link {
-  color: var(--accent, #c8941a);
+  color: var(--card-link, var(--accent, #c8941a));
   font-weight: 600;
   cursor: pointer;
   background: none;
@@ -204,7 +204,8 @@
 }
 
 .tt-auth-footer-link:hover {
-  color: var(--highlight, #f0c040);
+  color: var(--card-link, var(--highlight, #f0c040));
+  filter: brightness(0.85);
 }
 
 /* ── Dev helper ── */
