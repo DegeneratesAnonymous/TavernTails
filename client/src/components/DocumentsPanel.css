@@ -1,6 +1,6 @@
 .docsPanel{
   margin-top:16px;
-  border-top:1px solid #222;
+  border-top:1px solid var(--tt-border);
   padding-top:12px;
 }
 
@@ -10,11 +10,11 @@
 
 .docsPanel__hint{
   font-size:12px;
-  color:#aaa;
+  color:var(--muted-text);
 }
 
 .docsPanel__error{
-  color:#ff9f9f;
+  color:var(--error);
   font-size:12px;
   margin-bottom:8px;
 }
@@ -22,15 +22,15 @@
 .docsPanel__list{
   max-height:160px;
   overflow-y:auto;
-  border:1px solid #222;
+  border:1px solid var(--tt-border);
   border-radius:8px;
   padding:8px;
-  background:#0c0c0c;
+  background:var(--tt-surface-2);
 }
 
 .docsPanel__loading{
   font-size:12px;
-  color:#888;
+  color:var(--muted-text);
 }
 
 .docsPanel__docRow{
@@ -52,13 +52,14 @@
 
 .docsPanel__tag{
   font-size:11px;
-  color:#c9a6ff;
+  color:var(--accent-secondary);
+  opacity:0.90;
   margin-left:6px;
 }
 
 .docsPanel__docMeta{
   font-size:11px;
-  color:#888;
+  color:var(--muted-text);
 }
 
 .docsPanel__deleteBtn{
@@ -71,7 +72,7 @@
 
 .docsPanel__viewerLabel{
   font-size:12px;
-  color:#888;
+  color:var(--muted-text);
   margin-bottom:4px;
 }
 
@@ -87,10 +88,10 @@
 }
 
 .docsPanel__viewerCard{
-  border:1px solid #2c2c2c;
+  border:1px solid var(--tt-border);
   border-radius:8px;
   padding:8px;
-  background:#0b0b0b;
+  background:var(--tt-surface-2);
   max-height:160px;
   overflow-y:auto;
 }
@@ -115,13 +116,13 @@
 }
 
 .docsPanel__link{
-  color:#9cf;
+  color:var(--accent);
 }
 
 .docsPanel__copyBtn{
   background:none;
   border:none;
-  color:#888;
+  color:var(--muted-text);
   padding:0;
 }
 
@@ -132,7 +133,7 @@
 .docsPanel__imagePreview img{
   max-width:100%;
   border-radius:8px;
-  border:1px solid #222;
+  border:1px solid var(--tt-border);
 }
 
 .docsPanel__form{
@@ -147,9 +148,9 @@
 .docsPanel__textarea{
   padding:6px;
   border-radius:8px;
-  border:1px solid #333;
-  background:#0b0b0b;
-  color:#f8f8f8;
+  border:1px solid var(--input-border);
+  background:var(--input-bg);
+  color:var(--input-text);
 }
 
 .docsPanel__row{
@@ -161,12 +162,13 @@
 
 .docsPanel__label{
   font-size:12px;
-  color:#888;
+  color:var(--muted-text);
 }
 
 .docsPanel__note{
   font-size:12px;
-  color:#666;
+  color:var(--muted-text);
+  opacity:0.75;
 }
 
 .docsPanel__saveBtn{
@@ -190,7 +192,7 @@
 
 .docsPanel__uploadsHint{
   font-size:12px;
-  color:#888;
+  color:var(--muted-text);
 }
 
 .docsPanel__uploadsList{
@@ -203,9 +205,9 @@
   gap:10px;
   margin-top:8px;
   padding:8px;
-  border:1px solid #1a1a1a;
+  border:1px solid var(--tt-border);
   border-radius:8px;
-  background:#080808;
+  background:var(--tt-surface-2);
 }
 
 .docsPanel__uploadThumb{
@@ -213,7 +215,7 @@
   height:48px;
   object-fit:cover;
   border-radius:8px;
-  border:1px solid #222;
+  border:1px solid var(--tt-border);
 }
 
 .docsPanel__uploadBody{
@@ -231,12 +233,12 @@
 
 .docsPanel__uploadMeta{
   font-size:11px;
-  color:#888;
+  color:var(--muted-text);
 }
 
 .docsPanel__bar{
   height:8px;
-  background:#111;
+  background:color-mix(in srgb, var(--tt-border) 60%, transparent);
   border-radius:6px;
   overflow:hidden;
   margin-top:4px;
@@ -249,7 +251,7 @@
 
 .docsPanel__uploadErr{
   font-size:11px;
-  color:#ff9f9f;
+  color:var(--error);
   margin-top:4px;
 }
 
@@ -266,7 +268,7 @@
 /* Audit log */
 .docsPanel__auditLog{
   background: rgba(0,0,0,0.18);
-  border: 1px solid rgba(255,255,255,0.07);
+  border: 1px solid var(--tt-border);
   border-radius: 6px;
   padding: 10px 12px;
   margin-bottom: 12px;
@@ -278,15 +280,15 @@
   gap: 6px;
   align-items: baseline;
   padding: 3px 0;
-  border-bottom: 1px solid rgba(255,255,255,0.04);
+  border-bottom: 1px solid color-mix(in srgb, var(--tt-border) 50%, transparent);
 }
 .docsPanel__auditRow:last-child{ border-bottom: none; }
-.docsPanel__auditTs{ color: #7A9198; min-width: 130px; font-size: 11px; }
-.docsPanel__auditAction{ font-weight: 600; color: #AD885F; }
-.docsPanel__auditAction--denied{ color: #E09A4F; }
-.docsPanel__auditActor{ color: #aaa; font-size: 11px; }
-.docsPanel__auditDoc{ color: #666; font-size: 11px; font-family: monospace; }
-.docsPanel__auditDetail{ color: #888; font-style: italic; font-size: 11px; }
+.docsPanel__auditTs{ color: var(--muted-text); min-width: 130px; font-size: 11px; }
+.docsPanel__auditAction{ font-weight: 600; color: var(--accent); }
+.docsPanel__auditAction--denied{ color: var(--highlight); }
+.docsPanel__auditActor{ color: var(--muted-text); font-size: 11px; }
+.docsPanel__auditDoc{ color: var(--muted-text); opacity: 0.75; font-size: 11px; font-family: monospace; }
+.docsPanel__auditDetail{ color: var(--muted-text); font-style: italic; font-size: 11px; }
 
 @media (max-width: 720px){
   .docsPanel__viewerGrid{

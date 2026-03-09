@@ -80,9 +80,9 @@ input, textarea, select, button {
 }
 
 input, textarea {
-  background: var(--surface);
-  color: var(--text);
-  border: 1px solid rgba(255,255,255,0.04);
+  background: var(--input-bg, var(--surface));
+  color: var(--input-text, var(--text));
+  border: 1px solid var(--input-border, rgba(255,255,255,0.08));
   border-radius: var(--radius);
   padding: 8px 10px;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);

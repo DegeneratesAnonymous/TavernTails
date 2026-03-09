@@ -36,6 +36,17 @@
   color: var(--muted-text);
 }
 
+/* ── Card section header — separates a titled block from its content ── */
+.card-section-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--tt-border, rgba(255,255,255,0.10));
+  padding-bottom: 8px;
+}
+
 .card {
   background: var(--card-bg, var(--surface));
   color: var(--card-text, var(--text));
@@ -175,8 +186,8 @@
 
 .notification-bell--pending {
   color: var(--accent);
-  border-color: rgba(224, 154, 79, 0.6);
-  background: rgba(224, 154, 79, 0.12);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .notification-list {
@@ -195,8 +206,8 @@
 }
 
 .notification-item--unread {
-  border-color: rgba(224, 154, 79, 0.6);
-  background: rgba(224, 154, 79, 0.12);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .notification-item-title {
@@ -323,6 +334,8 @@
   color: var(--accent-text, var(--text));
   font-size: 14px;
   font-weight: 650;
+  text-transform: none;
+  letter-spacing: normal;
   cursor: pointer;
   transition: transform 120ms ease, background-color 120ms ease, border-color 120ms ease, opacity 120ms ease;
 }

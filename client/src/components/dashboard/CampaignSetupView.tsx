@@ -739,8 +739,8 @@ export default function CampaignSetupView({
       <div className="row-wrap" style={{ gap: 16, alignItems: 'stretch' }}>
         <div style={{ minWidth: 260, flex: '1 1 260px' }}>
           <div className="card card-pad stack" style={{ gap: 10 }}>
-            <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-              <div className="muted">My Campaigns</div>
+            <div className="row-wrap card-section-header" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>My Campaigns</div>
               <button className="btn btn-secondary btn-sm btn-icon-only" type="button" onClick={onCreateCampaign} title="New Campaign" aria-label="New Campaign">
                 <NewIcon />
               </button>
@@ -758,7 +758,7 @@ export default function CampaignSetupView({
 
             {sortedGmCampaigns.length > 0 ? (
               <>
-                <div className="muted" style={{ marginTop: 8, fontSize: 12, borderTop: '1px solid var(--tt-border)', paddingTop: 8 }}>
+                <div className="card-section-header" style={{ marginTop: 8 }}>
                   Campaigns I GM
                 </div>
                 <div className="stack" style={{ gap: 10 }}>
@@ -796,8 +796,8 @@ export default function CampaignSetupView({
               </button>
 
               <div className="card card-pad" style={{ marginTop: 12 }}>
-                <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-                  <div className="muted">Adventure details</div>
+                <div className="row-wrap card-section-header" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                  <div>Adventure details</div>
                   <div className="row-wrap" style={{ gap: 8 }}>
                     <button
                       className="btn btn-secondary"
@@ -825,7 +825,7 @@ export default function CampaignSetupView({
 
               <div className="card card-pad" style={{ opacity: loading ? 0.7 : 1, marginTop: 12 }}>
                 <div className="stack" style={{ gap: 10 }}>
-                  <div className="muted">Settings</div>
+                  <div className="card-section-header">Settings</div>
 
                   <div className="stack" style={{ gap: 6 }}>
                     <label className="muted" style={{ fontSize: 13 }}>
@@ -1078,7 +1078,7 @@ export default function CampaignSetupView({
               </div>
 
               <div className="card card-pad" style={{ marginTop: 12 }}>
-                <div className="muted" style={{ marginBottom: 8, fontWeight: 700 }}>Danger Zone</div>
+                <div className="card-section-header" style={{ marginBottom: 8 }}>Danger Zone</div>
                 <button
                   className="btn btn-quiet"
                   type="button"
@@ -1098,7 +1098,7 @@ export default function CampaignSetupView({
                 ← Back to campaigns
               </button>
               <div className="card card-pad" style={{ marginTop: 12 }}>
-                <div style={{ fontWeight: 700, marginBottom: 6 }}>Campaign Documents</div>
+                <div className="card-section-header" style={{ marginBottom: 8 }}>Campaign Documents</div>
                 <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
                   Upload PDFs, campaign modules, random tables, or instruction sets. The AI uses these during gameplay.
                 </div>
@@ -1146,7 +1146,7 @@ export default function CampaignSetupView({
                 ← Back to campaigns
               </button>
               <div className="card card-pad" style={{ marginTop: 12 }}>
-                <div style={{ fontWeight: 700, marginBottom: 6 }}>Players</div>
+                <div className="card-section-header" style={{ marginBottom: 8 }}>Players</div>
                 <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
                   Invite players by username or email to grant access to this campaign.
                 </div>

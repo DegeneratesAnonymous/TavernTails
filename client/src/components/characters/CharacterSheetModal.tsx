@@ -477,7 +477,7 @@ function ListPreview({ title, items, onItemClick }: { title: string; items: stri
   const remaining = items.length - limit
   return (
     <div className="card tt-sheet-card">
-      <div className="muted" style={{ marginBottom: 6 }}>{title}</div>
+      <div className="card-section-header">{title}</div>
       <ul style={{ margin: 0, paddingLeft: 18 }}>
         {shown.map((item) => (
           <li key={item}>
@@ -519,7 +519,7 @@ function InventoryList({ items }: { items: InventoryItem[] }) {
   if (!items.length) return null
   return (
     <div className="card tt-sheet-card">
-      <div className="muted" style={{ marginBottom: 6 }}>Inventory</div>
+      <div className="card-section-header">Inventory</div>
       <ul style={{ margin: 0, paddingLeft: 18 }}>
         {items.map((item) => (
           <li key={`${item.name}-${item.type || ''}-${item.cost || ''}`}>
@@ -777,7 +777,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
     const derivedPrepared = derived.spellbook
       .filter((s: any) => {
         const p = String(s?.prepared || '').toLowerCase()
-        return ['yes', 'true', '1', 'prepared', 'y'].includes(p) || p === 'o' || p === '○'
+        return ['yes', 'true', '1', 'prepared', 'y'].includes(p) || p === 'o' || p === '○' || p === '◯'
       })
       .map((s: any) => asString(s?.name))
       .filter(Boolean)
@@ -1016,7 +1016,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
               ) : null}
               {ddbUrl ? (
                 <div className="card tt-sheet-card">
-                  <div className="muted" style={{ marginBottom: 6 }}>D&D Beyond</div>
+                  <div className="card-section-header">D&D Beyond</div>
                   <div className="row-wrap" style={{ justifyContent: "space-between", alignItems: "center" }}>
                     <div className="input input-mono tt-sheet-ddb-url">{ddbUrl}</div>
                     <a className="btn btn-sm btn-secondary" href={ddbUrl} target="_blank" rel="noreferrer">Open</a>
@@ -1029,7 +1029,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
 
               {pdfMeta ? (
                 <div className="card tt-sheet-card">
-                  <div className="muted" style={{ marginBottom: 6 }}>PDF extraction</div>
+                  <div className="card-section-header">PDF extraction</div>
                   <div className="row-wrap" style={{ gap: 12 }}>
                     <div><strong>Widgets:</strong> {pdfMeta.widgetCount ?? "—"}</div>
                     <div><strong>Text chars:</strong> {pdfMeta.rawTextLen ?? "—"}</div>
@@ -1043,7 +1043,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
                   ) : null}
                   {importMeta?.document_id && importMeta?.document_session_id ? (
                     <div style={{ marginTop: 10 }}>
-                      <div className="muted" style={{ marginBottom: 6 }}>Original PDF</div>
+                      <div className="card-section-header">Original PDF</div>
                       <div style={{ height: 420, border: "1px solid rgba(255,255,255,0.06)" }}>
                         <iframe
                           title="character-pdf"
@@ -1058,7 +1058,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
 
               <div className="tt-sheet-grid">
                 <div className="card tt-sheet-card">
-                  <div className="muted" style={{ marginBottom: 6 }}>Overview</div>
+                  <div className="card-section-header">Overview</div>
                   <div><strong>Name:</strong> {character.name}</div>
                   <div><strong>Level:</strong> {character.level}</div>
                   <div><strong>Class:</strong> {character.class_name || "—"}</div>
@@ -1068,7 +1068,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
                   {bio.alignment ? <div><strong>Alignment:</strong> {bio.alignment}</div> : null}
                 </div>
                 <div className="card tt-sheet-card">
-                  <div className="muted" style={{ marginBottom: 6 }}>Combat</div>
+                  <div className="card-section-header">Combat</div>
                   <div><strong>HP:</strong> {derived.hpCurrent ?? "—"} / {derived.hpMax ?? "—"}</div>
                   <div><strong>AC:</strong> {derived.ac ?? "—"}</div>
                   {bio.classDc != null ? <div><strong>Class DC:</strong> {bio.classDc}</div> : null}
@@ -1077,14 +1077,14 @@ export default function CharacterSheetModal({ open, character, loading = false, 
                   ) : null}
                 </div>
                 <div className="card tt-sheet-card">
-                  <div className="muted" style={{ marginBottom: 6 }}>Status</div>
+                  <div className="card-section-header">Status</div>
                   <div><strong>Death Saves:</strong> {derived.deathSaves.successes ?? "—"} ✓ / {derived.deathSaves.failures ?? "—"} ✗</div>
                   <div><strong>Hit Dice:</strong> {derived.rest.hitDiceUsed ?? "—"} / {derived.rest.hitDiceTotal ?? "—"}</div>
                   <div><strong>Inspiration:</strong> {derived.rest.inspiration === null ? "—" : derived.rest.inspiration ? "Yes" : "No"}</div>
                   <div><strong>Exhaustion:</strong> {derived.rest.exhaustion ?? "—"}</div>
                 </div>
                 <div className="card tt-sheet-card">
-                  <div className="muted" style={{ marginBottom: 6 }}>Movement</div>
+                  <div className="card-section-header">Movement</div>
                   <div><strong>Walk:</strong> {derived.movement.walk ?? "—"} ft</div>
                   <div><strong>Fly:</strong> {derived.movement.fly ?? "—"} ft</div>
                   <div><strong>Swim:</strong> {derived.movement.swim ?? "—"} ft</div>
@@ -1094,7 +1094,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
               </div>
 
               <div className="card tt-sheet-abilities">
-                <div className="muted" style={{ marginBottom: 6 }}>Ability scores</div>
+                <div className="card-section-header">Ability scores</div>
                 <div className="tt-abilities-grid">
                   {(["str","dex","con","int","wis","cha"] as const).map((k) => (
                     <div key={k} className="input input-mono tt-ability">
@@ -1107,7 +1107,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
 
               {/* Saving throws */}
               <div className="card tt-sheet-card">
-                <div className="muted" style={{ marginBottom: 6 }}>Saving Throws</div>
+                <div className="card-section-header">Saving Throws</div>
                 <div className="tt-saving-throws-grid">
                   {savingThrows.map(({ key, label, mod, proficient }) => (
                     <div key={key} className={`tt-save-item ${proficient ? "tt-save-item--proficient" : ""}`}>
@@ -1124,7 +1124,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
 
               {derived.actions && derived.actions.length ? (
                 <div className="card tt-sheet-card">
-                  <div className="muted" style={{ marginBottom: 6 }}>Actions</div>
+                  <div className="card-section-header">Actions</div>
                   <ul style={{ margin: 0, paddingLeft: 18 }}>
                     {derived.actions.map((a: any, idx: number) => (
                       <li key={`action-${idx}`}>
@@ -1137,7 +1137,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
 
               {derived.bonusActions && derived.bonusActions.length ? (
                 <div className="card tt-sheet-card">
-                  <div className="muted" style={{ marginBottom: 6 }}>Bonus Actions</div>
+                  <div className="card-section-header">Bonus Actions</div>
                   <ul style={{ margin: 0, paddingLeft: 18 }}>
                     {derived.bonusActions.map((a: any, idx: number) => (
                       <li key={`baction-${idx}`}>
@@ -1158,7 +1158,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
                 if (hasObjects) {
                   return (
                     <div className="card tt-sheet-card">
-                      <div className="muted" style={{ marginBottom: 6 }}>Skills</div>
+                      <div className="card-section-header">Skills</div>
                       <div className="tt-skills-grid">
                         {rawSkillList.map((s: any) => {
                           const name = typeof s === 'string' ? s : asString((s as any)?.name)
@@ -1187,7 +1187,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
                 if (derived.skills && derived.skills.length) {
                   return (
                     <div className="card tt-sheet-card">
-                      <div className="muted" style={{ marginBottom: 6 }}>Skills</div>
+                      <div className="card-section-header">Skills</div>
                       <ul style={{ margin: 0, paddingLeft: 18 }}>
                         {derived.skills.map((s) => <li key={s}>{s}</li>)}
                       </ul>
@@ -1199,7 +1199,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
 
               {showRaw ? (
                 <div className="card tt-sheet-card">
-                  <div className="muted" style={{ marginBottom: 6 }}>Raw sheet JSON</div>
+                  <div className="card-section-header">Raw sheet JSON</div>
                   <pre className="code-block tt-sheet-raw">
                     {JSON.stringify(sheet, null, 2)}
                   </pre>
@@ -1213,7 +1213,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
             <>
               <div className="tt-sheet-grid">
                 <div className="card tt-sheet-card">
-                  <div className="muted" style={{ marginBottom: 6 }}>Identity</div>
+                  <div className="card-section-header">Identity</div>
                   <div><strong>{bio.heritage ? 'Ancestry' : 'Species'}:</strong> {bio.species || "—"}</div>
                   {bio.heritage ? <div><strong>Heritage:</strong> {bio.heritage}</div> : null}
                   <div><strong>Background:</strong> {bio.background || "—"}</div>
@@ -1221,7 +1221,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
                 </div>
                 {bio.languages.length ? (
                   <div className="card tt-sheet-card">
-                    <div className="muted" style={{ marginBottom: 6 }}>Languages</div>
+                    <div className="card-section-header">Languages</div>
                     <ul style={{ margin: 0, paddingLeft: 18 }}>
                       {bio.languages.map((l) => <li key={l}>{l}</li>)}
                     </ul>
@@ -1233,25 +1233,25 @@ export default function CharacterSheetModal({ open, character, loading = false, 
                 <div className="tt-sheet-grid">
                   {bio.personality ? (
                     <div className="card tt-sheet-card">
-                      <div className="muted" style={{ marginBottom: 4 }}>Personality Traits</div>
+                      <div className="card-section-header">Personality Traits</div>
                       <div style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>{bio.personality}</div>
                     </div>
                   ) : null}
                   {bio.ideals ? (
                     <div className="card tt-sheet-card">
-                      <div className="muted" style={{ marginBottom: 4 }}>Ideals</div>
+                      <div className="card-section-header">Ideals</div>
                       <div style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>{bio.ideals}</div>
                     </div>
                   ) : null}
                   {bio.bonds ? (
                     <div className="card tt-sheet-card">
-                      <div className="muted" style={{ marginBottom: 4 }}>Bonds</div>
+                      <div className="card-section-header">Bonds</div>
                       <div style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>{bio.bonds}</div>
                     </div>
                   ) : null}
                   {bio.flaws ? (
                     <div className="card tt-sheet-card">
-                      <div className="muted" style={{ marginBottom: 4 }}>Flaws</div>
+                      <div className="card-section-header">Flaws</div>
                       <div style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>{bio.flaws}</div>
                     </div>
                   ) : null}
@@ -1260,7 +1260,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
 
               {bio.backstory ? (
                 <div className="card tt-sheet-card">
-                  <div className="muted" style={{ marginBottom: 4 }}>Backstory</div>
+                  <div className="card-section-header">Backstory</div>
                   <div style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>{bio.backstory}</div>
                 </div>
               ) : null}
@@ -1269,7 +1269,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
                 <div className="tt-sheet-grid">
                   {bio.armorProficiencies.length ? (
                     <div className="card tt-sheet-card">
-                      <div className="muted" style={{ marginBottom: 4 }}>Armor Proficiencies</div>
+                      <div className="card-section-header">Armor Proficiencies</div>
                       <ul style={{ margin: 0, paddingLeft: 18 }}>
                         {bio.armorProficiencies.map((p) => <li key={p}>{p}</li>)}
                       </ul>
@@ -1277,7 +1277,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
                   ) : null}
                   {bio.weaponProficiencies.length ? (
                     <div className="card tt-sheet-card">
-                      <div className="muted" style={{ marginBottom: 4 }}>Weapon Proficiencies</div>
+                      <div className="card-section-header">Weapon Proficiencies</div>
                       <ul style={{ margin: 0, paddingLeft: 18 }}>
                         {bio.weaponProficiencies.map((p) => <li key={p}>{p}</li>)}
                       </ul>
@@ -1285,7 +1285,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
                   ) : null}
                   {bio.toolProficiencies.length ? (
                     <div className="card tt-sheet-card">
-                      <div className="muted" style={{ marginBottom: 4 }}>Tool Proficiencies</div>
+                      <div className="card-section-header">Tool Proficiencies</div>
                       <ul style={{ margin: 0, paddingLeft: 18 }}>
                         {bio.toolProficiencies.map((p) => <li key={p}>{p}</li>)}
                       </ul>
@@ -1305,7 +1305,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
             <>
               {localSpellSlots.length ? (
                 <div className="card tt-sheet-card">
-                  <div className="muted" style={{ marginBottom: 8 }}>Spell Slots <span style={{ fontSize: 11 }}>(click to mark used/unused)</span></div>
+                  <div className="card-section-header">Spell Slots <span style={{ fontSize: 11, textTransform: 'none' }}>(click to mark used/unused)</span></div>
                   <div className="tt-spell-slots">
                     {localSpellSlots.map((slot) => {
                       const max = slot.max ?? 0
@@ -1404,7 +1404,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
 
               {derived.spellbook.length ? (
                 <div className="card tt-sheet-card" style={{ marginTop: 12 }}>
-                  <div className="muted" style={{ marginBottom: 6 }}>Spellbook Details</div>
+                  <div className="card-section-header">Spellbook Details</div>
                   <div style={{ maxHeight: 280, overflow: "auto" }}>
                     <table className="spellbook-table">
                       <thead>
@@ -1522,7 +1522,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
 
           {editing ? (
             <div className="card card-pad stack" style={{ background: "rgba(255,255,255,0.02)" }}>
-              <div style={{ fontWeight: 700 }}>Edit character</div>
+              <div className="card-section-header">Edit character</div>
               <div className="row-wrap" style={{ gap: 10 }}>
                 <div className="stack" style={{ gap: 6, minWidth: 180 }}>
                   <label className="muted">Name</label>
@@ -1592,7 +1592,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
               <div style={{ whiteSpace: "pre-wrap", fontSize: 14 }}>{detailText || "No additional details available."}</div>
               {character?.sheet?.references && detailTitle ? (
                 <div style={{ marginTop: 8 }}>
-                  <div className="muted" style={{ marginBottom: 6 }}>References</div>
+                  <div className="card-section-header">References</div>
                   {(() => {
                     const refsAll = character.sheet.references || {}
                     const featRefs = refsAll.features?.[detailTitle] || refsAll.spells?.[detailTitle] || []
@@ -1633,7 +1633,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
   if (embedded) {
     return (
       <div className="card card-pad">
-        <div style={{ fontWeight: 700, marginBottom: 8 }}>{title}</div>
+        <div className="card-section-header" style={{ marginBottom: 8 }}>{title}</div>
         {content}
       </div>
     )

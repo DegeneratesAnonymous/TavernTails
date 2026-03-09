@@ -1089,8 +1089,240 @@
   border-bottom-color: rgba(200, 148, 26, 0.12);
 }
 
+/* ── Card section headers get warm ink border in medieval ── */
+[data-theme="medieval"] .card .card-section-header,
+[data-theme="medieval"] .card-section-header {
+  border-bottom-color: rgba(96, 58, 10, 0.28);
+  color: #1c0d03;
+}
+
 /* ── account-provider sub-panels ── */
 [data-theme="medieval"] .account-provider {
   background: rgba(30, 18, 8, 0.60);
   border-color: rgba(200, 148, 26, 0.18);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SCI-FI component overrides — structural tweaks not covered by
+   the accent-var changes in component CSS files.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Topbar: deeper void-black than the default */
+[data-theme="scifi"] .dashboard-topbar {
+  background: linear-gradient(180deg, #000e28 0%, #000814 100%);
+  border-bottom: 1px solid rgba(0, 180, 216, 0.28);
+  box-shadow: 0 2px 16px rgba(0,0,0,0.80), 0 0 24px rgba(0,180,216,0.04);
+}
+
+/* Drawer: left-edge cyan glow */
+[data-theme="scifi"] .dashboard-drawer {
+  background: linear-gradient(90deg, #000a1a 0%, #000e28 100%);
+  border-right: 1px solid rgba(0, 180, 216, 0.28);
+  box-shadow: 4px 0 24px rgba(0,0,0,0.70), inset -1px 0 0 rgba(0,180,216,0.08);
+}
+
+/* Nav buttons: faint cyan tint, active = cyan glow border */
+[data-theme="scifi"] .nav-btn.active {
+  background: rgba(0, 180, 216, 0.14);
+  border-color: rgba(0, 180, 216, 0.38);
+  color: #caf0f8;
+}
+
+/* Content panels: deep space dark */
+[data-theme="scifi"] .dashboard-panel {
+  background: rgba(0, 14, 40, 0.92);
+  box-shadow: inset 0 0 0 1px rgba(0, 180, 216, 0.14);
+}
+[data-theme="scifi"] .gameplay-panel {
+  background: rgba(0, 10, 26, 0.96);
+  box-shadow: inset 0 0 0 1px rgba(0, 180, 216, 0.10);
+}
+
+/* Modal: void black */
+[data-theme="scifi"] .modal {
+  background: rgba(0, 8, 20, 0.99);
+  border-color: rgba(0, 180, 216, 0.22);
+}
+[data-theme="scifi"] .modal-header {
+  border-bottom-color: rgba(0, 180, 216, 0.12);
+}
+
+/* NarrativeView: deeper void + cyan border */
+[data-theme="scifi"] .narrative-card {
+  background: rgba(0, 8, 20, 0.88);
+  border-color: rgba(0, 180, 216, 0.18);
+}
+[data-theme="scifi"] .narrative-scene {
+  background: #000814;
+  border-color: rgba(0, 180, 216, 0.10);
+}
+
+/* Chat: cyan-tinted you-bubble + die buttons already use var(--accent) */
+[data-theme="scifi"] .chat-panel {
+  background: rgba(0, 8, 20, 0.78);
+  border-color: rgba(0, 180, 216, 0.14);
+}
+[data-theme="scifi"] .chat-messages {
+  background: rgba(0, 6, 16, 0.80);
+  border-color: rgba(0, 180, 216, 0.10);
+}
+
+/* GameplayLayout panels: deep void black */
+[data-theme="scifi"] .site-panel {
+  background: rgba(0, 10, 22, 0.97);
+  border-right-color: rgba(0, 180, 216, 0.16);
+}
+[data-theme="scifi"] .session-panel {
+  background: rgba(0, 8, 20, 0.80);
+  border-color: rgba(0, 180, 216, 0.12);
+}
+[data-theme="scifi"] .session-panel-tabs {
+  background: rgba(0, 14, 36, 0.65);
+  border-bottom-color: rgba(0, 180, 216, 0.12);
+}
+[data-theme="scifi"] .session-panel-tab.active {
+  background: rgba(0, 180, 216, 0.14);
+  border-color: rgba(0, 180, 216, 0.32);
+}
+[data-theme="scifi"] .player-sheet,
+[data-theme="scifi"] .zork-screen {
+  background: rgba(0, 8, 20, 0.75);
+  border-color: rgba(0, 180, 216, 0.12);
+}
+
+/* CharacterSheetModal: cyan accent tabs */
+[data-theme="scifi"] .tt-sheet-tab--active {
+  color: #00b4d8;
+  border-bottom-color: #00b4d8;
+}
+[data-theme="scifi"] .tt-spell-slot-pip--used {
+  background: #00b4d8;
+  border-color: #00b4d8;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   STAR TREK component overrides — LCARS orange palette replaces
+   any cyan/amber remnants in structural components.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Nav buttons: LCARS orange active */
+[data-theme="startrek"] .nav-btn {
+  background: rgba(255, 153, 0, 0.08);
+  color: var(--text);
+  border-radius: 0;
+}
+[data-theme="startrek"] .nav-btn:hover:not(:disabled):not([aria-disabled='true']) {
+  background: rgba(255, 153, 0, 0.14);
+  border-color: rgba(255, 153, 0, 0.28);
+}
+[data-theme="startrek"] .nav-btn.active {
+  background: rgba(255, 153, 0, 0.18);
+  border-color: rgba(255, 153, 0, 0.45);
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Content panels: dark purple LCARS bg */
+[data-theme="startrek"] .dashboard-panel {
+  background: rgba(10, 0, 20, 0.94);
+  box-shadow: inset 0 0 0 1px rgba(255, 153, 0, 0.18);
+}
+[data-theme="startrek"] .gameplay-panel {
+  background: rgba(8, 0, 16, 0.98);
+  box-shadow: inset 0 0 0 1px rgba(255, 153, 0, 0.12);
+}
+
+/* Modal */
+[data-theme="startrek"] .modal {
+  background: rgba(8, 0, 20, 0.99);
+  border-color: rgba(255, 153, 0, 0.28);
+  border-left: 4px solid var(--accent);
+}
+[data-theme="startrek"] .modal-header {
+  border-bottom-color: rgba(255, 153, 0, 0.18);
+}
+
+/* NarrativeView */
+[data-theme="startrek"] .narrative-scene {
+  background: #000000;
+  border-color: rgba(255, 153, 0, 0.14);
+}
+[data-theme="startrek"] .narrative-card {
+  background: rgba(8, 0, 20, 0.92);
+  border-color: rgba(255, 153, 0, 0.22);
+  border-left: 3px solid var(--accent);
+}
+
+/* Chat */
+[data-theme="startrek"] .chat-panel {
+  background: rgba(8, 0, 20, 0.78);
+  border-color: rgba(255, 153, 0, 0.14);
+}
+[data-theme="startrek"] .chat-messages {
+  background: rgba(4, 0, 12, 0.82);
+  border-color: rgba(255, 153, 0, 0.10);
+}
+
+/* GameplayLayout */
+[data-theme="startrek"] .site-panel {
+  background: rgba(6, 0, 16, 0.97);
+  border-right: 4px solid var(--accent);
+}
+[data-theme="startrek"] .session-panel {
+  background: rgba(8, 0, 20, 0.82);
+  border-color: rgba(255, 153, 0, 0.12);
+}
+[data-theme="startrek"] .session-panel-tabs {
+  background: rgba(12, 0, 28, 0.65);
+  border-bottom-color: rgba(255, 153, 0, 0.18);
+}
+[data-theme="startrek"] .session-panel-tab.active {
+  background: rgba(255, 153, 0, 0.14);
+  border-color: rgba(255, 153, 0, 0.38);
+}
+[data-theme="startrek"] .player-sheet,
+[data-theme="startrek"] .zork-screen {
+  background: rgba(8, 0, 20, 0.75);
+  border-color: rgba(255, 153, 0, 0.12);
+}
+
+/* CharacterSheetModal: orange accent */
+[data-theme="startrek"] .tt-sheet-tab--active {
+  color: #ff9900;
+  border-bottom-color: #ff9900;
+}
+[data-theme="startrek"] .tt-save-item--proficient .tt-save-pip,
+[data-theme="startrek"] .tt-skill-item--proficient .tt-skill-pip {
+  color: #ff9900;
+}
+[data-theme="startrek"] .tt-spell-slot-pip--used {
+  background: #ff9900;
+  border-color: #ff9900;
+}
+
+/* Account avatar: LCARS coral */
+[data-theme="startrek"] .account-avatar {
+  background: rgba(255, 153, 0, 0.22);
+  color: #f0e6ff;
+}
+
+/* Home QA cards */
+[data-theme="startrek"] .home-qa-card:hover {
+  background: rgba(255, 153, 0, 0.10);
+  border-color: rgba(255, 153, 0, 0.38);
+  transform: translateY(-2px);
+}
+
+/* Suggestions / player-status bars */
+[data-theme="startrek"] .session-banner {
+  background: rgba(10, 0, 24, 0.70);
+  border-bottom-color: rgba(255, 153, 0, 0.14);
+}
+[data-theme="startrek"] .suggestions-bar {
+  background: rgba(8, 0, 20, 0.75);
+  border-bottom-color: rgba(255, 153, 0, 0.10);
+}
+[data-theme="startrek"] .player-status {
+  background: rgba(6, 0, 14, 0.70);
+  border-bottom-color: rgba(255, 153, 0, 0.10);
 }

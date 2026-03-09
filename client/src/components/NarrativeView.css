@@ -14,8 +14,8 @@
   position: relative;
   border-radius: 12px;
   overflow: hidden;
-  background: #0f0f11;
-  border: 1px solid rgba(255,255,255,0.06);
+  background: var(--bg-color, #0f0f11);
+  border: 1px solid var(--tt-border);
 }
 
 .narrative-scene img{
@@ -50,7 +50,7 @@
   padding: 18px 18px;
   border-radius: 14px;
   background: rgba(0,0,0,0.72);
-  border: 1px solid rgba(120,255,200,0.14);
+  border: 1px solid var(--tt-border);
   box-shadow: 0 16px 70px rgba(0,0,0,0.55);
   max-height: calc(100% - 8vh);
   overflow: auto;
@@ -97,8 +97,8 @@
 }
 
 .narrative-choices-toggle:hover{
-  border-color: rgba(120,255,200,0.22);
-  background: rgba(120,255,200,0.06);
+  border-color: var(--tt-border-strong);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .narrative-choice-btn{
@@ -111,7 +111,7 @@
 }
 
 .narrative-choice-btn:hover{
-  border-color: rgba(120,255,200,0.20);
-  background: rgba(120,255,200,0.06);
+  border-color: var(--tt-border-strong);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
