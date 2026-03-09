@@ -7,6 +7,8 @@ import { apiFetch, buildApiUrl } from '../api'
 import { CharacterSummary } from './CharacterPanel'
 import ImportCharacterView from './dashboard/ImportCharacterView'
 import CreatingCharacterView from './dashboard/CreatingCharacterView'
+import CharacterWizard from './dashboard/CharacterWizard'
+import CampaignCreationWizard from './dashboard/CampaignCreationWizard'
 import Beyond20View from './dashboard/Beyond20View'
 import CampaignSetupView from './dashboard/CampaignSetupView'
 import DashboardHome from './dashboard/DashboardHome'
@@ -1249,12 +1251,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
           <DashboardHome
             profile={profile}
             lastSessionLabel={lastSessionLabel}
-            onStartNewGame={() => {
-              setQuickstartCampaignName('')
-              setQuickstartCampaignNameError(null)
-              setQuickstartSelectedCharId(characters.length > 0 ? String(characters[0].id) : '__none__')
-              setShowQuickstartSetup(true)
-            }}
+            onStartNewGame={() => setView('campaign-creation-wizard')}
             onLoadGame={() => {
               if (typeof window === 'undefined') {
                 setView('gameplay')
@@ -2268,6 +2265,28 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             onGoToImportPdf={() => {
               setImportInitialMode('pdf')
               setView('import-character')
+            }}
+            onGoToWizard={() => setView('character-wizard')}
+          />
+        )}
+
+        {view === 'character-wizard' && (
+          <CharacterWizard
+            onDone={() => setView('view-characters')}
+            onCharacterCreated={async () => {
+              await fetchCharacters()
+              setView('view-characters')
+            }}
+          />
+        )}
+
+        {view === 'campaign-creation-wizard' && (
+          <CampaignCreationWizard
+            onDone={() => setView('campaign-setup')}
+            onCampaignCreated={async (campaignId) => {
+              await fetchCampaigns()
+              setActiveCampaignId(campaignId)
+              setView('campaign-setup')
             }}
           />
         )}
