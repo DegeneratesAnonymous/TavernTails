@@ -1349,7 +1349,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
               <div className="row-wrap characters-shell">
                 <div className="characters-column">
                   <div className="card card-pad stack characters-list-card" style={{ gap: 10 }}>
-                    <div className="muted">Characters</div>
+                    <div className="card-section-header">Characters</div>
                     <div className="stack" style={{ gap: 6 }}>
                       {characters.map((c) => {
                         const sheet = (c?.sheet && typeof c.sheet === 'object') ? c.sheet : {}
@@ -1469,7 +1469,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                         <div className="stack" style={{ gap: 12, marginTop: 12 }}>
                           <div className="row-wrap" style={{ gap: 16 }}>
                             <div className="card card-pad characters-subcard" style={{ flex: '1 1 220px' }}>
-                              <div className="muted" style={{ marginBottom: 6 }}>Vitals</div>
+                              <div className="card-section-header">Vitals</div>
                               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
                                 <div>
                                   <div className="muted">AC</div>
@@ -1503,7 +1503,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                             </div>
 
                             <div className="card card-pad characters-subcard" style={{ flex: '1 1 220px' }}>
-                              <div className="muted" style={{ marginBottom: 6 }}>Abilities</div>
+                              <div className="card-section-header">Abilities</div>
                               <div className="row-wrap" style={{ gap: 10 }}>
                                 {(['str','dex','con','int','wis','cha'] as const).map((k) => (
                                   <div key={k} className="card" style={{ padding: '8px 10px', minWidth: 80 }}>
@@ -1519,7 +1519,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                           {(selectedSheetSummary.inventory.items.length || selectedSheetSummary.skills.items.length) ? (
                             <div className="row-wrap" style={{ gap: 16 }}>
                               <div className="card card-pad characters-subcard" style={{ flex: '1 1 220px' }}>
-                                <div className="muted" style={{ marginBottom: 6 }}>Inventory</div>
+                                <div className="card-section-header">Inventory</div>
                                 {selectedSheetSummary.inventory.items.length ? (
                                   <ul style={{ margin: 0, paddingLeft: 18 }}>
                                     {(showAllSummaryInventory ? selectedSheetSummary.inventory.all : selectedSheetSummary.inventory.items).map((i) => <li key={i}>{i}</li>)}
@@ -1538,7 +1538,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                                 ) : null}
                               </div>
                               <div className="card card-pad characters-subcard" style={{ flex: '1 1 220px' }}>
-                                <div className="muted" style={{ marginBottom: 6 }}>Skills</div>
+                                <div className="card-section-header">Skills</div>
                                 {(() => {
                                   // Prefer structured skill objects (with proficiency data) when available.
                                   const rawSkillList: any[] = Array.isArray((selectedCharacter?.sheet as any)?.skills) ? (selectedCharacter?.sheet as any).skills : []
@@ -1610,7 +1610,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                             if (!profRows.length) return null
                             return (
                               <div className="card card-pad characters-subcard" style={{ marginTop: 8 }}>
-                                <div className="muted" style={{ marginBottom: 6 }}>Proficiencies</div>
+                                <div className="card-section-header">Proficiencies</div>
                                 <div className="stack" style={{ gap: 4 }}>
                                   {profRows.map(row => (
                                     <div key={row.label}>
@@ -1626,8 +1626,8 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                       ) : null}
                       {characterPanelMode === 'journal' ? (
                         <div className="card card-pad characters-subcard" style={{ marginTop: 12 }}>
-                          <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div className="muted">Journal</div>
+                          <div className="row-wrap card-section-header" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>Journal</div>
                             <button className="btn btn-quiet" type="button" onClick={() => openNpcModalForCharacter(selectedCharacter)}>
                               Open Journal
                             </button>
@@ -1639,8 +1639,8 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                       ) : null}
                       {characterPanelMode === 'spells' ? (
                         <div className="card card-pad characters-subcard" style={{ marginTop: 12 }}>
-                          <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                            <div className="muted">Spells</div>
+                          <div className="row-wrap card-section-header" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                            <div>Spells</div>
                             <button className="btn btn-secondary btn-sm" type="button" disabled>+ Add Spell</button>
                           </div>
                           {selectedCharacter ? (
@@ -1854,8 +1854,8 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                       ) : null}
                       {characterPanelMode === 'features' ? (
                         <div className="card card-pad characters-subcard" style={{ marginTop: 12 }}>
-                          <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                            <div className="muted">Features</div>
+                          <div className="row-wrap card-section-header" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                            <div>Features</div>
                             <button className="btn btn-secondary btn-sm" type="button" disabled>+ Add Feature</button>
                           </div>
                           {selectedSheetSummary ? (
@@ -1944,8 +1944,8 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                       ) : null}
                       {characterPanelMode === 'inventory' ? (
                         <div className="card card-pad characters-subcard" style={{ marginTop: 12 }}>
-                          <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                            <div className="muted">Inventory</div>
+                          <div className="row-wrap card-section-header" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                            <div>Inventory</div>
                             <button className="btn btn-secondary btn-sm" type="button" disabled>+ Add Item</button>
                           </div>
                           {selectedSheetSummary ? (
@@ -2085,7 +2085,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                     ) : null}
                     {npc.traits && Object.keys(npc.traits).length ? (
                       <div style={{ marginTop: 8 }}>
-                        <div className="muted" style={{ marginBottom: 4 }}>Traits</div>
+                        <div className="card-section-header">Traits</div>
                         <ul style={{ margin: 0, paddingLeft: 18 }}>
                           {Object.entries(npc.traits).map(([key, value]) => (
                             <li key={key} className="muted">{key}: {String(value)}</li>
@@ -2308,7 +2308,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
               subtitle="Browse lore and world details revealed through your adventures."
             />
             <div className="card card-pad">
-              <div className="muted" style={{ marginBottom: 8 }}>Campaign Lore</div>
+              <div className="card-section-header">Campaign Lore</div>
               <div className="muted" style={{ fontSize: 13 }}>
                 As you play through campaigns, lore and world details discovered by your characters will appear here.
                 Select a campaign to browse its discovered lore.
