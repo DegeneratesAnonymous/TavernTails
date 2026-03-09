@@ -669,7 +669,6 @@ export default function CampaignSetupView({
         className="card"
         style={{
           padding: 10,
-          background: 'rgba(71,66,61,0.6)',
           borderColor: isActive ? 'rgba(173,136,95,0.6)' : 'var(--tt-border)',
         }}
       >
@@ -685,7 +684,7 @@ export default function CampaignSetupView({
               </div>
             ) : null}
             {campaign.gm_invite_pending ? (
-              <div className="muted" style={{ fontSize: 11, color: 'var(--tt-accent, #c084fc)', marginTop: 2 }}>Invite pending acceptance</div>
+              <div className="muted" style={{ fontSize: 11, color: 'var(--accent)', marginTop: 2 }}>Invite pending acceptance</div>
             ) : null}
             {associatedChars.length > 0 ? (
               <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
@@ -739,7 +738,7 @@ export default function CampaignSetupView({
 
       <div className="row-wrap" style={{ gap: 16, alignItems: 'stretch' }}>
         <div style={{ minWidth: 260, flex: '1 1 260px' }}>
-          <div className="card card-pad stack" style={{ gap: 10, background: 'var(--surface-dark)' }}>
+          <div className="card card-pad stack" style={{ gap: 10 }}>
             <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
               <div className="muted">My Campaigns</div>
               <button className="btn btn-secondary btn-sm btn-icon-only" type="button" onClick={onCreateCampaign} title="New Campaign" aria-label="New Campaign">
@@ -772,7 +771,7 @@ export default function CampaignSetupView({
 
         <div style={{ minWidth: 320, flex: '2 1 520px' }}>
           {viewMode === 'list' ? (
-            <div className="card card-pad" style={{ background: 'var(--surface-dark)' }}>
+            <div className="card card-pad">
               <div className="muted" style={{ marginBottom: 8 }}>Select a campaign action</div>
               <div className="muted" style={{ fontSize: 13 }}>
                 Choose Settings, Documents, or Players on the left to manage a campaign. Settings covers world details and tone.
@@ -796,7 +795,7 @@ export default function CampaignSetupView({
                 ← Back to campaigns
               </button>
 
-              <div className="card card-pad" style={{ background: 'var(--surface-dark)', marginTop: 12 }}>
+              <div className="card card-pad" style={{ marginTop: 12 }}>
                 <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
                   <div className="muted">Adventure details</div>
                   <div className="row-wrap" style={{ gap: 8 }}>
@@ -824,7 +823,7 @@ export default function CampaignSetupView({
                 </div>
               </div>
 
-              <div className="card card-pad" style={{ opacity: loading ? 0.7 : 1, background: 'var(--surface-dark)', marginTop: 12 }}>
+              <div className="card card-pad" style={{ opacity: loading ? 0.7 : 1, marginTop: 12 }}>
                 <div className="stack" style={{ gap: 10 }}>
                   <div className="muted">Settings</div>
 
@@ -906,7 +905,7 @@ export default function CampaignSetupView({
 
                     {/* Show pending invite status */}
                     {gmAssignment.pending_invite ? (
-                      <div className="muted" style={{ fontSize: 12, color: 'var(--tt-accent, #c084fc)' }}>
+                      <div className="muted" style={{ fontSize: 12, color: 'var(--accent)' }}>
                         ⏳ Waiting for invited user to accept the GM request.
                       </div>
                     ) : null}
@@ -1078,7 +1077,7 @@ export default function CampaignSetupView({
                 </div>
               </div>
 
-              <div className="card card-pad" style={{ background: 'var(--surface-dark)', marginTop: 12 }}>
+              <div className="card card-pad" style={{ marginTop: 12 }}>
                 <div className="muted" style={{ marginBottom: 8, fontWeight: 700 }}>Danger Zone</div>
                 <button
                   className="btn btn-quiet"
@@ -1098,7 +1097,7 @@ export default function CampaignSetupView({
               <button className="btn btn-secondary btn-sm" type="button" onClick={() => setViewMode('list')}>
                 ← Back to campaigns
               </button>
-              <div className="card card-pad" style={{ background: 'var(--surface-dark)', marginTop: 12 }}>
+              <div className="card card-pad" style={{ marginTop: 12 }}>
                 <div style={{ fontWeight: 700, marginBottom: 6 }}>Campaign Documents</div>
                 <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
                   Upload PDFs, campaign modules, random tables, or instruction sets. The AI uses these during gameplay.
@@ -1146,7 +1145,7 @@ export default function CampaignSetupView({
               <button className="btn btn-secondary btn-sm" type="button" onClick={() => setViewMode('list')}>
                 ← Back to campaigns
               </button>
-              <div className="card card-pad" style={{ background: 'var(--surface-dark)', marginTop: 12 }}>
+              <div className="card card-pad" style={{ marginTop: 12 }}>
                 <div style={{ fontWeight: 700, marginBottom: 6 }}>Players</div>
                 <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
                   Invite players by username or email to grant access to this campaign.
