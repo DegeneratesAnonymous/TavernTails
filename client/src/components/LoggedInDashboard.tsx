@@ -2307,7 +2307,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
               title="Explore"
               subtitle="Browse lore and world details revealed through your adventures."
             />
-            <div className="card card-pad" style={{ background: 'var(--surface-dark)' }}>
+            <div className="card card-pad">
               <div className="muted" style={{ marginBottom: 8 }}>Campaign Lore</div>
               <div className="muted" style={{ fontSize: 13 }}>
                 As you play through campaigns, lore and world details discovered by your characters will appear here.
@@ -2349,7 +2349,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                 { title: 'Managing Documents', body: 'Upload campaign PDFs, rule sets, or random tables under Documents. These inform the AI during gameplay.' },
                 { title: 'Player-Run Mode', body: 'Enable player-run mode in campaign settings if a human GM is running the session. AI still handles notes and NPC tracking.' },
               ].map((guide) => (
-                <div key={guide.title} className="card card-pad" style={{ background: 'var(--surface-dark)' }}>
+                <div key={guide.title} className="card card-pad">
                   <div style={{ fontWeight: 700, marginBottom: 6 }}>{guide.title}</div>
                   <div className="muted" style={{ fontSize: 13 }}>{guide.body}</div>
                 </div>
@@ -2364,7 +2364,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
               title="Documents"
               subtitle="Manage documents for your campaigns and characters."
             />
-            <div className="card card-pad" style={{ background: 'var(--surface-dark)' }}>
+            <div className="card card-pad">
               <div style={{ fontWeight: 700, marginBottom: 8 }}>Reusable Library</div>
               <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
                 Upload PDFs, campaign modules, random tables, and reference documents. These can be used across campaigns.
@@ -2413,14 +2413,14 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
               </div>
             </div>
             {campaigns.length > 0 && (
-              <div className="card card-pad" style={{ background: 'var(--surface-dark)' }}>
+              <div className="card card-pad">
                 <div style={{ fontWeight: 700, marginBottom: 8 }}>Campaign Documents</div>
                 <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
                   Documents organized by campaign.
                 </div>
                 <div className="stack" style={{ gap: 8 }}>
                   {campaigns.map((c) => (
-                    <div key={c.id} className="card card-pad" style={{ background: 'rgba(71,66,61,0.5)' }}>
+                    <div key={c.id} className="card card-pad">
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div style={{ fontWeight: 600 }}>{c.name}</div>
                         <button
@@ -2448,14 +2448,14 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
               </div>
             )}
             {characters.length > 0 && (
-              <div className="card card-pad" style={{ background: 'var(--surface-dark)' }}>
+              <div className="card card-pad">
                 <div style={{ fontWeight: 700, marginBottom: 8 }}>Character Documents</div>
                 <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
                   Documents associated with your characters.
                 </div>
                 <div className="stack" style={{ gap: 8 }}>
                   {characters.map((c) => (
-                    <div key={c.id} className="card card-pad" style={{ background: 'rgba(71,66,61,0.5)' }}>
+                    <div key={c.id} className="card card-pad">
                       <div style={{ fontWeight: 600 }}>{c.name}</div>
                       <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>No documents yet.</div>
                     </div>

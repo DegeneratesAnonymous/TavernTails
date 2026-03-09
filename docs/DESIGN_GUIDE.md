@@ -59,7 +59,7 @@ setTheme('scifi')
 | `--font-ui` | Cinzel → serif |
 | `--font-body` | IM Fell English → serif |
 
-**Character:** Sharp corners, small radius. Uppercase Cinzel labels. Gold borders. Crimson destructive actions. Ambient radial gold/crimson glows on the background.
+**Character:** Sharp corners, small radius. Uppercase Cinzel labels. Gold borders. Crimson destructive actions. Ambient radial gold/crimson glows on the background. **Cards are parchment vellum** (`#ede5c4 → #ccb37e`) — ink-dark text on aged paper panels, floating on a dark candlelit wood/stone background. Auth card uses slightly lighter/fresher parchment (`#fef4d4 → #eadcb0`).
 
 ---
 
@@ -175,7 +175,7 @@ All buttons use the `.btn` base class. Color is inherited from CSS token vars.
 
 Cards use the `.card` utility class. Each theme overrides card appearance:
 
-- **Medieval**: Dark wood surface `#1e1208`, gold border, layered box-shadow
+- **Medieval**: Parchment vellum surface `#ede5c4 → #ccb37e`, dark ink text `#1c0d03`, brown leather border — ink on aged paper floating on dark wood background
 - **Sci-Fi**: Dark navy `#001233`, cyan border glow
 - **Star Trek**: Nearly-black `#0d0020`, thick orange left border, 0px radius
 - **Neutral**: Teal-dark `#2E4A52`, subtle white border
@@ -208,3 +208,97 @@ Cards use the `.card` utility class. Each theme overrides card appearance:
 2. Add a `[data-theme="your-theme"]` block to `src/themes.css` defining all required tokens
 3. Load any required Google Fonts in `public/index.html`
 4. Optionally add card/button overrides scoped to `[data-theme="your-theme"] .card { ... }`
+
+---
+
+## Particle & Ambient Effects
+
+Theme-specific ambient particles provide atmospheric depth. They are managed by two components and a shared intensity context.
+
+### Components
+
+| Component | Theme | Description |
+|---|---|---|
+| `EmberParticles` | `medieval` | Gold embers that float up from the bottom of the viewport |
+| `StarParticles` | `scifi` | Slow, subtle twinkling starfield across the full background |
+
+Both are rendered in `App.tsx` (or the root layout) and produce no DOM when their theme is not active.
+
+### CSS Classes
+
+| Class | Purpose |
+|---|---|
+| `.tt-ember-container` | Fixed full-viewport container for ember particles |
+| `.tt-ember` | Individual ember dot; driven by `@keyframes tt-ember-rise` |
+| `.tt-star-container` | Fixed full-viewport container for star particles |
+| `.tt-star` | Twinkling star; driven by `@keyframes tt-star-twinkle` |
+| `.tt-star--static` | Non-animated star (static opacity) |
+
+### CSS Variables (per-particle)
+
+| Variable | Used by | Purpose |
+|---|---|---|
+| `--star-min` | `.tt-star` | Minimum opacity at the dim end of the twinkle cycle |
+| `--star-max` | `.tt-star` | Peak opacity at the bright end of the twinkle cycle |
+| `--ember-max` | `.tt-ember` | Peak opacity for the ember rise animation |
+
+### Intensity System
+
+Both particle components respond to `ParticleContext`. Intensity is a normalized `0–1` value:
+
+- **`0` (resting)** — Embers sparse and dim; stars barely visible.
+- **`1` (peak)** — Embers dense, bright, larger; stars fully bright.
+
+#### Hooks
+
+```tsx
+import { useParticles } from '../contexts/ParticleContext'
+import { useParticleIntensity } from '../contexts/ParticleContext'
+
+// Manual control
+const { setIntensity } = useParticles()
+useEffect(() => { setIntensity(completedSteps / totalSteps) }, [completedSteps])
+
+// Convenience: sets while mounted, resets to 0 on unmount
+useParticleIntensity(completedSteps / totalSteps, [completedSteps])
+```
+
+#### When to wire intensity
+
+Use `useParticleIntensity` whenever a page or flow has measurable progress:
+- Form completion (fields filled / total fields)
+- Multi-step wizards (current step / total steps)
+- Loading sequences (bytes loaded or tasks completed)
+- Campaign/session creation flows
+
+---
+
+## Reusable UI Decorative Elements
+
+The following CSS classes in `ui.css` are intended to be used consistently across all pages and themes:
+
+| Class | Purpose | Usage |
+|---|---|---|
+| `.tt-divider` + `.tt-divider-line` + `.tt-divider-gem` | Themed ornamental horizontal divider with a diamond gem | Section separators in cards and modals |
+| `.tt-rune-bar` | Uppercase, wide letter-spacing label in accent color | Sub-section labels, decorative headings |
+| `.tt-card-ornament-tl` | Top-left corner ornament glyph (requires `position:relative` parent) | Decorative card corners in medieval theme |
+| `.tt-card-ornament-br` | Bottom-right corner ornament glyph | Paired with `.tt-card-ornament-tl` |
+| `.empty-state` | Dashed bordered placeholder for empty lists/sections | Zero-state panels |
+| `.segmented` | Tab-like segmented control | View mode toggles (e.g., Grid / List) |
+| `.page-header` + `.page-title` + `.page-subtitle` | Standard page header layout | Top of every main content page |
+
+### Recommended usage pattern (medieval)
+
+```tsx
+<div className="card card-pad" style={{ position: 'relative' }}>
+  <span className="tt-card-ornament-tl">✦</span>
+  <h2 className="section-title">Section</h2>
+  <div className="tt-divider">
+    <div className="tt-divider-line" />
+    <div className="tt-divider-gem" />
+    <div className="tt-divider-line" />
+  </div>
+  {/* content */}
+  <span className="tt-card-ornament-br">✦</span>
+</div>
+```

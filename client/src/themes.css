@@ -15,27 +15,30 @@
   /* Core palette */
   --bg-color: #0d0805;
   --grid-color: rgba(200, 148, 26, 0.04);
-  --surface: #1e1208;
+  /* --surface is the mid-tone dark wood used for nav panels, account cards etc. */
+  --surface: #2e1a0c;
   --muted-surface: #2a1a0a;
   --accent: #c8941a;
   --accent-secondary: #8b1a1a;
-  --surface-dark: #150d05;
+  /* --surface-dark must be visually distinct from --bg-color (#0d0805) */
+  --surface-dark: #1e1208;
   --surface-neutral: #3a2a1a;
   --surface-muted: #2a1a0a;
   --text: #f4e9c9;
   --error: #d94f35;
   --highlight: #f0c040;
-  --muted-text: rgba(244, 233, 201, 0.72);
+  /* Raised opacity — cream text reads clearly on both #1e1208 and #0d0805 */
+  --muted-text: rgba(244, 233, 201, 0.82);
 
   /* Layout */
   --radius: 3px;
   --shadow-1: 0 8px 32px rgba(0, 0, 0, 0.8), 0 2px 8px rgba(0, 0, 0, 0.6);
 
-  /* Border system */
-  --tt-border: rgba(200, 148, 26, 0.22);
-  --tt-border-strong: rgba(200, 148, 26, 0.48);
+  /* Border system — slightly more visible amber hair-lines in dark areas */
+  --tt-border: rgba(200, 148, 26, 0.30);
+  --tt-border-strong: rgba(200, 148, 26, 0.55);
   --tt-surface-2: #2a1a0a;
-  --tt-focus: rgba(200, 148, 26, 0.28);
+  --tt-focus: rgba(200, 148, 26, 0.34);
 
   /* Typography */
   --font-heading: 'Cinzel Decorative', 'Cinzel', Georgia, serif;
@@ -52,25 +55,27 @@
   --accent-text: #1a0f06;
   --accent-secondary-text: #f4e9c9;
 
-  /* Warm amber-wood card system (dashboard cards) */
-  --card-bg: linear-gradient(160deg, #3a200c 0%, #2e1808 55%, #221205 100%);
-  --card-text: #f4e9c9;
-  --card-text-muted: rgba(244, 233, 201, 0.72);
-  --card-border: rgba(200, 148, 26, 0.32);
-  --card-border-strong: rgba(200, 148, 26, 0.58);
+  /* Parchment card system — aged vellum panels on dark wood/stone */
+  --card-bg: linear-gradient(165deg, #ede5c4 0%, #e0cf9e 45%, #d4bc88 80%, #ccb37e 100%);
+  --card-text: #1c0d03;
+  --card-text-muted: #3d1f06;
+  --card-border: rgba(96, 58, 10, 0.42);
+  --card-border-strong: rgba(96, 58, 10, 0.72);
   --card-shadow:
-    0 0 0 1px rgba(200, 148, 26, 0.16),
-    0 4px 20px rgba(0, 0, 0, 0.50),
-    0 24px 64px rgba(0, 0, 0, 0.72),
-    inset 0 1px 0 rgba(200, 148, 26, 0.12);
-  --input-bg: rgba(0, 0, 0, 0.22);
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.08),
+    0 0 0 1px rgba(0, 0, 0, 0.45),
+    0 4px 20px rgba(0, 0, 0, 0.60),
+    0 20px 60px rgba(0, 0, 0, 0.55);
+  /* Inputs outside cards (topbar, drawer) — dark bg, cream text */
+  --input-bg: rgba(0, 0, 0, 0.30);
   --input-text: #f4e9c9;
-  --input-placeholder: rgba(244, 233, 201, 0.40);
-  --input-border: rgba(200, 148, 26, 0.24);
-  --input-focus-border: rgba(200, 148, 26, 0.65);
-  --input-focus-shadow: rgba(200, 148, 26, 0.22);
+  --input-placeholder: rgba(244, 233, 201, 0.38);
+  --input-border: rgba(200, 148, 26, 0.22);
+  --input-focus-border: rgba(200, 148, 26, 0.60);
+  --input-focus-shadow: rgba(200, 148, 26, 0.20);
   --label-text: rgba(244, 233, 201, 0.72);
-  --card-link: #7a3a0a;
+  --card-link: #7a2a08;
 }
 
 /* ── Medieval ember particles ── */
@@ -94,36 +99,183 @@
 
 @keyframes tt-ember-rise {
   0%   { transform: translateY(0) translateX(0);    opacity: 0; }
-  8%   { opacity: 0.75; }
-  50%  { transform: translateY(-50vh) translateX(20px); opacity: 0.45; }
-  92%  { opacity: 0.2; }
+  8%   { opacity: var(--ember-max, 0.75); }
+  50%  { transform: translateY(-50vh) translateX(20px); opacity: calc(var(--ember-max, 0.75) * 0.55); }
+  92%  { opacity: calc(var(--ember-max, 0.75) * 0.22); }
   100% { transform: translateY(-105vh) translateX(44px); opacity: 0; }
 }
 
-/* Auth card — parchment surface, dark ink children via scoped var inheritance */
+/* Auth card — slightly lighter/fresher parchment than dashboard cards */
 [data-theme="medieval"] .tt-auth-card {
   background: linear-gradient(160deg, #fef4d4 0%, #f4e9c9 35%, #eadcb0 100%);
-  color: #2a1a0a;
+  color: #1c0d03;
   border-color: rgba(139, 86, 18, 0.38);
   box-shadow:
     0 0 0 1px rgba(200, 148, 26, 0.22),
     0 4px 20px rgba(0, 0, 0, 0.50),
     0 24px 64px rgba(0, 0, 0, 0.72),
     inset 0 1px 0 rgba(255, 255, 255, 0.65);
-  /* Scope dark-ink vars — all children inherit these */
-  --card-text: #2a1a0a;
-  --card-text-muted: #5c3d1e;
-  --input-bg: rgba(42, 26, 10, 0.07);
-  --input-text: #2a1a0a;
-  --input-placeholder: rgba(42, 26, 10, 0.40);
-  --input-border: rgba(42, 26, 10, 0.22);
-  --input-focus-border: rgba(139, 74, 16, 0.55);
+  /* Ink-on-parchment palette for all children */
+  --text: #1c0d03;
+  --card-text: #1c0d03;
+  --card-text-muted: #3d1f06;
+  --muted-text: #3d1f06;
+  /* White-cream inputs: clearly distinct from the light parchment card bg */
+  --input-bg: rgba(255, 252, 242, 0.92);
+  --input-text: #1c0d03;
+  --input-placeholder: rgba(60, 28, 6, 0.42);
+  --input-border: rgba(96, 58, 10, 0.32);
+  --input-focus-border: rgba(139, 74, 16, 0.60);
   --input-focus-shadow: rgba(200, 148, 26, 0.18);
-  --label-text: #5c3d1e;
+  --label-text: #3d1f06;
   --card-link: #7a3a0a;
+  --accent: #7a3008;
+  --accent-text: #f4e9c9;
 }
 
-/* General cards — dark warm wood */
+/* ── Medieval card — parchment vellum panel on dark wood ── */
+[data-theme="medieval"] .card {
+  background: linear-gradient(
+    165deg,
+    #ede5c4 0%,
+    #e0cf9e 40%,
+    #d4bc88 72%,
+    #ccb37e 100%
+  );
+  border: 1px solid rgba(96, 58, 10, 0.40);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.58),
+    inset 0 -1px 3px rgba(0, 0, 0, 0.10),
+    0 0 0 1px rgba(0, 0, 0, 0.42),
+    0 4px 20px rgba(0, 0, 0, 0.58),
+    0 16px 52px rgba(0, 0, 0, 0.50);
+  border-radius: 3px;
+  /* Scope all text + interactive tokens to ink-on-parchment values.
+     Any child reading var(--text), var(--input-bg) etc. gets the parchment palette. */
+  --text: #1c0d03;
+  --muted-text: #3d1f06;
+  /* Inputs: near-white so they're clearly distinct from the amber card */
+  --input-bg: rgba(255, 251, 240, 0.90);
+  --input-text: #1c0d03;
+  --input-placeholder: rgba(60, 28, 6, 0.42);
+  --input-border: rgba(96, 58, 10, 0.36);
+  --input-focus-border: rgba(139, 74, 16, 0.62);
+  --input-focus-shadow: rgba(200, 148, 26, 0.20);
+  --label-text: #3d1f06;
+  /* Nested surfaces: lighter than card for segmented controls, empty-states, sub-panels */
+  --tt-border: rgba(96, 58, 10, 0.30);
+  --tt-border-strong: rgba(96, 58, 10, 0.54);
+  --tt-surface-2: rgba(255, 251, 240, 0.62);
+  --tt-focus: rgba(96, 58, 10, 0.32);
+  /* Scope accent to burnt sienna so .btn inside cards reads on parchment */
+  --accent: #7a3008;
+  --accent-text: #f4e9c9;
+  --accent-secondary: #8b1a1a;
+  --accent-secondary-text: #f4e9c9;
+}
+
+/* Headings inside parchment cards — dark ink, paper emboss instead of amber glow */
+[data-theme="medieval"] .card h1,
+[data-theme="medieval"] .card h2,
+[data-theme="medieval"] .card h3,
+[data-theme="medieval"] .card .section-title,
+[data-theme="medieval"] .card .page-title {
+  color: #1c0d03;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+/* Buttons inside parchment cards — scoped --accent above handles .btn automatically.
+   Explicit gradient to add depth; .btn-secondary crimson overrides after. */
+[data-theme="medieval"] .card .btn {
+  background: linear-gradient(135deg, #7a3008, #5c2206);
+  border-color: rgba(90, 32, 5, 0.50);
+  color: #f4e9c9;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="medieval"] .card .btn:hover {
+  background: linear-gradient(135deg, #963a0a, #7a3008);
+  box-shadow: 0 0 12px rgba(122, 48, 8, 0.35), 0 2px 8px rgba(0, 0, 0, 0.40), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="medieval"] .card .btn-secondary {
+  background: linear-gradient(135deg, #8b1a1a, #6b0f0f);
+  border-color: rgba(139, 26, 26, 0.50);
+  color: #f4e9c9;
+}
+
+[data-theme="medieval"] .card .btn-secondary:hover {
+  background: linear-gradient(135deg, #a02020, #8b1a1a);
+}
+
+[data-theme="medieval"] .card .btn-ghost {
+  background: transparent;
+  border-color: rgba(96, 58, 10, 0.50);
+  color: #1c0d03;
+}
+
+[data-theme="medieval"] .card .btn-quiet {
+  background: rgba(196, 164, 110, 0.35);
+  border-color: rgba(96, 58, 10, 0.30);
+  color: #1c0d03;
+}
+
+/* ── Medieval topbar & drawer ── */
+/* Topbar sits over body (#0d0805); give it a clearly warmer, richer dark wood surface */
+[data-theme="medieval"] .dashboard-topbar {
+  background: linear-gradient(180deg, #2a1a0c 0%, #1e1208 100%);
+  border-bottom: 1px solid rgba(200, 148, 26, 0.35);
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.70), 0 1px 0 rgba(200, 148, 26, 0.10);
+}
+
+/* Drawer uses the same warm-dark, amber right-border signals the panel edge clearly */
+[data-theme="medieval"] .dashboard-drawer {
+  background: linear-gradient(90deg, #1e1208 0%, #261609 100%);
+  border-right: 1px solid rgba(200, 148, 26, 0.35);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.65), inset -1px 0 0 rgba(200, 148, 26, 0.10);
+}
+
+/* Nav buttons: amber-tinted wood, not the neutral teal from the base stylesheet */
+[data-theme="medieval"] .nav-btn {
+  background: rgba(200, 148, 26, 0.08);
+  color: var(--text);
+  border: 1px solid rgba(200, 148, 26, 0.14);
+  border-radius: 3px;
+}
+
+[data-theme="medieval"] .nav-btn:hover:not(:disabled):not([aria-disabled='true']) {
+  background: rgba(200, 148, 26, 0.16);
+  border-color: rgba(200, 148, 26, 0.28);
+}
+
+[data-theme="medieval"] .nav-btn.active {
+  background: rgba(200, 148, 26, 0.22);
+  border-color: rgba(200, 148, 26, 0.42);
+  color: var(--highlight);
+  font-weight: 600;
+}
+
+/* Content panels: warm dark wood, not the neutral-grey baked into LoggedInDashboard.css */
+[data-theme="medieval"] .dashboard-panel {
+  background: rgba(30, 18, 8, 0.88);
+  box-shadow: inset 0 0 0 1px rgba(200, 148, 26, 0.22);
+}
+
+[data-theme="medieval"] .gameplay-panel {
+  background: rgba(26, 15, 6, 0.92);
+  box-shadow: inset 0 0 0 1px rgba(200, 148, 26, 0.18);
+}
+
+/* Account/pill elements: amber tone instead of neutral teal */
+[data-theme="medieval"] .account-pill {
+  background: rgba(200, 148, 26, 0.14);
+  border-color: rgba(200, 148, 26, 0.28);
+}
+
+[data-theme="medieval"] .account-avatar {
+  background: rgba(200, 148, 26, 0.22);
+  color: #f4e9c9;
+}
 
 /* ── Sci-Fi star twinkle particles ── */
 .tt-star-container {
@@ -147,8 +299,8 @@
 }
 
 @keyframes tt-star-twinkle {
-  0%, 100% { opacity: var(--star-min, 0.12); transform: scale(0.85); }
-  50%       { opacity: var(--star-max, 0.90); transform: scale(1.25); }
+  0%, 100% { opacity: var(--star-min, 0.05); transform: scale(0.92); }
+  50%       { opacity: var(--star-max, 0.28); transform: scale(1.06); }
 }
 
 [data-theme="medieval"] h1,
@@ -161,6 +313,7 @@
   font-family: var(--font-ui);
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  text-shadow: 0 0 22px rgba(200, 148, 26, 0.40), 0 1px 0 rgba(0, 0, 0, 0.80);
 }
 
 [data-theme="medieval"] .btn {
@@ -180,6 +333,14 @@
 
 [data-theme="medieval"] .btn-secondary:hover {
   background: linear-gradient(135deg, #a02020, #8b1a1a);
+}
+
+[data-theme="medieval"] .btn:hover,
+[data-theme="medieval"] .btn:focus-visible {
+  box-shadow:
+    0 0 14px rgba(200, 148, 26, 0.38),
+    0 2px 8px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -428,4 +589,508 @@
   --input-focus-border: rgba(255, 255, 255, 0.32);
   --input-focus-shadow: rgba(173, 136, 95, 0.25);
   --label-text: rgba(255, 255, 255, 0.72);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MEDIEVAL component overrides — replace sci-fi teal/cyan/purple
+   palette baked into individual CSS files with warm amber/gold.
+   All rules are scoped to [data-theme="medieval"] so component
+   files stay theme-agnostic.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Login page: warm amber grid instead of cold grey ── */
+[data-theme="medieval"] body {
+  --grid-color: rgba(200, 148, 26, 0.07);
+}
+
+/* ── Modal ── */
+[data-theme="medieval"] .modal {
+  background: rgba(22, 12, 4, 0.99);
+  border-color: rgba(200, 148, 26, 0.22);
+}
+
+[data-theme="medieval"] .modal-header {
+  border-bottom-color: rgba(200, 148, 26, 0.15);
+}
+
+/* ── NarrativeView ── */
+[data-theme="medieval"] .narrative-scene {
+  background: #1a0e08;
+  border-color: rgba(200, 148, 26, 0.12);
+}
+
+[data-theme="medieval"] .narrative-card {
+  background: rgba(15, 8, 2, 0.82);
+  border-color: rgba(200, 148, 26, 0.25);
+}
+
+[data-theme="medieval"] .narrative-choices-toggle:hover {
+  border-color: rgba(200, 148, 26, 0.30);
+  background: rgba(200, 148, 26, 0.08);
+}
+
+[data-theme="medieval"] .narrative-choice-btn:hover {
+  border-color: rgba(200, 148, 26, 0.28);
+  background: rgba(200, 148, 26, 0.08);
+}
+
+/* ── Chat ── */
+[data-theme="medieval"] .chat-toolbar-message {
+  color: rgba(200, 148, 26, 0.85);
+}
+
+[data-theme="medieval"] .chat-panel {
+  background: rgba(15, 8, 2, 0.70);
+  border-color: rgba(200, 148, 26, 0.12);
+}
+
+[data-theme="medieval"] .chat-messages {
+  background: rgba(15, 8, 2, 0.75);
+  border-color: rgba(200, 148, 26, 0.10);
+}
+
+[data-theme="medieval"] .chat-message-you {
+  background: rgba(200, 148, 26, 0.08);
+  border-color: rgba(200, 148, 26, 0.20);
+}
+
+[data-theme="medieval"] .chat-message-mentions {
+  color: rgba(200, 148, 26, 0.90);
+}
+
+[data-theme="medieval"] .chat-die-btn {
+  color: #c8941a;
+}
+
+[data-theme="medieval"] .chat-die-btn:hover:not(:disabled) {
+  background: rgba(200, 148, 26, 0.15);
+  border-color: rgba(200, 148, 26, 0.45);
+}
+
+/* ── DocumentsPanel ── */
+[data-theme="medieval"] .docsPanel {
+  border-top-color: rgba(200, 148, 26, 0.22);
+}
+
+[data-theme="medieval"] .docsPanel__hint,
+[data-theme="medieval"] .docsPanel__docMeta,
+[data-theme="medieval"] .docsPanel__loading,
+[data-theme="medieval"] .docsPanel__viewerLabel,
+[data-theme="medieval"] .docsPanel__label,
+[data-theme="medieval"] .docsPanel__note,
+[data-theme="medieval"] .docsPanel__uploadsHint,
+[data-theme="medieval"] .docsPanel__uploadMeta {
+  color: rgba(200, 165, 100, 0.72);
+}
+
+[data-theme="medieval"] .docsPanel__copyBtn {
+  color: rgba(200, 148, 26, 0.65);
+}
+
+[data-theme="medieval"] .docsPanel__list {
+  background: rgba(12, 6, 2, 0.92);
+  border-color: rgba(200, 148, 26, 0.20);
+}
+
+[data-theme="medieval"] .docsPanel__tag {
+  color: rgba(200, 148, 26, 0.90);
+}
+
+[data-theme="medieval"] .docsPanel__viewerCard {
+  background: rgba(10, 5, 1, 0.96);
+  border-color: rgba(200, 148, 26, 0.20);
+}
+
+[data-theme="medieval"] .docsPanel__link {
+  color: rgba(200, 148, 26, 0.88);
+}
+
+[data-theme="medieval"] .docsPanel__input,
+[data-theme="medieval"] .docsPanel__select,
+[data-theme="medieval"] .docsPanel__textarea {
+  background: rgba(20, 10, 3, 0.92);
+  border-color: rgba(200, 148, 26, 0.28);
+  color: #f4e9c9;
+}
+
+[data-theme="medieval"] .docsPanel__uploadRow {
+  background: rgba(8, 4, 1, 0.95);
+  border-color: rgba(200, 148, 26, 0.18);
+}
+
+[data-theme="medieval"] .docsPanel__bar {
+  background: rgba(200, 148, 26, 0.15);
+}
+
+[data-theme="medieval"] .docsPanel__imagePreview img,
+[data-theme="medieval"] .docsPanel__uploadThumb {
+  border-color: rgba(200, 148, 26, 0.22);
+}
+
+/* ── GameplayLayout ── */
+[data-theme="medieval"] .site-panel {
+  background: rgba(18, 10, 4, 0.97);
+  border-right-color: rgba(200, 148, 26, 0.18);
+}
+
+[data-theme="medieval"] .drawer-toggle,
+[data-theme="medieval"] .drawer-toggle-inline {
+  background: rgba(28, 14, 4, 0.92);
+  border-color: rgba(200, 148, 26, 0.25);
+}
+
+[data-theme="medieval"] .session-panel {
+  background: rgba(18, 10, 4, 0.78);
+  border-color: rgba(200, 148, 26, 0.14);
+}
+
+[data-theme="medieval"] .session-panel-tabs {
+  background: rgba(28, 16, 6, 0.62);
+  border-bottom-color: rgba(200, 148, 26, 0.12);
+}
+
+[data-theme="medieval"] .session-panel-tab {
+  border-color: rgba(200, 148, 26, 0.16);
+}
+
+[data-theme="medieval"] .session-panel-tab.active {
+  background: rgba(200, 148, 26, 0.16);
+  border-color: rgba(200, 148, 26, 0.32);
+}
+
+[data-theme="medieval"] .session-banner {
+  background: rgba(24, 13, 4, 0.68);
+  border-bottom-color: rgba(200, 148, 26, 0.12);
+}
+
+[data-theme="medieval"] .session-banner-subtitle {
+  color: rgba(200, 165, 100, 0.80);
+}
+
+[data-theme="medieval"] .player-sheet,
+[data-theme="medieval"] .zork-screen {
+  background: rgba(18, 10, 4, 0.72);
+  border-color: rgba(200, 148, 26, 0.14);
+}
+
+[data-theme="medieval"] .suggestions-bar {
+  background: rgba(18, 10, 4, 0.72);
+  border-bottom-color: rgba(200, 148, 26, 0.10);
+}
+
+[data-theme="medieval"] .suggestions-label {
+  color: rgba(200, 165, 100, 0.75);
+}
+
+[data-theme="medieval"] .suggestion-pill--beyond20 {
+  background: rgba(40, 20, 5, 0.88);
+  border-color: rgba(200, 148, 26, 0.52);
+}
+
+[data-theme="medieval"] .player-status {
+  background: rgba(15, 8, 2, 0.68);
+  border-bottom-color: rgba(200, 148, 26, 0.10);
+}
+
+[data-theme="medieval"] .player-status-label {
+  color: rgba(200, 165, 100, 0.65);
+}
+
+[data-theme="medieval"] .site-menu-close {
+  background: rgba(200, 148, 26, 0.10);
+}
+
+[data-theme="medieval"] .site-menu-subtitle,
+[data-theme="medieval"] .site-menu-section-title,
+[data-theme="medieval"] .site-menu-item-description {
+  color: rgba(200, 165, 100, 0.72);
+}
+
+[data-theme="medieval"] .site-menu-section {
+  border-top-color: rgba(200, 148, 26, 0.14);
+}
+
+[data-theme="medieval"] .site-menu-item:hover {
+  border-color: rgba(200, 148, 26, 0.24);
+}
+
+/* ── CharacterSheetModal: replace purple accent with amber ── */
+[data-theme="medieval"] .tt-sheet-tabs {
+  border-bottom-color: rgba(200, 148, 26, 0.22);
+}
+
+[data-theme="medieval"] .tt-sheet-tab {
+  color: rgba(200, 165, 100, 0.65);
+}
+
+[data-theme="medieval"] .tt-sheet-tab:hover {
+  color: rgba(200, 165, 100, 0.90);
+}
+
+[data-theme="medieval"] .tt-sheet-tab--active {
+  color: #c8941a;
+  border-bottom-color: #c8941a;
+}
+
+[data-theme="medieval"] .tt-save-item--proficient .tt-save-pip,
+[data-theme="medieval"] .tt-skill-item--proficient .tt-skill-pip {
+  color: #c8941a;
+}
+
+[data-theme="medieval"] .tt-spell-slot-pip--used {
+  background: #c8941a;
+  border-color: #c8941a;
+}
+
+[data-theme="medieval"] .tt-spell-col {
+  border-color: rgba(200, 148, 26, 0.18);
+}
+
+[data-theme="medieval"] .tt-spell-col--prepared {
+  border-color: rgba(200, 148, 26, 0.38);
+  background: rgba(200, 148, 26, 0.06);
+}
+
+[data-theme="medieval"] .tt-spell-tile--prepared {
+  background: rgba(200, 148, 26, 0.12);
+}
+
+[data-theme="medieval"] .spellbook-row--prepared {
+  background: rgba(200, 148, 26, 0.08);
+}
+
+/* ── CharacterPanel: replace teal/cyan palette with warm amber ── */
+[data-theme="medieval"] .character-sheet-header {
+  background: radial-gradient(
+    circle at 15% 10%,
+    rgba(180, 120, 40, 0.28),
+    rgba(30, 14, 5, 0.72)
+  );
+}
+
+[data-theme="medieval"] .character-sheet-portrait {
+  background: radial-gradient(
+    circle at 30% 30%,
+    rgba(173, 136, 95, 0.40),
+    rgba(30, 14, 5, 0.70)
+  );
+}
+
+[data-theme="medieval"] .character-icon-card--active .character-icon-badge {
+  background: rgba(200, 148, 26, 0.22);
+  border-color: rgba(200, 148, 26, 0.38);
+}
+
+[data-theme="medieval"] .character-icon-card--active {
+  border-color: rgba(200, 148, 26, 0.30);
+  box-shadow: 0 0 0 1px rgba(200, 148, 26, 0.12) inset;
+}
+
+[data-theme="medieval"] .character-sheet-card {
+  background: rgba(30, 14, 5, 0.60);
+}
+
+[data-theme="medieval"] .character-sheet-card-header {
+  background: rgba(28, 14, 5, 0.70);
+}
+
+[data-theme="medieval"] .character-sheet-card-action.active {
+  background: rgba(200, 148, 26, 0.16);
+  border-color: rgba(200, 148, 26, 0.28);
+}
+
+[data-theme="medieval"] .character-sheet-mini-mod {
+  color: #d4a030;
+}
+
+[data-theme="medieval"] .character-card {
+  background: rgba(20, 10, 3, 0.85);
+}
+
+[data-theme="medieval"] .character-card.active {
+  background: rgba(30, 16, 5, 0.94);
+  border-color: rgba(200, 148, 26, 0.20);
+}
+
+[data-theme="medieval"] .character-overview-pill {
+  background: rgba(200, 148, 26, 0.10);
+  border-color: rgba(200, 148, 26, 0.22);
+  color: rgba(220, 168, 40, 0.95);
+}
+
+[data-theme="medieval"] .character-ability-mod {
+  background: rgba(200, 148, 26, 0.10);
+  border-color: rgba(200, 148, 26, 0.24);
+  color: rgba(220, 168, 40, 0.95);
+}
+
+[data-theme="medieval"] .character-skill-mod {
+  background: rgba(200, 148, 26, 0.12);
+  border-color: rgba(200, 148, 26, 0.24);
+  color: rgba(220, 168, 40, 0.95);
+}
+
+[data-theme="medieval"] .character-panel-block-title--scene {
+  color: #c8941a;
+}
+
+[data-theme="medieval"] .character-panel-cue {
+  border-color: rgba(200, 148, 26, 0.28);
+  background: rgba(18, 9, 2, 0.88);
+}
+
+[data-theme="medieval"] .character-quick-action-btn--cast {
+  background: rgba(139, 26, 26, 0.22);
+  border-color: rgba(180, 40, 40, 0.45);
+}
+
+[data-theme="medieval"] .character-quick-action-btn--cast:hover {
+  background: rgba(139, 26, 26, 0.35);
+}
+
+[data-theme="medieval"] .character-cast-picker {
+  background: #1a0a04;
+  border-color: rgba(200, 148, 26, 0.20);
+}
+
+[data-theme="medieval"] .character-cast-picker-item:hover {
+  background: rgba(200, 148, 26, 0.18);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MEDIEVAL nested cards & white-rgba text corrections
+   Cards nested inside a parchment card get a slightly deeper amber
+   parchment so hierarchy is visible at a glance. Components that
+   hardcode rgba(255,255,255,*) text are corrected below so they
+   don't appear invisible on the light parchment background.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Nested card: slightly deeper/warmer parchment ── */
+[data-theme="medieval"] .card .card {
+  background: linear-gradient(165deg, #e5d9a8 0%, #d4c275 48%, #c4aa5c 80%, #bba052 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.30),
+    0 0 0 1px rgba(0, 0, 0, 0.24),
+    0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+/* ── CharacterPanel: subheadings, icon labels, ability labels ── */
+/* These use hardcoded rgba(255,255,255,0.65/0.70) which is invisible on parchment */
+[data-theme="medieval"] .card .character-sheet-subhead,
+[data-theme="medieval"] .card .character-ability-key,
+[data-theme="medieval"] .card .character-icon-label,
+[data-theme="medieval"] .card .character-overview-label,
+[data-theme="medieval"] .card .character-sheet-card-title,
+[data-theme="medieval"] .card .character-sheet-mini-name {
+  color: rgba(60, 28, 6, 0.70);
+}
+
+[data-theme="medieval"] .card .character-overview-muted,
+[data-theme="medieval"] .card .character-meta,
+[data-theme="medieval"] .card .character-icon-value {
+  color: rgba(40, 18, 4, 0.85);
+}
+
+/* ── JournalPanel: cold section backgrounds → warm dark wood ── */
+[data-theme="medieval"] .journal-section {
+  background: rgba(22, 12, 4, 0.70);
+  border-color: rgba(200, 148, 26, 0.14);
+}
+
+[data-theme="medieval"] .journal-notes {
+  background: rgba(14, 7, 2, 0.75);
+  border-color: rgba(200, 148, 26, 0.12);
+}
+
+[data-theme="medieval"] .journal-story-entry {
+  background: rgba(200, 148, 26, 0.06);
+  border-color: rgba(200, 148, 26, 0.12);
+}
+
+[data-theme="medieval"] .journal-story-type,
+[data-theme="medieval"] .journal-story-ts,
+[data-theme="medieval"] .journal-empty {
+  color: rgba(200, 165, 100, 0.72);
+}
+
+/* ── LoggedIn.css: home qa-cards get parchment hover accent ── */
+[data-theme="medieval"] .home-qa-card {
+  background: rgba(200, 148, 26, 0.06);
+  border-color: rgba(200, 148, 26, 0.16);
+}
+
+[data-theme="medieval"] .home-qa-card:hover {
+  background: rgba(200, 148, 26, 0.14);
+  border-color: rgba(200, 148, 26, 0.38);
+}
+
+[data-theme="medieval"] .home-qa-desc {
+  color: rgba(244, 233, 201, 0.72);
+}
+
+/* ── TabBar and segmented controls in medieval panels ── */
+[data-theme="medieval"] .tab-bar {
+  border-bottom-color: rgba(200, 148, 26, 0.22);
+}
+
+[data-theme="medieval"] .tab-btn {
+  color: rgba(200, 165, 100, 0.75);
+}
+
+[data-theme="medieval"] .tab-btn.active,
+[data-theme="medieval"] .tab-btn[aria-selected="true"] {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+/* Tab bar and tab buttons INSIDE a parchment card get ink tones */
+[data-theme="medieval"] .card .tab-bar {
+  border-bottom-color: rgba(96, 58, 10, 0.25);
+}
+
+[data-theme="medieval"] .card .tab-btn {
+  color: rgba(60, 28, 6, 0.62);
+}
+
+[data-theme="medieval"] .card .tab-btn.active,
+[data-theme="medieval"] .card .tab-btn[aria-selected="true"] {
+  color: #1c0d03;
+  border-bottom-color: #7a3008;
+}
+
+/* ── inline-alert inside medieval cards ── */
+[data-theme="medieval"] .card .inline-alert {
+  background: rgba(200, 148, 26, 0.08);
+  border-color: rgba(200, 148, 26, 0.28);
+}
+
+/* ── Section titles and page headers inside dashboard panels ── */
+[data-theme="medieval"] .dashboard-panel .page-title,
+[data-theme="medieval"] .dashboard-panel .section-title {
+  text-shadow: 0 0 22px rgba(200, 148, 26, 0.40), 0 1px 0 rgba(0, 0, 0, 0.80);
+}
+
+[data-theme="medieval"] .dashboard-panel .page-subtitle {
+  color: var(--muted-text);
+}
+
+/* ── Stat cards and admin tables on dark panels ── */
+[data-theme="medieval"] .stat-card {
+  background: rgba(30, 18, 8, 0.75);
+  border-color: rgba(200, 148, 26, 0.20);
+}
+
+[data-theme="medieval"] .admin-table th {
+  color: rgba(200, 165, 100, 0.72);
+  border-bottom-color: rgba(200, 148, 26, 0.20);
+}
+
+[data-theme="medieval"] .admin-table td {
+  border-bottom-color: rgba(200, 148, 26, 0.12);
+}
+
+/* ── account-provider sub-panels ── */
+[data-theme="medieval"] .account-provider {
+  background: rgba(30, 18, 8, 0.60);
+  border-color: rgba(200, 148, 26, 0.18);
 }
