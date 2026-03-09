@@ -6,6 +6,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import LoginSignupAgent from './agents/LoginSignupAgent';
 import HomePage from './components/HomePage';
 import EmberParticles from './components/ui/EmberParticles';
+import StarParticles from './components/ui/StarParticles';
 
 function App() {
   const hasToken = useMemo(() => {
@@ -18,6 +19,7 @@ function App() {
   return (
     <ThemeProvider>
       <EmberParticles />
+      <StarParticles />
       <div className="App">
         {showAuth ? (
           <LoginSignupAgent initialMode={initialMode} />

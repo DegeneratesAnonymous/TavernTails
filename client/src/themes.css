@@ -23,17 +23,17 @@
   --surface-neutral: #3a2a1a;
   --surface-muted: #2a1a0a;
   --text: #f4e9c9;
-  --error: #c8401a;
+  --error: #d94f35;
   --highlight: #f0c040;
-  --muted-text: rgba(244, 233, 201, 0.62);
+  --muted-text: rgba(244, 233, 201, 0.72);
 
   /* Layout */
   --radius: 3px;
   --shadow-1: 0 8px 32px rgba(0, 0, 0, 0.8), 0 2px 8px rgba(0, 0, 0, 0.6);
 
   /* Border system */
-  --tt-border: rgba(200, 148, 26, 0.18);
-  --tt-border-strong: rgba(200, 148, 26, 0.42);
+  --tt-border: rgba(200, 148, 26, 0.22);
+  --tt-border-strong: rgba(200, 148, 26, 0.48);
   --tt-surface-2: #2a1a0a;
   --tt-focus: rgba(200, 148, 26, 0.28);
 
@@ -44,32 +44,32 @@
   --font-mono: 'Courier New', Courier, monospace;
 
   /* Ambient background overlay (applied via body::before in theme.css) */
-  --bg-radial-1: radial-gradient(ellipse at 20% 30%, rgba(200, 148, 26, 0.10) 0%, transparent 55%);
-  --bg-radial-2: radial-gradient(ellipse at 80% 70%, rgba(139, 26, 26, 0.12) 0%, transparent 55%);
-  --bg-radial-3: radial-gradient(ellipse at 50% 10%, rgba(200, 148, 26, 0.06) 0%, transparent 40%);
+  --bg-radial-1: radial-gradient(ellipse at 20% 30%, rgba(200, 148, 26, 0.14) 0%, transparent 55%);
+  --bg-radial-2: radial-gradient(ellipse at 80% 70%, rgba(139, 26, 26, 0.18) 0%, transparent 55%);
+  --bg-radial-3: radial-gradient(ellipse at 50% 10%, rgba(200, 148, 26, 0.09) 0%, transparent 40%);
 
   /* Accent text (color to use ON TOP of an accent-colored background) */
   --accent-text: #1a0f06;
   --accent-secondary-text: #f4e9c9;
 
-  /* Parchment card system */
-  --card-bg: linear-gradient(160deg, #fdf3d0 0%, #f4e9c9 30%, #edddb0 100%);
-  --card-text: #2a1a0a;
-  --card-text-muted: #5c3d1e;
-  --card-border: rgba(200, 148, 26, 0.30);
+  /* Dark wood card system */
+  --card-bg: linear-gradient(160deg, #2e1c0b 0%, #251408 60%, #1c0f05 100%);
+  --card-text: #f4e9c9;
+  --card-text-muted: rgba(244, 233, 201, 0.68);
+  --card-border: rgba(200, 148, 26, 0.28);
   --card-border-strong: rgba(200, 148, 26, 0.55);
   --card-shadow:
-    0 0 0 1px rgba(200, 148, 26, 0.12),
-    0 0 0 3px rgba(200, 148, 26, 0.06),
+    0 0 0 1px rgba(200, 148, 26, 0.14),
+    0 4px 20px rgba(0, 0, 0, 0.55),
     0 24px 64px rgba(0, 0, 0, 0.75),
-    inset 0 1px 0 rgba(255, 255, 255, 0.35);
-  --input-bg: rgba(42, 26, 10, 0.07);
-  --input-text: #2a1a0a;
-  --input-placeholder: rgba(42, 26, 10, 0.42);
-  --input-border: rgba(42, 26, 10, 0.18);
+    inset 0 1px 0 rgba(200, 148, 26, 0.10);
+  --input-bg: rgba(0, 0, 0, 0.25);
+  --input-text: #f4e9c9;
+  --input-placeholder: rgba(244, 233, 201, 0.38);
+  --input-border: rgba(200, 148, 26, 0.22);
   --input-focus-border: rgba(200, 148, 26, 0.65);
-  --input-focus-shadow: rgba(200, 148, 26, 0.20);
-  --label-text: #5c3d1e;
+  --input-focus-shadow: rgba(200, 148, 26, 0.22);
+  --label-text: rgba(244, 233, 201, 0.68);
 }
 
 /* ── Medieval ember particles ── */
@@ -99,15 +99,32 @@
   100% { transform: translateY(-105vh) translateX(44px); opacity: 0; }
 }
 
-/* Card parchment style for medieval */
-[data-theme="medieval"] .card {
-  background: linear-gradient(160deg, #1f1208 0%, #1a0f06 60%, #160c04 100%);
-  border: 1px solid rgba(200, 148, 26, 0.22);
-  box-shadow:
-    0 0 0 1px rgba(200, 148, 26, 0.10),
-    0 12px 40px rgba(0, 0, 0, 0.7),
-    inset 0 1px 0 rgba(200, 148, 26, 0.08);
-  border-radius: var(--radius);
+/* Card — uses --card-bg vars defined above; no override needed */
+
+/* ── Sci-Fi star twinkle particles ── */
+.tt-star-container {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.tt-star {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  box-shadow: 0 0 2px currentColor;
+  animation: tt-star-twinkle ease-in-out infinite;
+}
+
+.tt-star--static {
+  animation: none;
+}
+
+@keyframes tt-star-twinkle {
+  0%, 100% { opacity: var(--star-min, 0.12); transform: scale(0.85); }
+  50%       { opacity: var(--star-max, 0.90); transform: scale(1.25); }
 }
 
 [data-theme="medieval"] h1,
