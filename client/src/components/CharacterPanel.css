@@ -20,7 +20,7 @@
   gap: 12px;
   padding: 10px;
   border-radius: 12px;
-  background: radial-gradient(circle at 15% 10%, rgba(94,158,182,0.18), rgba(43,51,54,0.45));
+  background: radial-gradient(circle at 15% 10%, color-mix(in srgb, var(--accent) 14%, transparent), rgba(43,51,54,0.45));
   border: 1px solid var(--tt-border);
   margin-bottom: 10px;
 }
@@ -151,8 +151,8 @@
 }
 
 .character-icon-card--active .character-icon-badge{
-  background: rgba(94, 158, 182, 0.24);
-  border-color: rgba(94, 158, 182, 0.32);
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 32%, transparent);
   color: rgba(255, 255, 255, 0.95);
 }
 
@@ -273,7 +273,7 @@
 .character-sheet-card{
   border-radius: 12px;
   border: 1px solid var(--tt-border);
-  background: rgba(94,158,182,0.18);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
   overflow: hidden;
 }
 
@@ -307,8 +307,8 @@
 }
 
 .character-sheet-card-action.active{
-  background: rgba(143, 224, 255, 0.14);
-  border: 1px solid rgba(143, 224, 255, 0.22);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 .character-sheet-card-body{
@@ -360,7 +360,7 @@
 .character-sheet-mini-mod{
   font-variant-numeric: tabular-nums;
   font-weight: 850;
-  color: rgba(143,224,255,0.95);
+  color: var(--accent);
 }
 
 .character-sheet-mini-skills{
@@ -443,8 +443,8 @@
 }
 
 .character-icon-card--active{
-  border-color: rgba(143, 224, 255, 0.28);
-  box-shadow: 0 0 0 1px rgba(143, 224, 255, 0.10) inset;
+  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 10%, transparent) inset;
 }
 
 .character-icon-card img {
@@ -596,9 +596,9 @@
   font-size: 12px;
   padding: 4px 10px;
   border-radius: 999px;
-  background: rgba(143, 224, 255, 0.10);
-  border: 1px solid rgba(143, 224, 255, 0.18);
-  color: rgba(143, 224, 255, 0.95);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
 }
 
 .character-panel-drawer-header{
@@ -672,9 +672,9 @@
   font-variant-numeric: tabular-nums;
   padding: 2px 10px;
   border-radius: 999px;
-  background: rgba(143, 224, 255, 0.10);
-  border: 1px solid rgba(143, 224, 255, 0.22);
-  color: rgba(143, 224, 255, 0.95);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent);
 }
 
 .character-section-list--skills{
@@ -718,9 +718,9 @@
   font-variant-numeric: tabular-nums;
   padding: 2px 8px;
   border-radius: 999px;
-  background: rgba(143, 224, 255, 0.12);
-  border: 1px solid rgba(143, 224, 255, 0.22);
-  color: rgba(143, 224, 255, 0.95);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent);
 }
 
 .character-panel-block{
@@ -735,11 +735,11 @@
 }
 
 .character-panel-block-title--scene{
-  color: #8fe0ff;
+  color: var(--accent);
 }
 
 .character-panel-block-title--npc{
-  color: #ffcc6f;
+  color: var(--highlight);
 }
 
 .character-panel-cues{
