@@ -63,6 +63,12 @@
   opacity: 0.85;
 }
 
+.tt-home-divider {
+  max-width: 260px;
+  margin-left: 0;
+  margin-right: auto;
+}
+
 .tt-home-auth-actions {
   display: flex;
   gap: 12px;

@@ -47,6 +47,52 @@
   --bg-radial-1: radial-gradient(ellipse at 20% 30%, rgba(200, 148, 26, 0.10) 0%, transparent 55%);
   --bg-radial-2: radial-gradient(ellipse at 80% 70%, rgba(139, 26, 26, 0.12) 0%, transparent 55%);
   --bg-radial-3: radial-gradient(ellipse at 50% 10%, rgba(200, 148, 26, 0.06) 0%, transparent 40%);
+
+  /* Parchment card system */
+  --card-bg: linear-gradient(160deg, #fdf3d0 0%, #f4e9c9 30%, #edddb0 100%);
+  --card-text: #2a1a0a;
+  --card-text-muted: #5c3d1e;
+  --card-border: rgba(200, 148, 26, 0.30);
+  --card-border-strong: rgba(200, 148, 26, 0.55);
+  --card-shadow:
+    0 0 0 1px rgba(200, 148, 26, 0.12),
+    0 0 0 3px rgba(200, 148, 26, 0.06),
+    0 24px 64px rgba(0, 0, 0, 0.75),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  --input-bg: rgba(42, 26, 10, 0.07);
+  --input-text: #2a1a0a;
+  --input-placeholder: rgba(42, 26, 10, 0.42);
+  --input-border: rgba(42, 26, 10, 0.18);
+  --input-focus-border: rgba(200, 148, 26, 0.65);
+  --input-focus-shadow: rgba(200, 148, 26, 0.20);
+  --label-text: #5c3d1e;
+}
+
+/* ── Medieval ember particles ── */
+.tt-ember-container {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  overflow: hidden;
+}
+
+.tt-ember {
+  position: absolute;
+  bottom: -10px;
+  background: #f0c040;
+  border-radius: 50%;
+  pointer-events: none;
+  animation: tt-ember-rise linear infinite;
+  box-shadow: 0 0 4px #f0c040, 0 0 8px rgba(200, 148, 26, 0.5);
+}
+
+@keyframes tt-ember-rise {
+  0%   { transform: translateY(0) translateX(0);    opacity: 0; }
+  8%   { opacity: 0.75; }
+  50%  { transform: translateY(-50vh) translateX(20px); opacity: 0.45; }
+  92%  { opacity: 0.2; }
+  100% { transform: translateY(-105vh) translateX(44px); opacity: 0; }
 }
 
 /* Card parchment style for medieval */
@@ -126,6 +172,21 @@
   --bg-radial-1: radial-gradient(ellipse at 15% 50%, rgba(0, 180, 216, 0.12) 0%, transparent 50%);
   --bg-radial-2: radial-gradient(ellipse at 85% 30%, rgba(114, 9, 183, 0.14) 0%, transparent 50%);
   --bg-radial-3: radial-gradient(ellipse at 50% 90%, rgba(0, 180, 216, 0.06) 0%, transparent 40%);
+
+  /* Card system (dark glass) */
+  --card-bg: linear-gradient(160deg, #001233 0%, #000e28 100%);
+  --card-text: #caf0f8;
+  --card-text-muted: rgba(202, 240, 248, 0.60);
+  --card-border: rgba(0, 180, 216, 0.20);
+  --card-border-strong: rgba(0, 180, 216, 0.48);
+  --card-shadow: 0 0 0 1px rgba(0, 180, 216, 0.06), 0 12px 40px rgba(0, 0, 0, 0.8);
+  --input-bg: rgba(0, 18, 51, 0.6);
+  --input-text: #caf0f8;
+  --input-placeholder: rgba(202, 240, 248, 0.38);
+  --input-border: rgba(0, 180, 216, 0.22);
+  --input-focus-border: rgba(0, 180, 216, 0.65);
+  --input-focus-shadow: rgba(0, 180, 216, 0.20);
+  --label-text: rgba(202, 240, 248, 0.72);
 }
 
 [data-theme="scifi"] .card {
@@ -196,6 +257,21 @@
   --bg-radial-1: radial-gradient(ellipse at 0% 100%, rgba(255, 153, 0, 0.12) 0%, transparent 45%);
   --bg-radial-2: radial-gradient(ellipse at 100% 0%, rgba(204, 102, 153, 0.10) 0%, transparent 45%);
   --bg-radial-3: radial-gradient(ellipse at 50% 50%, rgba(61, 26, 92, 0.20) 0%, transparent 60%);
+
+  /* Card system (LCARS dark) */
+  --card-bg: #0d0020;
+  --card-text: #f0e6ff;
+  --card-text-muted: rgba(240, 230, 255, 0.60);
+  --card-border: rgba(255, 153, 0, 0.28);
+  --card-border-strong: rgba(255, 153, 0, 0.60);
+  --card-shadow: 0 12px 40px rgba(0, 0, 0, 0.9);
+  --input-bg: rgba(13, 0, 32, 0.8);
+  --input-text: #f0e6ff;
+  --input-placeholder: rgba(240, 230, 255, 0.35);
+  --input-border: rgba(255, 153, 0, 0.28);
+  --input-focus-border: rgba(255, 153, 0, 0.65);
+  --input-focus-shadow: rgba(255, 153, 0, 0.20);
+  --label-text: rgba(240, 230, 255, 0.72);
 }
 
 /* LCARS-style card: thick left border, flat corners */
@@ -280,4 +356,19 @@
   --bg-radial-1: none;
   --bg-radial-2: none;
   --bg-radial-3: none;
+
+  /* Card system (neutral dark) */
+  --card-bg: var(--surface);
+  --card-text: #ffffff;
+  --card-text-muted: rgba(255, 255, 255, 0.72);
+  --card-border: rgba(255, 255, 255, 0.10);
+  --card-border-strong: rgba(255, 255, 255, 0.18);
+  --card-shadow: 0 6px 18px rgba(0, 0, 0, 0.6);
+  --input-bg: var(--surface);
+  --input-text: #ffffff;
+  --input-placeholder: rgba(255, 255, 255, 0.38);
+  --input-border: rgba(255, 255, 255, 0.10);
+  --input-focus-border: rgba(255, 255, 255, 0.32);
+  --input-focus-shadow: rgba(173, 136, 95, 0.25);
+  --label-text: rgba(255, 255, 255, 0.72);
 }

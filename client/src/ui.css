@@ -37,15 +37,75 @@
 }
 
 .card {
-  background: var(--surface);
-  border: 1px solid var(--tt-border);
+  background: var(--card-bg, var(--surface));
+  color: var(--card-text, var(--text));
+  border: 1px solid var(--card-border, var(--tt-border));
   border-radius: var(--radius);
-  box-shadow: var(--shadow-1);
+  box-shadow: var(--card-shadow, var(--shadow-1));
+}
+
+/* Muted text inside cards inherits card-text-muted */
+.card .muted,
+.card .page-subtitle,
+.card .empty-state-desc {
+  color: var(--card-text-muted, var(--muted-text));
 }
 
 .card-pad {
   padding: 16px;
 }
+
+/* ── Gold divider ornament ── */
+.tt-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 320px;
+  margin: 0 auto;
+}
+
+.tt-divider-line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent, #c8941a), transparent);
+  opacity: 0.4;
+}
+
+.tt-divider-gem {
+  width: 8px;
+  height: 8px;
+  background: var(--accent, #c8941a);
+  transform: rotate(45deg);
+  box-shadow: 0 0 8px var(--accent, #c8941a);
+  opacity: 0.85;
+  flex-shrink: 0;
+}
+
+/* ── Rune bar (decorative letter-spaced label) ── */
+.tt-rune-bar {
+  font-family: var(--font-ui, 'Cinzel', serif);
+  font-size: 10px;
+  letter-spacing: 0.55em;
+  text-transform: uppercase;
+  color: var(--accent, #c8941a);
+  opacity: 0.65;
+  text-align: center;
+}
+
+/* ── Corner ornament (position: relative parent required) ── */
+.tt-card-ornament-tl,
+.tt-card-ornament-br {
+  position: absolute;
+  font-size: 11px;
+  color: var(--accent, #c8941a);
+  opacity: 0.38;
+  line-height: 1;
+  pointer-events: none;
+  font-family: var(--font-ui, serif);
+}
+.tt-card-ornament-tl { top: 13px; left: 16px; }
+.tt-card-ornament-br { bottom: 13px; right: 16px; }
 
 .section-title {
   margin: 0;

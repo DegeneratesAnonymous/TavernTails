@@ -5,6 +5,7 @@ import './themes.css';
 import { ThemeProvider } from './contexts/ThemeContext';
 import LoginSignupAgent from './agents/LoginSignupAgent';
 import HomePage from './components/HomePage';
+import EmberParticles from './components/ui/EmberParticles';
 
 function App() {
   const hasToken = useMemo(() => {
@@ -16,6 +17,7 @@ function App() {
 
   return (
     <ThemeProvider>
+      <EmberParticles />
       <div className="App">
         {showAuth ? (
           <LoginSignupAgent initialMode={initialMode} />

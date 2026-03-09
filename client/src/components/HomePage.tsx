@@ -64,8 +64,13 @@ export default function HomePage({ onGetStarted, onSignIn, onSignUp }: Props) {
       </div>
       <div className="tt-home-content">
         <div className="tt-home-hero">
-          <div className="tt-home-tag">TavernTails</div>
-          <h1>Story-first AI GM, built for real tables.</h1>
+          <div className="tt-rune-bar">✦ The Tome Awaits ✦</div>
+          <h1>Story-first AI GM,<br />built for real tables.</h1>
+          <div className="tt-divider tt-home-divider">
+            <div className="tt-divider-line" />
+            <div className="tt-divider-gem" />
+            <div className="tt-divider-line" />
+          </div>
           <p>
             Import characters, spin up campaigns, and keep the session moving with narrative cues,
             dice prompts, and live recap support.
