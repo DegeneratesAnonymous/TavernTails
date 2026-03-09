@@ -1081,10 +1081,10 @@ export default function CharacterWizard({ onDone, onCharacterCreated }: Props) {
         background: draft.backgroundId,
         background_name: background?.name,
         personality,
-        ability_scores: Object.values(draft.abilityScores).some((v) => v !== null) ? draft.abilityScores : undefined,
+        stats: Object.values(draft.abilityScores).some((v) => v !== null) ? draft.abilityScores : undefined,
         languages: draft.selectedLanguages.length > 0 ? ['Common', ...draft.selectedLanguages] : undefined,
         skills: draft.selectedSkills,
-        starting_gear: gearPackage,
+        inventory: gearPackage,
         quiz_answers: draft.quizAnswers,
       }
 
