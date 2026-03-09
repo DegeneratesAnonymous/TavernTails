@@ -155,9 +155,9 @@
   justify-content: center;
   width: 36px;
   height: 36px;
-  border-radius: 10px;
+  border-radius: var(--radius, 10px);
   border: 1px solid var(--tt-border);
-  background: rgba(95, 128, 139, 0.2);
+  background: var(--tt-surface-2, var(--surface));
   color: var(--text);
   cursor: pointer;
   transition: transform 120ms ease, border-color 120ms ease, background-color 120ms ease;
@@ -187,8 +187,8 @@
 .notification-item {
   text-align: left;
   border: 1px solid var(--tt-border);
-  background: rgba(71, 66, 61, 0.5);
-  border-radius: 10px;
+  background: var(--tt-surface-2, var(--surface));
+  border-radius: var(--radius, 10px);
   padding: 10px 12px;
   color: var(--text);
   cursor: pointer;
@@ -224,7 +224,7 @@
 
 .empty-state {
   border: 1px dashed var(--tt-border-strong);
-  background: rgba(95, 128, 139, 0.35);
+  background: var(--tt-surface-2, var(--surface));
   border-radius: var(--radius);
   padding: 14px 16px;
 }
@@ -252,9 +252,9 @@
 .segmented {
   display: inline-flex;
   border: 1px solid var(--tt-border);
-  border-radius: 12px;
+  border-radius: var(--radius, 12px);
   overflow: hidden;
-  background: rgba(95, 128, 139, 0.25);
+  background: var(--tt-surface-2, var(--surface));
 }
 
 .segmented > button {
@@ -274,8 +274,9 @@
 }
 
 .segmented > button[aria-pressed='true'] {
-  background: rgba(173, 136, 95, 0.22);
-  border-color: rgba(173, 136, 95, 0.35);
+  background: var(--surface-muted, var(--surface));
+  border-color: var(--tt-border-strong);
+  color: var(--text);
 }
 
 /* Form primitives */
@@ -283,23 +284,23 @@
 .input {
   width: 100%;
   min-height: 40px;
-  color: var(--text);
+  color: var(--input-text, var(--text));
   outline: none;
   padding: 10px 12px;
-  background-color: var(--surface);
-  border-radius: 10px;
-  border: 1px solid var(--tt-border);
+  background-color: var(--input-bg, var(--surface));
+  border-radius: var(--radius, 10px);
+  border: 1px solid var(--input-border, var(--tt-border));
   font-size: 15px;
   box-sizing: border-box;
 }
 
 .input::placeholder {
-  color: rgba(255,255,255,0.55);
+  color: var(--input-placeholder, rgba(255,255,255,0.45));
 }
 
 .input:focus {
-  border-color: var(--tt-border-strong);
-  box-shadow: 0 0 0 3px var(--tt-focus);
+  border-color: var(--input-focus-border, var(--tt-border-strong));
+  box-shadow: 0 0 0 3px var(--input-focus-shadow, var(--tt-focus));
 }
 
 .input-mono {
@@ -316,10 +317,10 @@
   justify-content: center;
   gap: 8px;
   padding: 10px 16px;
-  border-radius: 10px;
+  border-radius: var(--radius, 10px);
   border: 1px solid var(--tt-border);
   background: var(--accent);
-  color: var(--text);
+  color: var(--accent-text, var(--text));
   font-size: 14px;
   font-weight: 650;
   cursor: pointer;
@@ -356,10 +357,11 @@
 .btn-secondary {
   background: var(--accent-secondary);
   border-color: transparent;
+  color: var(--accent-secondary-text, var(--text));
 }
 
 .btn-secondary:hover {
-  background: rgba(173, 136, 95, 0.9);
+  filter: brightness(1.12);
 }
 
 .btn-danger {
@@ -373,25 +375,26 @@
 }
 
 .btn-quiet {
-  background: rgba(95, 128, 139, 0.35);
-  border-color: rgba(255,255,255,0.12);
+  background: var(--tt-surface-2, var(--surface));
+  border-color: var(--tt-border);
 }
 
 .btn-ghost {
   background: transparent;
-  border-color: rgba(255,255,255,0.18);
+  border-color: var(--tt-border-strong);
   color: var(--text);
 }
 
 .btn-ghost:hover {
-  background: rgba(255,255,255,0.06);
-  border-color: rgba(255,255,255,0.30);
+  background: var(--tt-surface-2, rgba(255,255,255,0.06));
+  border-color: var(--tt-border-strong);
+  opacity: 0.9;
 }
 
 .btn-sm {
   padding: 8px 12px;
   font-size: 13px;
-  border-radius: 9px;
+  border-radius: var(--radius, 9px);
 }
 
 .btn-sm.btn-icon-only {
@@ -488,9 +491,9 @@
 }
 
 .stat-card {
-  background: rgba(255,255,255,0.04);
+  background: var(--tt-surface-2, var(--surface));
   border: 1px solid var(--tt-border);
-  border-radius: 10px;
+  border-radius: var(--radius, 10px);
   padding: 14px 16px;
   text-align: center;
 }
@@ -595,7 +598,7 @@
 /* Admin section — each tab's content block */
 
 .admin-section {
-  background: rgba(43, 51, 54, 0.65);
+  background: var(--surface, rgba(43, 51, 54, 0.65));
   border: 1px solid var(--tt-border);
   border-radius: var(--radius);
   padding: 20px;
@@ -646,7 +649,7 @@
 /* Expanded detail row inside admin tables */
 
 .admin-expanded-row {
-  background: rgba(43, 51, 54, 0.8);
+  background: var(--surface-dark, var(--surface));
   padding: 10px 16px;
 }
 

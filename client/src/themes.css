@@ -48,6 +48,10 @@
   --bg-radial-2: radial-gradient(ellipse at 80% 70%, rgba(139, 26, 26, 0.12) 0%, transparent 55%);
   --bg-radial-3: radial-gradient(ellipse at 50% 10%, rgba(200, 148, 26, 0.06) 0%, transparent 40%);
 
+  /* Accent text (color to use ON TOP of an accent-colored background) */
+  --accent-text: #1a0f06;
+  --accent-secondary-text: #f4e9c9;
+
   /* Parchment card system */
   --card-bg: linear-gradient(160deg, #fdf3d0 0%, #f4e9c9 30%, #edddb0 100%);
   --card-text: #2a1a0a;
@@ -173,6 +177,10 @@
   --bg-radial-2: radial-gradient(ellipse at 85% 30%, rgba(114, 9, 183, 0.14) 0%, transparent 50%);
   --bg-radial-3: radial-gradient(ellipse at 50% 90%, rgba(0, 180, 216, 0.06) 0%, transparent 40%);
 
+  /* Accent text */
+  --accent-text: #000814;
+  --accent-secondary-text: #caf0f8;
+
   /* Card system (dark glass) */
   --card-bg: linear-gradient(160deg, #001233 0%, #000e28 100%);
   --card-text: #caf0f8;
@@ -258,6 +266,10 @@
   --bg-radial-2: radial-gradient(ellipse at 100% 0%, rgba(204, 102, 153, 0.10) 0%, transparent 45%);
   --bg-radial-3: radial-gradient(ellipse at 50% 50%, rgba(61, 26, 92, 0.20) 0%, transparent 60%);
 
+  /* Accent text */
+  --accent-text: #000000;
+  --accent-secondary-text: #000000;
+
   /* Card system (LCARS dark) */
   --card-bg: #0d0020;
   --card-text: #f0e6ff;
@@ -336,8 +348,8 @@
   --surface-neutral: #525D61;
   --surface-muted: #47423D;
   --text: #ffffff;
-  --error: #E09A4F;
-  --highlight: #AD885F;
+  --error: #e05555;
+  --highlight: #f0b870;
   --muted-text: rgba(255, 255, 255, 0.72);
 
   --radius: 12px;
@@ -356,6 +368,10 @@
   --bg-radial-1: none;
   --bg-radial-2: none;
   --bg-radial-3: none;
+
+  /* Accent text */
+  --accent-text: #1a1005;
+  --accent-secondary-text: #1a1005;
 
   /* Card system (neutral dark) */
   --card-bg: var(--surface);
