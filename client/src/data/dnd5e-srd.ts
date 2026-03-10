@@ -608,7 +608,8 @@ export type SpellOption = {
   id: string
   name: string
   level: number
-  school: SpellSchool
+  /** Spell school or equivalent category (e.g. 'evocation', 'Force Attack') */
+  school: string
   /** Concise mechanical summary — not verbatim SRD text */
   summary: string
   /** Class IDs whose spell lists include this spell */

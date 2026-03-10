@@ -36,6 +36,7 @@ export type SystemId =
   | 'wfrp'
   | 'alien'
   | 'shadowrun'
+  | 'swse'
 
 export type AncestryOption = {
   id: string
@@ -128,6 +129,8 @@ export type WizardSystem = {
   availableSpells?: SpellOption[]
   /** How many spells the player picks at creation (default 4) */
   spellCountOnCreate?: number
+  /** Label used for the spells step (e.g. 'Spell', 'Force Power') */
+  spellLabel?: string
 }
 
 // ─────────────────────────────────────────────
@@ -1032,11 +1035,287 @@ const SHADOWRUN: WizardSystem = {
 }
 
 // ─────────────────────────────────────────────
+// Star Wars Saga Edition
+// ─────────────────────────────────────────────
+
+const SWSE: WizardSystem = {
+  id: 'swse',
+  name: 'Star Wars Saga Edition',
+  emoji: '⚡',
+  genre: 'Space Opera',
+  blurb: 'May the Force be with you — a galaxy of adventure spanning the Clone Wars, Rebellion, and beyond.',
+  ancestryLabel: 'Species',
+  ancestries: [
+    { id: 'human', name: 'Human', emoji: '🧑', description: 'The most common species in the galaxy. Bonus feat and an extra trained skill at creation.' },
+    { id: 'twi_lek', name: "Twi'lek", emoji: '💚', description: 'Graceful humanoids with iconic head-tails. Bonus to Deception and Persuasion.' },
+    { id: 'wookiee', name: 'Wookiee', emoji: '🦉', description: 'Powerful warriors from Kashyyyk. Natural climbers with fearsome Strength.' },
+    { id: 'zabrak', name: 'Zabrak', emoji: '⚫', description: 'Iron-willed humanoids known for resilience. Bonus to Endurance and Fortitude Defense.' },
+    { id: 'bothan', name: 'Bothan', emoji: '🦊', description: 'Political spies and information brokers. Bonus to Gather Information.' },
+    { id: 'cerean', name: 'Cerean', emoji: '🔵', description: 'Dual-brained, hyper-intelligent beings. Bonus to Knowledge skills and Initiative.' },
+    { id: 'kel_dor', name: 'Kel Dor', emoji: '🔴', description: 'Exotic Force-sensitive humanoids from Dorin. Bonus to Use the Force.' },
+    { id: 'mon_calamari', name: 'Mon Calamari', emoji: '🐟', description: 'Tactical, amphibious beings. Bonus to Perception and natural swimmers.' },
+    { id: 'nautolan', name: 'Nautolan', emoji: '🐙', description: 'Empathic tentacled beings from Glee Anselm. Bonus to Perception and Survival.' },
+    { id: 'rodian', name: 'Rodian', emoji: '🟩', description: 'Expert hunters and trackers from Rodia. Bonus to Stealth and Survival.' },
+    { id: 'sullustan', name: 'Sullustan', emoji: '🐭', description: 'Natural navigators and pilots. Bonus to Pilot and Use Computer.' },
+    { id: 'togruta', name: 'Togruta', emoji: '🦎', description: 'Pack hunters with spatial awareness via hollow montrals. Bonus to Initiative.' },
+    { id: 'miraluka', name: 'Miraluka', emoji: '👁️', description: 'Eyeless Force-seers — they perceive the world entirely through the Force. Bonus to Use the Force.' },
+    { id: 'droid', name: 'Droid', emoji: '🤖', description: 'Mechanical constructs immune to Force effects. Strong knowledge skills but cannot use the Force.' },
+    { id: 'other', name: 'Other Species', emoji: '👽', description: 'Any other species from across the galaxy — consult your GM for species traits.' },
+  ],
+  classLabel: 'Heroic Class',
+  classes: [
+    {
+      id: 'jedi',
+      name: 'Jedi',
+      emoji: '⚡',
+      description: 'Guardians of peace and justice, wielders of the Force and lightsaber.',
+      hitDie: 10,
+      saveProficiencies: ['REF', 'WIL'],
+      level1Features: [
+        { name: 'Force Sensitivity', summary: 'May spend Force Points to activate Force powers. Prerequisite for Force Training and lightsaber combat.' },
+        { name: 'Force Training', summary: 'Learn a number of Force powers equal to 1 + Wisdom modifier. Uses Force Points to activate each power.' },
+        { name: 'Weapon Proficiency (Lightsabers)', summary: 'Proficient with all lightsaber weapons without penalty.' },
+      ],
+    },
+    {
+      id: 'noble',
+      name: 'Noble',
+      emoji: '🎭',
+      description: 'Diplomats, commanders, and politicians who lead through influence and wealth.',
+      hitDie: 6,
+      saveProficiencies: ['REF', 'WIL'],
+      level1Features: [
+        { name: 'Educated', summary: 'Gain two additional trained Knowledge skills at character creation.' },
+        { name: 'Presence', summary: 'Allies within 6 squares gain a morale bonus equal to your Charisma modifier on Will saves.' },
+      ],
+    },
+    {
+      id: 'scoundrel',
+      name: 'Scoundrel',
+      emoji: '🎲',
+      description: "Smugglers, gamblers, and quick-witted pilots who rely on luck and cunning.",
+      hitDie: 6,
+      saveProficiencies: ['REF', 'WIL'],
+      level1Features: [
+        { name: "Fool's Luck", summary: 'Spend a Force Point to reroll any one die roll and take the better result.' },
+      ],
+    },
+    {
+      id: 'scout',
+      name: 'Scout',
+      emoji: '🏕️',
+      description: 'Explorers and hunters who excel in wilderness survival and rapid movement.',
+      hitDie: 8,
+      saveProficiencies: ['FOR', 'REF'],
+      level1Features: [
+        { name: 'Evasion', summary: 'On a successful Reflex save (against effects that normally allow half damage), take no damage instead.' },
+        { name: 'Shake It Off', summary: 'Take a swift action to move +1 step up the condition track.' },
+      ],
+    },
+    {
+      id: 'soldier',
+      name: 'Soldier',
+      emoji: '⚔️',
+      description: 'Military combatants trained in the widest range of weapons and heaviest armor.',
+      hitDie: 10,
+      saveProficiencies: ['FOR', 'REF'],
+      level1Features: [
+        { name: 'Armored Defense', summary: 'Proficient with all armor types; wear armor without applying the armor penalty to skills.' },
+        { name: 'Indomitable', summary: 'Once per encounter, reroll a saving throw and take the better of the two results.' },
+      ],
+    },
+    {
+      id: 'force_adept',
+      name: 'Force Adept',
+      emoji: '🌀',
+      description: 'Self-taught or unorthodox Force users who tap the Force without formal Jedi training.',
+      hitDie: 8,
+      saveProficiencies: ['WIL', 'REF'],
+      level1Features: [
+        { name: 'Force Sensitivity', summary: 'Access to Force powers via natural attunement rather than Jedi training.' },
+        { name: 'Force Training', summary: 'Learn a number of Force powers equal to 1 + Wisdom modifier.' },
+      ],
+    },
+    { id: 'custom', name: 'Custom / Prestige', emoji: '✨', description: 'A custom, multiclass, or prestige-class path agreed on with your GM.' },
+  ],
+  backgroundLabel: 'Origin & Allegiance',
+  backgroundQuiz: [
+    {
+      id: 'q1',
+      prompt: 'What defines your origins in the galaxy?',
+      options: [
+        { id: 'a', text: 'I was raised in a Jedi temple or trained by a master', scores: { jedi_survivor: 3, padawan: 2 } },
+        { id: 'b', text: 'I served in the Clone Wars or a planetary military', scores: { military_veteran: 3, rebel_agent: 1 } },
+        { id: 'c', text: 'I grew up on the fringes — smuggling or scavenging', scores: { smuggler: 3, bounty_hunter: 1 } },
+        { id: 'd', text: 'I come from wealth, politics, or a noble house', scores: { noble_born: 3 } },
+      ],
+    },
+    {
+      id: 'q2',
+      prompt: 'Where do your loyalties lie?',
+      options: [
+        { id: 'a', text: 'The Rebel Alliance or New Republic', scores: { rebel_agent: 3 } },
+        { id: 'b', text: 'The Galactic Empire', scores: { imperial_loyalist: 3 } },
+        { id: 'c', text: 'The Jedi Order or its ideals', scores: { jedi_survivor: 2, padawan: 2 } },
+        { id: 'd', text: 'No one — only profit and survival', scores: { smuggler: 2, bounty_hunter: 2 } },
+      ],
+    },
+    {
+      id: 'q3',
+      prompt: 'How do you handle conflict?',
+      options: [
+        { id: 'a', text: 'Head-on — strength and direct confrontation', scores: { military_veteran: 2, jedi_survivor: 1 } },
+        { id: 'b', text: 'Diplomacy and careful negotiation', scores: { noble_born: 2, rebel_agent: 1 } },
+        { id: 'c', text: 'Wit, deception, and opportunism', scores: { smuggler: 2, bounty_hunter: 1 } },
+        { id: 'd', text: 'Through the guidance of the Force', scores: { jedi_survivor: 2, padawan: 2 } },
+      ],
+    },
+  ],
+  backgrounds: [
+    {
+      id: 'jedi_survivor',
+      name: 'Jedi Survivor',
+      description: 'You survived Order 66 or trained in secret — carrying the traditions of a shattered Order.',
+      suggestedSkills: ['use the force', 'stealth'],
+      flavorGear: ['Lightsaber (concealed)', 'Jedi holocron fragment', 'Forged identity papers'],
+    },
+    {
+      id: 'padawan',
+      name: 'Padawan Lost',
+      description: 'A Force-sensitive who lost their master and now journeys without a teacher.',
+      suggestedSkills: ['use the force', 'survival'],
+      flavorGear: ['Damaged training saber', "Old master's journal", 'Medpac'],
+    },
+    {
+      id: 'rebel_agent',
+      name: 'Rebel Agent',
+      description: 'An operative or soldier fighting against Imperial or Separatist tyranny.',
+      suggestedSkills: ['gather information', 'stealth'],
+      flavorGear: ['Blaster pistol', 'Encrypted comlink', 'Rebel insignia (hidden)'],
+    },
+    {
+      id: 'imperial_loyalist',
+      name: 'Imperial Loyalist',
+      description: 'You serve the Empire — or once did — carrying the discipline and resources of the Imperial machine.',
+      suggestedSkills: ['knowledge: tactics', 'persuasion'],
+      flavorGear: ["Imperial officer's insignia", 'Hold-out blaster', 'Military datapad'],
+    },
+    {
+      id: 'smuggler',
+      name: 'Smuggler',
+      description: 'Cargo runs between systems — sometimes legal, usually profitable, rarely boring.',
+      suggestedSkills: ['pilot', 'deception'],
+      flavorGear: ['Blaster pistol', 'Comlink', 'Fake cargo manifest', 'Utility belt'],
+    },
+    {
+      id: 'bounty_hunter',
+      name: 'Bounty Hunter',
+      description: 'Tracking marks across the galaxy for credits. Loyalty is to the highest bidder.',
+      suggestedSkills: ['perception', 'stealth'],
+      flavorGear: ['Blaster rifle', 'Binders', 'Tracking fob', 'Light armor'],
+    },
+    {
+      id: 'military_veteran',
+      name: 'Military Veteran',
+      description: 'Seasoned in galactic conflict — Clone Wars, Imperial campaigns, or mercenary service.',
+      suggestedSkills: ['knowledge: tactics', 'endurance'],
+      flavorGear: ['Blaster pistol', 'Combat armor', 'Field medpac'],
+    },
+    {
+      id: 'noble_born',
+      name: 'Noble-Born',
+      description: 'From the houses of politics, trade, or royalty — influence and resources open every door.',
+      suggestedSkills: ['persuasion', 'knowledge: social sciences'],
+      flavorGear: ['Fine clothes', 'Credits (250 cr)', 'Encrypted comlink'],
+    },
+  ],
+  personalityFormat: 'simple',
+  skills: [
+    { id: 'acrobatics', name: 'Acrobatics', stat: 'DEX' },
+    { id: 'climb', name: 'Climb', stat: 'STR' },
+    { id: 'deception', name: 'Deception', stat: 'CHA' },
+    { id: 'endurance', name: 'Endurance', stat: 'CON' },
+    { id: 'gather information', name: 'Gather Information', stat: 'CHA' },
+    { id: 'initiative', name: 'Initiative', stat: 'DEX' },
+    { id: 'jump', name: 'Jump', stat: 'STR' },
+    { id: 'knowledge: bureaucracy', name: 'Knowledge: Bureaucracy', stat: 'INT' },
+    { id: 'knowledge: galactic lore', name: 'Knowledge: Galactic Lore', stat: 'INT' },
+    { id: 'knowledge: life sciences', name: 'Knowledge: Life Sciences', stat: 'INT' },
+    { id: 'knowledge: physical sciences', name: 'Knowledge: Physical Sciences', stat: 'INT' },
+    { id: 'knowledge: social sciences', name: 'Knowledge: Social Sciences', stat: 'INT' },
+    { id: 'knowledge: tactics', name: 'Knowledge: Tactics', stat: 'INT' },
+    { id: 'knowledge: technology', name: 'Knowledge: Technology', stat: 'INT' },
+    { id: 'mechanics', name: 'Mechanics', stat: 'INT' },
+    { id: 'perception', name: 'Perception', stat: 'WIS' },
+    { id: 'persuasion', name: 'Persuasion', stat: 'CHA' },
+    { id: 'pilot', name: 'Pilot', stat: 'DEX' },
+    { id: 'ride', name: 'Ride', stat: 'DEX' },
+    { id: 'stealth', name: 'Stealth', stat: 'DEX' },
+    { id: 'survival', name: 'Survival', stat: 'WIS' },
+    { id: 'swim', name: 'Swim', stat: 'STR' },
+    { id: 'treat injury', name: 'Treat Injury', stat: 'WIS' },
+    { id: 'use computer', name: 'Use Computer', stat: 'INT' },
+    { id: 'use the force', name: 'Use the Force', stat: 'CHA' },
+  ],
+  skillCount: 5,
+  gearPackages: [
+    { id: 'jedi_kit', name: 'Jedi Kit', items: ['Lightsaber', 'Jedi robes', 'Comlink', 'Medpac', 'Utility belt (3 pouches)'] },
+    { id: 'military_kit', name: 'Military Kit', items: ['Blaster pistol', 'Combat armor (light)', 'Field medpac', 'Comlink', 'Power pack ×2'] },
+    { id: 'explorer_kit', name: 'Explorer Kit', items: ['Blaster rifle', 'Scout armor', 'Survival kit', 'Comlink', 'Rations (7 days)'] },
+    { id: 'urban_kit', name: 'Urban Operative Kit', items: ['Hold-out blaster', 'Street clothes', 'Comlink', 'Forged ID', 'Credit chip (200 cr)'] },
+  ],
+  levelRange: [1, 20],
+  abilityScoreMethod: 'standard_array',
+  feats: [
+    { id: 'force_sensitivity', name: 'Force Sensitivity', benefit: 'Prerequisite for Force Training, lightsaber proficiency, and Use the Force skill.', tags: ['magic'] },
+    { id: 'force_training', name: 'Force Training', benefit: 'Learn additional Force powers equal to your Wisdom modifier. Can be taken multiple times.', tags: ['magic'] },
+    { id: 'weapon_prof_pistols', name: 'Weapon Proficiency (Pistols)', benefit: 'Proficient with all blaster pistols and hold-out blasters.', tags: ['combat'] },
+    { id: 'weapon_prof_rifles', name: 'Weapon Proficiency (Rifles)', benefit: 'Proficient with all blaster rifles and heavy weapons.', tags: ['combat'] },
+    { id: 'weapon_prof_lightsabers', name: 'Weapon Proficiency (Lightsabers)', benefit: 'Proficient with all lightsaber weapons. Requires Force Sensitivity.', tags: ['combat', 'magic'] },
+    { id: 'armor_prof_light', name: 'Armor Proficiency (Light)', benefit: 'Wear light armor without applying the armor check penalty.', tags: ['combat'] },
+    { id: 'armor_prof_medium', name: 'Armor Proficiency (Medium)', benefit: 'Wear medium armor without penalty. Requires Armor Proficiency (Light).', tags: ['combat'] },
+    { id: 'skill_training', name: 'Skill Training', benefit: 'Gain training in one additional skill of your choice.', tags: ['utility'] },
+    { id: 'skill_focus', name: 'Skill Focus', benefit: '+5 bonus to one trained skill. Can be taken multiple times for different skills.', tags: ['utility'] },
+    { id: 'point_blank_shot', name: 'Point Blank Shot', benefit: '+1 bonus on ranged attack rolls and damage within 6 squares.', tags: ['combat'] },
+    { id: 'precise_shot', name: 'Precise Shot', benefit: 'No -5 penalty for shooting into melee. Requires Point Blank Shot.', tags: ['combat'] },
+    { id: 'rapid_shot', name: 'Rapid Shot', benefit: 'Make one extra ranged attack per round at a -2 penalty to all attacks that round.', tags: ['combat'] },
+    { id: 'dual_weapon_mastery', name: 'Dual Weapon Mastery I', benefit: 'Reduce the penalty for fighting with a weapon in each hand by 2.', tags: ['combat'] },
+    { id: 'battle_meditation', name: 'Battle Meditation', benefit: 'Allies within 6 squares gain a bonus equal to your Wisdom modifier on attack rolls. Requires Force Sensitivity.', tags: ['magic', 'utility'] },
+    { id: 'linguist', name: 'Linguist', benefit: 'Learn three additional languages from across the galaxy.', tags: ['utility', 'social'] },
+    { id: 'martial_arts_1', name: 'Martial Arts I', benefit: '+1d4 unarmed damage and your unarmed attacks are treated as armed.', tags: ['combat'] },
+  ],
+  featCountOnCreate: 1,
+  availableSpells: [
+    { id: 'battle_strike', name: 'Battle Strike', school: 'Force Attack', level: 1, classes: ['jedi', 'force_adept'], summary: 'Your next attack deals +1d6 damage per Force Point spent. Any weapon or unarmed attack qualifies.' },
+    { id: 'force_disarm', name: 'Force Disarm', school: 'Force Attack', level: 1, classes: ['jedi', 'force_adept'], summary: 'Telekinetically rip a weapon from an enemy within 6 squares. The target must succeed on a Reflex save or drop the weapon in their square.' },
+    { id: 'force_push', name: 'Force Push', school: 'Force Attack', level: 1, classes: ['jedi', 'force_adept'], summary: 'Hurl a target away with telekinetic force. The target is pushed 3 squares and knocked prone (Fortitude save negates the prone).' },
+    { id: 'force_slam', name: 'Force Slam', school: 'Force Attack', level: 1, classes: ['jedi', 'force_adept'], summary: 'Lift and slam a target into the ground for 2d6 damage and -1 step on the condition track (Fortitude save negates the condition shift).' },
+    { id: 'force_whirlwind', name: 'Force Whirlwind', school: 'Force Attack', level: 1, classes: ['jedi', 'force_adept'], summary: 'Lift and spin a target helplessly. They are immobilized and take 2d6 damage per round. Targets make a Fortitude save each round to break free.' },
+    { id: 'force_lightning', name: 'Force Lightning', school: 'Force Attack', level: 1, classes: ['force_adept'], summary: 'Channel the dark side to deal 2d6 ion/electric damage to a single target in range. Using this power shifts you one step to the dark side.' },
+    { id: 'force_stun', name: 'Force Stun', school: 'Force Control', level: 1, classes: ['jedi', 'force_adept'], summary: 'Paralyze a target with mental Force energy. The target is stunned and cannot act until the end of your next turn (Will save negates).' },
+    { id: 'mind_trick', name: 'Mind Trick', school: 'Force Control', level: 1, classes: ['jedi', 'force_adept'], summary: 'Suggest a simple action to a weak-minded target within 6 squares. The target performs the suggestion unless they succeed on a Will save.' },
+    { id: 'move_object', name: 'Move Object', school: 'Force Control', level: 1, classes: ['jedi', 'force_adept'], summary: 'Telekinetically move an unattended object up to Medium size. Can be used to disarm enemies, open doors, or manipulate the environment at range.' },
+    { id: 'surge', name: 'Surge', school: 'Force Control', level: 1, classes: ['jedi', 'force_adept'], summary: 'Enhance your speed and reflexes with the Force. Gain +1d6 to a Jump or Acrobatics check, or add +10 to your base speed for one round.' },
+    { id: 'negate_energy', name: 'Negate Energy', school: 'Force Sense', level: 1, classes: ['jedi', 'force_adept'], summary: 'Absorb incoming energy attacks. Reduce energy damage from one attack by 10 + your Use the Force modifier.' },
+    { id: 'rebuke', name: 'Rebuke', school: 'Force Sense', level: 1, classes: ['jedi', 'force_adept'], summary: 'Draw on the light side to resist dark side effects. Gain a +5 Force bonus to Will saves against dark side Force powers until the start of your next turn.' },
+    { id: 'farseeing', name: 'Farseeing', school: 'Force Sense', level: 1, classes: ['jedi', 'force_adept'], summary: 'Reach out through the Force to sense events at a distant location or glimpse possible futures. The GM provides a brief, possibly cryptic vision.' },
+    { id: 'telepathy', name: 'Telepathy', school: 'Force Sense', level: 1, classes: ['jedi', 'force_adept'], summary: 'Communicate silently with a willing creature you have personally met, regardless of distance. Both parties must be Force-sensitive.' },
+    { id: 'vital_transfer', name: 'Vital Transfer', school: 'Force Healing', level: 1, classes: ['jedi', 'force_adept'], summary: 'Channel healing energy through the Force. Transfer any number of your own HP to an adjacent willing creature, healing them for the same amount.' },
+  ],
+  spellCountOnCreate: 4,
+  spellLabel: 'Force Power',
+  availableLanguages: [
+    'Huttese', 'Bocce', 'Binary', 'Shyriiwook', "Twi'leki (Ryl)", "Mando'a", 'Rodian', 'Cerean', 'Zabrak', 'Mon Cal', 'Nautolan', 'High Galactic',
+  ],
+  languageCount: 1,
+}
+
+// ─────────────────────────────────────────────
 // Master system registry
 // ─────────────────────────────────────────────
 
 export const WIZARD_SYSTEMS: WizardSystem[] = [
-  DND5E, PF2E, PF1E, STARFINDER, COC, STARTREK, SOTDL, WFRP, ALIEN, SHADOWRUN,
+  DND5E, PF2E, PF1E, STARFINDER, COC, STARTREK, SOTDL, WFRP, ALIEN, SHADOWRUN, SWSE,
 ]
 
 export function getSystem(id: SystemId): WizardSystem | undefined {

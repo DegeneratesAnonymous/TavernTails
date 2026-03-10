@@ -79,6 +79,7 @@ const RULESET_OPTIONS: RulesetOption[] = [
   { id: 'wfrp', label: 'Warhammer Fantasy', emoji: '🐺', genre: 'Grimdark', systemId: 'wfrp' },
   { id: 'alien', label: 'Alien RPG', emoji: '🎃', genre: 'Sci-Fi Horror', systemId: 'alien' },
   { id: 'shadowrun', label: 'Shadowrun', emoji: '🌆', genre: 'Cyberpunk Fantasy', systemId: 'shadowrun' },
+  { id: 'swse', label: 'Star Wars Saga', emoji: '⚡', genre: 'Space Opera', systemId: 'swse' },
   { id: 'osr', label: 'OSR / Old-School', emoji: '🕯️', genre: 'Classic Dungeon Crawl' },
   { id: 'custom', label: 'Custom / Homebrew', emoji: '✨', genre: 'Any genre you like' },
 ]

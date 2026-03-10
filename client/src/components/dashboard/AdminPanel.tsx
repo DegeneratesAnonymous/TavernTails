@@ -83,6 +83,7 @@ const REF_SYSTEMS: { value: string; label: string }[] = [
   { value: 'Shadow of the Demon Lord', label: 'Shadow of the Demon Lord' },
   { value: 'Warhammer Fantasy Roleplay', label: 'Warhammer Fantasy Roleplay' },
   { value: 'Alien RPG', label: 'Alien RPG' },
+  { value: 'Star Wars Saga', label: 'Star Wars Saga Edition' },
   { value: 'Shadowrun', label: 'Shadowrun' },
 ]
 const MODERATION_LIST_LIMIT = 100

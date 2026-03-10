@@ -137,10 +137,10 @@ function buildStepList(system: WizardSystem | undefined, classId?: string | null
   if (system.personalityFormat !== 'none') steps.push('personality')
   if (system.skills.length > 0) steps.push('skills')
   if (system.feats?.length) steps.push('feats')
-  // Spell selection: only for spellcasting classes (class must have Spellcasting or Pact Magic feature)
+  // Spell selection: only for spellcasting classes (class must have Spellcasting, Pact Magic, or Force Training feature)
   if (system.availableSpells?.length && classId && classId !== 'custom') {
     const cls = system.classes.find((c) => c.id === classId)
-    if (cls?.level1Features?.some((f) => f.name === 'Spellcasting' || f.name === 'Pact Magic')) {
+    if (cls?.level1Features?.some((f) => f.name === 'Spellcasting' || f.name === 'Pact Magic' || f.name === 'Force Training')) {
       steps.push('spells')
     }
   }
@@ -1065,6 +1065,7 @@ function StepSpells({
   const allSpells: SpellOption[] = system.availableSpells ?? []
   const classSpells = allSpells.filter((s) => s.classes.includes(draft.classId ?? ''))
   const max = system.spellCountOnCreate ?? 4
+  const spellLabel = system.spellLabel ?? 'Spell'
   const selected = draft.selectedSpellIds
   const isMet = selected.length >= max
 
@@ -1079,9 +1080,9 @@ function StepSpells({
   if (classSpells.length === 0) {
     return (
       <div className="wizard-body">
-        <div className="wizard-step-heading">Spells</div>
+        <div className="wizard-step-heading">{spellLabel}s</div>
         <div className="wizard-step-sub">
-          {cls?.name ?? 'This class'} does not have spell slots at level 1. Continue to the next step.
+          {cls?.name ?? 'This class'} does not have {spellLabel.toLowerCase()} slots at level 1. Continue to the next step.
         </div>
       </div>
     )
@@ -1090,10 +1091,10 @@ function StepSpells({
   return (
     <div className="wizard-body">
       <div>
-        <div className="wizard-step-heading">Starting Spells</div>
+        <div className="wizard-step-heading">Starting {spellLabel}s</div>
         <div className="wizard-step-sub">
-          Choose up to {max} level-1 spell{max !== 1 ? 's' : ''} for {cls?.name ?? 'your class'}.
-          You can skip this and choose spells later on your character sheet.
+          Choose up to {max} {spellLabel.toLowerCase()}{max !== 1 ? 's' : ''} for {cls?.name ?? 'your class'}.
+          You can skip this and choose {spellLabel.toLowerCase()}s later on your character sheet.
         </div>
       </div>
 
