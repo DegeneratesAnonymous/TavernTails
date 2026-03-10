@@ -368,6 +368,42 @@ SRD_52_DATA: Dict[str, Any] = {
 
 
 # ---------------------------------------------------------------------------
+# Star Wars Saga Edition — generic mechanic descriptors (no copyrighted text)
+# ---------------------------------------------------------------------------
+
+SWSE_DATA: Dict[str, Any] = {
+    "classes": ["Jedi", "Noble", "Scoundrel", "Scout", "Soldier", "Force Adept"],
+    "defenses": ["Reflex Defense (DEX-based)", "Fortitude Defense (CON-based)", "Will Defense (WIS-based)"],
+    "condition_track": ["Healthy", "Shaken (-1)", "Stunned (-2)", "Incapacitated (-5)", "Helpless", "Dead"],
+    "resolution": (
+        "d20 + ability modifier + class/level bonus vs Defense score or DC. "
+        "Natural 1 always fails; natural 20 always succeeds."
+    ),
+    "force_powers": [
+        "Battle Strike", "Force Disarm", "Force Push", "Force Slam",
+        "Force Whirlwind", "Force Lightning", "Force Stun", "Mind Trick",
+        "Move Object", "Surge", "Negate Energy", "Rebuke",
+        "Farseeing", "Telepathy", "Vital Transfer",
+    ],
+    "combat": (
+        "Initiative order (d20 + DEX). Each turn: one standard action + one move action + one swift action. "
+        "Force Points may be spent to add a d6 bonus die or to activate Force powers."
+    ),
+    "skills": [
+        "Acrobatics", "Climb", "Deception", "Endurance", "Gather Information",
+        "Initiative", "Jump", "Knowledge (Bureaucracy)", "Knowledge (Galactic Lore)",
+        "Knowledge (Life Sciences)", "Knowledge (Physical Sciences)",
+        "Knowledge (Social Sciences)", "Knowledge (Tactics)", "Knowledge (Technology)",
+        "Mechanics", "Perception", "Persuasion", "Pilot", "Stealth",
+        "Survival", "Treat Injury", "Use Computer", "Use the Force",
+    ],
+}
+
+# Alias set for matching SWSE ruleset IDs that may appear in campaign settings
+_SWSE_IDS = {"swse", "star wars saga", "star wars saga edition"}
+
+
+# ---------------------------------------------------------------------------
 # Helper functions used by other server modules
 # ---------------------------------------------------------------------------
 
@@ -377,21 +413,34 @@ def get_ruleset_context(ruleset_id: str) -> Dict[str, Any]:
     Returns an empty dict for unknown or custom rulesets.
     For ``srd-5.2`` returns a compact subset of :data:`SRD_52_DATA` suitable
     for serialising into agent prompt context.
+    For ``swse`` / ``Star Wars Saga`` returns a compact subset of :data:`SWSE_DATA`.
     """
-    if ruleset_id != "srd-5.2":
-        return {}
-    return {
-        "ruleset_id": "srd-5.2",
-        "name": "D&D 5e SRD 5.2",
-        "attribution": SRD_52_DATA["attribution"],
-        "resolution": SRD_52_DATA["resolution"],
-        "proficiency_bonus": SRD_52_DATA["proficiency_bonus"],
-        "ability_scores": list(SRD_52_DATA["ability_scores"].keys()),
-        "skills": SRD_52_DATA["skills"],
-        "classes": list(SRD_52_DATA["classes"].keys()),
-        "conditions": list(SRD_52_DATA["conditions"].keys()),
-        "combat_actions": list(SRD_52_DATA["combat_actions"].keys()),
-    }
+    if ruleset_id == "srd-5.2":
+        return {
+            "ruleset_id": "srd-5.2",
+            "name": "D&D 5e SRD 5.2",
+            "attribution": SRD_52_DATA["attribution"],
+            "resolution": SRD_52_DATA["resolution"],
+            "proficiency_bonus": SRD_52_DATA["proficiency_bonus"],
+            "ability_scores": list(SRD_52_DATA["ability_scores"].keys()),
+            "skills": SRD_52_DATA["skills"],
+            "classes": list(SRD_52_DATA["classes"].keys()),
+            "conditions": list(SRD_52_DATA["conditions"].keys()),
+            "combat_actions": list(SRD_52_DATA["combat_actions"].keys()),
+        }
+    if ruleset_id.lower() in _SWSE_IDS:
+        data = SWSE_DATA
+        return {
+            "ruleset_id": "swse",
+            "name": "Star Wars Saga Edition",
+            "resolution": data["resolution"],
+            "classes": data["classes"],
+            "defenses": data["defenses"],
+            "condition_track": data["condition_track"],
+            "skills": data["skills"],
+            "force_powers": data["force_powers"],
+        }
+    return {}
 
 
 def build_ruleset_prompt_context(ruleset_id: str) -> str:
@@ -400,20 +449,36 @@ def build_ruleset_prompt_context(ruleset_id: str) -> str:
     The returned string is suitable for injection into LLM prompts.
     Returns an empty string for unknown or custom rulesets.
     """
-    if ruleset_id != "srd-5.2":
-        return ""
-    data = SRD_52_DATA
-    classes = ", ".join(data["classes"].keys())
-    conditions = ", ".join(data["conditions"].keys())
-    actions = ", ".join(k for k in data["combat_actions"] if k not in ("Bonus Action", "Reaction", "Opportunity Attack"))
-    return (
-        f"Ruleset: D&D 5e (SRD 5.2, CC-BY-4.0). "
-        f"Resolution: {data['resolution']} "
-        f"Classes: {classes}. "
-        f"Conditions: {conditions}. "
-        f"Standard actions: {actions}. "
-        f"{data['attribution']}"
-    )
+    if ruleset_id == "srd-5.2":
+        data = SRD_52_DATA
+        classes = ", ".join(data["classes"].keys())
+        conditions = ", ".join(data["conditions"].keys())
+        actions = ", ".join(k for k in data["combat_actions"] if k not in ("Bonus Action", "Reaction", "Opportunity Attack"))
+        return (
+            f"Ruleset: D&D 5e (SRD 5.2, CC-BY-4.0). "
+            f"Resolution: {data['resolution']} "
+            f"Classes: {classes}. "
+            f"Conditions: {conditions}. "
+            f"Standard actions: {actions}. "
+            f"{data['attribution']}"
+        )
+    if ruleset_id.lower() in _SWSE_IDS:
+        data = SWSE_DATA
+        classes = ", ".join(data["classes"])
+        defenses = ", ".join(data["defenses"])
+        fp_sample = ", ".join(data["force_powers"][:8])
+        condition_track = " → ".join(data["condition_track"])
+        return (
+            f"Ruleset: Star Wars Saga Edition (d20-based, Wizards of the Coast). "
+            f"Resolution: {data['resolution']} "
+            f"Heroic Classes: {classes}. "
+            f"Defense scores: {defenses}. "
+            f"Condition Track: {condition_track}. "
+            f"Force Powers (sample): {fp_sample}. "
+            f"Combat: {data['combat']} "
+            f"Do not reproduce copyrighted rules text; use generic mechanic descriptors only."
+        )
+    return ""
 
 
 # ---------------------------------------------------------------------------

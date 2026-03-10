@@ -15,7 +15,25 @@ from pydantic import BaseModel
 
 from .. import db
 from ..auth import get_current_user
+from .references import search_query as _search_refs
 from .srd import build_ruleset_prompt_context
+
+
+def _srl_context(query: str, ruleset_id: str, top_k: int = 3) -> str:
+    """Return a compact citation string from system-reference documents filtered by game system.
+
+    Non-fatal: returns empty string on any error.
+    Result is appended to LLM prompts so the model can ground its response in
+    uploaded rulebook pages.  Raw text is never included (paraphrase_required).
+    """
+    try:
+        hits = _search_refs(query, top_k=top_k, system_only=True, game_system=ruleset_id or None)
+        if not hits:
+            return ""
+        parts = [f"[{h.get('source_id', '?')} p{h.get('page', '?')}]" for h in hits]
+        return "Relevant rulebook pages (paraphrase only — do not quote verbatim): " + ", ".join(parts)
+    except Exception:
+        return ""
 
 router = APIRouter(prefix="/generate", tags=["generate"])
 
@@ -167,6 +185,7 @@ def generate_npc(req: GenerateNPCRequest, current_user=Depends(get_current_user)
         "Do not reproduce copyrighted rules text; use generic mechanic descriptors only. "
         "Return only the JSON object, no extra commentary."
     )
+    srl_hint = _srl_context(f"{req.npc_type or 'NPC'} {settings.get('world_name', '')}".strip(), ruleset_id)
     user_content = json.dumps(
         {
             "world": settings.get("world_name", ""),
@@ -177,6 +196,7 @@ def generate_npc(req: GenerateNPCRequest, current_user=Depends(get_current_user)
             "factions": variables.get("factions", []),
             "content_rating": variables.get("content_rating", "pg-13"),
             "ruleset_context": build_ruleset_prompt_context(ruleset_id),
+            **({"srl_hint": srl_hint} if srl_hint else {}),
         }
     )
 
@@ -336,6 +356,7 @@ def generate_loot(req: GenerateLootRequest, current_user=Depends(get_current_use
         "Do not reproduce copyrighted rules text; use generic item names and descriptions. "
         "Return only the JSON object, no extra commentary."
     )
+    srl_hint = _srl_context(f"{req.loot_type or 'treasure'} items equipment", ruleset_id)
     user_content = json.dumps(
         {
             "challenge_rating": cr,
@@ -343,6 +364,7 @@ def generate_loot(req: GenerateLootRequest, current_user=Depends(get_current_use
             "ruleset_context": build_ruleset_prompt_context(ruleset_id),
             "themes": variables.get("themes", []),
             "content_rating": variables.get("content_rating", "pg-13"),
+            **({"srl_hint": srl_hint} if srl_hint else {}),
         }
     )
 

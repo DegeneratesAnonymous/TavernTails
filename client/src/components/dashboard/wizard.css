@@ -1,0 +1,946 @@
+/* ═══════════════════════════════════════════════════
+   Wizard shared styles — Character & Campaign wizards
+   Uses existing theme CSS variables throughout.
+   ═══════════════════════════════════════════════════ */
+
+/* ── Progress bar ───────────────────────────────── */
+.wizard-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wizard-progress-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.wizard-progress-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--tt-border-strong, rgba(255,255,255,0.2));
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+  transition: background 200ms ease, border-color 200ms ease, color 200ms ease;
+  color: var(--muted-text);
+}
+
+.wizard-progress-dot--active {
+  background: var(--accent, #c8941a);
+  border-color: var(--accent, #c8941a);
+  color: #fff;
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent, #c8941a) 45%, transparent);
+}
+
+.wizard-progress-dot--done {
+  background: color-mix(in srgb, var(--accent, #c8941a) 25%, transparent);
+  border-color: var(--accent, #c8941a);
+  color: var(--accent, #c8941a);
+}
+
+.wizard-progress-line {
+  flex: 1;
+  height: 2px;
+  background: var(--tt-border, rgba(255,255,255,0.10));
+  border-radius: 1px;
+  transition: background 200ms ease;
+}
+
+.wizard-progress-line--done {
+  background: color-mix(in srgb, var(--accent, #c8941a) 45%, transparent);
+}
+
+.wizard-progress-label {
+  font-size: 11px;
+  color: var(--muted-text);
+  white-space: nowrap;
+}
+
+/* ── Option grid — cards the user clicks to select ── */
+.wizard-option-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px;
+}
+
+.wizard-option-grid--tight {
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+}
+
+.wizard-option-grid--wide {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+
+.wizard-option-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 5px;
+  padding: 12px 10px;
+  background: var(--card-bg, var(--surface));
+  border: 2px solid var(--card-border, var(--tt-border));
+  border-radius: var(--radius, 10px);
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease, transform 100ms ease, box-shadow 150ms ease;
+  color: var(--text);
+  user-select: none;
+  min-height: 80px;
+  justify-content: center;
+}
+
+.wizard-option-card:hover {
+  border-color: var(--tt-border-strong, rgba(255,255,255,0.3));
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+}
+
+.wizard-option-card:active {
+  transform: translateY(0);
+}
+
+.wizard-option-card.is-selected {
+  border-color: var(--accent, #c8941a);
+  background: color-mix(in srgb, var(--accent, #c8941a) 12%, var(--card-bg, var(--surface)));
+  box-shadow: 0 0 14px color-mix(in srgb, var(--accent, #c8941a) 30%, transparent);
+}
+
+.wizard-option-card.is-selected::after {
+  content: '✓';
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  font-size: 12px;
+  color: var(--accent, #c8941a);
+  font-weight: 700;
+}
+
+.wizard-option-emoji {
+  font-size: 26px;
+  line-height: 1;
+}
+
+.wizard-option-name {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.wizard-option-desc {
+  font-size: 11px;
+  color: var(--muted-text);
+  line-height: 1.35;
+}
+
+/* ── Scenario question cards (campaign quiz) ─────── */
+.wizard-scenario-card {
+  padding: 20px;
+  background: var(--card-bg, var(--surface));
+  border: 1px solid var(--card-border, var(--tt-border));
+  border-radius: var(--radius, 10px);
+}
+
+.wizard-scenario-scene {
+  font-size: 13px;
+  color: var(--muted-text);
+  font-style: italic;
+  line-height: 1.5;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--tt-border, rgba(255,255,255,0.08));
+}
+
+.wizard-scenario-prompt {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  line-height: 1.35;
+}
+
+.wizard-answer-list {
+  display: grid;
+  gap: 8px;
+}
+
+.wizard-answer-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--tt-surface-2, var(--surface));
+  border: 2px solid var(--tt-border, rgba(255,255,255,0.10));
+  border-radius: var(--radius, 10px);
+  cursor: pointer;
+  text-align: left;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.35;
+  transition: border-color 140ms ease, background 140ms ease, transform 80ms ease;
+  width: 100%;
+}
+
+.wizard-answer-btn:hover {
+  border-color: var(--tt-border-strong, rgba(255,255,255,0.25));
+  transform: translateX(3px);
+}
+
+.wizard-answer-btn.is-selected {
+  border-color: var(--accent, #c8941a);
+  background: color-mix(in srgb, var(--accent, #c8941a) 12%, var(--tt-surface-2, var(--surface)));
+}
+
+.wizard-answer-emoji {
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+/* ── Skill chip grid ─────────────────────────────── */
+.wizard-skill-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.wizard-skill-chip {
+  padding: 5px 11px;
+  border: 1px solid var(--tt-border, rgba(255,255,255,0.12));
+  border-radius: 20px;
+  background: var(--tt-surface-2, var(--surface));
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--muted-text);
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.wizard-skill-chip:hover {
+  border-color: var(--tt-border-strong);
+  color: var(--text);
+}
+
+.wizard-skill-chip.is-selected {
+  border-color: var(--accent, #c8941a);
+  background: color-mix(in srgb, var(--accent, #c8941a) 14%, transparent);
+  color: var(--text);
+}
+
+.wizard-skill-chip.is-suggested {
+  border-color: color-mix(in srgb, var(--accent, #c8941a) 50%, transparent);
+}
+
+.wizard-skill-stat {
+  font-size: 10px;
+  color: var(--muted-text);
+  border-left: 1px solid currentColor;
+  padding-left: 5px;
+}
+
+/* ── Character preview sidebar ───────────────────── */
+.wizard-preview {
+  padding: 14px;
+  background: var(--tt-surface-2, var(--surface));
+  border: 1px solid var(--tt-border);
+  border-radius: var(--radius, 10px);
+  min-width: 180px;
+}
+
+.wizard-preview-title {
+  font-size: 11px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--accent, #c8941a);
+  margin-bottom: 10px;
+}
+
+.wizard-preview-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--tt-border, rgba(255,255,255,0.06));
+  align-items: flex-start;
+}
+
+.wizard-preview-row:last-child {
+  border-bottom: none;
+}
+
+.wizard-preview-label {
+  color: var(--muted-text);
+  flex-shrink: 0;
+}
+
+.wizard-preview-value {
+  font-weight: 600;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Name + level step ───────────────────────────── */
+.wizard-name-input {
+  font-size: 18px;
+  font-weight: 600;
+  padding: 12px 16px;
+  background: var(--card-bg, var(--surface));
+  border: 2px solid var(--tt-border-strong);
+  border-radius: var(--radius, 10px);
+  color: var(--text);
+  width: 100%;
+}
+
+.wizard-name-input:focus {
+  outline: none;
+  border-color: var(--accent, #c8941a);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #c8941a) 20%, transparent);
+}
+
+.wizard-level-track {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.wizard-level-slider {
+  flex: 1;
+  accent-color: var(--accent, #c8941a);
+  height: 4px;
+  cursor: pointer;
+}
+
+.wizard-level-badge {
+  min-width: 48px;
+  text-align: center;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--accent, #c8941a);
+}
+
+/* ── Ability score assignment ────────────────────── */
+.wizard-ability-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.wizard-ability-row {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--tt-surface-2, var(--surface));
+  border: 1px solid var(--tt-border);
+  border-radius: 8px;
+  transition: border-color 150ms ease;
+}
+
+.wizard-ability-row.has-value {
+  border-color: color-mix(in srgb, var(--accent, #c8941a) 40%, transparent);
+}
+
+.wizard-ability-label-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wizard-ability-abbr {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--text);
+}
+
+.wizard-ability-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted-text);
+}
+
+.wizard-ability-hint {
+  font-size: 10px;
+  color: var(--muted-text);
+  opacity: 0.75;
+  line-height: 1.3;
+}
+
+.wizard-ability-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+
+.wizard-ability-chip {
+  min-width: 36px;
+  padding: 5px 7px;
+  border: 1.5px solid var(--tt-border, rgba(255,255,255,0.12));
+  border-radius: 6px;
+  background: var(--card-bg, var(--surface));
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+  color: var(--text);
+  transition: border-color 120ms ease, background 120ms ease, transform 80ms ease;
+  user-select: none;
+}
+
+.wizard-ability-chip:hover:not(.is-taken) {
+  border-color: var(--tt-border-strong);
+  transform: translateY(-1px);
+}
+
+.wizard-ability-chip.is-selected {
+  border-color: var(--accent, #c8941a);
+  background: color-mix(in srgb, var(--accent, #c8941a) 18%, var(--card-bg, var(--surface)));
+  color: var(--accent, #c8941a);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent, #c8941a) 25%, transparent);
+}
+
+.wizard-ability-chip.is-taken {
+  opacity: 0.3;
+  cursor: pointer;
+}
+
+.wizard-ability-chip.is-taken:hover {
+  opacity: 0.5;
+}
+
+.wizard-ability-mod {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--accent, #c8941a);
+  min-width: 28px;
+  text-align: center;
+  margin-left: 4px;
+}
+
+/* ── Auto-granted chip (e.g. Common language) ────── */
+.wizard-skill-chip.is-auto-granted {
+  border-color: color-mix(in srgb, var(--accent, #c8941a) 60%, transparent);
+  background: color-mix(in srgb, var(--accent, #c8941a) 10%, transparent);
+  color: var(--text);
+  cursor: default;
+  opacity: 0.85;
+}
+
+/* ── Review / summary ────────────────────────────── */
+.wizard-review-grid {
+  display: grid;
+  gap: 8px;
+}
+
+@media (min-width: 700px) {
+  .wizard-review-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.wizard-review-row {
+  display: grid;
+  grid-template-columns: 120px 1fr auto;
+  gap: 10px;
+  align-items: start;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--tt-surface-2, var(--surface));
+  border: 1px solid var(--tt-border);
+}
+
+.wizard-review-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted-text);
+  font-weight: 600;
+  padding-top: 1px;
+}
+
+.wizard-review-value {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.wizard-review-edit {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent, #c8941a);
+  background: color-mix(in srgb, var(--accent, #c8941a) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, #c8941a) 35%, transparent);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 2px 8px;
+  flex-shrink: 0;
+  letter-spacing: 0.03em;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  text-decoration: none;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.wizard-review-edit:hover {
+  background: color-mix(in srgb, var(--accent, #c8941a) 22%, transparent);
+  border-color: color-mix(in srgb, var(--accent, #c8941a) 55%, transparent);
+  color: var(--accent, #c8941a);
+}
+
+/* ── Campaign mood result display ────────────────── */
+.wizard-mood-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.wizard-mood-tag {
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--accent, #c8941a);
+  color: var(--accent, #c8941a);
+  background: color-mix(in srgb, var(--accent, #c8941a) 10%, transparent);
+}
+
+/* ── Layout shell ────────────────────────────────── */
+.wizard-shell {
+  display: grid;
+  gap: 14px;
+}
+
+@media (min-width: 760px) {
+  .wizard-shell--with-preview {
+    grid-template-columns: 1fr 210px;
+    align-items: start;
+  }
+}
+
+.wizard-body {
+  display: grid;
+  gap: 12px;
+}
+
+/* ── Step heading ────────────────────────────────── */
+.wizard-step-heading {
+  font-size: 17px;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.wizard-step-sub {
+  font-size: 13px;
+  color: var(--muted-text);
+  margin-top: 2px;
+}
+
+/* ── Navigation buttons ──────────────────────────── */
+.wizard-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.wizard-skip-btn {
+  margin-left: auto;
+  font-size: 12px;
+  opacity: 0.65;
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px dashed currentColor;
+  transition: opacity 0.15s;
+}
+.wizard-skip-btn:hover {
+  opacity: 1;
+}
+
+.wizard-selection-count {
+  font-size: 12px;
+  color: var(--muted-text);
+}
+
+.wizard-selection-count--met {
+  color: var(--accent, #c8941a);
+  font-weight: 600;
+}
+
+/* ── Features step ──────────────────────────────── */
+.wizard-feature-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wizard-feature-section-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.wizard-feature-hit-die {
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted-text);
+  background: var(--tt-surface-2, var(--surface));
+  border: 1px solid var(--tt-border);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.wizard-feature-saves {
+  font-size: 12px;
+  color: var(--muted-text);
+  margin-bottom: 4px;
+}
+
+.wizard-feature-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 8px;
+}
+
+.wizard-feature-card {
+  background: var(--tt-surface-2, var(--surface));
+  border: 1px solid var(--tt-border);
+  border-radius: var(--radius, 8px);
+  padding: 10px 12px;
+  cursor: default;
+}
+
+.wizard-feature-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wizard-feature-level-badge {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--accent, #c8941a);
+  background: rgba(200, 148, 26, 0.12);
+  border: 1px solid rgba(200, 148, 26, 0.22);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
+
+.wizard-feature-summary {
+  font-size: 12px;
+  color: var(--muted-text);
+  line-height: 1.55;
+}
+
+/* ── Feats step ─────────────────────────────────── */
+.wizard-feat-tag-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.wizard-feat-tag-btn {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  border: 1px solid var(--tt-border);
+  background: var(--tt-surface-2, var(--surface));
+  color: var(--muted-text);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.wizard-feat-tag-btn:hover {
+  background: var(--tt-surface, var(--surface));
+  color: var(--text);
+}
+
+.wizard-feat-tag-btn.is-active {
+  background: rgba(200, 148, 26, 0.14);
+  border-color: rgba(200, 148, 26, 0.36);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.wizard-feat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 8px;
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.wizard-feat-card {
+  background: var(--tt-surface-2, var(--surface));
+  border: 1px solid var(--tt-border);
+  border-radius: var(--radius, 8px);
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wizard-feat-card:hover:not(.is-disabled) {
+  border-color: var(--accent, #c8941a);
+  background: var(--tt-surface, var(--surface));
+}
+
+.wizard-feat-card.is-selected {
+  border-color: var(--accent, #c8941a);
+  background: rgba(200, 148, 26, 0.08);
+  box-shadow: 0 0 0 2px rgba(200, 148, 26, 0.20);
+}
+
+.wizard-feat-card.is-disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.wizard-feat-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.wizard-feat-prereq {
+  font-size: 11px;
+  color: var(--accent, #c8941a);
+  font-style: italic;
+}
+
+.wizard-feat-benefit {
+  font-size: 12px;
+  color: var(--muted-text);
+  line-height: 1.5;
+  flex: 1;
+}
+
+.wizard-feat-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.wizard-feat-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.wizard-feat-tag--combat  { background: rgba(180, 40, 40, 0.18); color: #e87878; }
+.wizard-feat-tag--magic   { background: rgba(100, 60, 200, 0.18); color: #a78bfa; }
+.wizard-feat-tag--utility { background: rgba(40, 140, 80, 0.18);  color: #6ee7a0; }
+.wizard-feat-tag--social  { background: rgba(40, 120, 200, 0.18); color: #7dd3fc; }
+
+/* ── Custom class form ───────────────────────── */
+.wizard-custom-class-form {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 8px;
+  background: var(--tt-surface-2, var(--surface));
+  border: 1px solid var(--tt-border-strong);
+  margin-top: 4px;
+}
+.wizard-custom-class-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted-text);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.wizard-custom-class-hint {
+  font-size: 12px;
+  color: var(--muted-text);
+}
+
+/* ── Custom feat input ───────────────────────── */
+.wizard-custom-feat {
+  display: grid;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--tt-border);
+  margin-top: 4px;
+}
+.wizard-custom-feat-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted-text);
+}
+
+/* ── Spell selection step ────────────────────── */
+.wizard-spell-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+
+.wizard-spell-card {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--tt-border);
+  background: var(--tt-surface-2, var(--surface));
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.wizard-spell-card:hover:not(:disabled) {
+  border-color: var(--accent, #c8941a);
+  background: color-mix(in srgb, var(--accent, #c8941a) 6%, var(--tt-surface-2, var(--surface)));
+}
+.wizard-spell-card.is-selected {
+  border-color: var(--accent, #c8941a);
+  background: color-mix(in srgb, var(--accent, #c8941a) 14%, var(--tt-surface-2, var(--surface)));
+  box-shadow: 0 0 0 1px var(--accent, #c8941a) inset;
+}
+.wizard-spell-card.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.wizard-spell-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.wizard-spell-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+.wizard-spell-school {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.wizard-spell-school--abjuration    { background: rgba(40, 120, 200, 0.18); color: #7dd3fc; }
+.wizard-spell-school--conjuration   { background: rgba(40, 140, 80, 0.18);  color: #6ee7a0; }
+.wizard-spell-school--divination    { background: rgba(200, 200, 40, 0.18); color: #fde68a; }
+.wizard-spell-school--enchantment   { background: rgba(180, 60, 200, 0.18); color: #d8b4fe; }
+.wizard-spell-school--evocation     { background: rgba(200, 80, 40, 0.18);  color: #fca5a5; }
+.wizard-spell-school--illusion      { background: rgba(80, 140, 200, 0.18); color: #a5f3fc; }
+.wizard-spell-school--necromancy    { background: rgba(60, 20, 80, 0.30);   color: #c4b5fd; }
+.wizard-spell-school--transmutation { background: rgba(40, 100, 60, 0.18);  color: #86efac; }
+.wizard-spell-summary {
+  font-size: 11px;
+  color: var(--muted-text);
+  line-height: 1.45;
+}
+
+/* ── Gear / Items step ───────────────────────── */
+.wizard-items-base {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--tt-surface-2, var(--surface));
+  border: 1px solid var(--tt-border);
+}
+.wizard-items-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted-text);
+}
+.wizard-items-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.wizard-items-chip {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent, #c8941a) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, #c8941a) 28%, transparent);
+  color: var(--text);
+}
+.wizard-items-add {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--tt-surface-2, var(--surface));
+  border: 1px solid var(--tt-border);
+}
+.wizard-items-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.wizard-items-input-row .input {
+  flex: 1;
+}
+.wizard-items-custom {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.wizard-items-custom-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  padding: 3px 4px 3px 10px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent, #c8941a) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, #c8941a) 38%, transparent);
+  color: var(--text);
+}
+.wizard-items-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  font-size: 14px;
+  line-height: 1;
+  border: none;
+  background: rgba(220, 80, 60, 0.18);
+  color: #fca5a5;
+  border-radius: 50%;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+.wizard-items-remove:hover {
+  background: rgba(220, 80, 60, 0.35);
+}
