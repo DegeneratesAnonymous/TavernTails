@@ -479,13 +479,24 @@
 
 .wizard-review-edit {
   font-size: 11px;
+  font-weight: 600;
   color: var(--accent, #c8941a);
-  background: none;
-  border: none;
+  background: color-mix(in srgb, var(--accent, #c8941a) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, #c8941a) 35%, transparent);
+  border-radius: 4px;
   cursor: pointer;
-  padding: 0;
-  text-decoration: underline;
+  padding: 2px 8px;
   flex-shrink: 0;
+  letter-spacing: 0.03em;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  text-decoration: none;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.wizard-review-edit:hover {
+  background: color-mix(in srgb, var(--accent, #c8941a) 22%, transparent);
+  border-color: color-mix(in srgb, var(--accent, #c8941a) 55%, transparent);
+  color: var(--accent, #c8941a);
 }
 
 /* ── Campaign mood result display ────────────────── */
@@ -737,3 +748,186 @@
 .wizard-feat-tag--magic   { background: rgba(100, 60, 200, 0.18); color: #a78bfa; }
 .wizard-feat-tag--utility { background: rgba(40, 140, 80, 0.18);  color: #6ee7a0; }
 .wizard-feat-tag--social  { background: rgba(40, 120, 200, 0.18); color: #7dd3fc; }
+
+/* ── Custom class form ───────────────────────── */
+.wizard-custom-class-form {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 8px;
+  background: var(--tt-surface-2, var(--surface));
+  border: 1px solid var(--tt-border-strong);
+  margin-top: 4px;
+}
+.wizard-custom-class-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted-text);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.wizard-custom-class-hint {
+  font-size: 12px;
+  color: var(--muted-text);
+}
+
+/* ── Custom feat input ───────────────────────── */
+.wizard-custom-feat {
+  display: grid;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--tt-border);
+  margin-top: 4px;
+}
+.wizard-custom-feat-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted-text);
+}
+
+/* ── Spell selection step ────────────────────── */
+.wizard-spell-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+
+.wizard-spell-card {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--tt-border);
+  background: var(--tt-surface-2, var(--surface));
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.wizard-spell-card:hover:not(:disabled) {
+  border-color: var(--accent, #c8941a);
+  background: color-mix(in srgb, var(--accent, #c8941a) 6%, var(--tt-surface-2, var(--surface)));
+}
+.wizard-spell-card.is-selected {
+  border-color: var(--accent, #c8941a);
+  background: color-mix(in srgb, var(--accent, #c8941a) 14%, var(--tt-surface-2, var(--surface)));
+  box-shadow: 0 0 0 1px var(--accent, #c8941a) inset;
+}
+.wizard-spell-card.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.wizard-spell-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.wizard-spell-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+.wizard-spell-school {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.wizard-spell-school--abjuration    { background: rgba(40, 120, 200, 0.18); color: #7dd3fc; }
+.wizard-spell-school--conjuration   { background: rgba(40, 140, 80, 0.18);  color: #6ee7a0; }
+.wizard-spell-school--divination    { background: rgba(200, 200, 40, 0.18); color: #fde68a; }
+.wizard-spell-school--enchantment   { background: rgba(180, 60, 200, 0.18); color: #d8b4fe; }
+.wizard-spell-school--evocation     { background: rgba(200, 80, 40, 0.18);  color: #fca5a5; }
+.wizard-spell-school--illusion      { background: rgba(80, 140, 200, 0.18); color: #a5f3fc; }
+.wizard-spell-school--necromancy    { background: rgba(60, 20, 80, 0.30);   color: #c4b5fd; }
+.wizard-spell-school--transmutation { background: rgba(40, 100, 60, 0.18);  color: #86efac; }
+.wizard-spell-summary {
+  font-size: 11px;
+  color: var(--muted-text);
+  line-height: 1.45;
+}
+
+/* ── Gear / Items step ───────────────────────── */
+.wizard-items-base {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--tt-surface-2, var(--surface));
+  border: 1px solid var(--tt-border);
+}
+.wizard-items-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted-text);
+}
+.wizard-items-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.wizard-items-chip {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent, #c8941a) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, #c8941a) 28%, transparent);
+  color: var(--text);
+}
+.wizard-items-add {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--tt-surface-2, var(--surface));
+  border: 1px solid var(--tt-border);
+}
+.wizard-items-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.wizard-items-input-row .input {
+  flex: 1;
+}
+.wizard-items-custom {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.wizard-items-custom-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  padding: 3px 4px 3px 10px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent, #c8941a) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, #c8941a) 38%, transparent);
+  color: var(--text);
+}
+.wizard-items-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  font-size: 14px;
+  line-height: 1;
+  border: none;
+  background: rgba(220, 80, 60, 0.18);
+  color: #fca5a5;
+  border-radius: 50%;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+.wizard-items-remove:hover {
+  background: rgba(220, 80, 60, 0.35);
+}

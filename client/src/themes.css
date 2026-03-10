@@ -1363,3 +1363,32 @@
   background: rgba(6, 0, 14, 0.70);
   border-bottom-color: rgba(255, 153, 0, 0.10);
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   MEDIEVAL — native <select> / <option> readability fix
+   Browser-native dropdowns don't inherit CSS variables, so we
+   must explicitly set background + color on both the select
+   element and its <option> children.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Selects outside cards (dark panel context) */
+[data-theme="medieval"] select {
+  background-color: #1e1208;
+  color: #f4e9c9;
+  border-color: rgba(200, 148, 26, 0.35);
+}
+[data-theme="medieval"] select option {
+  background-color: #1e1208;
+  color: #f4e9c9;
+}
+
+/* Selects inside parchment cards */
+[data-theme="medieval"] .card select {
+  background-color: rgba(255, 252, 242, 0.92);
+  color: #1c0d03;
+  border-color: rgba(96, 58, 10, 0.32);
+}
+[data-theme="medieval"] .card select option {
+  background-color: #f4e9c9;
+  color: #1c0d03;
+}

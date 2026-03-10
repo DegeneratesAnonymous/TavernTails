@@ -33,6 +33,8 @@ import {
   type SystemId,
   type WizardSystem,
   type FeatOption,
+  type SpellOption,
+  SPELLCASTER_CLASS_IDS,
 } from '../../data/wizard-data'
 import './wizard.css'
 
@@ -50,6 +52,8 @@ type Step =
   | 'personality'
   | 'skills'
   | 'feats'
+  | 'spells'
+  | 'items'
   | 'languages'
   | 'name-level'
   | 'review'
@@ -81,6 +85,14 @@ type CharacterDraft = {
   selectedSkills: string[]
   /** feat IDs selected during creation */
   selectedFeatIds: string[]
+  /** spell IDs selected for spellcasting classes */
+  selectedSpellIds: string[]
+  /** extra gear items added beyond starting gear package */
+  customItems: string[]
+  /** custom class name when classId === 'custom' */
+  customClassName?: string
+  /** free-text custom / homebrew feat name (optional) */
+  customFeat?: string
   name: string
   level: number
 }
@@ -101,6 +113,8 @@ const EMPTY_DRAFT: CharacterDraft = {
   selectedLanguages: [],
   selectedSkills: [],
   selectedFeatIds: [],
+  selectedSpellIds: [],
+  customItems: [],
   name: '',
   level: 1,
 }
@@ -109,7 +123,7 @@ const EMPTY_DRAFT: CharacterDraft = {
 // Step ordering helper
 // ─────────────────────────────────────────────
 
-function buildStepList(system: WizardSystem | undefined): Step[] {
+function buildStepList(system: WizardSystem | undefined, classId?: string | null): Step[] {
   const steps: Step[] = ['system']
   if (!system) return steps
   if (system.ancestryLabel && system.ancestries?.length) steps.push('ancestry')
@@ -124,6 +138,14 @@ function buildStepList(system: WizardSystem | undefined): Step[] {
   if (system.personalityFormat !== 'none') steps.push('personality')
   if (system.skills.length > 0) steps.push('skills')
   if (system.feats?.length) steps.push('feats')
+  // Spell selection: only for spellcasting classes (class must have Spellcasting or Pact Magic feature)
+  if (system.availableSpells?.length && classId && classId !== 'custom') {
+    const cls = system.classes.find((c) => c.id === classId)
+    if (cls?.level1Features?.some((f) => f.name === 'Spellcasting' || f.name === 'Pact Magic')) {
+      steps.push('spells')
+    }
+  }
+  steps.push('items')
   if (system.availableLanguages?.length && system.languageCount) steps.push('languages')
   steps.push('name-level')
   steps.push('review')
@@ -144,6 +166,8 @@ const STEP_LABELS: Record<Step, string> = {
   personality: 'Personality',
   skills: 'Skills',
   feats: 'Feats',
+  spells: 'Spells',
+  items: 'Gear',
   languages: 'Languages',
   'name-level': 'Name',
   review: 'Review',
@@ -315,7 +339,17 @@ function StepAncestry({ draft, system, onSelect }: { draft: CharacterDraft; syst
   )
 }
 
-function StepClass({ draft, system, onSelect }: { draft: CharacterDraft; system: WizardSystem; onSelect: (id: string) => void }) {
+function StepClass({
+  draft,
+  system,
+  onSelect,
+  onUpdateCustom,
+}: {
+  draft: CharacterDraft
+  system: WizardSystem
+  onSelect: (id: string) => void
+  onUpdateCustom: (name: string) => void
+}) {
   return (
     <div className="wizard-body">
       <div>
@@ -335,7 +369,36 @@ function StepClass({ draft, system, onSelect }: { draft: CharacterDraft; system:
             <span className="wizard-option-desc">{cls.description}</span>
           </button>
         ))}
+        {/* Custom class option */}
+        <button
+          type="button"
+          className={`wizard-option-card wizard-option-card--custom${draft.classId === 'custom' ? ' is-selected' : ''}`}
+          onClick={() => onSelect('custom')}
+        >
+          <span className="wizard-option-emoji">✏️</span>
+          <span className="wizard-option-name">Custom Class</span>
+          <span className="wizard-option-desc">Define your own class or homebrew concept.</span>
+        </button>
       </div>
+      {draft.classId === 'custom' && (
+        <div className="wizard-custom-class-form">
+          <label className="wizard-custom-class-label">
+            Class Name <span style={{ color: 'var(--error, #e05a5a)' }}>*</span>
+          </label>
+          <input
+            type="text"
+            className="input"
+            placeholder="e.g. Battle Mage, Plague Doctor, Witch Hunter…"
+            value={draft.customClassName ?? ''}
+            onChange={(e) => onUpdateCustom(e.target.value)}
+            maxLength={40}
+            autoFocus
+          />
+          <div className="wizard-custom-class-hint">
+            Give your class a name to continue. You can add details on the character sheet later.
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -635,10 +698,14 @@ function StepFeats({
   draft,
   system,
   onToggle,
+  customFeat,
+  onCustomFeat,
 }: {
   draft: CharacterDraft
   system: WizardSystem
   onToggle: (featId: string) => void
+  customFeat: string
+  onCustomFeat: (v: string) => void
 }) {
   const [activeTag, setActiveTag] = useState<string>('all')
   const feats: FeatOption[] = system.feats ?? []
@@ -706,6 +773,18 @@ function StepFeats({
       <div className={`wizard-selection-count${isMet ? ' wizard-selection-count--met' : ''}`}>
         {selected.length} / {max} selected
         {isMet ? ' — feat locked in!' : ' (optional — you can skip)'}
+      </div>
+
+      <div className="wizard-custom-feat">
+        <div className="wizard-custom-feat-label">Or define a custom / homebrew feat <span style={{ color: 'var(--muted-text)', fontWeight: 400 }}>(optional)</span></div>
+        <input
+          type="text"
+          className="input"
+          placeholder="e.g. Shadow Step, Dragon Legacy, War Veteran…"
+          value={customFeat}
+          onChange={(e) => onCustomFeat(e.target.value)}
+          maxLength={60}
+        />
       </div>
     </div>
   )
@@ -969,6 +1048,181 @@ function StepNameLevel({
   )
 }
 
+// ─────────────────────────────────────────────
+// Spell Selection
+// ─────────────────────────────────────────────
+
+function StepSpells({
+  draft,
+  system,
+  onToggle,
+}: {
+  draft: CharacterDraft
+  system: WizardSystem
+  onToggle: (spellId: string) => void
+}) {
+  const [search, setSearch] = React.useState('')
+  const cls = system.classes.find((c) => c.id === draft.classId)
+  const allSpells: SpellOption[] = system.availableSpells ?? []
+  const classSpells = allSpells.filter((s) => s.classes.includes(draft.classId ?? ''))
+  const max = system.spellCountOnCreate ?? 4
+  const selected = draft.selectedSpellIds
+  const isMet = selected.length >= max
+
+  const visible = search.trim()
+    ? classSpells.filter(
+        (s) =>
+          s.name.toLowerCase().includes(search.toLowerCase()) ||
+          s.school.toLowerCase().includes(search.toLowerCase()),
+      )
+    : classSpells
+
+  if (classSpells.length === 0) {
+    return (
+      <div className="wizard-body">
+        <div className="wizard-step-heading">Spells</div>
+        <div className="wizard-step-sub">
+          {cls?.name ?? 'This class'} does not have spell slots at level 1. Continue to the next step.
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="wizard-body">
+      <div>
+        <div className="wizard-step-heading">Starting Spells</div>
+        <div className="wizard-step-sub">
+          Choose up to {max} level-1 spell{max !== 1 ? 's' : ''} for {cls?.name ?? 'your class'}.
+          You can skip this and choose spells later on your character sheet.
+        </div>
+      </div>
+
+      <input
+        type="text"
+        className="input"
+        placeholder="Search by name or school…"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        style={{ maxWidth: 300 }}
+      />
+
+      <div className="wizard-spell-grid">
+        {visible.map((spell) => {
+          const isSelected = selected.includes(spell.id)
+          const disabled = !isSelected && isMet
+          return (
+            <button
+              key={spell.id}
+              type="button"
+              className={`wizard-spell-card${isSelected ? ' is-selected' : ''}${disabled ? ' is-disabled' : ''}`}
+              onClick={() => !disabled && onToggle(spell.id)}
+              disabled={disabled}
+            >
+              <div className="wizard-spell-header">
+                <span className="wizard-spell-name">{spell.name}</span>
+                <span className={`wizard-spell-school wizard-spell-school--${spell.school}`}>
+                  {spell.school}
+                </span>
+              </div>
+              <div className="wizard-spell-summary">{spell.summary}</div>
+            </button>
+          )
+        })}
+      </div>
+
+      <div className={`wizard-selection-count${isMet ? ' wizard-selection-count--met' : ''}`}>
+        {selected.length} / {max} selected
+        {isMet ? ' — spells locked in!' : ' (optional — you can skip)'}
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────
+// Starting Gear / Items
+// ─────────────────────────────────────────────
+
+function StepItems({
+  draft,
+  system,
+  onAdd,
+  onRemove,
+}: {
+  draft: CharacterDraft
+  system: WizardSystem
+  onAdd: (item: string) => void
+  onRemove: (idx: number) => void
+}) {
+  const [input, setInput] = React.useState('')
+  const background = system.backgrounds.find((b) => b.id === draft.backgroundId)
+  const startingGear = background?.flavorGear ?? system.gearPackages[0]?.items ?? []
+
+  function handleAdd() {
+    const trimmed = input.trim()
+    if (!trimmed) return
+    onAdd(trimmed)
+    setInput('')
+  }
+
+  return (
+    <div className="wizard-body">
+      <div>
+        <div className="wizard-step-heading">Starting Gear</div>
+        <div className="wizard-step-sub">
+          Your background determines your starting equipment. Add any extra items your character carries.
+        </div>
+      </div>
+
+      {startingGear.length > 0 && (
+        <div className="wizard-items-base">
+          <div className="wizard-items-label">Background gear</div>
+          <div className="wizard-items-chips">
+            {startingGear.map((item, i) => (
+              <span key={i} className="wizard-items-chip">{item}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="wizard-items-add">
+        <div className="wizard-items-label">Add extra items <span style={{ color: 'var(--muted-text)', fontWeight: 400 }}>(optional)</span></div>
+        <div className="wizard-items-input-row">
+          <input
+            type="text"
+            className="input"
+            placeholder="e.g. Thieves' tools, Hunting trap, Heirloom sword…"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAdd() } }}
+            maxLength={60}
+          />
+          <button type="button" className="btn" onClick={handleAdd} disabled={!input.trim()}>
+            Add
+          </button>
+        </div>
+        {draft.customItems.length > 0 && (
+          <div className="wizard-items-custom">
+            {draft.customItems.map((item, i) => (
+              <div key={i} className="wizard-items-custom-chip">
+                <span>{item}</span>
+                <button
+                  type="button"
+                  className="wizard-items-remove"
+                  onClick={() => onRemove(i)}
+                  aria-label={`Remove ${item}`}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function StepReview({
   draft,
   system,
@@ -1132,7 +1386,7 @@ export default function CharacterWizard({ onDone, onCharacterCreated }: Props) {
   const [error, setError] = useState<string | null>(null)
 
   const system = draft.systemId ? getSystem(draft.systemId) : undefined
-  const steps = buildStepList(system)
+  const steps = buildStepList(system, draft.classId)
   const stepIdx = steps.indexOf(step)
 
   // Drive ember/star particle intensity based on wizard progress (0 → 1)
@@ -1175,8 +1429,9 @@ export default function CharacterWizard({ onDone, onCharacterCreated }: Props) {
   }
 
   function selectClass(id: string) {
-    setDraft((d) => ({ ...d, classId: id }))
-    goNext()
+    setDraft((d) => ({ ...d, classId: id, selectedSpellIds: [] }))
+    // Custom class stays on the class step while user types the name
+    if (id !== 'custom') goNext()
   }
 
   function answerQuiz(qId: string, optionId: string) {
@@ -1244,6 +1499,25 @@ export default function CharacterWizard({ onDone, onCharacterCreated }: Props) {
     })
   }
 
+  function toggleSpell(spellId: string) {
+    setDraft((d) => {
+      const max = system?.spellCountOnCreate ?? 4
+      if (d.selectedSpellIds.includes(spellId)) {
+        return { ...d, selectedSpellIds: d.selectedSpellIds.filter((s) => s !== spellId) }
+      }
+      if (d.selectedSpellIds.length >= max) return d
+      return { ...d, selectedSpellIds: [...d.selectedSpellIds, spellId] }
+    })
+  }
+
+  function addCustomItem(item: string) {
+    setDraft((d) => ({ ...d, customItems: [...d.customItems, item] }))
+  }
+
+  function removeCustomItem(idx: number) {
+    setDraft((d) => ({ ...d, customItems: d.customItems.filter((_, i) => i !== idx) }))
+  }
+
   // ── Submit ──────────────────────────────────
   async function submit() {
     if (!draft.name.trim()) {
@@ -1279,12 +1553,18 @@ export default function CharacterWizard({ onDone, onCharacterCreated }: Props) {
         stats: Object.values(draft.abilityScores).some((v) => v !== null) ? draft.abilityScores : undefined,
         languages: draft.selectedLanguages.length > 0 ? ['Common', ...draft.selectedLanguages] : undefined,
         skills: draft.selectedSkills,
-        inventory: gearPackage,
+        inventory: [...gearPackage, ...draft.customItems],
         quiz_answers: draft.quizAnswers,
         // Features & feats
         classFeatures: (cls?.level1Features ?? []).map((f) => f.name),
         racialFeatures: (ancestry?.traits ?? []).map((t) => t.name),
-        feats: draft.selectedFeatIds.length > 0 ? draft.selectedFeatIds : undefined,
+        feats: [
+          ...draft.selectedFeatIds,
+          ...(draft.customFeat?.trim() ? [`custom:${draft.customFeat.trim()}`] : []),
+        ].filter(Boolean).length > 0
+          ? [...draft.selectedFeatIds, ...(draft.customFeat?.trim() ? [`custom:${draft.customFeat.trim()}`] : [])]
+          : undefined,
+        spells: draft.selectedSpellIds.length > 0 ? draft.selectedSpellIds : undefined,
       }
 
       const res = await apiFetch('/characters/', {
@@ -1292,7 +1572,7 @@ export default function CharacterWizard({ onDone, onCharacterCreated }: Props) {
         body: JSON.stringify({
           name: draft.name.trim(),
           level: draft.level,
-          class_name: cls?.name ?? draft.classId ?? null,
+          class_name: (draft.classId === 'custom' ? draft.customClassName?.trim() : cls?.name) ?? draft.classId ?? null,
           sheet,
         }),
       })
@@ -1317,7 +1597,8 @@ export default function CharacterWizard({ onDone, onCharacterCreated }: Props) {
     switch (step) {
       case 'system': return Boolean(draft.systemId)
       case 'ancestry': return Boolean(draft.ancestryId)
-      case 'class': return Boolean(draft.classId)
+      case 'class': return Boolean(draft.classId) &&
+        (draft.classId !== 'custom' || Boolean(draft.customClassName?.trim()))
       case 'ability-scores': return STANDARD_ARRAY.every((v) =>
         Object.values(draft.abilityScores).includes(v)
       )
@@ -1325,6 +1606,8 @@ export default function CharacterWizard({ onDone, onCharacterCreated }: Props) {
       case 'personality': return true // optional
       case 'skills': return true // optional
       case 'feats': return true  // optional
+      case 'spells': return true // optional
+      case 'items': return true  // optional
       case 'features': return true // informational
       case 'languages': return draft.selectedLanguages.length >= (system?.languageCount ?? 2)
       case 'name-level': return Boolean(draft.name.trim())
@@ -1364,7 +1647,12 @@ export default function CharacterWizard({ onDone, onCharacterCreated }: Props) {
 
           {/* Class step */}
           {step === 'class' && system && (
-            <StepClass draft={draft} system={system} onSelect={selectClass} />
+            <StepClass
+              draft={draft}
+              system={system}
+              onSelect={selectClass}
+              onUpdateCustom={(name) => setDraft((d) => ({ ...d, customClassName: name }))}
+            />
           )}
 
           {/* Ability scores step */}
@@ -1430,6 +1718,27 @@ export default function CharacterWizard({ onDone, onCharacterCreated }: Props) {
                   ? d.selectedFeatIds.filter((f) => f !== id)
                   : [...d.selectedFeatIds, id],
               }))}
+              customFeat={draft.customFeat ?? ''}
+              onCustomFeat={(v) => setDraft((d) => ({ ...d, customFeat: v }))}
+            />
+          )}
+
+          {/* Spells step — level-1 spell selection for casters */}
+          {step === 'spells' && system && (
+            <StepSpells
+              draft={draft}
+              system={system}
+              onToggle={toggleSpell}
+            />
+          )}
+
+          {/* Items step — review gear + add custom items */}
+          {step === 'items' && system && (
+            <StepItems
+              draft={draft}
+              system={system}
+              onAdd={addCustomItem}
+              onRemove={removeCustomItem}
             />
           )}
 

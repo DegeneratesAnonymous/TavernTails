@@ -588,3 +588,357 @@ export const DND5E_HIT_DICE: Record<string, number> = {
   warlock: 8,
   wizard: 6,
 }
+
+// ─────────────────────────────────────────────
+// D&D 5e Level-1 Spells (SRD 5.1)
+// All summaries are original mechanical paraphrases, not verbatim SRD prose.
+// ─────────────────────────────────────────────
+
+export type SpellSchool =
+  | 'abjuration'
+  | 'conjuration'
+  | 'divination'
+  | 'enchantment'
+  | 'evocation'
+  | 'illusion'
+  | 'necromancy'
+  | 'transmutation'
+
+export type SpellOption = {
+  id: string
+  name: string
+  level: number
+  school: SpellSchool
+  /** Concise mechanical summary — not verbatim SRD text */
+  summary: string
+  /** Class IDs whose spell lists include this spell */
+  classes: string[]
+}
+
+/** Class IDs that have spell slots at level 1 (or gain them very early) */
+export const SPELLCASTER_CLASS_IDS = new Set<string>([
+  'wizard', 'sorcerer', 'bard', 'cleric', 'druid', 'warlock', 'paladin', 'ranger',
+])
+
+export const DND5E_SPELLS: SpellOption[] = [
+  {
+    id: 'bless',
+    name: 'Bless',
+    level: 1,
+    school: 'enchantment',
+    summary: 'Concentration, 1 min. Up to 3 creatures you choose within 30 ft each add 1d4 to attack rolls and saving throws for the duration.',
+    classes: ['cleric', 'paladin'],
+  },
+  {
+    id: 'burning_hands',
+    name: 'Burning Hands',
+    level: 1,
+    school: 'evocation',
+    summary: '15-ft cone of fire. DEX save or 3d6 fire damage (half on save). Ignites flammable objects.',
+    classes: ['wizard', 'sorcerer'],
+  },
+  {
+    id: 'charm_person',
+    name: 'Charm Person',
+    level: 1,
+    school: 'enchantment',
+    summary: 'WIS save or target is charmed for 1 hour (or until damaged). Charmed target is friendly; it doesn\'t know it was charmed afterward.',
+    classes: ['wizard', 'sorcerer', 'bard', 'warlock', 'druid'],
+  },
+  {
+    id: 'command',
+    name: 'Command',
+    level: 1,
+    school: 'enchantment',
+    summary: 'WIS save or obey a one-word command on the target\'s next turn. Common words: Approach, Drop, Flee, Grovel, Halt.',
+    classes: ['cleric', 'paladin'],
+  },
+  {
+    id: 'cure_wounds',
+    name: 'Cure Wounds',
+    level: 1,
+    school: 'evocation',
+    summary: 'Touch a creature to restore 1d8 + spellcasting modifier HP. No effect on undead or constructs.',
+    classes: ['cleric', 'bard', 'druid', 'paladin', 'ranger'],
+  },
+  {
+    id: 'detect_magic',
+    name: 'Detect Magic',
+    level: 1,
+    school: 'divination',
+    summary: 'Concentration, 10 min (ritual). Sense the presence of magic within 30 ft; use an action to see glowing auras and identify a spell\'s school.',
+    classes: ['wizard', 'sorcerer', 'bard', 'cleric', 'druid', 'paladin', 'ranger'],
+  },
+  {
+    id: 'dissonant_whispers',
+    name: 'Dissonant Whispers',
+    level: 1,
+    school: 'enchantment',
+    summary: 'WIS save or 3d6 psychic damage and must use reaction to move away. Half damage and no forced movement on save.',
+    classes: ['bard'],
+  },
+  {
+    id: 'divine_favor',
+    name: 'Divine Favor',
+    level: 1,
+    school: 'evocation',
+    summary: 'Concentration, 1 min. Your weapon attacks deal an extra 1d4 radiant damage on hit.',
+    classes: ['paladin'],
+  },
+  {
+    id: 'entangle',
+    name: 'Entangle',
+    level: 1,
+    school: 'conjuration',
+    summary: 'Concentration, 1 min. Plants grapple creatures in a 20-ft square. STR save or restrained; STR check each turn to escape. Difficult terrain for all.',
+    classes: ['druid', 'ranger'],
+  },
+  {
+    id: 'expeditious_retreat',
+    name: 'Expeditious Retreat',
+    level: 1,
+    school: 'transmutation',
+    summary: 'Concentration, 10 min. Bonus action to Dash on each of your turns.',
+    classes: ['wizard', 'sorcerer', 'warlock'],
+  },
+  {
+    id: 'faerie_fire',
+    name: 'Faerie Fire',
+    level: 1,
+    school: 'evocation',
+    summary: 'Concentration, 1 min. DEX save or outlined in light — attack rolls against them have advantage and they can\'t benefit from invisibility.',
+    classes: ['bard', 'druid'],
+  },
+  {
+    id: 'find_familiar',
+    name: 'Find Familiar',
+    level: 1,
+    school: 'conjuration',
+    summary: 'Ritual. Summon a familiar (animal spirit) that acts independently. Share senses, deliver touch spells through it. Returns if reduced to 0 HP.',
+    classes: ['wizard'],
+  },
+  {
+    id: 'fog_cloud',
+    name: 'Fog Cloud',
+    level: 1,
+    school: 'conjuration',
+    summary: 'Concentration, 1 hr. 20-ft radius sphere of thick fog that heavily obscures the area. Wind can disperse it.',
+    classes: ['wizard', 'sorcerer', 'druid', 'ranger'],
+  },
+  {
+    id: 'goodberry',
+    name: 'Goodberry',
+    level: 1,
+    school: 'transmutation',
+    summary: 'Create 10 goodberries (last 24 hrs). Each berry restores 1 HP and provides a day\'s nourishment.',
+    classes: ['druid', 'ranger'],
+  },
+  {
+    id: 'grease',
+    name: 'Grease',
+    level: 1,
+    school: 'conjuration',
+    summary: '10-ft square of slick grease at 60 ft lasts 1 min. Creatures entering or starting their turn there make a DEX save or fall prone.',
+    classes: ['wizard'],
+  },
+  {
+    id: 'guiding_bolt',
+    name: 'Guiding Bolt',
+    level: 1,
+    school: 'evocation',
+    summary: 'Ranged spell attack: 4d6 radiant damage. The next attack roll against the target before the end of your next turn has advantage.',
+    classes: ['cleric'],
+  },
+  {
+    id: 'healing_word',
+    name: 'Healing Word',
+    level: 1,
+    school: 'evocation',
+    summary: 'Bonus action. 60-ft range. Restore 1d4 + spellcasting modifier HP. Leaves your action free.',
+    classes: ['cleric', 'bard', 'druid'],
+  },
+  {
+    id: 'hellish_rebuke',
+    name: 'Hellish Rebuke',
+    level: 1,
+    school: 'evocation',
+    summary: 'Reaction to being damaged. Attacker makes DEX save or takes 2d10 fire damage (half on save). Range 60 ft.',
+    classes: ['warlock'],
+  },
+  {
+    id: 'heroism',
+    name: 'Heroism',
+    level: 1,
+    school: 'enchantment',
+    summary: 'Concentration, 1 min. Target is immune to the frightened condition and gains temporary HP equal to your spellcasting modifier at the start of each of its turns.',
+    classes: ['bard', 'paladin'],
+  },
+  {
+    id: 'hideous_laughter',
+    name: 'Hideous Laughter',
+    level: 1,
+    school: 'enchantment',
+    summary: 'Concentration, 1 min. WIS save or incapacitated (laughing) and prone for the duration. Target can repeat save at end of each turn.',
+    classes: ['bard', 'wizard'],
+  },
+  {
+    id: 'hunters_mark',
+    name: "Hunter's Mark",
+    level: 1,
+    school: 'divination',
+    summary: 'Concentration, 1 hr. Mark one creature as your quarry. Deal +1d6 damage with weapon attacks against it and have advantage on Perception/Survival checks to track it. Move the mark when it dies.',
+    classes: ['ranger'],
+  },
+  {
+    id: 'identify',
+    name: 'Identify',
+    level: 1,
+    school: 'divination',
+    summary: 'Ritual. Learn the properties, charges, and attunement requirements of one magic item, or learn what spells (if any) are affecting a creature.',
+    classes: ['wizard', 'bard'],
+  },
+  {
+    id: 'inflict_wounds',
+    name: 'Inflict Wounds',
+    level: 1,
+    school: 'necromancy',
+    summary: 'Melee spell attack: 3d10 necrotic damage on hit.',
+    classes: ['cleric'],
+  },
+  {
+    id: 'jump',
+    name: 'Jump',
+    level: 1,
+    school: 'transmutation',
+    summary: '1 minute. Touch a creature to triple its jump distance for the duration.',
+    classes: ['wizard', 'druid', 'ranger'],
+  },
+  {
+    id: 'longstrider',
+    name: 'Longstrider',
+    level: 1,
+    school: 'transmutation',
+    summary: 'Touch. 1 hour. Increase one creature\'s movement speed by 10 ft.',
+    classes: ['wizard', 'bard', 'druid', 'ranger'],
+  },
+  {
+    id: 'mage_armor',
+    name: 'Mage Armor',
+    level: 1,
+    school: 'abjuration',
+    summary: '8 hours. Touch an unarmored willing creature; its AC becomes 13 + DEX modifier. Ends if it dons armor.',
+    classes: ['wizard', 'sorcerer'],
+  },
+  {
+    id: 'magic_missile',
+    name: 'Magic Missile',
+    level: 1,
+    school: 'evocation',
+    summary: 'Create 3 darts, each dealing 1d4+1 force damage. Each dart automatically hits; can target multiple creatures. +1 dart per slot level above 1st.',
+    classes: ['wizard', 'sorcerer'],
+  },
+  {
+    id: 'protection_from_evil',
+    name: 'Protection from Evil and Good',
+    level: 1,
+    school: 'abjuration',
+    summary: 'Concentration, 10 min. Touch. Choose one creature type. Warded creature can\'t be charmed, frightened, or possessed by that type; attacks from them have disadvantage.',
+    classes: ['cleric', 'paladin', 'warlock', 'wizard'],
+  },
+  {
+    id: 'sanctuary',
+    name: 'Sanctuary',
+    level: 1,
+    school: 'abjuration',
+    summary: 'Bonus action. 1 minute. Ward one creature; attackers must WIS save or pick a new target. Ends if the warded creature attacks or casts a harmful spell.',
+    classes: ['cleric', 'paladin'],
+  },
+  {
+    id: 'searing_smite',
+    name: 'Searing Smite',
+    level: 1,
+    school: 'evocation',
+    summary: 'Concentration, 1 min. Next weapon hit deals +1d6 fire damage and ignites the target (1d6 fire per turn; STR check to extinguish).',
+    classes: ['paladin'],
+  },
+  {
+    id: 'shield',
+    name: 'Shield',
+    level: 1,
+    school: 'abjuration',
+    summary: 'Reaction when hit or targeted by Magic Missile. +5 AC until start of your next turn (including against the triggering attack). Also blocks Magic Missile.',
+    classes: ['wizard', 'sorcerer'],
+  },
+  {
+    id: 'shield_of_faith',
+    name: 'Shield of Faith',
+    level: 1,
+    school: 'abjuration',
+    summary: 'Concentration, 10 min. Bonus action. One creature within 60 ft gains +2 AC for the duration.',
+    classes: ['cleric', 'paladin'],
+  },
+  {
+    id: 'sleep',
+    name: 'Sleep',
+    level: 1,
+    school: 'enchantment',
+    summary: 'Roll 5d8; creatures in a 20-ft radius at 90 ft are put to sleep, affecting lowest-HP creatures first up to the rolled total. Unconscious until damaged or woken.',
+    classes: ['wizard', 'sorcerer', 'bard'],
+  },
+  {
+    id: 'speak_with_animals',
+    name: 'Speak with Animals',
+    level: 1,
+    school: 'divination',
+    summary: 'Ritual, 10 min. Verbally communicate with beasts. Beasts have limited intellect and memory and may be wary or unhelpful.',
+    classes: ['bard', 'druid', 'ranger'],
+  },
+  {
+    id: 'thunderous_smite',
+    name: 'Thunderous Smite',
+    level: 1,
+    school: 'evocation',
+    summary: 'Concentration, 1 min. Next weapon hit deals +2d6 thunder damage, pushes target 10 ft, and knocks it prone (STR save avoids push and prone).',
+    classes: ['paladin'],
+  },
+  {
+    id: 'thunderwave',
+    name: 'Thunderwave',
+    level: 1,
+    school: 'evocation',
+    summary: '15-ft cube emanating from you. CON save or 2d8 thunder damage and pushed 10 ft (half damage, no push on save). Audible 300 ft.',
+    classes: ['wizard', 'sorcerer', 'bard', 'druid'],
+  },
+  {
+    id: 'arms_of_hadar',
+    name: 'Arms of Hadar',
+    level: 1,
+    school: 'conjuration',
+    summary: 'STR save or 2d6 necrotic damage and can\'t take reactions until your next turn (half damage on save). Affects all creatures in 10 ft of you.',
+    classes: ['warlock'],
+  },
+  {
+    id: 'unseen_servant',
+    name: 'Unseen Servant',
+    level: 1,
+    school: 'conjuration',
+    summary: 'Ritual, 1 hr. An invisible, mindless force (STR 2, no arms) performs simple tasks within 60 ft. Can carry 10 lb or open doors, clean, pour, etc.',
+    classes: ['wizard', 'warlock'],
+  },
+  {
+    id: 'witch_bolt',
+    name: 'Witch Bolt',
+    level: 1,
+    school: 'evocation',
+    summary: 'Ranged spell attack: 1d12 lightning on hit. On subsequent turns, use your action to deal 1d12 lightning automatically (concentration, 1 min). Ends if target moves beyond 30 ft or you miss.',
+    classes: ['wizard', 'sorcerer', 'warlock'],
+  },
+  {
+    id: 'wrathful_smite',
+    name: 'Wrathful Smite',
+    level: 1,
+    school: 'evocation',
+    summary: 'Concentration, 1 min. Next weapon hit deals +1d6 psychic damage and target must WIS save or become frightened of you (can repeat save on later turns).',
+    classes: ['paladin'],
+  },
+]

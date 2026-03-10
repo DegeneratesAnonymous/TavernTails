@@ -9,13 +9,17 @@ import {
   DND5E_CLASS_FEATURES,
   DND5E_ANCESTRY_TRAITS,
   DND5E_HIT_DICE,
+  DND5E_SPELLS,
+  SPELLCASTER_CLASS_IDS,
   type FeatOption,
   type ClassFeature,
   type AncestryTrait,
+  type SpellOption,
 } from './dnd5e-srd'
 
 // Re-export SRD types so consumers can import from a single data module
-export type { FeatOption, ClassFeature, AncestryTrait }
+export type { FeatOption, ClassFeature, AncestryTrait, SpellOption }
+export { SPELLCASTER_CLASS_IDS }
 
 // ─────────────────────────────────────────────
 // Shared types
@@ -120,6 +124,10 @@ export type WizardSystem = {
   feats?: FeatOption[]
   /** How many feats the player may choose at character creation (0 = optional/variant) */
   featCountOnCreate?: number
+  /** Spells available for selection during creation; filtered per class at runtime */
+  availableSpells?: SpellOption[]
+  /** How many spells the player picks at creation (default 4) */
+  spellCountOnCreate?: number
 }
 
 // ─────────────────────────────────────────────
@@ -370,6 +378,8 @@ const DND5E: WizardSystem = {
   languageCount: 2,
   feats: DND5E_FEATS,
   featCountOnCreate: 1,
+  availableSpells: DND5E_SPELLS,
+  spellCountOnCreate: 4,
 }
 
 // ─────────────────────────────────────────────
