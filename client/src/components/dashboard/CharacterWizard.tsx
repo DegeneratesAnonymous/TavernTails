@@ -31,6 +31,7 @@ import {
   SIMPLE_TRAITS,
   type SystemId,
   type WizardSystem,
+  type FeatOption,
 } from '../../data/wizard-data'
 import './wizard.css'
 
@@ -42,10 +43,12 @@ type Step =
   | 'system'
   | 'ancestry'
   | 'class'
+  | 'features'
   | 'ability-scores'
   | 'background-quiz'
   | 'personality'
   | 'skills'
+  | 'feats'
   | 'languages'
   | 'name-level'
   | 'review'
@@ -75,6 +78,8 @@ type CharacterDraft = {
   abilityScores: AbilityScores
   selectedLanguages: string[]
   selectedSkills: string[]
+  /** feat IDs selected during creation */
+  selectedFeatIds: string[]
   name: string
   level: number
 }
@@ -94,6 +99,7 @@ const EMPTY_DRAFT: CharacterDraft = {
   abilityScores: { ...EMPTY_ABILITY_SCORES },
   selectedLanguages: [],
   selectedSkills: [],
+  selectedFeatIds: [],
   name: '',
   level: 1,
 }
@@ -107,10 +113,16 @@ function buildStepList(system: WizardSystem | undefined): Step[] {
   if (!system) return steps
   if (system.ancestryLabel && system.ancestries?.length) steps.push('ancestry')
   steps.push('class')
+  // Show features step if any class or ancestry in this system has annotated features/traits
+  const hasFeatureData =
+    system.classes.some((c) => (c.level1Features?.length ?? 0) > 0) ||
+    (system.ancestries?.some((a) => (a.traits?.length ?? 0) > 0) ?? false)
+  if (hasFeatureData) steps.push('features')
   if (system.abilityScoreMethod) steps.push('ability-scores')
   if (system.backgroundQuiz.length > 0) steps.push('background-quiz')
   if (system.personalityFormat !== 'none') steps.push('personality')
   if (system.skills.length > 0) steps.push('skills')
+  if (system.feats?.length) steps.push('feats')
   if (system.availableLanguages?.length && system.languageCount) steps.push('languages')
   steps.push('name-level')
   steps.push('review')
@@ -125,10 +137,12 @@ const STEP_LABELS: Record<Step, string> = {
   system: 'System',
   ancestry: 'Ancestry',
   class: 'Class',
+  features: 'Features',
   'ability-scores': 'Abilities',
   'background-quiz': 'Background',
   personality: 'Personality',
   skills: 'Skills',
+  feats: 'Feats',
   languages: 'Languages',
   'name-level': 'Name',
   review: 'Review',
@@ -518,6 +532,179 @@ function StepPersonality({
             <span className="wizard-option-name">{t.label}</span>
           </button>
         ))}
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────
+// Features step — read-only, shows what the character receives
+// ─────────────────────────────────────────────
+
+function StepFeatures({
+  draft,
+  system,
+}: {
+  draft: CharacterDraft
+  system: WizardSystem
+}) {
+  const cls = system.classes.find((c) => c.id === draft.classId)
+  const ancestry = system.ancestries?.find((a) => a.id === draft.ancestryId)
+  const classFeatures = cls?.level1Features ?? []
+  const ancestralTraits = ancestry?.traits ?? []
+  const hasAny = classFeatures.length > 0 || ancestralTraits.length > 0
+
+  return (
+    <div className="wizard-body">
+      <div>
+        <div className="wizard-step-heading">Class & Ancestry Features</div>
+        <div className="wizard-step-sub">
+          Your character automatically gains these features at level 1.
+          No action required — review them and continue.
+        </div>
+      </div>
+
+      {!hasAny && (
+        <div className="wizard-step-sub" style={{ marginTop: 12 }}>
+          Select a class{system.ancestryLabel ? ' and ancestry' : ''} first to see features here.
+        </div>
+      )}
+
+      {classFeatures.length > 0 && (
+        <div className="wizard-feature-section">
+          <div className="wizard-feature-section-label">
+            {cls?.emoji && <span style={{ marginRight: 6 }}>{cls.emoji}</span>}
+            {cls?.name} Features
+            {cls?.hitDie && (
+              <span className="wizard-feature-hit-die">d{cls.hitDie} hit die</span>
+            )}
+          </div>
+          {cls?.saveProficiencies && cls.saveProficiencies.length > 0 && (
+            <div className="wizard-feature-saves">
+              Saving throw proficiencies: {cls.saveProficiencies.join(', ')}
+            </div>
+          )}
+          <div className="wizard-feature-list">
+            {classFeatures.map((f) => (
+              <div key={f.name} className="wizard-feature-card">
+                <div className="wizard-feature-name">
+                  {f.name}
+                  {f.level > 1 && <span className="wizard-feature-level-badge">lv.{f.level}</span>}
+                </div>
+                <div className="wizard-feature-summary">{f.summary}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {ancestralTraits.length > 0 && (
+        <div className="wizard-feature-section">
+          <div className="wizard-feature-section-label">
+            {ancestry?.emoji && <span style={{ marginRight: 6 }}>{ancestry.emoji}</span>}
+            {ancestry?.name} Traits
+          </div>
+          <div className="wizard-feature-list">
+            {ancestralTraits.map((t) => (
+              <div key={t.name} className="wizard-feature-card">
+                <div className="wizard-feature-name">{t.name}</div>
+                <div className="wizard-feature-summary">{t.summary}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────
+// Feats step — optional feat selection
+// ─────────────────────────────────────────────
+
+const FEAT_TAGS: { id: string; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'combat', label: '⚔️ Combat' },
+  { id: 'magic', label: '✨ Magic' },
+  { id: 'utility', label: '🛠 Utility' },
+  { id: 'social', label: '🗣 Social' },
+]
+
+function StepFeats({
+  draft,
+  system,
+  onToggle,
+}: {
+  draft: CharacterDraft
+  system: WizardSystem
+  onToggle: (featId: string) => void
+}) {
+  const [activeTag, setActiveTag] = useState<string>('all')
+  const feats: FeatOption[] = system.feats ?? []
+  const max = system.featCountOnCreate ?? 1
+  const selected = draft.selectedFeatIds
+  const isMet = selected.length >= max
+
+  const visible = activeTag === 'all'
+    ? feats
+    : feats.filter((f) => f.tags.includes(activeTag as any))
+
+  return (
+    <div className="wizard-body">
+      <div>
+        <div className="wizard-step-heading">Optional Feat</div>
+        <div className="wizard-step-sub">
+          Choose up to {max} feat{max !== 1 ? 's' : ''} for your character.
+          Feats are optional — skip this step if you don&apos;t want one.
+          Variant Human and Fighter receive feats at level 1 by default.
+        </div>
+      </div>
+
+      {/* Tag filter */}
+      <div className="wizard-feat-tag-bar">
+        {FEAT_TAGS.map((tag) => (
+          <button
+            key={tag.id}
+            type="button"
+            className={`wizard-feat-tag-btn${activeTag === tag.id ? ' is-active' : ''}`}
+            onClick={() => setActiveTag(tag.id)}
+          >
+            {tag.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="wizard-feat-grid">
+        {visible.map((feat) => {
+          const isSelected = selected.includes(feat.id)
+          const disabled = !isSelected && isMet
+          return (
+            <button
+              key={feat.id}
+              type="button"
+              className={`wizard-feat-card${isSelected ? ' is-selected' : ''}${disabled ? ' is-disabled' : ''}`}
+              onClick={() => !disabled && onToggle(feat.id)}
+              disabled={disabled}
+              title={disabled ? `Max ${max} feat${max !== 1 ? 's' : ''} selected` : undefined}
+            >
+              <div className="wizard-feat-name">{feat.name}</div>
+              {feat.prerequisite && (
+                <div className="wizard-feat-prereq">Requires: {feat.prerequisite}</div>
+              )}
+              <div className="wizard-feat-benefit">{feat.benefit}</div>
+              <div className="wizard-feat-tags">
+                {feat.tags.map((t) => (
+                  <span key={t} className={`wizard-feat-tag wizard-feat-tag--${t}`}>{t}</span>
+                ))}
+              </div>
+            </button>
+          )
+        })}
+      </div>
+
+      <div className={`wizard-selection-count${isMet ? ' wizard-selection-count--met' : ''}`}>
+        {selected.length} / {max} selected
+        {isMet ? ' — feat locked in!' : ' (optional — you can skip)'}
       </div>
     </div>
   )
@@ -1060,6 +1247,7 @@ export default function CharacterWizard({ onDone, onCharacterCreated }: Props) {
     setError(null)
     try {
       const cls = system?.classes.find((c) => c.id === draft.classId)
+      const ancestry = system?.ancestries?.find((a) => a.id === draft.ancestryId)
       const background = system?.backgrounds.find((b) => b.id === draft.backgroundId)
       const gearPackage = background
         ? background.flavorGear
@@ -1086,6 +1274,10 @@ export default function CharacterWizard({ onDone, onCharacterCreated }: Props) {
         skills: draft.selectedSkills,
         inventory: gearPackage,
         quiz_answers: draft.quizAnswers,
+        // Features & feats
+        classFeatures: (cls?.level1Features ?? []).map((f) => f.name),
+        racialFeatures: (ancestry?.traits ?? []).map((t) => t.name),
+        feats: draft.selectedFeatIds.length > 0 ? draft.selectedFeatIds : undefined,
       }
 
       const res = await apiFetch('/characters/', {
@@ -1125,6 +1317,8 @@ export default function CharacterWizard({ onDone, onCharacterCreated }: Props) {
       case 'background-quiz': return quizIndex === -1 ? Boolean(draft.backgroundId) : Boolean(draft.quizAnswers[system?.backgroundQuiz[quizIndex]?.id ?? ''])
       case 'personality': return true // optional
       case 'skills': return true // optional
+      case 'feats': return true  // optional
+      case 'features': return true // informational
       case 'languages': return draft.selectedLanguages.length >= (system?.languageCount ?? 2)
       case 'name-level': return Boolean(draft.name.trim())
       default: return true
@@ -1207,6 +1401,28 @@ export default function CharacterWizard({ onDone, onCharacterCreated }: Props) {
               draft={draft}
               system={system}
               onToggle={toggleSkill}
+            />
+          )}
+
+          {/* Features step — informational display of class + ancestry features */}
+          {step === 'features' && system && (
+            <StepFeatures
+              draft={draft}
+              system={system}
+            />
+          )}
+
+          {/* Feats step — optional feat picker */}
+          {step === 'feats' && system && (
+            <StepFeats
+              draft={draft}
+              system={system}
+              onToggle={(id) => setDraft((d) => ({
+                ...d,
+                selectedFeatIds: d.selectedFeatIds.includes(id)
+                  ? d.selectedFeatIds.filter((f) => f !== id)
+                  : [...d.selectedFeatIds, id],
+              }))}
             />
           )}
 

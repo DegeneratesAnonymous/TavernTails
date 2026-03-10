@@ -555,3 +555,185 @@
   color: var(--accent, #c8941a);
   font-weight: 600;
 }
+
+/* ── Features step ──────────────────────────────── */
+.wizard-feature-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wizard-feature-section-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.wizard-feature-hit-die {
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted-text);
+  background: var(--tt-surface-2, var(--surface));
+  border: 1px solid var(--tt-border);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.wizard-feature-saves {
+  font-size: 12px;
+  color: var(--muted-text);
+  margin-bottom: 4px;
+}
+
+.wizard-feature-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 8px;
+}
+
+.wizard-feature-card {
+  background: var(--tt-surface-2, var(--surface));
+  border: 1px solid var(--tt-border);
+  border-radius: var(--radius, 8px);
+  padding: 10px 12px;
+  cursor: default;
+}
+
+.wizard-feature-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wizard-feature-level-badge {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--accent, #c8941a);
+  background: rgba(200, 148, 26, 0.12);
+  border: 1px solid rgba(200, 148, 26, 0.22);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
+
+.wizard-feature-summary {
+  font-size: 12px;
+  color: var(--muted-text);
+  line-height: 1.55;
+}
+
+/* ── Feats step ─────────────────────────────────── */
+.wizard-feat-tag-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.wizard-feat-tag-btn {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  border: 1px solid var(--tt-border);
+  background: var(--tt-surface-2, var(--surface));
+  color: var(--muted-text);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.wizard-feat-tag-btn:hover {
+  background: var(--tt-surface, var(--surface));
+  color: var(--text);
+}
+
+.wizard-feat-tag-btn.is-active {
+  background: rgba(200, 148, 26, 0.14);
+  border-color: rgba(200, 148, 26, 0.36);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.wizard-feat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 8px;
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.wizard-feat-card {
+  background: var(--tt-surface-2, var(--surface));
+  border: 1px solid var(--tt-border);
+  border-radius: var(--radius, 8px);
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wizard-feat-card:hover:not(.is-disabled) {
+  border-color: var(--accent, #c8941a);
+  background: var(--tt-surface, var(--surface));
+}
+
+.wizard-feat-card.is-selected {
+  border-color: var(--accent, #c8941a);
+  background: rgba(200, 148, 26, 0.08);
+  box-shadow: 0 0 0 2px rgba(200, 148, 26, 0.20);
+}
+
+.wizard-feat-card.is-disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.wizard-feat-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.wizard-feat-prereq {
+  font-size: 11px;
+  color: var(--accent, #c8941a);
+  font-style: italic;
+}
+
+.wizard-feat-benefit {
+  font-size: 12px;
+  color: var(--muted-text);
+  line-height: 1.5;
+  flex: 1;
+}
+
+.wizard-feat-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.wizard-feat-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.wizard-feat-tag--combat  { background: rgba(180, 40, 40, 0.18); color: #e87878; }
+.wizard-feat-tag--magic   { background: rgba(100, 60, 200, 0.18); color: #a78bfa; }
+.wizard-feat-tag--utility { background: rgba(40, 140, 80, 0.18);  color: #6ee7a0; }
+.wizard-feat-tag--social  { background: rgba(40, 120, 200, 0.18); color: #7dd3fc; }

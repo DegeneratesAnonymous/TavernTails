@@ -4,6 +4,19 @@
  * All 10 supported TavernTails game systems are covered.
  */
 
+import {
+  DND5E_FEATS,
+  DND5E_CLASS_FEATURES,
+  DND5E_ANCESTRY_TRAITS,
+  DND5E_HIT_DICE,
+  type FeatOption,
+  type ClassFeature,
+  type AncestryTrait,
+} from './dnd5e-srd'
+
+// Re-export SRD types so consumers can import from a single data module
+export type { FeatOption, ClassFeature, AncestryTrait }
+
 // ─────────────────────────────────────────────
 // Shared types
 // ─────────────────────────────────────────────
@@ -25,6 +38,8 @@ export type AncestryOption = {
   name: string
   emoji: string
   description: string
+  /** Key racial/species traits (mechanical, not flavor) */
+  traits?: AncestryTrait[]
 }
 
 export type ClassOption = {
@@ -32,6 +47,12 @@ export type ClassOption = {
   name: string
   emoji: string
   description: string
+  /** Hit die size (e.g. 12 for Barbarian) */
+  hitDie?: number
+  /** Proficiencies granted by this class for saves, e.g. ['STR', 'CON'] */
+  saveProficiencies?: string[]
+  /** Features gained at level 1 (and level 2 for Artificer) */
+  level1Features?: ClassFeature[]
 }
 
 export type BackgroundQuizQuestion = {
@@ -95,6 +116,10 @@ export type WizardSystem = {
   availableLanguages?: string[]
   /** Number of bonus languages the player chooses (beyond auto-granted Common etc.) */
   languageCount?: number
+  /** Feats available for selection during character creation */
+  feats?: FeatOption[]
+  /** How many feats the player may choose at character creation (0 = optional/variant) */
+  featCountOnCreate?: number
 }
 
 // ─────────────────────────────────────────────
@@ -151,32 +176,32 @@ const DND5E: WizardSystem = {
   blurb: 'Classic high fantasy with six ability scores, advantage/disadvantage, and rich class variety.',
   ancestryLabel: 'Race / Species',
   ancestries: [
-    { id: 'human', name: 'Human', emoji: '🧑', description: 'Adaptable and ambitious — extra skill or feat at 1st level.' },
-    { id: 'elf', name: 'Elf', emoji: '🧝', description: 'Graceful and long-lived, with keen senses and trance instead of sleep.' },
-    { id: 'dwarf', name: 'Dwarf', emoji: '⛏️', description: 'Hardy and resilient, resistant to poison and gifted in stonework.' },
-    { id: 'halfling', name: 'Halfling', emoji: '🌿', description: 'Lucky and nimble — can reroll 1s and are naturally stealthy.' },
-    { id: 'gnome', name: 'Gnome', emoji: '🔮', description: 'Inventive and eccentric, with natural resistance to magic.' },
-    { id: 'half-elf', name: 'Half-Elf', emoji: '🌓', description: 'Bridge between worlds — bonus skills and versatile ability bonuses.' },
-    { id: 'half-orc', name: 'Half-Orc', emoji: '💪', description: 'Fierce and determined — Relentless Endurance keeps you alive.' },
-    { id: 'tiefling', name: 'Tiefling', emoji: '😈', description: 'Marked by infernal heritage — innate fire magic and dark charisma.' },
-    { id: 'dragonborn', name: 'Dragonborn', emoji: '🐉', description: 'Born of draconic power with a breath weapon and damage resistance.' },
-    { id: 'other', name: 'Other / Custom', emoji: '✨', description: 'Aasimar, Tabaxi, Warforged, or any homebrew species.' },
+    { id: 'human',     name: 'Human',        emoji: '🧑',  description: 'Adaptable and ambitious — extra skill or feat at 1st level.',                       traits: DND5E_ANCESTRY_TRAITS['human'] },
+    { id: 'elf',       name: 'Elf',          emoji: '🧝',  description: 'Graceful and long-lived, with keen senses and trance instead of sleep.',          traits: DND5E_ANCESTRY_TRAITS['elf'] },
+    { id: 'dwarf',     name: 'Dwarf',        emoji: '⛏️', description: 'Hardy and resilient, resistant to poison and gifted in stonework.',               traits: DND5E_ANCESTRY_TRAITS['dwarf'] },
+    { id: 'halfling',  name: 'Halfling',     emoji: '🌿',  description: 'Lucky and nimble — can reroll 1s and are naturally stealthy.',                   traits: DND5E_ANCESTRY_TRAITS['halfling'] },
+    { id: 'gnome',     name: 'Gnome',        emoji: '🔮',  description: 'Inventive and eccentric, with natural resistance to magic.',                     traits: DND5E_ANCESTRY_TRAITS['gnome'] },
+    { id: 'half-elf',  name: 'Half-Elf',     emoji: '🌓',  description: 'Bridge between worlds — bonus skills and versatile ability bonuses.',            traits: DND5E_ANCESTRY_TRAITS['half-elf'] },
+    { id: 'half-orc',  name: 'Half-Orc',     emoji: '💪',  description: 'Fierce and determined — Relentless Endurance keeps you alive.',                  traits: DND5E_ANCESTRY_TRAITS['half-orc'] },
+    { id: 'tiefling',  name: 'Tiefling',     emoji: '😈',  description: 'Marked by infernal heritage — innate fire magic and dark charisma.',             traits: DND5E_ANCESTRY_TRAITS['tiefling'] },
+    { id: 'dragonborn',name: 'Dragonborn',   emoji: '🐉',  description: 'Born of draconic power with a breath weapon and damage resistance.',             traits: DND5E_ANCESTRY_TRAITS['dragonborn'] },
+    { id: 'other',     name: 'Other / Custom',emoji: '✨', description: 'Aasimar, Tabaxi, Warforged, or any homebrew species.',                          traits: DND5E_ANCESTRY_TRAITS['other'] },
   ],
   classLabel: 'Class',
   classes: [
-    { id: 'artificer', name: 'Artificer', emoji: '🔧', description: 'Inventor and magic-item craftsperson.' },
-    { id: 'barbarian', name: 'Barbarian', emoji: '🪓', description: 'Raging warrior who shrugs off pain.' },
-    { id: 'bard', name: 'Bard', emoji: '🎵', description: 'Performer and jack-of-all-trades spellcaster.' },
-    { id: 'cleric', name: 'Cleric', emoji: '✝️', description: 'Divine channeler, healer, and warrior of faith.' },
-    { id: 'druid', name: 'Druid', emoji: '🌿', description: 'Nature mystic who shapeshifts and calls the wild.' },
-    { id: 'fighter', name: 'Fighter', emoji: '🛡️', description: 'Martial expert with unmatched combat versatility.' },
-    { id: 'monk', name: 'Monk', emoji: '👊', description: 'Discipline-trained master of unarmed combat and ki.' },
-    { id: 'paladin', name: 'Paladin', emoji: '⚜️', description: 'Holy warrior bound to an oath and smiting evil.' },
-    { id: 'ranger', name: 'Ranger', emoji: '🏹', description: 'Wilderness tracker and hunter with a companion option.' },
-    { id: 'rogue', name: 'Rogue', emoji: '🗡️', description: 'Cunning and deadly — Sneak Attack and Expertise.' },
-    { id: 'sorcerer', name: 'Sorcerer', emoji: '✨', description: 'Innate magical power shaped by bloodline.' },
-    { id: 'warlock', name: 'Warlock', emoji: '🌑', description: 'Pact-bound spellcaster empowered by an otherworldly patron.' },
-    { id: 'wizard', name: 'Wizard', emoji: '📚', description: 'Master of arcane scholarship and prepared spellcasting.' },
+    { id: 'artificer', name: 'Artificer', emoji: '🔧', description: 'Inventor and magic-item craftsperson.',               hitDie: DND5E_HIT_DICE['artificer'], saveProficiencies: ['CON', 'INT'], level1Features: DND5E_CLASS_FEATURES['artificer'] },
+    { id: 'barbarian', name: 'Barbarian', emoji: '🪓', description: 'Raging warrior who shrugs off pain.',                 hitDie: DND5E_HIT_DICE['barbarian'], saveProficiencies: ['STR', 'CON'], level1Features: DND5E_CLASS_FEATURES['barbarian'] },
+    { id: 'bard',      name: 'Bard',      emoji: '🎵', description: 'Performer and jack-of-all-trades spellcaster.',       hitDie: DND5E_HIT_DICE['bard'],      saveProficiencies: ['DEX', 'CHA'], level1Features: DND5E_CLASS_FEATURES['bard'] },
+    { id: 'cleric',    name: 'Cleric',    emoji: '✝️', description: 'Divine channeler, healer, and warrior of faith.',    hitDie: DND5E_HIT_DICE['cleric'],    saveProficiencies: ['WIS', 'CHA'], level1Features: DND5E_CLASS_FEATURES['cleric'] },
+    { id: 'druid',     name: 'Druid',     emoji: '🌿', description: 'Nature mystic who shapeshifts and calls the wild.',   hitDie: DND5E_HIT_DICE['druid'],     saveProficiencies: ['INT', 'WIS'], level1Features: DND5E_CLASS_FEATURES['druid'] },
+    { id: 'fighter',   name: 'Fighter',   emoji: '🛡️', description: 'Martial expert with unmatched combat versatility.',  hitDie: DND5E_HIT_DICE['fighter'],   saveProficiencies: ['STR', 'CON'], level1Features: DND5E_CLASS_FEATURES['fighter'] },
+    { id: 'monk',      name: 'Monk',      emoji: '👊', description: 'Discipline-trained master of unarmed combat and ki.',hitDie: DND5E_HIT_DICE['monk'],      saveProficiencies: ['STR', 'DEX'], level1Features: DND5E_CLASS_FEATURES['monk'] },
+    { id: 'paladin',   name: 'Paladin',   emoji: '⚜️', description: 'Holy warrior bound to an oath and smiting evil.',   hitDie: DND5E_HIT_DICE['paladin'],   saveProficiencies: ['WIS', 'CHA'], level1Features: DND5E_CLASS_FEATURES['paladin'] },
+    { id: 'ranger',    name: 'Ranger',    emoji: '🏹', description: 'Wilderness tracker and hunter with a companion option.', hitDie: DND5E_HIT_DICE['ranger'], saveProficiencies: ['STR', 'DEX'], level1Features: DND5E_CLASS_FEATURES['ranger'] },
+    { id: 'rogue',     name: 'Rogue',     emoji: '🗡️', description: 'Cunning and deadly — Sneak Attack and Expertise.',   hitDie: DND5E_HIT_DICE['rogue'],     saveProficiencies: ['DEX', 'INT'], level1Features: DND5E_CLASS_FEATURES['rogue'] },
+    { id: 'sorcerer',  name: 'Sorcerer',  emoji: '✨', description: 'Innate magical power shaped by bloodline.',           hitDie: DND5E_HIT_DICE['sorcerer'],  saveProficiencies: ['CON', 'CHA'], level1Features: DND5E_CLASS_FEATURES['sorcerer'] },
+    { id: 'warlock',   name: 'Warlock',   emoji: '🌑', description: 'Pact-bound spellcaster empowered by an otherworldly patron.', hitDie: DND5E_HIT_DICE['warlock'], saveProficiencies: ['WIS', 'CHA'], level1Features: DND5E_CLASS_FEATURES['warlock'] },
+    { id: 'wizard',    name: 'Wizard',    emoji: '📚', description: 'Master of arcane scholarship and prepared spellcasting.', hitDie: DND5E_HIT_DICE['wizard'], saveProficiencies: ['INT', 'WIS'], level1Features: DND5E_CLASS_FEATURES['wizard'] },
   ],
   backgroundLabel: 'Background',
   backgroundQuiz: [
@@ -343,6 +368,8 @@ const DND5E: WizardSystem = {
     'Deep Speech', 'Infernal', 'Primordial', 'Sylvan', 'Undercommon',
   ],
   languageCount: 2,
+  feats: DND5E_FEATS,
+  featCountOnCreate: 1,
 }
 
 // ─────────────────────────────────────────────
