@@ -168,13 +168,6 @@ export default function AdminPanel({ onBack }: Props) {
   const [refLibFilter, setRefLibFilter] = useState('')
   const [refLibDeleteBusy, setRefLibDeleteBusy] = useState<string | null>(null)
   const refLibInputRef = useRef<HTMLInputElement>(null)
-  // Folder management
-  const [refLibFolders, setRefLibFolders] = useState<string[]>([])
-  const [refLibCurrentFolder, setRefLibCurrentFolder] = useState('')
-  const [refLibShowNewFolderForm, setRefLibShowNewFolderForm] = useState(false)
-  const [refLibNewFolderName, setRefLibNewFolderName] = useState('')
-  const [refLibMovingId, setRefLibMovingId] = useState<string | null>(null)
-  const [refLibMoveDest, setRefLibMoveDest] = useState('')
   const refLibFolderInputRef = useRef<HTMLInputElement>(null)
 
   const loadRefLib = useCallback(async () => {
@@ -192,121 +185,20 @@ export default function AdminPanel({ onBack }: Props) {
     }
   }, [])
 
-  const loadRefLibFolders = useCallback(async () => {
-    try {
-      const res = await apiFetch('/references/folders')
-      if (!res.ok) return
-      const data = await res.json()
-      setRefLibFolders(data.folders ?? [])
-    } catch { /* non-fatal */ }
-  }, [])
-
-  const handleCreateRefFolder = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault()
-    const name = refLibCurrentFolder
-      ? `${refLibCurrentFolder}/${refLibNewFolderName.trim()}`
-      : refLibNewFolderName.trim()
-    if (!name) return
-    try {
-      const res = await apiFetch('/references/folders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folder: name }),
-      })
-      if (!res.ok) {
-        const d = await res.json().catch(() => null)
-        setRefLibError(d?.detail || 'Failed to create folder.')
-        return
-      }
-      setRefLibNewFolderName('')
-      setRefLibShowNewFolderForm(false)
-      await loadRefLibFolders()
-    } catch {
-      setRefLibError('Network error creating folder.')
-    }
-  }, [refLibCurrentFolder, refLibNewFolderName, loadRefLibFolders])
-
-  const handleDeleteRefFolder = useCallback(async (folderPath: string) => {
-    if (!window.confirm(`Delete folder "${folderPath}"? References inside must be moved first.`)) return
-    try {
-      const res = await apiFetch(`/references/folders/${encodeURIComponent(folderPath)}`, { method: 'DELETE' })
-      if (!res.ok) {
-        const d = await res.json().catch(() => null)
-        setRefLibError(d?.detail || 'Failed to delete folder.')
-        return
-      }
-      if (refLibCurrentFolder === folderPath || refLibCurrentFolder.startsWith(folderPath + '/')) {
-        setRefLibCurrentFolder('')
-      }
-      await loadRefLibFolders()
-    } catch {
-      setRefLibError('Network error deleting folder.')
-    }
-  }, [refLibCurrentFolder, loadRefLibFolders])
-
-  const handleMoveRef = useCallback(async (refId: string, targetFolder: string) => {
-    try {
-      const res = await apiFetch(`/references/${encodeURIComponent(refId)}/move`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folder: targetFolder }),
-      })
-      if (!res.ok) {
-        const d = await res.json().catch(() => null)
-        setRefLibError(d?.detail || 'Failed to move reference.')
-        return
-      }
-      setRefLibMovingId(null)
-      await loadRefLib()
-    } catch {
-      setRefLibError('Network error moving reference.')
-    }
-  }, [loadRefLib])
-
   const handleFolderUploadRef = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
     if (!files.length) return
-    // Reset input so the same folder can be re-selected
     if (refLibFolderInputRef.current) refLibFolderInputRef.current.value = ''
-
-    const autoCreatedFolders = new Set<string>()
-
     for (const file of files) {
-      const relPath = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name
-      // e.g. "rulebooks/core/file.pdf" → folder = "rulebooks/core"
-      const parts = relPath.split('/')
-      const fileFolder = parts.length > 1
-        ? (refLibCurrentFolder ? `${refLibCurrentFolder}/${parts.slice(0, -1).join('/')}` : parts.slice(0, -1).join('/'))
-        : refLibCurrentFolder
-
-      // Auto-register intermediate folders
-      if (fileFolder) {
-        const segments = fileFolder.split('/')
-        for (let i = 1; i <= segments.length; i++) {
-          const p = segments.slice(0, i).join('/')
-          if (!autoCreatedFolders.has(p) && !refLibFolders.includes(p)) {
-            autoCreatedFolders.add(p)
-            await apiFetch('/references/folders', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ folder: p }),
-            }).catch(() => {})
-          }
-        }
-      }
-
       const form = new FormData()
       form.append('file', file)
       form.append('system_ref', refLibSystemRef ? 'true' : 'false')
       form.append('game_system', refLibGameSystem)
-      if (fileFolder) form.append('folder', fileFolder)
       await apiFetch('/references/upload', { method: 'POST', body: form, headers: {} }).catch(() => {})
     }
-
     await loadRefLib()
-    await loadRefLibFolders()
     setRefLibUploadOk(`Uploaded ${files.length} file(s) from folder.`)
-  }, [refLibCurrentFolder, refLibFolders, refLibSystemRef, refLibGameSystem, loadRefLib, loadRefLibFolders])
+  }, [refLibSystemRef, refLibGameSystem, loadRefLib])
 
   const uploadRef = useCallback(async () => {
     if (!refLibFile) { setRefLibUploadError('Select a file first.'); return }
@@ -319,7 +211,6 @@ export default function AdminPanel({ onBack }: Props) {
       if (refLibTitle.trim()) form.append('title', refLibTitle.trim())
       form.append('system_ref', refLibSystemRef ? 'true' : 'false')
       form.append('game_system', refLibGameSystem)
-      if (refLibCurrentFolder) form.append('folder', refLibCurrentFolder)
       const res = await apiFetch('/references/upload', { method: 'POST', body: form, headers: {} })
       if (!res.ok) {
         const d = await res.json().catch(() => null)
@@ -338,7 +229,7 @@ export default function AdminPanel({ onBack }: Props) {
     } finally {
       setRefLibUploadBusy(false)
     }
-  }, [refLibFile, refLibTitle, refLibSystemRef, refLibGameSystem, refLibCurrentFolder, loadRefLib])
+  }, [refLibFile, refLibTitle, refLibSystemRef, refLibGameSystem, loadRefLib])
 
   const deleteRef = useCallback(async (id: string, title: string) => {
     if (!window.confirm(`Delete "${title}"? This cannot be undone.`)) return
@@ -479,8 +370,7 @@ export default function AdminPanel({ onBack }: Props) {
     loadTickets()
     loadBans()
     loadRefLib()
-    loadRefLibFolders()
-  }, [loadStats, loadUsers, loadCampaigns, loadTickets, loadBans, loadRefLib, loadRefLibFolders])
+  }, [loadStats, loadUsers, loadCampaigns, loadTickets, loadBans, loadRefLib])
 
   // Reset to page 0 whenever the search query changes
   useEffect(() => {
@@ -693,24 +583,6 @@ export default function AdminPanel({ onBack }: Props) {
     deleteCampaign(campaignId, campaignName)
     closeUserDetail()
   }
-
-  // Folder-filtered reference library views
-  const refLibDirectChildFolders = useMemo(() => {
-    const prefix = refLibCurrentFolder ? refLibCurrentFolder + '/' : ''
-    return refLibFolders.filter(f => {
-      if (!f.startsWith(prefix)) return false
-      const rest = f.slice(prefix.length)
-      return rest.length > 0 && !rest.includes('/')
-    })
-  }, [refLibFolders, refLibCurrentFolder])
-
-  const refLibInCurrentFolder = useMemo(() => {
-    return refLib.filter(r => (r.meta.folder ?? '') === refLibCurrentFolder)
-  }, [refLib, refLibCurrentFolder])
-
-  const refLibBreadcrumb = useMemo(() => {
-    return refLibCurrentFolder ? refLibCurrentFolder.split('/') : []
-  }, [refLibCurrentFolder])
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
@@ -1181,104 +1053,14 @@ export default function AdminPanel({ onBack }: Props) {
         {refLibUploadError && <div className="inline-alert inline-alert-error" style={{ marginBottom: 8 }}>{refLibUploadError}</div>}
         {refLibUploadOk && <div className="inline-alert" style={{ borderColor: 'rgba(74,222,128,0.35)', background: 'rgba(74,222,128,0.08)', color: '#4ade80', marginBottom: 8 }}>{refLibUploadOk}</div>}
 
-        {/* ── Folder navigation ── */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.06)', marginBottom: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', fontSize: 13 }}>
-            <button
-              type="button"
-              className="btn btn-sm btn-secondary"
-              style={{ padding: '2px 7px', fontWeight: refLibCurrentFolder === '' ? 700 : 400 }}
-              onClick={() => setRefLibCurrentFolder('')}
-            >
-              📂 root
-            </button>
-            {refLibBreadcrumb.map((seg, i) => {
-              const path = refLibBreadcrumb.slice(0, i + 1).join('/')
-              return (
-                <React.Fragment key={path}>
-                  <span className="muted" style={{ fontSize: 11 }}>/</span>
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-secondary"
-                    style={{ padding: '2px 7px', fontWeight: i === refLibBreadcrumb.length - 1 ? 700 : 400 }}
-                    onClick={() => setRefLibCurrentFolder(path)}
-                  >
-                    {seg}
-                  </button>
-                </React.Fragment>
-              )
-            })}
-          </div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button
-              type="button"
-              className="btn btn-sm btn-secondary"
-              onClick={() => { setRefLibShowNewFolderForm(v => !v); setRefLibNewFolderName('') }}
-            >
-              {refLibShowNewFolderForm ? '✕ Cancel' : '+ Folder'}
-            </button>
-          </div>
-        </div>
-        {refLibShowNewFolderForm && (
-          <form
-            onSubmit={handleCreateRefFolder}
-            style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}
-          >
-            <input
-              className="input"
-              type="text"
-              value={refLibNewFolderName}
-              onChange={(e) => setRefLibNewFolderName(e.target.value)}
-              placeholder={refLibCurrentFolder ? `Subfolder inside "${refLibCurrentFolder}"` : 'New folder name'}
-              autoFocus
-              style={{ maxWidth: 260 }}
-            />
-            <button type="submit" className="btn btn-sm" disabled={!refLibNewFolderName.trim()}>Create</button>
-          </form>
-        )}
-        {/* Folder list */}
-        {refLibDirectChildFolders.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
-            {refLibDirectChildFolders.map(fp => {
-              const folderName = refLibCurrentFolder ? fp.slice(refLibCurrentFolder.length + 1) : fp
-              return (
-                <div key={fp} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'rgba(255,255,255,0.05)', borderRadius: 5, border: '1px solid rgba(255,255,255,0.1)', padding: '3px 8px' }}>
-                  <button
-                    type="button"
-                    onClick={() => setRefLibCurrentFolder(fp)}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tt-accent, #c084fc)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}
-                  >
-                    📁 {folderName}/
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteRefFolder(fp)}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted-text)', fontSize: 11, paddingLeft: 4 }}
-                    title="Delete folder (only if empty)"
-                    aria-label={`Delete folder ${folderName}`}
-                  >
-                    ✕
-                  </button>
-                </div>
-              )
-            })}
-          </div>
-        )}
-
         {/* Existing references */}
         <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', margin: '8px 0 6px' }}>
           <div style={{ fontWeight: 600, fontSize: 14 }}>
-            {refLibCurrentFolder
-              ? `References in "${refLibCurrentFolder}" (${refLibInCurrentFolder.filter(r => {
-                  const q = refLibFilter.toLowerCase(); if (!q) return true
-                  const sys = (r.meta.game_system || 'global').toLowerCase()
-                  return (r.meta.title || r.id).toLowerCase().includes(q) || (r.meta.filename || '').toLowerCase().includes(q) || sys.includes(q)
-                }).length} / ${refLibInCurrentFolder.length})`
-              : `Uploaded References (${refLibInCurrentFolder.filter(r => {
-                  const q = refLibFilter.toLowerCase(); if (!q) return true
-                  const sys = (r.meta.game_system || 'global').toLowerCase()
-                  return (r.meta.title || r.id).toLowerCase().includes(q) || (r.meta.filename || '').toLowerCase().includes(q) || sys.includes(q)
-                }).length} in root / ${refLib.length} total)`}
+            {`Uploaded References (${refLib.filter(r => {
+                const q = refLibFilter.toLowerCase(); if (!q) return true
+                const sys = (r.meta.game_system || 'global').toLowerCase()
+                return (r.meta.title || r.id).toLowerCase().includes(q) || (r.meta.filename || '').toLowerCase().includes(q) || sys.includes(q)
+              }).length} / ${refLib.length})`}
           </div>
           <div className="row-wrap" style={{ gap: 8 }}>
             <input
@@ -1300,24 +1082,18 @@ export default function AdminPanel({ onBack }: Props) {
                 <option key={s.value} value={s.value}>{s.label}</option>
               ))}
             </select>
-            <button className="btn btn-sm btn-secondary" type="button" onClick={() => { loadRefLib(); loadRefLibFolders() }} disabled={refLibLoading}>
+            <button className="btn btn-sm btn-secondary" type="button" onClick={() => loadRefLib()} disabled={refLibLoading}>
               {refLibLoading ? '…' : 'Refresh'}
             </button>
           </div>
         </div>
         {refLibError && <div className="error-text" style={{ marginBottom: 8 }}>{refLibError}</div>}
-        {!refLibLoading && refLibInCurrentFolder.length === 0 && refLibDirectChildFolders.length === 0 && (
-          <div className="empty-text">
-            {refLib.length === 0
-              ? 'No reference documents uploaded yet.'
-              : refLibCurrentFolder
-                ? `No references in "${refLibCurrentFolder}".`
-                : 'No references at root — all are organised into folders.'}
-          </div>
+        {!refLibLoading && refLib.length === 0 && (
+          <div className="empty-text">No reference documents uploaded yet.</div>
         )}
-        {refLibInCurrentFolder.length > 0 && (() => {
+        {refLib.length > 0 && (() => {
           const q = refLibFilter.toLowerCase()
-          const filtered = refLibInCurrentFolder.filter(r => {
+          const filtered = refLib.filter(r => {
             if (!q) return true
             const sys = (r.meta.game_system || 'global').toLowerCase()
             return (r.meta.title || r.id).toLowerCase().includes(q) ||
@@ -1359,40 +1135,14 @@ export default function AdminPanel({ onBack }: Props) {
                       </span>
                     </td>
                     <td>
-                      {refLibMovingId === r.id ? (
-                        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                          <select
-                            className="input"
-                            value={refLibMoveDest}
-                            onChange={e => setRefLibMoveDest(e.target.value)}
-                            style={{ fontSize: 11, padding: '2px 4px', maxWidth: 140 }}
-                          >
-                            <option value="">/ root</option>
-                            {refLibFolders.map(f => <option key={f} value={f}>{f}/</option>)}
-                          </select>
-                          <button className="btn btn-sm" type="button" onClick={() => handleMoveRef(r.id, refLibMoveDest)}>OK</button>
-                          <button className="btn btn-sm btn-secondary" type="button" onClick={() => setRefLibMovingId(null)}>✕</button>
-                        </div>
-                      ) : (
-                        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                          <button
-                            className="btn btn-sm btn-secondary"
-                            type="button"
-                            onClick={() => { setRefLibMovingId(r.id); setRefLibMoveDest(r.meta.folder ?? '') }}
-                            title="Move to folder"
-                          >
-                            Move
-                          </button>
-                          <button
-                            className="btn btn-sm btn-danger"
-                            type="button"
-                            disabled={refLibDeleteBusy === r.id}
-                            onClick={() => deleteRef(r.id, r.meta.title || r.id)}
-                          >
-                            {refLibDeleteBusy === r.id ? '…' : 'Delete'}
-                          </button>
-                        </div>
-                      )}
+                      <button
+                        className="btn btn-sm btn-danger"
+                        type="button"
+                        disabled={refLibDeleteBusy === r.id}
+                        onClick={() => deleteRef(r.id, r.meta.title || r.id)}
+                      >
+                        {refLibDeleteBusy === r.id ? '…' : 'Delete'}
+                      </button>
                     </td>
                   </tr>
                 ))}
