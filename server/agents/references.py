@@ -57,6 +57,12 @@ class MoveRefRequest(BaseModel):
     folder: str = ""
 
 
+class PatchRefMetaRequest(BaseModel):
+    game_system: str | None = None
+    title: str | None = None
+    system_ref: bool | None = None
+
+
 class ReferenceSearchResult(BaseModel):
     source_id: str
     page: int | None = None
@@ -486,6 +492,38 @@ async def move_reference(
         except Exception:
             pass
     ref_meta["folder"] = clean
+    meta_path.write_text(json.dumps(ref_meta, indent=2), encoding="utf-8")
+    return {"id": ref_id, "meta": ref_meta}
+
+
+@router.patch("/{ref_id}/meta", response_model=ReferenceListItem)
+async def patch_reference_meta(
+    ref_id: str,
+    body: PatchRefMetaRequest,
+    current_user=Depends(get_current_user),
+):
+    """Update editable metadata fields (game_system, title, system_ref) on a reference. Admin only."""
+    if not _db.is_admin_user(current_user):
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    if not re.match(r"^[A-Za-z0-9_.\ -]+$", ref_id) or ".." in ref_id:
+        raise HTTPException(status_code=400, detail="Invalid reference id.")
+    root = _storage_root()
+    directory = root / ref_id
+    if not directory.exists() or not directory.is_dir():
+        raise HTTPException(status_code=404, detail="Reference not found")
+    meta_path = directory / "metadata.json"
+    ref_meta: dict = {}
+    if meta_path.exists():
+        try:
+            ref_meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    if body.game_system is not None:
+        ref_meta["game_system"] = body.game_system.strip() or "global"
+    if body.title is not None:
+        ref_meta["title"] = body.title.strip()
+    if body.system_ref is not None:
+        ref_meta["system_ref"] = body.system_ref
     meta_path.write_text(json.dumps(ref_meta, indent=2), encoding="utf-8")
     return {"id": ref_id, "meta": ref_meta}
 

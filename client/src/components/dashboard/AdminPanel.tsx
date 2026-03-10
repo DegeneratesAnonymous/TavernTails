@@ -167,6 +167,9 @@ export default function AdminPanel({ onBack }: Props) {
   const [refLibGameSystem, setRefLibGameSystem] = useState('global')
   const [refLibFilter, setRefLibFilter] = useState('')
   const [refLibDeleteBusy, setRefLibDeleteBusy] = useState<string | null>(null)
+  const [refLibEditingId, setRefLibEditingId] = useState<string | null>(null)
+  const [refLibEditSystem, setRefLibEditSystem] = useState('')
+  const [refLibEditBusy, setRefLibEditBusy] = useState(false)
   const refLibInputRef = useRef<HTMLInputElement>(null)
   const refLibFolderInputRef = useRef<HTMLInputElement>(null)
 
@@ -230,6 +233,28 @@ export default function AdminPanel({ onBack }: Props) {
       setRefLibUploadBusy(false)
     }
   }, [refLibFile, refLibTitle, refLibSystemRef, refLibGameSystem, loadRefLib])
+
+  const patchRefMeta = useCallback(async (id: string, patch: { game_system?: string }) => {
+    setRefLibEditBusy(true)
+    try {
+      const res = await apiFetch(`/references/${encodeURIComponent(id)}/meta`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => null)
+        setRefLibError(d?.detail || `Update failed (${res.status})`)
+        return
+      }
+      setRefLibEditingId(null)
+      await loadRefLib()
+    } catch {
+      setRefLibError('Network error updating reference.')
+    } finally {
+      setRefLibEditBusy(false)
+    }
+  }, [loadRefLib])
 
   const deleteRef = useCallback(async (id: string, title: string) => {
     if (!window.confirm(`Delete "${title}"? This cannot be undone.`)) return
@@ -1001,7 +1026,7 @@ export default function AdminPanel({ onBack }: Props) {
             />
           </label>
           <span className="muted" style={{ fontSize: 12 }}>
-            {refLibCurrentFolder ? `Files will be placed in "${refLibCurrentFolder}"` : 'Files will be placed at root — navigate into a folder first to organise them'}
+            All files will be uploaded to root.
           </span>
         </div>
 
@@ -1121,9 +1146,44 @@ export default function AdminPanel({ onBack }: Props) {
                   <tr key={r.id}>
                     <td style={{ fontWeight: 600 }}>{r.meta.title || r.id}</td>
                     <td>
-                      <span className="badge badge-muted" style={{ textTransform: 'none' }}>
-                        {r.meta.game_system || 'global'}
-                      </span>
+                      {refLibEditingId === r.id ? (
+                        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                          <select
+                            className="input"
+                            value={refLibEditSystem}
+                            onChange={e => setRefLibEditSystem(e.target.value)}
+                            style={{ fontSize: 12, padding: '2px 6px' }}
+                            autoFocus
+                          >
+                            <option value="global">Global</option>
+                            {REF_SYSTEMS.map(s => (
+                              <option key={s.value} value={s.value}>{s.label}</option>
+                            ))}
+                          </select>
+                          <button
+                            className="btn btn-sm"
+                            type="button"
+                            disabled={refLibEditBusy}
+                            onClick={() => patchRefMeta(r.id, { game_system: refLibEditSystem })}
+                          >{refLibEditBusy ? '…' : '✓'}</button>
+                          <button
+                            className="btn btn-sm btn-secondary"
+                            type="button"
+                            onClick={() => setRefLibEditingId(null)}
+                          >✕</button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => { setRefLibEditingId(r.id); setRefLibEditSystem(r.meta.game_system || 'global') }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                          title="Click to change system"
+                        >
+                          <span className="badge badge-muted" style={{ textTransform: 'none' }}>
+                            {r.meta.game_system || 'global'}
+                          </span>
+                        </button>
+                      )}
                     </td>
                     <td className="muted" style={{ fontSize: 12 }}>{r.meta.filename || '—'}</td>
                     <td>{r.meta.pages}</td>
