@@ -97,6 +97,7 @@ class DocumentCreate(BaseModel):
             "When omitted, the default for the chosen category is used."
         ),
     )
+    folder: str = Field(default="", description="Folder path (e.g. 'rules/combat'). Empty = root.")
 
 
 class DocumentResponse(BaseModel):
@@ -108,6 +109,7 @@ class DocumentResponse(BaseModel):
     size: int
     created_at: str
     filename: str | None = None
+    folder: str = ""
 
 
 class DocumentDetail(DocumentResponse):
@@ -133,6 +135,7 @@ class RegisterRequest(BaseModel):
         default=None,
         description="Visibility override.  When omitted, defaults are inferred from category.",
     )
+    folder: str = Field(default="", description="Folder path for this document.")
 
 
 def _normalize_visibility(value: str | None) -> str:
@@ -257,6 +260,7 @@ async def create_document(session_id: str, payload: DocumentCreate, current_user
         content=payload.content,
         category=category,
         visibility=visibility,
+        folder=(payload.folder or "").strip('/'),
     )
     _audit(session_id, identifier, action="documents.create", ok=True, doc_id=saved.id, visibility=visibility)
     return DocumentResponse(**asdict(saved))
@@ -300,6 +304,77 @@ def get_audit_log(session_id: str, current_user=Depends(get_current_user)):
     return {"session_id": session_id, "entries": entries}
 
 
+# ---------------------------------------------------------------------------
+# Folder management
+# ---------------------------------------------------------------------------
+
+class CreateFolderRequest(BaseModel):
+    folder: str = Field(..., description="New folder path (e.g. 'rules' or 'rules/combat').")
+
+
+class MoveDocumentRequest(BaseModel):
+    folder: str = Field(default="", description="Destination folder (empty = root).")
+
+
+def _validate_folder_path(folder: str) -> str:
+    """Sanitise a supplied folder path. Raises HTTPException on invalid input."""
+    clean = folder.strip('/')
+    if not clean:
+        return ""
+    for segment in clean.split('/'):
+        if not segment or segment in ('..', '.') or any(c in segment for c in ('\\', '\0', ':')):
+            raise HTTPException(status_code=400, detail=f"Invalid folder path: '{folder}'")
+    return clean
+
+
+@router.get("/{session_id}/folders")
+async def list_folders(session_id: str, current_user=Depends(get_current_user)):
+    """List all folder paths for a session."""
+    _, _, _ = _ensure_session_member(session_id, current_user)
+    return {"folders": store.list_folders(session_id)}
+
+
+@router.post("/{session_id}/folders", status_code=201)
+async def create_folder(session_id: str, payload: CreateFolderRequest, current_user=Depends(get_current_user)):
+    """Create an empty folder in the session document tree."""
+    _, identifier, _ = _ensure_session_member(session_id, current_user)
+    clean = _validate_folder_path(payload.folder)
+    if not clean:
+        raise HTTPException(status_code=400, detail="Folder name required")
+    ok = store.create_folder(session_id, clean)
+    _audit(session_id, identifier, action="documents.folder.create", ok=ok, detail=clean)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Invalid folder path")
+    return {"folder": clean}
+
+
+@router.delete("/{session_id}/folders/{folder_path:path}")
+async def delete_folder(session_id: str, folder_path: str, current_user=Depends(get_current_user)):
+    """Delete an empty folder. Returns 400 if the folder still contains documents."""
+    _, identifier, is_host = _ensure_session_member(session_id, current_user)
+    if not is_host:
+        raise HTTPException(status_code=403, detail="Only hosts can delete folders")
+    clean = _validate_folder_path(folder_path)
+    ok = store.delete_folder(session_id, clean)
+    _audit(session_id, identifier, action="documents.folder.delete", ok=ok, detail=clean)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Folder not empty or does not exist")
+    return {"ok": True}
+
+
+@router.patch("/{session_id}/{doc_id}/move")
+async def move_document(session_id: str, doc_id: str, payload: MoveDocumentRequest, current_user=Depends(get_current_user)):
+    """Move a document to a different folder. Use empty string to move to root."""
+    _, identifier, _ = _ensure_session_member(session_id, current_user)
+    clean = _validate_folder_path(payload.folder)
+    doc = store.move_document(session_id, doc_id, clean)
+    if not doc:
+        _audit(session_id, identifier, action="documents.move", ok=False, doc_id=doc_id, detail="not_found")
+        raise HTTPException(status_code=404, detail="Document not found")
+    _audit(session_id, identifier, action="documents.move", ok=True, doc_id=doc_id, detail=f"folder:{clean}")
+    return DocumentResponse(**asdict(doc))
+
+
 @router.get("/{session_id}/{doc_id}", response_model=DocumentDetail)
 async def get_document(session_id: str, doc_id: str, current_user=Depends(get_current_user)):
     _, identifier, is_host = _ensure_session_member(session_id, current_user)
@@ -320,6 +395,7 @@ async def upload_document(
     name: str | None = Form(None),
     category: str | None = Form(None),
     visibility: str | None = Form(None),
+    folder: str | None = Form(None),
     current_user=Depends(get_current_user),
 ):
     """Upload a binary file for the session. Returns stored document metadata."""
@@ -337,6 +413,7 @@ async def upload_document(
         filename=file.filename,
         category=normalized_category,
         visibility=normalized_visibility,
+        folder=(folder or "").strip('/'),
     )
     _audit(session_id, identifier, action="documents.upload", ok=True, doc_id=saved.id, visibility=normalized_visibility)
     return DocumentResponse(**asdict(saved))
@@ -402,7 +479,7 @@ async def register_document(session_id: str, payload: RegisterRequest, current_u
         _require_host_for_hidden(session_id, identifier, is_host)
     if hasattr(store, 'register_existing_object'):
         try:
-            saved = store.register_existing_object(session_id=session_id, filename=payload.filename, name=payload.name, size=payload.size, category=category, visibility=visibility)
+            saved = store.register_existing_object(session_id=session_id, filename=payload.filename, name=payload.name, size=payload.size, category=category, visibility=visibility, folder=(payload.folder or "").strip('/'))
             _audit(session_id, identifier, action="documents.register", ok=True, doc_id=saved.id, visibility=visibility)
             return DocumentResponse(**asdict(saved))
         except Exception as err:

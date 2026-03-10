@@ -114,13 +114,14 @@ class DocumentMeta:
     filename: str = ""
     size: int = 0
     created_at: str = ""
+    folder: str = ""             # virtual folder path (e.g. "rules/combat"); empty = root
 
 
 class DocumentStore:
     def list_documents(self, session_id: str) -> list[DocumentMeta]:
         raise NotImplementedError
 
-    def save_document(self, *, session_id: str, name: str, content: bytes | str, filename: str | None = None, category: str = "core", visibility: str = "shared") -> DocumentMeta:
+    def save_document(self, *, session_id: str, name: str, content: bytes | str, filename: str | None = None, category: str = "core", visibility: str = "shared", folder: str = "") -> DocumentMeta:
         raise NotImplementedError
 
     def delete_document(self, session_id: str, doc_id: str) -> bool:
@@ -132,11 +133,23 @@ class DocumentStore:
     def generate_presigned_post(self, session_id: str, filename: str, content_type: str | None = None, expires_in: int = 3600) -> dict:
         raise NotImplementedError
 
-    def register_existing_object(self, session_id: str, filename: str, name: str, size: int, category: str = "core", visibility: str = "shared") -> DocumentMeta:
+    def register_existing_object(self, session_id: str, filename: str, name: str, size: int, category: str = "core", visibility: str = "shared", folder: str = "") -> DocumentMeta:
         raise NotImplementedError
 
     def generate_presigned_get_url(self, session_id: str, filename: str, expires_in: int = 3600) -> str:
         raise NotImplementedError
+
+    def list_folders(self, session_id: str) -> list[str]:
+        return []
+
+    def create_folder(self, session_id: str, folder_path: str) -> bool:
+        return True
+
+    def delete_folder(self, session_id: str, folder_path: str) -> bool:
+        return True
+
+    def move_document(self, session_id: str, doc_id: str, folder: str) -> "DocumentMeta | None":
+        return None
 
 
 class LocalDocumentStore(DocumentStore):
@@ -157,7 +170,9 @@ class LocalDocumentStore(DocumentStore):
         if not meta_path.exists():
             return []
         data = json.loads(meta_path.read_text())
-        return [DocumentMeta(**entry) for entry in data]
+        # Filter to known fields for forward-compatible schema evolution
+        _fields = set(DocumentMeta.__dataclass_fields__)
+        return [DocumentMeta(**{k: v for k, v in entry.items() if k in _fields}) for entry in data]
 
     def _write_meta(self, session_id: str, entries: list[DocumentMeta]) -> None:
         meta_path = self._meta_file(session_id)
@@ -166,16 +181,16 @@ class LocalDocumentStore(DocumentStore):
     def list_documents(self, session_id: str) -> list[DocumentMeta]:
         return self._load_meta(session_id)
 
-    def save_document(self, *, session_id: str, name: str, content: bytes | str, filename: str | None = None, category: str = "core", visibility: str = "shared") -> DocumentMeta:
+    def save_document(self, *, session_id: str, name: str, content: bytes | str, filename: str | None = None, category: str = "core", visibility: str = "shared", folder: str = "") -> DocumentMeta:
         doc_id = uuid.uuid4().hex[:8]
-        folder = self._session_dir(session_id)
+        session_dir = self._session_dir(session_id)
         # If client provided a filename, preserve its extension
         if filename:
             ext = Path(filename).suffix or '.dat'
             stored_name = f"{doc_id}{ext}"
         else:
             stored_name = f"{doc_id}.txt"
-        target = folder / stored_name
+        target = session_dir / stored_name
         if isinstance(content, str):
             encoded = content.encode("utf-8")
         else:
@@ -191,12 +206,13 @@ class LocalDocumentStore(DocumentStore):
             filename=stored_name,
             size=len(encoded),
             created_at=datetime.now(timezone.utc).isoformat(),
+            folder=folder.strip('/'),
         )
         meta.append(created)
         self._write_meta(session_id, meta)
         return created
 
-    def register_existing_object(self, session_id: str, filename: str, name: str, size: int, category: str = "core", visibility: str = "shared") -> DocumentMeta:
+    def register_existing_object(self, session_id: str, filename: str, name: str, size: int, category: str = "core", visibility: str = "shared", folder: str = "") -> DocumentMeta:
         # used for external uploads (e.g., S3 direct upload) to register metadata
         meta = self._load_meta(session_id)
         doc_id = uuid.uuid4().hex[:8]
@@ -209,6 +225,7 @@ class LocalDocumentStore(DocumentStore):
             filename=filename,
             size=size,
             created_at=datetime.now(timezone.utc).isoformat(),
+            folder=folder.strip('/') if folder else '',
         )
         meta.append(created)
         self._write_meta(session_id, meta)
@@ -245,6 +262,72 @@ class LocalDocumentStore(DocumentStore):
                     # fallback to binary-safe read
                     content = target.read_bytes().hex()
                 return entry, content
+        return None
+
+    def _folders_file(self, session_id: str) -> Path:
+        return self._session_dir(session_id) / "folders.json"
+
+    def _load_folders(self, session_id: str) -> list[str]:
+        f = self._folders_file(session_id)
+        if not f.exists():
+            return []
+        try:
+            return json.loads(f.read_text())
+        except Exception:
+            return []
+
+    def _write_folders(self, session_id: str, folders: list[str]) -> None:
+        self._folders_file(session_id).write_text(json.dumps(sorted(set(folders)), indent=2))
+
+    def list_folders(self, session_id: str) -> list[str]:
+        stored = self._load_folders(session_id)
+        doc_folders = {d.folder for d in self._load_meta(session_id) if d.folder}
+        return sorted(set(stored) | doc_folders)
+
+    def create_folder(self, session_id: str, folder_path: str) -> bool:
+        clean = folder_path.strip('/')
+        if not clean:
+            return False
+        folders = self._load_folders(session_id)
+        if clean not in folders:
+            folders.append(clean)
+            self._write_folders(session_id, folders)
+        return True
+
+    def delete_folder(self, session_id: str, folder_path: str) -> bool:
+        clean = folder_path.strip('/')
+        docs = self._load_meta(session_id)
+        if any(
+            d.folder == clean or (d.folder or '').startswith(clean + '/')
+            for d in docs
+        ):
+            return False
+        folders = [
+            f for f in self._load_folders(session_id)
+            if f != clean and not f.startswith(clean + '/')
+        ]
+        self._write_folders(session_id, folders)
+        return True
+
+    def move_document(self, session_id: str, doc_id: str, folder: str) -> DocumentMeta | None:
+        clean = folder.strip('/')
+        meta = self._load_meta(session_id)
+        for i, doc in enumerate(meta):
+            if doc.id == doc_id:
+                updated = DocumentMeta(
+                    id=doc.id,
+                    session_id=doc.session_id,
+                    name=doc.name,
+                    category=doc.category,
+                    visibility=doc.visibility,
+                    filename=doc.filename,
+                    size=doc.size,
+                    created_at=doc.created_at,
+                    folder=clean,
+                )
+                meta[i] = updated
+                self._write_meta(session_id, meta)
+                return updated
         return None
 
     def generate_presigned_get_url(self, session_id: str, filename: str, expires_in: int = 3600) -> str:

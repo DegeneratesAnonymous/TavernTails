@@ -288,6 +288,91 @@
 .docsPanel__auditAction--denied{ color: var(--highlight); }
 .docsPanel__auditActor{ color: var(--muted-text); font-size: 11px; }
 .docsPanel__auditDoc{ color: var(--muted-text); opacity: 0.75; font-size: 11px; font-family: monospace; }
+
+/* ── Folder navigation ───────────────────────────── */
+.docsPanel__folderNav{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 4px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  margin-bottom: 6px;
+}
+.docsPanel__breadcrumb{
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+.docsPanel__breadcrumbItem{
+  background: none;
+  border: none;
+  color: var(--muted-text, #aaa);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+.docsPanel__breadcrumbItem:hover{ color: var(--text, #eee); background: rgba(255,255,255,0.06); }
+.docsPanel__breadcrumbItem--active{ color: var(--text, #eee); font-weight: 600; }
+.docsPanel__breadcrumbSep{ color: var(--muted-text, #666); font-size: 11px; }
+.docsPanel__newFolderForm{
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  margin-bottom: 4px;
+}
+.docsPanel__folderRow{
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.docsPanel__folderBtn{
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 4px;
+  font-style: italic;
+}
+.docsPanel__folderIcon{ font-size: 14px; }
+.docsPanel__folderName{ font-size: 13px; color: var(--accent, #c8941a); }
+.docsPanel__docActions{
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.docsPanel__moveMenu{
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.docsPanel__moveSelect{
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  background: var(--card-bg, #1a1a1a);
+  color: var(--text, #eee);
+  border: 1px solid var(--tt-border, #444);
+  max-width: 140px;
+}
+.docsPanel__folderUploadLabel{
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+}
+.docsPanel__tinyBtn--disabled{
+  opacity: 0.4;
+  pointer-events: none;
+}
 .docsPanel__auditDetail{ color: var(--muted-text); font-style: italic; font-size: 11px; }
 
 @media (max-width: 720px){

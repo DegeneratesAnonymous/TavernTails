@@ -11,6 +11,7 @@ type DocumentMeta = {
   size: number
   created_at: string
   filename?: string
+  folder?: string
 }
 
 type DocumentDetail = DocumentMeta & { content: string }
@@ -24,6 +25,7 @@ type UploadEntry = {
   file: File
   previewUrl?: string
   size: number
+  folder?: string
 }
 
 const formatBytes = (size: number) => {
@@ -56,6 +58,12 @@ export default function DocumentsPanel({sessionId}: Props){
   const [refs, setRefs] = useState<Array<{id:string, meta:any}>>([])
   const [refLoading, setRefLoading] = useState(false)
   const [refError, setRefError] = useState<string | null>(null)
+  const [currentFolder, setCurrentFolder] = useState<string>('')
+  const [folders, setFolders] = useState<string[]>([])
+  const [showNewFolderForm, setShowNewFolderForm] = useState(false)
+  const [newFolderName, setNewFolderName] = useState('')
+  const [movingDocId, setMovingDocId] = useState<string | null>(null)
+  const [moveDestination, setMoveDestination] = useState<string>('')
   const uploadControllers = useRef<Record<string, () => void>>({})
 
   const hasSession = Boolean(sessionId)
@@ -138,16 +146,30 @@ export default function DocumentsPanel({sessionId}: Props){
     }
   },[])
 
+  const loadFolders = useCallback(async () => {
+    if(!sessionId) return
+    try{
+      const res = await apiFetch(`/documents/${sessionId}/folders`)
+      if(res.ok){
+        const data = await res.json()
+        setFolders(Array.isArray(data?.folders) ? data.folders : [])
+      }
+    }catch{ /* silently ignore */ }
+  },[sessionId])
+
   useEffect(()=>{
     loadDocuments()
     loadReferences()
-  },[loadDocuments, loadReferences])
+    loadFolders()
+  },[loadDocuments, loadReferences, loadFolders])
 
   useEffect(()=>{
     if(!sessionId){
       setIsHost(false)
       setCategory('core')
       setVisibility('shared')
+      setCurrentFolder('')
+      setFolders([])
       return
     }
     let canceled = false
@@ -229,7 +251,7 @@ export default function DocumentsPanel({sessionId}: Props){
         })
         clearCancel(entry.id)
         const key = presign.fields?.key || presign.fields?.Key || presign.key || `${sessionId}/docs/${entry.name}`
-        const registerRes = await apiFetch(`/documents/${sessionId}/register`, { method: 'POST', body: JSON.stringify({ filename: key, name: entry.name, size: entry.size, category, visibility: isHost ? visibility : 'shared' }) })
+        const registerRes = await apiFetch(`/documents/${sessionId}/register`, { method: 'POST', body: JSON.stringify({ filename: key, name: entry.name, size: entry.size, category, visibility: isHost ? visibility : 'shared', folder: entry.folder ?? '' }) })
         const registerBody = await registerRes.json().catch(() => null)
         if(!registerRes.ok){
           throw new Error(registerBody?.detail || 'Register failed')
@@ -254,6 +276,7 @@ export default function DocumentsPanel({sessionId}: Props){
       form.append('name', entry.name)
       form.append('category', category)
       form.append('visibility', isHost ? visibility : 'shared')
+      form.append('folder', entry.folder ?? '')
       const controller = new AbortController()
       registerCancel(entry.id, () => controller.abort())
       const res = await fetch(buildApiUrl(`/documents/${sessionId}/upload`), {
@@ -402,6 +425,7 @@ export default function DocumentsPanel({sessionId}: Props){
         file,
         previewUrl: isImage ? URL.createObjectURL(file) : undefined,
         size: file.size,
+        folder: currentFolder,
       }
     })
     setUploads(current => [...current, ...entries])
@@ -477,6 +501,126 @@ export default function DocumentsPanel({sessionId}: Props){
     return !/^[0-9a-f]{128,}$/i.test(selected.content.trim())
   },[selected])
 
+  // ── Folder-derived state ─────────────────────
+  const directChildFolders = useMemo(() => {
+    return folders.filter(f => {
+      if(currentFolder === '') return !f.includes('/')
+      return f.startsWith(currentFolder + '/') && !f.slice(currentFolder.length + 1).includes('/')
+    })
+  }, [folders, currentFolder])
+
+  const docsInCurrentFolder = useMemo(() => {
+    return sortedDocs.filter(d => (d.folder ?? '') === currentFolder)
+  }, [sortedDocs, currentFolder])
+
+  const breadcrumb = useMemo(() => {
+    if(!currentFolder) return []
+    return currentFolder.split('/')
+  }, [currentFolder])
+
+  // ── Folder handlers ──────────────────────────
+  async function handleFolderUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    if(!sessionId) return
+    const files = e.target.files
+    if(!files || files.length === 0) return
+    setError(null)
+    const makeId = () => typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+    // Derive all unique folder paths from webkitRelativePath
+    const folderPaths = new Set<string>()
+    Array.from(files).forEach(file => {
+      const rel = (file as any).webkitRelativePath as string || file.name
+      const parts = rel.split('/')
+      for(let i = 1; i < parts.length; i++){
+        const seg = parts.slice(0, i).join('/')
+        const full = currentFolder ? `${currentFolder}/${seg}` : seg
+        folderPaths.add(full)
+      }
+    })
+    await Promise.all(Array.from(folderPaths).map(fp =>
+      apiFetch(`/documents/${sessionId}/folders`, { method: 'POST', body: JSON.stringify({ folder: fp }) }).catch(() => {})
+    ))
+    await loadFolders()
+    const entries: UploadEntry[] = Array.from(files).map(file => {
+      const rel = (file as any).webkitRelativePath as string || file.name
+      const parts = rel.split('/')
+      const fileFolder = parts.length > 1
+        ? (currentFolder ? `${currentFolder}/${parts.slice(0, -1).join('/')}` : parts.slice(0, -1).join('/'))
+        : currentFolder
+      const isImage = file.type.startsWith('image/') || /(png|jpe?g|gif|webp)$/i.test(file.name)
+      return {
+        id: makeId(),
+        name: file.name,
+        progress: 0,
+        status: 'uploading' as const,
+        file,
+        previewUrl: isImage ? URL.createObjectURL(file) : undefined,
+        size: file.size,
+        folder: fileFolder,
+      }
+    })
+    setUploads(cur => [...cur, ...entries])
+    entries.forEach(entry => { void startUpload(entry) })
+    if(e.target) e.target.value = ''
+  }
+
+  async function handleCreateFolder(e: React.FormEvent) {
+    e.preventDefault()
+    if(!sessionId || !newFolderName.trim()) return
+    const path = currentFolder ? `${currentFolder}/${newFolderName.trim()}` : newFolderName.trim()
+    setError(null)
+    try{
+      const res = await apiFetch(`/documents/${sessionId}/folders`, {
+        method: 'POST',
+        body: JSON.stringify({ folder: path }),
+      })
+      if(!res.ok){
+        const d = await res.json().catch(() => null)
+        throw new Error(d?.detail || 'Create folder failed')
+      }
+      setNewFolderName('')
+      setShowNewFolderForm(false)
+      await loadFolders()
+    }catch(err:any){
+      setError(err?.message || 'Create folder failed')
+    }
+  }
+
+  async function handleDeleteFolder(folderPath: string) {
+    if(!sessionId) return
+    if(!window.confirm(`Delete folder "${folderPath}"? (Only works if the folder is empty.)`)) return
+    setError(null)
+    try{
+      const res = await apiFetch(`/documents/${sessionId}/folders/${folderPath}`, { method: 'DELETE' })
+      if(!res.ok){
+        const d = await res.json().catch(() => null)
+        throw new Error(d?.detail || 'Delete folder failed')
+      }
+      if(currentFolder === folderPath || currentFolder.startsWith(folderPath + '/')) setCurrentFolder('')
+      await loadFolders()
+    }catch(err:any){
+      setError(err?.message || 'Unable to delete folder')
+    }
+  }
+
+  async function handleMoveDoc(docId: string, targetFolder: string) {
+    if(!sessionId) return
+    setError(null)
+    try{
+      const res = await apiFetch(`/documents/${sessionId}/${docId}/move`, {
+        method: 'PATCH',
+        body: JSON.stringify({ folder: targetFolder }),
+      })
+      if(!res.ok){
+        const d = await res.json().catch(() => null)
+        throw new Error(d?.detail || 'Move failed')
+      }
+      setMovingDocId(null)
+      await loadDocuments()
+    }catch(err:any){
+      setError(err?.message || 'Move failed')
+    }
+  }
+
   return (
     <div className="docsPanel">
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
@@ -526,10 +670,91 @@ export default function DocumentsPanel({sessionId}: Props){
       )}
       {!hasSession && <div className="docsPanel__hint">Open a session to create shared documents.</div>}
       {error && <div className="docsPanel__error">{error}</div>}
+
+      {/* Folder navigation bar */}
+      {hasSession && (
+        <div className="docsPanel__folderNav">
+          <div className="docsPanel__breadcrumb">
+            <button
+              type="button"
+              className={`docsPanel__breadcrumbItem${currentFolder === '' ? ' docsPanel__breadcrumbItem--active' : ''}`}
+              onClick={() => setCurrentFolder('')}
+            >
+              📂 root
+            </button>
+            {breadcrumb.map((seg, i) => {
+              const path = breadcrumb.slice(0, i + 1).join('/')
+              return (
+                <React.Fragment key={path}>
+                  <span className="docsPanel__breadcrumbSep">/</span>
+                  <button
+                    type="button"
+                    className={`docsPanel__breadcrumbItem${i === breadcrumb.length - 1 ? ' docsPanel__breadcrumbItem--active' : ''}`}
+                    onClick={() => setCurrentFolder(path)}
+                  >
+                    {seg}
+                  </button>
+                </React.Fragment>
+              )
+            })}
+          </div>
+          <button
+            type="button"
+            className="docsPanel__tinyBtn"
+            onClick={() => setShowNewFolderForm(v => !v)}
+            title="Create new folder"
+          >
+            {showNewFolderForm ? '✕ Cancel' : '+ Folder'}
+          </button>
+        </div>
+      )}
+      {showNewFolderForm && hasSession && (
+        <form onSubmit={handleCreateFolder} className="docsPanel__newFolderForm">
+          <input
+            value={newFolderName}
+            onChange={e => setNewFolderName(e.target.value)}
+            placeholder={currentFolder ? `New folder inside "${currentFolder}"` : 'New folder name'}
+            className="docsPanel__input"
+            autoFocus
+          />
+          <button type="submit" className="docsPanel__tinyBtn" disabled={!newFolderName.trim()}>Create</button>
+        </form>
+      )}
+
       <div className="docsPanel__list">
         {loading && <div className="docsPanel__loading">Loading…</div>}
-        {!loading && !sortedDocs.length && <div className="docsPanel__loading">No documents yet.</div>}
-        {sortedDocs.map(doc => (
+        {!loading && !docsInCurrentFolder.length && !directChildFolders.length && (
+          <div className="docsPanel__loading">
+            {currentFolder ? `No documents in "${currentFolder}".` : 'No documents yet.'}
+          </div>
+        )}
+        {/* Folder items appear above files */}
+        {directChildFolders.map(folderPath => {
+          const folderName = currentFolder ? folderPath.slice(currentFolder.length + 1) : folderPath
+          return (
+            <div key={folderPath} className="docsPanel__folderRow">
+              <button
+                type="button"
+                className="docsPanel__docButton docsPanel__folderBtn"
+                onClick={() => setCurrentFolder(folderPath)}
+              >
+                <span className="docsPanel__folderIcon">📁</span>
+                <span className="docsPanel__folderName">{folderName}/</span>
+              </button>
+              <button
+                type="button"
+                className="docsPanel__deleteBtn"
+                onClick={() => handleDeleteFolder(folderPath)}
+                aria-label="Delete folder"
+                title="Delete (only if empty)"
+              >
+                ✕
+              </button>
+            </div>
+          )
+        })}
+        {/* Documents in current folder */}
+        {docsInCurrentFolder.map(doc => (
           <div key={doc.id} className="docsPanel__docRow">
             <button type="button" className="docsPanel__docButton" onClick={()=>loadDetail(doc.id)} disabled={!hasSession}>
               <div className="docsPanel__docName">
@@ -538,7 +763,34 @@ export default function DocumentsPanel({sessionId}: Props){
               </div>
               <div className="docsPanel__docMeta">{new Date(doc.created_at).toLocaleString()} · {formatBytes(doc.size)} · {doc.category}</div>
             </button>
-            <button type="button" className="docsPanel__deleteBtn" onClick={()=>handleDelete(doc.id)} disabled={!hasSession} aria-label="Delete document">✕</button>
+            {hasSession && (
+              <div className="docsPanel__docActions">
+                {movingDocId === doc.id ? (
+                  <div className="docsPanel__moveMenu">
+                    <select
+                      className="docsPanel__select docsPanel__moveSelect"
+                      value={moveDestination}
+                      onChange={e => setMoveDestination(e.target.value)}
+                    >
+                      <option value="">/ root</option>
+                      {folders.map(f => <option key={f} value={f}>{f}/</option>)}
+                    </select>
+                    <button type="button" className="docsPanel__tinyBtn" onClick={() => handleMoveDoc(doc.id, moveDestination)}>OK</button>
+                    <button type="button" className="docsPanel__tinyBtn" onClick={() => setMovingDocId(null)}>✕</button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="docsPanel__tinyBtn"
+                    onClick={() => { setMovingDocId(doc.id); setMoveDestination(doc.folder ?? '') }}
+                    title="Move to folder"
+                  >
+                    Move
+                  </button>
+                )}
+                <button type="button" className="docsPanel__deleteBtn" onClick={()=>handleDelete(doc.id)} aria-label="Delete document">✕</button>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -601,6 +853,16 @@ export default function DocumentsPanel({sessionId}: Props){
         <h4 style={{ margin: '8px 0 4px' }}>Upload File</h4>
         <div className="docsPanel__uploadsTop">
           <input type="file" multiple onChange={handleUpload} disabled={!hasSession} />
+          <label className={`docsPanel__tinyBtn docsPanel__folderUploadLabel${!hasSession ? ' docsPanel__tinyBtn--disabled' : ''}`} title="Upload a folder (preserves folder structure)">
+            📂 Folder
+            <input
+              type="file"
+              {...({ webkitdirectory: 'true' } as React.InputHTMLAttributes<HTMLInputElement>)}
+              style={{ display: 'none' }}
+              onChange={handleFolderUpload}
+              disabled={!hasSession}
+            />
+          </label>
           {hasActiveUploads && <div className="docsPanel__uploadsHint">Uploading…</div>}
           {!hasActiveUploads && uploads.length > 0 && <div className="docsPanel__uploadsHint">Uploads</div>}
           {canClearUploads && (
