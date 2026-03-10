@@ -495,7 +495,7 @@ function ListPreview({ title, items, onItemClick }: { title: string; items: stri
           style={{ marginTop: 8, fontSize: 12, padding: '2px 4px', color: 'var(--tt-accent, #c084fc)' }}
           onClick={() => setExpanded((v) => !v)}
         >
-          {expanded ? 'â–² Show less' : `+ ${remaining} more â€” Show all`}
+          {expanded ? '▲ Show less' : `+ ${remaining} more — Show all`}
         </button>
       ) : null}
     </div>
@@ -525,13 +525,13 @@ function InventoryList({ items }: { items: InventoryItem[] }) {
           <li key={`${item.name}-${item.type || ''}-${item.cost || ''}`}>
             <button className="btn btn-ghost" style={{ padding: 0, textAlign: 'left' }} onClick={() => {
               const rawNotes = item.notes || ''
-              const notes = stripHtml(rawNotes) || `${item.name}${item.quantity ? ` x${item.quantity}` : ''}${item.type ? ` â€¢ ${item.type}` : ''}${item.weight ? ` â€¢ ${item.weight} lb` : ''}${item.cost ? ` â€¢ ${item.cost}` : ''}`
+              const notes = stripHtml(rawNotes) || `${item.name}${item.quantity ? ` x${item.quantity}` : ''}${item.type ? ` • ${item.type}` : ''}${item.weight ? ` • ${item.weight} lb` : ''}${item.cost ? ` • ${item.cost}` : ''}`
               ;(window as any).tt_setDetail && (window as any).tt_setDetail(item.name, notes)
             }}>{item.name}</button>
             {item.quantity ? ` x${item.quantity}` : ''}
-            {item.type ? <span className="muted"> â€¢ {item.type}</span> : null}
-            {item.weight ? <span className="muted"> â€¢ {item.weight} lb</span> : null}
-            {item.cost ? <span className="muted"> â€¢ {item.cost}</span> : null}
+            {item.type ? <span className="muted"> • {item.type}</span> : null}
+            {item.weight ? <span className="muted"> • {item.weight} lb</span> : null}
+            {item.cost ? <span className="muted"> • {item.cost}</span> : null}
             {item.notes ? <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>{stripHtml(item.notes)}</div> : null}
           </li>
         ))}
@@ -785,7 +785,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
     const derivedPrepared = derived.spellbook
       .filter((s: any) => {
         const p = String(s?.prepared || '').toLowerCase()
-        return ['yes', 'true', '1', 'prepared', 'y'].includes(p) || p === 'o' || p === 'â—‹'
+        return ['yes', 'true', '1', 'prepared', 'y'].includes(p) || p === 'o' || p === '○' || p === '◯'
       })
       .map((s: any) => asString(s?.name))
       .filter(Boolean)
@@ -871,7 +871,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
         if (slot.level !== level) return slot
         const used = slot.used ?? 0
         const max = slot.max ?? 0
-        // clicking an already-used pip below used count â†’ un-use; clicking above â†’ use
+        // clicking an already-used pip below used count → un-use; clicking above → use
         const newUsed = pipIndex < used ? pipIndex : Math.min(pipIndex + 1, max)
         return { ...slot, used: newUsed }
       })
@@ -992,7 +992,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
           <div className="row-wrap tt-sheet-top">
             <div className="muted">
               {source ? `Source: ${source}` : "Source: manual"}
-              {importMeta?.imported_at ? ` â€¢ Imported: ${asString(importMeta.imported_at)}` : ""}
+              {importMeta?.imported_at ? ` • Imported: ${asString(importMeta.imported_at)}` : ""}
             </div>
             <button className="btn btn-quiet btn-sm" type="button" onClick={() => setShowRaw((v) => !v)}>
               {showRaw ? "Hide raw" : "Show raw"}
@@ -1019,7 +1019,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
             <>
               {bio.sheetType === "ship" ? (
                 <div className="inline-alert" style={{ background: "rgba(251,191,36,0.15)", borderColor: "#fbbf24", color: "#fbbf24" }}>
-                  âš“ Ship/Vehicle Sheet â€” This sheet represents a vessel, not a character. Fields are stored as-is; consider adding it as a campaign document for gameplay reference.
+                  ⚓ Ship/Vehicle Sheet — This sheet represents a vessel, not a character. Fields are stored as-is; consider adding it as a campaign document for gameplay reference.
                 </div>
               ) : null}
               {ddbUrl ? (
@@ -1039,14 +1039,14 @@ export default function CharacterSheetModal({ open, character, loading = false, 
                 <div className="card tt-sheet-card">
                   <div className="card-section-header">PDF extraction</div>
                   <div className="row-wrap" style={{ gap: 12 }}>
-                    <div><strong>Widgets:</strong> {pdfMeta.widgetCount ?? "â€”"}</div>
-                    <div><strong>Text chars:</strong> {pdfMeta.rawTextLen ?? "â€”"}</div>
+                    <div><strong>Widgets:</strong> {pdfMeta.widgetCount ?? "—"}</div>
+                    <div><strong>Text chars:</strong> {pdfMeta.rawTextLen ?? "—"}</div>
                   </div>
                   {(pdfMeta.extracted?.name || pdfMeta.extracted?.level || pdfMeta.extracted?.class_name) ? (
                     <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-                      Extracted: {pdfMeta.extracted?.name ? `Name "${pdfMeta.extracted.name}"` : "Name â€”"} Â·
-                      {pdfMeta.extracted?.level ? ` Level ${pdfMeta.extracted.level}` : " Level â€”"} Â·
-                      {pdfMeta.extracted?.class_name ? ` Class ${pdfMeta.extracted.class_name}` : " Class â€”"}
+                      Extracted: {pdfMeta.extracted?.name ? `Name "${pdfMeta.extracted.name}"` : "Name —"} ·
+                      {pdfMeta.extracted?.level ? ` Level ${pdfMeta.extracted.level}` : " Level —"} ·
+                      {pdfMeta.extracted?.class_name ? ` Class ${pdfMeta.extracted.class_name}` : " Class —"}
                     </div>
                   ) : null}
                   {importMeta?.document_id && importMeta?.document_session_id ? (
@@ -1069,7 +1069,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
                   <div className="card-section-header">Overview</div>
                   <div><strong>Name:</strong> {character.name}</div>
                   <div><strong>Level:</strong> {character.level}</div>
-                  <div><strong>Class:</strong> {character.class_name || "â€”"}</div>
+                  <div><strong>Class:</strong> {character.class_name || "—"}</div>
                   {bio.species ? <div><strong>{bio.heritage ? 'Ancestry' : 'Species'}:</strong> {bio.species}</div> : null}
                   {bio.heritage ? <div><strong>Heritage:</strong> {bio.heritage}</div> : null}
                   {bio.background ? <div><strong>Background:</strong> {bio.background}</div> : null}
@@ -1077,27 +1077,27 @@ export default function CharacterSheetModal({ open, character, loading = false, 
                 </div>
                 <div className="card tt-sheet-card">
                   <div className="card-section-header">Combat</div>
-                  <div><strong>HP:</strong> {derived.hpCurrent ?? "â€”"} / {derived.hpMax ?? "â€”"}</div>
-                  <div><strong>AC:</strong> {derived.ac ?? "â€”"}</div>
+                  <div><strong>HP:</strong> {derived.hpCurrent ?? "—"} / {derived.hpMax ?? "—"}</div>
+                  <div><strong>AC:</strong> {derived.ac ?? "—"}</div>
                   {bio.classDc != null ? <div><strong>Class DC:</strong> {bio.classDc}</div> : null}
                   {bio.focusPoints != null ? (
-                    <div><strong>Focus Points:</strong> {bio.focusPoints.current ?? "â€”"} / {bio.focusPoints.max ?? "â€”"}</div>
+                    <div><strong>Focus Points:</strong> {bio.focusPoints.current ?? "—"} / {bio.focusPoints.max ?? "—"}</div>
                   ) : null}
                 </div>
                 <div className="card tt-sheet-card">
                   <div className="card-section-header">Status</div>
-                  <div><strong>Death Saves:</strong> {derived.deathSaves.successes ?? "â€”"} âœ“ / {derived.deathSaves.failures ?? "â€”"} âœ—</div>
-                  <div><strong>Hit Dice:</strong> {derived.rest.hitDiceUsed ?? "â€”"} / {derived.rest.hitDiceTotal ?? "â€”"}</div>
-                  <div><strong>Inspiration:</strong> {derived.rest.inspiration === null ? "â€”" : derived.rest.inspiration ? "Yes" : "No"}</div>
-                  <div><strong>Exhaustion:</strong> {derived.rest.exhaustion ?? "â€”"}</div>
+                  <div><strong>Death Saves:</strong> {derived.deathSaves.successes ?? "—"} ✓ / {derived.deathSaves.failures ?? "—"} ✗</div>
+                  <div><strong>Hit Dice:</strong> {derived.rest.hitDiceUsed ?? "—"} / {derived.rest.hitDiceTotal ?? "—"}</div>
+                  <div><strong>Inspiration:</strong> {derived.rest.inspiration === null ? "—" : derived.rest.inspiration ? "Yes" : "No"}</div>
+                  <div><strong>Exhaustion:</strong> {derived.rest.exhaustion ?? "—"}</div>
                 </div>
                 <div className="card tt-sheet-card">
                   <div className="card-section-header">Movement</div>
-                  <div><strong>Walk:</strong> {derived.movement.walk ?? "â€”"} ft</div>
-                  <div><strong>Fly:</strong> {derived.movement.fly ?? "â€”"} ft</div>
-                  <div><strong>Swim:</strong> {derived.movement.swim ?? "â€”"} ft</div>
-                  <div><strong>Climb:</strong> {derived.movement.climb ?? "â€”"} ft</div>
-                  <div><strong>Burrow:</strong> {derived.movement.burrow ?? "â€”"} ft</div>
+                  <div><strong>Walk:</strong> {derived.movement.walk ?? "—"} ft</div>
+                  <div><strong>Fly:</strong> {derived.movement.fly ?? "—"} ft</div>
+                  <div><strong>Swim:</strong> {derived.movement.swim ?? "—"} ft</div>
+                  <div><strong>Climb:</strong> {derived.movement.climb ?? "—"} ft</div>
+                  <div><strong>Burrow:</strong> {derived.movement.burrow ?? "—"} ft</div>
                 </div>
               </div>
 
@@ -1107,7 +1107,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
                   {(["str","dex","con","int","wis","cha"] as const).map((k) => (
                     <div key={k} className="input input-mono tt-ability">
                       <div className="tt-ability-label">{k.toUpperCase()}</div>
-                      <div className="tt-ability-value">{(derived.stats as any)[k] ?? "â€”"}</div>
+                      <div className="tt-ability-value">{(derived.stats as any)[k] ?? "—"}</div>
                     </div>
                   ))}
                 </div>
@@ -1119,9 +1119,9 @@ export default function CharacterSheetModal({ open, character, loading = false, 
                 <div className="tt-saving-throws-grid">
                   {savingThrows.map(({ key, label, mod, proficient }) => (
                     <div key={key} className={`tt-save-item ${proficient ? "tt-save-item--proficient" : ""}`}>
-                      <span className="tt-save-pip">{proficient ? "â—" : "â—‹"}</span>
+                      <span className="tt-save-pip">{proficient ? "●" : "○"}</span>
                       <span className="tt-save-label">{label}</span>
-                      <span className="tt-save-mod">{mod != null ? (mod >= 0 ? `+${mod}` : String(mod)) : "â€”"}</span>
+                      <span className="tt-save-mod">{mod != null ? (mod >= 0 ? `+${mod}` : String(mod)) : "—"}</span>
                     </div>
                   ))}
                 </div>
@@ -1180,10 +1180,10 @@ export default function CharacterSheetModal({ open, character, loading = false, 
                           const proficient = (s as any)?.proficient === true || (s as any)?.expertise === true
                           return (
                             <div key={name} className={`tt-skill-item ${proficient ? 'tt-skill-item--proficient' : ''}`}>
-                              <span className="tt-skill-pip">{proficient ? 'â—' : 'â—‹'}</span>
+                              <span className="tt-skill-pip">{proficient ? '●' : '○'}</span>
                               <span className="tt-skill-name">{name}</span>
                               <span className="tt-skill-mod">
-                                {mod !== null ? (mod >= 0 ? `+${mod}` : String(mod)) : 'â€”'}
+                                {mod !== null ? (mod >= 0 ? `+${mod}` : String(mod)) : '—'}
                               </span>
                             </div>
                           )
@@ -1222,10 +1222,10 @@ export default function CharacterSheetModal({ open, character, loading = false, 
               <div className="tt-sheet-grid">
                 <div className="card tt-sheet-card">
                   <div className="card-section-header">Identity</div>
-                  <div><strong>{bio.heritage ? 'Ancestry' : 'Species'}:</strong> {bio.species || "â€”"}</div>
+                  <div><strong>{bio.heritage ? 'Ancestry' : 'Species'}:</strong> {bio.species || "—"}</div>
                   {bio.heritage ? <div><strong>Heritage:</strong> {bio.heritage}</div> : null}
-                  <div><strong>Background:</strong> {bio.background || "â€”"}</div>
-                  <div><strong>Alignment:</strong> {bio.alignment || "â€”"}</div>
+                  <div><strong>Background:</strong> {bio.background || "—"}</div>
+                  <div><strong>Alignment:</strong> {bio.alignment || "—"}</div>
                 </div>
                 {bio.languages.length ? (
                   <div className="card tt-sheet-card">
@@ -1326,7 +1326,7 @@ export default function CharacterSheetModal({ open, character, loading = false, 
                               <button
                                 key={i}
                                 type="button"
-                                aria-label={`Level ${slot.level} slot ${i + 1} â€” ${i < used ? "used" : "available"}`}
+                                aria-label={`Level ${slot.level} slot ${i + 1} — ${i < used ? "used" : "available"}`}
                                 className={`tt-spell-slot-pip ${i < used ? "tt-spell-slot-pip--used" : ""}`}
                                 onClick={() => toggleSpellSlotPip(slot.level, i)}
                               />
@@ -1453,16 +1453,16 @@ export default function CharacterSheetModal({ open, character, loading = false, 
                             const isPrepared = preparedSpells.has(asString(spell?.name))
                             return (
                               <tr key={row.key} className={isPrepared ? "spellbook-row--prepared" : ""}>
-                                <td className="spellbook-prep">{isPrepared ? "â—" : "â—‹"}</td>
-                                <td className="spellbook-name">{spell?.name || "â€”"}</td>
-                                <td>{spell?.source || "â€”"}</td>
-                                <td>{spell?.save_hit || "â€”"}</td>
-                                <td>{spell?.time || "â€”"}</td>
-                                <td>{spell?.range || "â€”"}</td>
-                                <td>{spell?.components || "â€”"}</td>
-                                <td>{spell?.duration || "â€”"}</td>
-                                <td>{spell?.page || "â€”"}</td>
-                                <td>{spell?.notes || "â€”"}</td>
+                                <td className="spellbook-prep">{isPrepared ? "●" : "○"}</td>
+                                <td className="spellbook-name">{spell?.name || "—"}</td>
+                                <td>{spell?.source || "—"}</td>
+                                <td>{spell?.save_hit || "—"}</td>
+                                <td>{spell?.time || "—"}</td>
+                                <td>{spell?.range || "—"}</td>
+                                <td>{spell?.components || "—"}</td>
+                                <td>{spell?.duration || "—"}</td>
+                                <td>{spell?.page || "—"}</td>
+                                <td>{spell?.notes || "—"}</td>
                               </tr>
                             )
                           })
