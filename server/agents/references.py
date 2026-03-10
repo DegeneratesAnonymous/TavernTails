@@ -715,7 +715,26 @@ def delete_reference(ref_id: str, current_user=Depends(get_current_user)):
     return Response(status_code=204)
 
 
-def search_query(q: str, top_k: int = 5, *, system_only: bool = False, include_system: bool = True):
+# Mapping from short ruleset IDs (as stored in campaign settings) to the
+# game_system label written to reference metadata during upload.
+_RULESET_DOC_SYSTEM: dict[str, str] = {
+    "swse": "Star Wars Saga",
+    "star wars saga": "Star Wars Saga",
+    "srd-5.2": "D&D 5e",
+    "dnd5e": "D&D 5e",
+    "pf2e": "Pathfinder 2e",
+    "pf1e": "Pathfinder 1e",
+    "starfinder": "Starfinder",
+    "coc": "Call of Cthulhu",
+    "shadowrun": "Shadowrun",
+    "wfrp": "Warhammer Fantasy",
+    "alien": "Alien RPG",
+    "startrek": "Star Trek Adventures",
+    "sotdl": "Shadow of the Demon Lord",
+}
+
+
+def search_query(q: str, top_k: int = 5, *, system_only: bool = False, include_system: bool = True, game_system: str | None = None):
     """Synchronous helper for other server modules to search references.
 
     Returns list of result dicts: {source_id, page, snippet, score, paraphrase_required}
@@ -727,6 +746,11 @@ def search_query(q: str, top_k: int = 5, *, system_only: bool = False, include_s
     include_system:
         When False, skip all system reference documents.  Useful for
         user-facing queries that should not draw on restricted material.
+    game_system:
+        When set (e.g. ``\"swse\"`` or ``\"Star Wars Saga\"``), only documents tagged
+        with the matching game_system (or ``\"global\"``) are searched.  Accepts both
+        the short ruleset ID (``swse``) and the full label stored in metadata
+        (``Star Wars Saga``).
 
     Notes
     -----
@@ -765,16 +789,24 @@ def search_query(q: str, top_k: int = 5, *, system_only: bool = False, include_s
         # Resolve system_ref flag for this directory.
         dir_meta_path = directory / "metadata.json"
         is_system = False
+        dir_game_system = "global"
         if dir_meta_path.exists():
             try:
                 dir_meta = json.loads(dir_meta_path.read_text(encoding="utf-8"))
                 is_system = bool(dir_meta.get("system_ref"))
+                dir_game_system = (dir_meta.get("game_system") or "global").strip()
             except Exception:
                 pass
         if system_only and not is_system:
             continue
         if not include_system and is_system:
             continue
+        # When a game_system filter is requested, skip documents that don't match.
+        # 'global' documents are always included as they apply to all systems.
+        if game_system:
+            normalized_filter = _RULESET_DOC_SYSTEM.get(game_system.lower(), game_system).lower()
+            if dir_game_system.lower() != "global" and dir_game_system.lower() != normalized_filter:
+                continue
         pages = json.loads(pages_path.read_text(encoding="utf-8"))
         embeddings = None
         if emb_path.exists():

@@ -1072,9 +1072,9 @@ const SWSE: WizardSystem = {
       hitDie: 10,
       saveProficiencies: ['REF', 'WIL'],
       level1Features: [
-        { name: 'Force Sensitivity', summary: 'May spend Force Points to activate Force powers. Prerequisite for Force Training and lightsaber combat.' },
-        { name: 'Force Training', summary: 'Learn a number of Force powers equal to 1 + Wisdom modifier. Uses Force Points to activate each power.' },
-        { name: 'Weapon Proficiency (Lightsabers)', summary: 'Proficient with all lightsaber weapons without penalty.' },
+        { level: 1, name: 'Force Sensitivity', summary: 'May spend Force Points to activate Force powers. Prerequisite for Force Training and lightsaber combat.' },
+        { level: 1, name: 'Force Training', summary: 'Learn a number of Force powers equal to 1 + Wisdom modifier. Uses Force Points to activate each power.' },
+        { level: 1, name: 'Weapon Proficiency (Lightsabers)', summary: 'Proficient with all lightsaber weapons without penalty.' },
       ],
     },
     {
@@ -1085,8 +1085,8 @@ const SWSE: WizardSystem = {
       hitDie: 6,
       saveProficiencies: ['REF', 'WIL'],
       level1Features: [
-        { name: 'Educated', summary: 'Gain two additional trained Knowledge skills at character creation.' },
-        { name: 'Presence', summary: 'Allies within 6 squares gain a morale bonus equal to your Charisma modifier on Will saves.' },
+        { level: 1, name: 'Educated', summary: 'Gain two additional trained Knowledge skills at character creation.' },
+        { level: 1, name: 'Presence', summary: 'Allies within 6 squares gain a morale bonus equal to your Charisma modifier on Will saves.' },
       ],
     },
     {
@@ -1097,7 +1097,7 @@ const SWSE: WizardSystem = {
       hitDie: 6,
       saveProficiencies: ['REF', 'WIL'],
       level1Features: [
-        { name: "Fool's Luck", summary: 'Spend a Force Point to reroll any one die roll and take the better result.' },
+        { level: 1, name: "Fool's Luck", summary: 'Spend a Force Point to reroll any one die roll and take the better result.' },
       ],
     },
     {
@@ -1108,8 +1108,8 @@ const SWSE: WizardSystem = {
       hitDie: 8,
       saveProficiencies: ['FOR', 'REF'],
       level1Features: [
-        { name: 'Evasion', summary: 'On a successful Reflex save (against effects that normally allow half damage), take no damage instead.' },
-        { name: 'Shake It Off', summary: 'Take a swift action to move +1 step up the condition track.' },
+        { level: 1, name: 'Evasion', summary: 'On a successful Reflex save (against effects that normally allow half damage), take no damage instead.' },
+        { level: 1, name: 'Shake It Off', summary: 'Take a swift action to move +1 step up the condition track.' },
       ],
     },
     {
@@ -1120,8 +1120,8 @@ const SWSE: WizardSystem = {
       hitDie: 10,
       saveProficiencies: ['FOR', 'REF'],
       level1Features: [
-        { name: 'Armored Defense', summary: 'Proficient with all armor types; wear armor without applying the armor penalty to skills.' },
-        { name: 'Indomitable', summary: 'Once per encounter, reroll a saving throw and take the better of the two results.' },
+        { level: 1, name: 'Armored Defense', summary: 'Proficient with all armor types; wear armor without applying the armor penalty to skills.' },
+        { level: 1, name: 'Indomitable', summary: 'Once per encounter, reroll a saving throw and take the better of the two results.' },
       ],
     },
     {
@@ -1132,8 +1132,8 @@ const SWSE: WizardSystem = {
       hitDie: 8,
       saveProficiencies: ['WIL', 'REF'],
       level1Features: [
-        { name: 'Force Sensitivity', summary: 'Access to Force powers via natural attunement rather than Jedi training.' },
-        { name: 'Force Training', summary: 'Learn a number of Force powers equal to 1 + Wisdom modifier.' },
+        { level: 1, name: 'Force Sensitivity', summary: 'Access to Force powers via natural attunement rather than Jedi training.' },
+        { level: 1, name: 'Force Training', summary: 'Learn a number of Force powers equal to 1 + Wisdom modifier.' },
       ],
     },
     { id: 'custom', name: 'Custom / Prestige', emoji: '✨', description: 'A custom, multiclass, or prestige-class path agreed on with your GM.' },

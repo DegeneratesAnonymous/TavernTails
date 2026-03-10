@@ -171,6 +171,9 @@ export default function AdminPanel({ onBack }: Props) {
   const [refLibEditingId, setRefLibEditingId] = useState<string | null>(null)
   const [refLibEditSystem, setRefLibEditSystem] = useState('')
   const [refLibEditBusy, setRefLibEditBusy] = useState(false)
+  const [refLibSelected, setRefLibSelected] = useState<Set<string>>(new Set())
+  const [refLibBulkSystem, setRefLibBulkSystem] = useState('global')
+  const [refLibBulkBusy, setRefLibBulkBusy] = useState(false)
   const refLibInputRef = useRef<HTMLInputElement>(null)
   const refLibFolderInputRef = useRef<HTMLInputElement>(null)
 
@@ -294,6 +297,41 @@ export default function AdminPanel({ onBack }: Props) {
       setRefLibDeleteBusy(null)
     }
   }, [loadRefLib])
+
+  const bulkDeleteRefs = useCallback(async () => {
+    const ids = Array.from(refLibSelected)
+    if (ids.length === 0) return
+    if (!window.confirm(`Delete ${ids.length} reference(s)? This cannot be undone.`)) return
+    setRefLibBulkBusy(true)
+    try {
+      await Promise.all(ids.map((id) => apiFetch(`/references/${encodeURIComponent(id)}`, { method: 'DELETE' })))
+      setRefLibSelected(new Set())
+      await loadRefLib()
+    } catch {
+      setRefLibError('One or more deletes failed.')
+    } finally {
+      setRefLibBulkBusy(false)
+    }
+  }, [refLibSelected, loadRefLib])
+
+  const bulkAssignSystem = useCallback(async () => {
+    const ids = Array.from(refLibSelected)
+    if (ids.length === 0) return
+    setRefLibBulkBusy(true)
+    try {
+      await Promise.all(ids.map((id) => apiFetch(`/references/${encodeURIComponent(id)}/meta`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ game_system: refLibBulkSystem }),
+      })))
+      setRefLibSelected(new Set())
+      await loadRefLib()
+    } catch {
+      setRefLibError('One or more system assignments failed.')
+    } finally {
+      setRefLibBulkBusy(false)
+    }
+  }, [refLibSelected, refLibBulkSystem, loadRefLib])
 
   const loadStats = useCallback(async () => {
     setStatsLoading(true)
@@ -1146,10 +1184,75 @@ export default function AdminPanel({ onBack }: Props) {
               (r.meta.filename || '').toLowerCase().includes(q) ||
               sys.includes(q)
           })
+          const allFilteredIds = filtered.map((r) => r.id)
+          const allSelected = allFilteredIds.length > 0 && allFilteredIds.every((id) => refLibSelected.has(id))
+          const someSelected = allFilteredIds.some((id) => refLibSelected.has(id))
+          const toggleAll = () => {
+            if (allSelected) {
+              setRefLibSelected((prev) => {
+                const next = new Set(prev)
+                allFilteredIds.forEach((id) => next.delete(id))
+                return next
+              })
+            } else {
+              setRefLibSelected((prev) => new Set([...Array.from(prev), ...allFilteredIds]))
+            }
+          }
+          const toggleOne = (id: string) => {
+            setRefLibSelected((prev) => {
+              const next = new Set(prev)
+              if (next.has(id)) next.delete(id); else next.add(id)
+              return next
+            })
+          }
           return (
+            <>
+              {refLibSelected.size > 0 && (
+                <div className="row-wrap" style={{ gap: 8, alignItems: 'center', padding: '8px 10px', marginBottom: 6, background: 'rgba(192,132,252,0.08)', border: '1px solid rgba(192,132,252,0.25)', borderRadius: 6 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{refLibSelected.size} selected</span>
+                  <select
+                    className="input"
+                    value={refLibBulkSystem}
+                    onChange={(e) => setRefLibBulkSystem(e.target.value)}
+                    style={{ fontSize: 12, padding: '3px 8px' }}
+                    disabled={refLibBulkBusy}
+                  >
+                    {REF_SYSTEMS.map((s) => (
+                      <option key={s.value} value={s.value}>{s.label}</option>
+                    ))}
+                  </select>
+                  <button
+                    className="btn btn-sm"
+                    type="button"
+                    disabled={refLibBulkBusy}
+                    onClick={bulkAssignSystem}
+                  >{refLibBulkBusy ? '…' : 'Assign System'}</button>
+                  <button
+                    className="btn btn-sm btn-danger"
+                    type="button"
+                    disabled={refLibBulkBusy}
+                    onClick={bulkDeleteRefs}
+                  >{refLibBulkBusy ? '…' : 'Delete Selected'}</button>
+                  <button
+                    className="btn btn-sm btn-secondary"
+                    type="button"
+                    onClick={() => setRefLibSelected(new Set())}
+                    disabled={refLibBulkBusy}
+                  >Clear</button>
+                </div>
+              )}
             <table className="admin-table">
               <thead>
                 <tr>
+                  <th style={{ width: 32 }}>
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      ref={(el) => { if (el) el.indeterminate = someSelected && !allSelected }}
+                      onChange={toggleAll}
+                      title="Select all visible"
+                    />
+                  </th>
                   <th>Title</th>
                   <th>System</th>
                   <th>Filename</th>
@@ -1162,9 +1265,16 @@ export default function AdminPanel({ onBack }: Props) {
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={8} style={{ textAlign: 'center', opacity: 0.5 }}>No references match the current filter.</td></tr>
+                  <tr><td colSpan={9} style={{ textAlign: 'center', opacity: 0.5 }}>No references match the current filter.</td></tr>
                 ) : filtered.map((r) => (
-                  <tr key={r.id}>
+                  <tr key={r.id} style={refLibSelected.has(r.id) ? { background: 'rgba(192,132,252,0.08)' } : undefined}>
+                    <td style={{ textAlign: 'center' }}>
+                      <input
+                        type="checkbox"
+                        checked={refLibSelected.has(r.id)}
+                        onChange={() => toggleOne(r.id)}
+                      />
+                    </td>
                     <td style={{ fontWeight: 600 }}>{r.meta.title || r.id}</td>
                     <td>
                       {refLibEditingId === r.id ? (
@@ -1229,6 +1339,7 @@ export default function AdminPanel({ onBack }: Props) {
                 ))}
               </tbody>
             </table>
+          </>
           )
         })()}
       </div>
