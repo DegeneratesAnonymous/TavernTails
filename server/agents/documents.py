@@ -260,7 +260,7 @@ async def create_document(session_id: str, payload: DocumentCreate, current_user
         content=payload.content,
         category=category,
         visibility=visibility,
-        folder=(payload.folder or "").strip('/'),
+        folder=_validate_folder_path(payload.folder or ""),
     )
     _audit(session_id, identifier, action="documents.create", ok=True, doc_id=saved.id, visibility=visibility)
     return DocumentResponse(**asdict(saved))
@@ -331,7 +331,10 @@ def _validate_folder_path(folder: str) -> str:
 async def list_folders(session_id: str, current_user=Depends(get_current_user)):
     """List all folder paths for a session."""
     _, _, _ = _ensure_session_member(session_id, current_user)
-    return {"folders": store.list_folders(session_id)}
+    try:
+        return {"folders": store.list_folders(session_id)}
+    except NotImplementedError:
+        raise HTTPException(status_code=501, detail="Folder operations not supported by current storage backend") from None
 
 
 @router.post("/{session_id}/folders", status_code=201)
@@ -341,7 +344,10 @@ async def create_folder(session_id: str, payload: CreateFolderRequest, current_u
     clean = _validate_folder_path(payload.folder)
     if not clean:
         raise HTTPException(status_code=400, detail="Folder name required")
-    ok = store.create_folder(session_id, clean)
+    try:
+        ok = store.create_folder(session_id, clean)
+    except NotImplementedError:
+        raise HTTPException(status_code=501, detail="Folder operations not supported by current storage backend") from None
     _audit(session_id, identifier, action="documents.folder.create", ok=ok, detail=clean)
     if not ok:
         raise HTTPException(status_code=400, detail="Invalid folder path")
@@ -355,7 +361,10 @@ async def delete_folder(session_id: str, folder_path: str, current_user=Depends(
     if not is_host:
         raise HTTPException(status_code=403, detail="Only hosts can delete folders")
     clean = _validate_folder_path(folder_path)
-    ok = store.delete_folder(session_id, clean)
+    try:
+        ok = store.delete_folder(session_id, clean)
+    except NotImplementedError:
+        raise HTTPException(status_code=501, detail="Folder operations not supported by current storage backend") from None
     _audit(session_id, identifier, action="documents.folder.delete", ok=ok, detail=clean)
     if not ok:
         raise HTTPException(status_code=400, detail="Folder not empty or does not exist")
@@ -367,7 +376,10 @@ async def move_document(session_id: str, doc_id: str, payload: MoveDocumentReque
     """Move a document to a different folder. Use empty string to move to root."""
     _, identifier, _ = _ensure_session_member(session_id, current_user)
     clean = _validate_folder_path(payload.folder)
-    doc = store.move_document(session_id, doc_id, clean)
+    try:
+        doc = store.move_document(session_id, doc_id, clean)
+    except NotImplementedError:
+        raise HTTPException(status_code=501, detail="Folder operations not supported by current storage backend") from None
     if not doc:
         _audit(session_id, identifier, action="documents.move", ok=False, doc_id=doc_id, detail="not_found")
         raise HTTPException(status_code=404, detail="Document not found")
@@ -413,7 +425,7 @@ async def upload_document(
         filename=file.filename,
         category=normalized_category,
         visibility=normalized_visibility,
-        folder=(folder or "").strip('/'),
+        folder=_validate_folder_path(folder or ""),
     )
     _audit(session_id, identifier, action="documents.upload", ok=True, doc_id=saved.id, visibility=normalized_visibility)
     return DocumentResponse(**asdict(saved))
@@ -479,7 +491,7 @@ async def register_document(session_id: str, payload: RegisterRequest, current_u
         _require_host_for_hidden(session_id, identifier, is_host)
     if hasattr(store, 'register_existing_object'):
         try:
-            saved = store.register_existing_object(session_id=session_id, filename=payload.filename, name=payload.name, size=payload.size, category=category, visibility=visibility, folder=(payload.folder or "").strip('/'))
+            saved = store.register_existing_object(session_id=session_id, filename=payload.filename, name=payload.name, size=payload.size, category=category, visibility=visibility, folder=_validate_folder_path(payload.folder or ""))
             _audit(session_id, identifier, action="documents.register", ok=True, doc_id=saved.id, visibility=visibility)
             return DocumentResponse(**asdict(saved))
         except Exception as err:

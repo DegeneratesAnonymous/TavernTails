@@ -192,15 +192,35 @@ export default function AdminPanel({ onBack }: Props) {
     const files = Array.from(e.target.files ?? [])
     if (!files.length) return
     if (refLibFolderInputRef.current) refLibFolderInputRef.current.value = ''
+    setRefLibUploadError(null)
+    setRefLibUploadOk(null)
+    let successCount = 0
+    const failures: string[] = []
     for (const file of files) {
       const form = new FormData()
       form.append('file', file)
       form.append('system_ref', refLibSystemRef ? 'true' : 'false')
       form.append('game_system', refLibGameSystem)
-      await apiFetch('/references/upload', { method: 'POST', body: form, headers: {} }).catch(() => {})
+      try {
+        const res = await apiFetch('/references/upload', { method: 'POST', body: form, headers: {} })
+        if (res.ok) {
+          successCount++
+        } else {
+          const d = await res.json().catch(() => null)
+          failures.push(d?.detail || `${file.name}: HTTP ${res.status}`)
+        }
+      } catch {
+        failures.push(`${file.name}: network error`)
+      }
     }
     await loadRefLib()
-    setRefLibUploadOk(`Uploaded ${files.length} file(s) from folder.`)
+    if (failures.length === 0) {
+      setRefLibUploadOk(`Uploaded ${successCount} file(s) from folder.`)
+    } else if (successCount === 0) {
+      setRefLibUploadError(`All ${failures.length} upload(s) failed: ${failures.join('; ')}`)
+    } else {
+      setRefLibUploadError(`${successCount} uploaded, ${failures.length} failed: ${failures.join('; ')}`)
+    }
   }, [refLibSystemRef, refLibGameSystem, loadRefLib])
 
   const uploadRef = useCallback(async () => {

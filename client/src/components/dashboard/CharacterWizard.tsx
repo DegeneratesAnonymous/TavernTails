@@ -34,7 +34,6 @@ import {
   type WizardSystem,
   type FeatOption,
   type SpellOption,
-  SPELLCASTER_CLASS_IDS,
 } from '../../data/wizard-data'
 import './wizard.css'
 

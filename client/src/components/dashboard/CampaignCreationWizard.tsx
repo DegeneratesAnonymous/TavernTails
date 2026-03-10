@@ -20,7 +20,6 @@ import PageHeader from '../ui/PageHeader'
 import {
   CAMPAIGN_QUIZ,
   deriveCampaignSettings,
-  WIZARD_SYSTEMS,
   type SystemId,
 } from '../../data/wizard-data'
 import './wizard.css'

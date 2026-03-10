@@ -140,16 +140,16 @@ class DocumentStore:
         raise NotImplementedError
 
     def list_folders(self, session_id: str) -> list[str]:
-        return []
+        raise NotImplementedError
 
     def create_folder(self, session_id: str, folder_path: str) -> bool:
-        return True
+        raise NotImplementedError
 
     def delete_folder(self, session_id: str, folder_path: str) -> bool:
-        return True
+        raise NotImplementedError
 
     def move_document(self, session_id: str, doc_id: str, folder: str) -> DocumentMeta | None:
-        return None
+        raise NotImplementedError
 
 
 class LocalDocumentStore(DocumentStore):
@@ -405,7 +405,7 @@ class S3DocumentStore(DocumentStore):
         except Exception as exc:  # pragma: no cover - boto surfaces ClientError text
             raise exc
 
-    def register_existing_object(self, session_id: str, filename: str, name: str, size: int, category: str = "core", visibility: str = "shared") -> DocumentMeta:
+    def register_existing_object(self, session_id: str, filename: str, name: str, size: int, category: str = "core", visibility: str = "shared", folder: str = "") -> DocumentMeta:
         metas = self.list_documents(session_id)
         doc_id = uuid.uuid4().hex[:8]
         stored_name = self._normalize_filename(session_id, filename)
@@ -418,6 +418,7 @@ class S3DocumentStore(DocumentStore):
             filename=stored_name,
             size=size,
             created_at=datetime.now(timezone.utc).isoformat(),
+            folder=folder,
         )
         metas.append(meta)
         meta_key = self._meta_key(session_id)
@@ -437,7 +438,7 @@ class S3DocumentStore(DocumentStore):
         except Exception:
             return []
 
-    def save_document(self, *, session_id: str, name: str, content: bytes | str, filename: str | None = None, category: str = "core", visibility: str = "shared") -> DocumentMeta:
+    def save_document(self, *, session_id: str, name: str, content: bytes | str, filename: str | None = None, category: str = "core", visibility: str = "shared", folder: str = "") -> DocumentMeta:
         doc_id = uuid.uuid4().hex[:8]
         if filename:
             ext = Path(filename).suffix or '.dat'
@@ -452,7 +453,7 @@ class S3DocumentStore(DocumentStore):
         self.s3.put_object(Bucket=self.bucket, Key=key, Body=payload)
         # update meta.json
         metas = self.list_documents(session_id)
-        meta = DocumentMeta(id=doc_id, session_id=session_id, name=name, category=category, visibility=visibility, filename=stored_name, size=len(payload), created_at=datetime.now(timezone.utc).isoformat())
+        meta = DocumentMeta(id=doc_id, session_id=session_id, name=name, category=category, visibility=visibility, filename=stored_name, size=len(payload), created_at=datetime.now(timezone.utc).isoformat(), folder=folder)
         metas.append(meta)
         meta_key = self._meta_key(session_id)
         self.s3.put_object(Bucket=self.bucket, Key=meta_key, Body=json.dumps([asdict(m) for m in metas], indent=2).encode('utf-8'))
@@ -506,7 +507,7 @@ class NullDocumentStore(DocumentStore):
     def list_documents(self, session_id: str) -> list[DocumentMeta]:  # pragma: no cover - placeholder
         return []
 
-    def save_document(self, *, session_id: str, name: str, content: bytes | str, filename: str | None = None, category: str = "core", visibility: str = "shared") -> DocumentMeta:  # pragma: no cover - placeholder
+    def save_document(self, *, session_id: str, name: str, content: bytes | str, filename: str | None = None, category: str = "core", visibility: str = "shared", folder: str = "") -> DocumentMeta:  # pragma: no cover - placeholder
         raise NotImplementedError("S3 storage not configured")
 
     def delete_document(self, session_id: str, doc_id: str) -> bool:  # pragma: no cover - placeholder
