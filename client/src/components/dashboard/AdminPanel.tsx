@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-
+import { AlertTriangle, Mail, Sword, FolderOpen } from 'lucide-react'
 import { apiFetch } from '../../api'
 import PageHeader from '../ui/PageHeader'
 
@@ -1075,7 +1075,7 @@ export default function AdminPanel({ onBack }: Props) {
             style={{ cursor: 'pointer', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 5, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)' }}
             title="Upload an entire folder of documents at once"
           >
-            📂 Upload Folder
+            <FolderOpen size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> Upload Folder
             <input
               ref={refLibFolderInputRef}
               type="file"
@@ -1372,7 +1372,7 @@ export default function AdminPanel({ onBack }: Props) {
                 type="button"
                 onClick={() => { openAction(drawerUser, 'warn'); closeDrawer() }}
               >
-                <span className="admin-drawer-action-icon">⚠️</span>
+                <span className="admin-drawer-action-icon"><AlertTriangle size={16} /></span>
                 <div>
                   <div className="admin-drawer-action-label">Warn</div>
                   <div className="admin-drawer-action-desc">Send a warning message to this user</div>
@@ -1383,7 +1383,7 @@ export default function AdminPanel({ onBack }: Props) {
                 type="button"
                 onClick={() => { openAction(drawerUser, 'message'); closeDrawer() }}
               >
-                <span className="admin-drawer-action-icon">✉️</span>
+                <span className="admin-drawer-action-icon"><Mail size={16} /></span>
                 <div>
                   <div className="admin-drawer-action-label">Message</div>
                   <div className="admin-drawer-action-desc">Send a direct admin notification</div>
@@ -1428,7 +1428,7 @@ export default function AdminPanel({ onBack }: Props) {
                 type="button"
                 onClick={() => openUserDetail(drawerUser, 'campaigns')}
               >
-                <span className="admin-drawer-action-icon">⚔️</span>
+                <span className="admin-drawer-action-icon"><Sword size={16} /></span>
                 <div>
                   <div className="admin-drawer-action-label">View Campaigns</div>
                   <div className="admin-drawer-action-desc">See campaigns owned by this user</div>
@@ -1549,7 +1549,7 @@ export default function AdminPanel({ onBack }: Props) {
               {actionModal === 'reset-password' && (
                 <>
                   <div className="inline-alert inline-alert-error" style={{ fontSize: 13 }}>
-                    ⚠️ You are about to reset the password for <strong>{selectedUser.name || selectedUser.email}</strong>. This action cannot be undone. The user will need to use the new password to log in.
+                    <AlertTriangle size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> You are about to reset the password for <strong>{selectedUser.name || selectedUser.email}</strong>. This action cannot be undone. The user will need to use the new password to log in.
                   </div>
                   <label className="field-label">
                     New password (min 8 characters)
@@ -1560,7 +1560,7 @@ export default function AdminPanel({ onBack }: Props) {
               {actionModal === 'impersonate' && (
                 <>
                   <div className="inline-alert inline-alert-error" style={{ fontSize: 13 }}>
-                    ⚠️ You are about to log in as <strong>{selectedUser.name || selectedUser.email}</strong>. This will issue a 15-minute session token and replace your current admin session. You will need to log back in as yourself afterwards.
+                    <AlertTriangle size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> You are about to log in as <strong>{selectedUser.name || selectedUser.email}</strong>. This will issue a 15-minute session token and replace your current admin session. You will need to log back in as yourself afterwards.
                   </div>
                   <div className="muted" style={{ fontSize: 13 }}>
                     Confirm you want to proceed with impersonation.

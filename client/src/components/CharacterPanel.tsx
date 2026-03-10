@@ -1,4 +1,5 @@
 import React, {useMemo, useRef, useState} from 'react'
+import { Sword } from 'lucide-react'
 import CharacterIconStrip, {CharacterSnapshot, CharacterStripKey} from './CharacterIconStrip'
 import EmptyState from './ui/EmptyState'
 import './CharacterPanel.css'
@@ -444,7 +445,7 @@ export default function CharacterPanel({
                   onClick={() => onQuickAction?.({ type: 'attack', detail: weapon })}
                   title={`Attack with ${weapon}`}
                 >
-                  ⚔ {weapon}
+                  <Sword size={12} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />{weapon}
                 </button>
               ))}
               {quickActions.hasSpells ? (

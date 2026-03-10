@@ -1,4 +1,5 @@
 import React from 'react'
+import { Sword } from 'lucide-react'
 
 import PageHeader from '../ui/PageHeader'
 
@@ -33,7 +34,7 @@ export default function CreatingCharacterView({
 
       {onGoToWizard && (
         <div className="card card-pad stack" style={{ maxWidth: 980 }}>
-          <div style={{ fontWeight: 750 }}>⚔️ Recommended: Character Creation Wizard</div>
+          <div style={{ fontWeight: 750, display: 'flex', alignItems: 'center', gap: 6 }}><Sword size={14} /> Recommended: Character Creation Wizard</div>
           <div className="muted" style={{ fontSize: 13 }}>
             Answer a few quick questions — pick your system, ancestry, class, and background through scenario-style choices.
             No spreadsheets, no wall of text. Works for all 10 supported game systems.

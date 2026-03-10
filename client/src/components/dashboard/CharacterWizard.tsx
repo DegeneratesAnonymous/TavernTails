@@ -19,8 +19,10 @@
  */
 
 import React, { useState } from 'react'
+import { Sword, Sparkles } from 'lucide-react'
 import { apiFetch } from '../../api'
 import PageHeader from '../ui/PageHeader'
+import GameIcon from '../GameIcon'
 import { useParticleIntensity } from '../../contexts/ParticleContext'
 import {
   WIZARD_SYSTEMS,
@@ -218,19 +220,19 @@ function CharacterPreview({ draft, system }: { draft: CharacterDraft; system: Wi
       {system && (
         <div className="wizard-preview-row">
           <span className="wizard-preview-label">System</span>
-          <span className="wizard-preview-value">{system.emoji} {system.name}</span>
+          <span className="wizard-preview-value" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><GameIcon emoji={system.emoji} size={13} /> {system.name}</span>
         </div>
       )}
       {ancestry && (
         <div className="wizard-preview-row">
           <span className="wizard-preview-label">{system?.ancestryLabel ?? 'Race'}</span>
-          <span className="wizard-preview-value">{ancestry.emoji} {ancestry.name}</span>
+          <span className="wizard-preview-value" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><GameIcon emoji={ancestry.emoji} size={13} /> {ancestry.name}</span>
         </div>
       )}
       {cls && (
         <div className="wizard-preview-row">
           <span className="wizard-preview-label">{system?.classLabel ?? 'Class'}</span>
-          <span className="wizard-preview-value">{cls.emoji} {cls.name}</span>
+          <span className="wizard-preview-value" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><GameIcon emoji={cls.emoji} size={13} /> {cls.name}</span>
         </div>
       )}
       {background && (
@@ -303,7 +305,7 @@ function StepSystem({ draft, onSelect }: { draft: CharacterDraft; onSelect: (id:
             className={`wizard-option-card${draft.systemId === sys.id ? ' is-selected' : ''}`}
             onClick={() => onSelect(sys.id)}
           >
-            <span className="wizard-option-emoji">{sys.emoji}</span>
+            <span className="wizard-option-emoji"><GameIcon emoji={sys.emoji} size={24} /></span>
             <span className="wizard-option-name">{sys.name}</span>
             <span className="wizard-option-desc">{sys.genre}</span>
           </button>
@@ -328,7 +330,7 @@ function StepAncestry({ draft, system, onSelect }: { draft: CharacterDraft; syst
             className={`wizard-option-card${draft.ancestryId === a.id ? ' is-selected' : ''}`}
             onClick={() => onSelect(a.id)}
           >
-            <span className="wizard-option-emoji">{a.emoji}</span>
+            <span className="wizard-option-emoji"><GameIcon emoji={a.emoji} size={24} /></span>
             <span className="wizard-option-name">{a.name}</span>
             <span className="wizard-option-desc">{a.description}</span>
           </button>
@@ -363,7 +365,7 @@ function StepClass({
             className={`wizard-option-card${draft.classId === cls.id ? ' is-selected' : ''}`}
             onClick={() => onSelect(cls.id)}
           >
-            <span className="wizard-option-emoji">{cls.emoji}</span>
+            <span className="wizard-option-emoji"><GameIcon emoji={cls.emoji} size={24} /></span>
             <span className="wizard-option-name">{cls.name}</span>
             <span className="wizard-option-desc">{cls.description}</span>
           </button>
@@ -374,7 +376,7 @@ function StepClass({
           className={`wizard-option-card wizard-option-card--custom${draft.classId === 'custom' ? ' is-selected' : ''}`}
           onClick={() => onSelect('custom')}
         >
-          <span className="wizard-option-emoji">✏️</span>
+          <span className="wizard-option-emoji"><Sparkles size={24} /></span>
           <span className="wizard-option-name">Custom Class</span>
           <span className="wizard-option-desc">Define your own class or homebrew concept.</span>
         </button>
@@ -636,7 +638,7 @@ function StepFeatures({
       {classFeatures.length > 0 && (
         <div className="wizard-feature-section">
           <div className="wizard-feature-section-label">
-            {cls?.emoji && <span style={{ marginRight: 6 }}>{cls.emoji}</span>}
+            {cls?.emoji && <span style={{ marginRight: 6, display: 'inline-flex', alignItems: 'center' }}><GameIcon emoji={cls.emoji} size={14} /></span>}
             {cls?.name} Features
             {cls?.hitDie && (
               <span className="wizard-feature-hit-die">d{cls.hitDie} hit die</span>
@@ -664,7 +666,7 @@ function StepFeatures({
       {ancestralTraits.length > 0 && (
         <div className="wizard-feature-section">
           <div className="wizard-feature-section-label">
-            {ancestry?.emoji && <span style={{ marginRight: 6 }}>{ancestry.emoji}</span>}
+            {ancestry?.emoji && <span style={{ marginRight: 6, display: 'inline-flex', alignItems: 'center' }}><GameIcon emoji={ancestry.emoji} size={14} /></span>}
             {ancestry?.name} Traits
           </div>
           <div className="wizard-feature-list">
@@ -687,10 +689,10 @@ function StepFeatures({
 
 const FEAT_TAGS: { id: string; label: string }[] = [
   { id: 'all', label: 'All' },
-  { id: 'combat', label: '⚔️ Combat' },
-  { id: 'magic', label: '✨ Magic' },
-  { id: 'utility', label: '🛠 Utility' },
-  { id: 'social', label: '🗣 Social' },
+  { id: 'combat', label: 'Combat' },
+  { id: 'magic', label: 'Magic' },
+  { id: 'utility', label: 'Utility' },
+  { id: 'social', label: 'Social' },
 ]
 
 function StepFeats({
@@ -1270,20 +1272,20 @@ function StepReview({
         </div>
         <div className="wizard-review-row">
           <span className="wizard-review-label">System</span>
-          <span className="wizard-review-value">{system.emoji} {system.name}</span>
+          <span className="wizard-review-value" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><GameIcon emoji={system.emoji} size={13} /> {system.name}</span>
           <button className="wizard-review-edit" onClick={() => onJumpTo('system')}>Edit</button>
         </div>
         {ancestry && (
           <div className="wizard-review-row">
             <span className="wizard-review-label">{system.ancestryLabel}</span>
-            <span className="wizard-review-value">{ancestry.emoji} {ancestry.name}</span>
+            <span className="wizard-review-value" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><GameIcon emoji={ancestry.emoji} size={13} /> {ancestry.name}</span>
             <button className="wizard-review-edit" onClick={() => onJumpTo('ancestry')}>Edit</button>
           </div>
         )}
         {cls && (
           <div className="wizard-review-row">
             <span className="wizard-review-label">{system.classLabel}</span>
-            <span className="wizard-review-value">{cls.emoji} {cls.name}</span>
+            <span className="wizard-review-value" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><GameIcon emoji={cls.emoji} size={13} /> {cls.name}</span>
             <button className="wizard-review-edit" onClick={() => onJumpTo('class')}>Edit</button>
           </div>
         )}

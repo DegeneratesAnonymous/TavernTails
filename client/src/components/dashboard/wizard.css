@@ -125,8 +125,11 @@
 }
 
 .wizard-option-emoji {
-  font-size: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   line-height: 1;
+  color: var(--muted-text);
 }
 
 .wizard-option-name {
@@ -199,8 +202,11 @@
 }
 
 .wizard-answer-emoji {
-  font-size: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  color: var(--muted-text);
 }
 
 /* ── Skill chip grid ─────────────────────────────── */

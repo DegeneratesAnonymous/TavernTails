@@ -17,6 +17,7 @@
 import React, { useState } from 'react'
 import { apiFetch } from '../../api'
 import PageHeader from '../ui/PageHeader'
+import GameIcon from '../GameIcon'
 import {
   CAMPAIGN_QUIZ,
   deriveCampaignSettings,
@@ -89,28 +90,28 @@ const RULESET_OPTIONS: RulesetOption[] = [
 // ─────────────────────────────────────────────
 
 const TONE_LABELS: Record<string, string> = {
-  heroic: '⚔️ Heroic',
-  grim: '🌑 Grim',
-  horror: '💀 Horror',
-  comedy: '🎭 Comedy',
-  thriller: '🕵️ Thriller',
-  political: '👑 Political Intrigue',
+  heroic: 'Heroic',
+  grim: 'Grim',
+  horror: 'Horror',
+  comedy: 'Comedy',
+  thriller: 'Thriller',
+  political: 'Political Intrigue',
 }
 
 const GENRE_LABELS: Record<string, string> = {
-  fantasy: '🏰 Fantasy',
-  horror: '🐙 Horror',
-  'sci-fi': '🚀 Sci-Fi',
-  mystery: '🔍 Mystery',
-  thriller: '🕵️ Thriller',
-  political: '👑 Political',
-  'post-apocalyptic': '🌋 Post-Apocalyptic',
+  fantasy: 'Fantasy',
+  horror: 'Horror',
+  'sci-fi': 'Sci-Fi',
+  mystery: 'Mystery',
+  thriller: 'Thriller',
+  political: 'Political',
+  'post-apocalyptic': 'Post-Apocalyptic',
 }
 
 const PACING_LABELS: Record<string, string> = {
-  fast: '⚡ Fast-Paced',
-  moderate: '🕰️ Moderate',
-  slow: '🌘 Slow Burn',
+  fast: 'Fast-Paced',
+  moderate: 'Moderate',
+  slow: 'Slow Burn',
 }
 
 // ─────────────────────────────────────────────
@@ -180,7 +181,7 @@ function StepQuiz({
               className={`wizard-answer-btn${currentAnswer === opt.id ? ' is-selected' : ''}`}
               onClick={() => onAnswer(question.id, opt.id)}
             >
-              <span className="wizard-answer-emoji">{opt.emoji}</span>
+              <span className="wizard-answer-emoji"><GameIcon emoji={opt.emoji} size={20} /></span>
               <span>
                 <strong style={{ marginRight: 6 }}>{String.fromCharCode(65 + idx)}.</strong>
                 {opt.text}
@@ -280,7 +281,7 @@ function StepRuleset({
             className={`wizard-option-card${draft.ruleset === opt.id ? ' is-selected' : ''}`}
             onClick={() => onSelect(opt.id)}
           >
-            <span className="wizard-option-emoji">{opt.emoji}</span>
+            <span className="wizard-option-emoji"><GameIcon emoji={opt.emoji} size={24} /></span>
             <span className="wizard-option-name">{opt.label}</span>
             <span className="wizard-option-desc">{opt.genre}</span>
           </button>
@@ -414,7 +415,7 @@ function StepReview({
         <div className="wizard-review-row">
           <span className="wizard-review-label">Ruleset</span>
           <span className="wizard-review-value" style={{ color: missingRuleset ? 'var(--error, #e05a5a)' : undefined }}>
-            {ruleset ? `${ruleset.emoji} ${ruleset.label}` : '(required — go to System step)'}
+            {ruleset ? <><GameIcon emoji={ruleset.emoji} size={14} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />{ruleset.label}</> : '(required — go to System step)'}
           </span>
           <button className="wizard-review-edit" onClick={() => onJumpTo('ruleset')}>Edit</button>
         </div>

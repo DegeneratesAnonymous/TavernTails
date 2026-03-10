@@ -1,5 +1,5 @@
 import React from 'react'
-
+import { Sword, BookOpen, Wand2, Map, Telescope, Scroll } from 'lucide-react'
 import PageHeader from '../ui/PageHeader'
 
 type Props = {
@@ -37,37 +37,37 @@ export default function DashboardHome({
   const quickActions = [
     {
       label: 'Start New Game',
-      icon: '⚔️',
+      icon: <Sword size={28} />,
       description: 'Create a new campaign and begin your adventure.',
       onClick: handleStartNewGame,
     },
     {
       label: 'Load a Game',
-      icon: '📖',
+      icon: <BookOpen size={28} />,
       description: 'Continue from one of your existing campaigns.',
       onClick: handleLoadGame,
     },
     {
       label: 'Manage Characters',
-      icon: '🧙',
+      icon: <Wand2 size={28} />,
       description: 'View, create, and import your characters.',
       onClick: onGoToCharacters,
     },
     {
       label: 'Manage Campaigns',
-      icon: '🗺️',
+      icon: <Map size={28} />,
       description: 'Configure campaigns, players, and documents.',
       onClick: onGoToCampaigns,
     },
     {
       label: 'Explore',
-      icon: '🔭',
+      icon: <Telescope size={28} />,
       description: 'Browse lore and world details discovered in your campaigns.',
       onClick: onGoToExplore,
     },
     {
       label: 'Guides',
-      icon: '📜',
+      icon: <Scroll size={28} />,
       description: 'Best practices and help for all TavernTails tools.',
       onClick: onGoToGuides,
     },

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { THEMES, useTheme } from '../../contexts/ThemeContext'
+import GameIcon from '../GameIcon'
 
 /**
  * ThemeToggle — compact popover button for switching UI themes.
@@ -30,7 +31,7 @@ export default function ThemeToggle() {
         onClick={() => setOpen(o => !o)}
         style={{ fontSize: 16 }}
       >
-        {current.icon}
+        <GameIcon emoji={current.icon} size={18} />
       </button>
 
       {open && (
@@ -43,7 +44,7 @@ export default function ThemeToggle() {
               className={`theme-toggle-option${theme === t.id ? ' theme-toggle-option--active' : ''}`}
               onClick={() => { setTheme(t.id); setOpen(false) }}
             >
-              <span className="theme-toggle-option-icon">{t.icon}</span>
+              <span className="theme-toggle-option-icon"><GameIcon emoji={t.icon} size={16} /></span>
               <span className="theme-toggle-option-text">
                 <span className="theme-toggle-option-name">{t.label}</span>
                 <span className="theme-toggle-option-desc">{t.description}</span>

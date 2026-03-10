@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { Wand2 } from 'lucide-react'
 
 import { apiFetch } from '../../api'
 import PageHeader from '../ui/PageHeader'
@@ -690,7 +691,7 @@ export default function CampaignSetupView({
               <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
                 {associatedChars.map((c) => (
                   <span key={c.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginRight: 8 }}>
-                    🧙 {c.name}{c.class_name ? ` (${c.class_name})` : ''}{c.level ? ` L${c.level}` : ''}
+                    <Wand2 size={12} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />{c.name}{c.class_name ? ` (${c.class_name})` : ''}{c.level ? ` L${c.level}` : ''}
                   </span>
                 ))}
               </div>
