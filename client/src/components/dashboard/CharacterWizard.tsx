@@ -1417,6 +1417,11 @@ export default function CharacterWizard({ onDone, onCharacterCreated }: Props) {
     if (steps.includes(target)) setStep(target)
   }
 
+  const OPTIONAL_STEPS: Step[] = ['personality', 'skills', 'feats', 'spells', 'items']
+  function skipToName() {
+    if (steps.includes('name-level')) setStep('name-level')
+  }
+
   // ── Draft updaters ──────────────────────────
   function selectSystem(id: SystemId) {
     setDraft({ ...EMPTY_DRAFT, systemId: id, level: 1, abilityScores: { ...EMPTY_ABILITY_SCORES } })
@@ -1530,6 +1535,16 @@ export default function CharacterWizard({ onDone, onCharacterCreated }: Props) {
       const cls = system?.classes.find((c) => c.id === draft.classId)
       const ancestry = system?.ancestries?.find((a) => a.id === draft.ancestryId)
       const background = system?.backgrounds.find((b) => b.id === draft.backgroundId)
+
+      // HP / AC at level 1
+      const hasStats = Object.values(draft.abilityScores).some((v) => v !== null)
+      const conScore = draft.abilityScores.con ?? 10
+      const dexScore = draft.abilityScores.dex ?? 10
+      const conMod = Math.floor((conScore - 10) / 2)
+      const dexMod = Math.floor((dexScore - 10) / 2)
+      const hitDie = cls?.hitDie ?? 8
+      const maxHp = hitDie + conMod
+
       const gearPackage = background
         ? background.flavorGear
         : system?.gearPackages[0]?.items ?? []
@@ -1550,7 +1565,9 @@ export default function CharacterWizard({ onDone, onCharacterCreated }: Props) {
         background: draft.backgroundId,
         background_name: background?.name,
         personality,
-        stats: Object.values(draft.abilityScores).some((v) => v !== null) ? draft.abilityScores : undefined,
+        stats: hasStats ? draft.abilityScores : undefined,
+        hp: hasStats ? { max: maxHp, current: maxHp } : undefined,
+        ac: hasStats ? 10 + dexMod : undefined,
         languages: draft.selectedLanguages.length > 0 ? ['Common', ...draft.selectedLanguages] : undefined,
         skills: draft.selectedSkills,
         inventory: [...gearPackage, ...draft.customItems],
@@ -1564,7 +1581,9 @@ export default function CharacterWizard({ onDone, onCharacterCreated }: Props) {
         ].filter(Boolean).length > 0
           ? [...draft.selectedFeatIds, ...(draft.customFeat?.trim() ? [`custom:${draft.customFeat.trim()}`] : [])]
           : undefined,
-        spells: draft.selectedSpellIds.length > 0 ? draft.selectedSpellIds : undefined,
+        spells: draft.selectedSpellIds.length > 0
+          ? draft.selectedSpellIds.map((id) => system?.availableSpells?.find((s) => s.id === id)?.name ?? id)
+          : undefined,
       }
 
       const res = await apiFetch('/characters/', {
@@ -1791,6 +1810,16 @@ export default function CharacterWizard({ onDone, onCharacterCreated }: Props) {
                   onClick={goNext}
                 >
                   Next →
+                </button>
+              )}
+              {OPTIONAL_STEPS.includes(step) && (
+                <button
+                  className="btn-quiet wizard-skip-btn"
+                  type="button"
+                  onClick={skipToName}
+                  title="Skip remaining optional steps and go to name"
+                >
+                  Skip to name →
                 </button>
               )}
             </div>
