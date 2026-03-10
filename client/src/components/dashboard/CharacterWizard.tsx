@@ -21,6 +21,7 @@
 import React, { useState } from 'react'
 import { apiFetch } from '../../api'
 import PageHeader from '../ui/PageHeader'
+import { useParticleIntensity } from '../../contexts/ParticleContext'
 import {
   WIZARD_SYSTEMS,
   getSystem,
@@ -1133,6 +1134,12 @@ export default function CharacterWizard({ onDone, onCharacterCreated }: Props) {
   const system = draft.systemId ? getSystem(draft.systemId) : undefined
   const steps = buildStepList(system)
   const stepIdx = steps.indexOf(step)
+
+  // Drive ember/star particle intensity based on wizard progress (0 → 1)
+  useParticleIntensity(
+    steps.length > 1 ? stepIdx / (steps.length - 1) : 0,
+    [stepIdx, steps.length]
+  )
 
   // ── Navigation helpers ──────────────────────
   function goNext() {
