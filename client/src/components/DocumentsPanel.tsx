@@ -58,12 +58,7 @@ export default function DocumentsPanel({sessionId}: Props){
   const [refs, setRefs] = useState<Array<{id:string, meta:any}>>([])
   const [refLoading, setRefLoading] = useState(false)
   const [refError, setRefError] = useState<string | null>(null)
-  const [currentFolder, setCurrentFolder] = useState<string>('')
-  const [folders, setFolders] = useState<string[]>([])
-  const [showNewFolderForm, setShowNewFolderForm] = useState(false)
-  const [newFolderName, setNewFolderName] = useState('')
-  const [movingDocId, setMovingDocId] = useState<string | null>(null)
-  const [moveDestination, setMoveDestination] = useState<string>('')
+
   const uploadControllers = useRef<Record<string, () => void>>({})
 
   const hasSession = Boolean(sessionId)
@@ -237,7 +232,7 @@ export default function DocumentsPanel({sessionId}: Props){
         })
         clearCancel(entry.id)
         const key = presign.fields?.key || presign.fields?.Key || presign.key || `${sessionId}/docs/${entry.name}`
-        const registerRes = await apiFetch(`/documents/${sessionId}/register`, { method: 'POST', body: JSON.stringify({ filename: key, name: entry.name, size: entry.size, category, visibility: isHost ? visibility : 'shared' }) })
+        const registerRes = await apiFetch(`/documents/${sessionId}/register`, { method: 'POST', body: JSON.stringify({ filename: key, name: entry.name, size: entry.size, category, visibility: isHost ? visibility : 'shared', ...(entry.folder ? { folder: entry.folder } : {}) }) })
         const registerBody = await registerRes.json().catch(() => null)
         if(!registerRes.ok){
           throw new Error(registerBody?.detail || 'Register failed')
@@ -262,6 +257,7 @@ export default function DocumentsPanel({sessionId}: Props){
       form.append('name', entry.name)
       form.append('category', category)
       form.append('visibility', isHost ? visibility : 'shared')
+      if(entry.folder) form.append('folder', entry.folder)
       const controller = new AbortController()
       registerCancel(entry.id, () => controller.abort())
       const res = await fetch(buildApiUrl(`/documents/${sessionId}/upload`), {
@@ -492,6 +488,9 @@ export default function DocumentsPanel({sessionId}: Props){
     const makeId = () => typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`
     const entries: UploadEntry[] = Array.from(files).map(file => {
       const isImage = file.type.startsWith('image/') || /(png|jpe?g|gif|webp)$/i.test(file.name)
+      // Derive logical folder from the browser-supplied relative path (folder/subfolder/file.ext)
+      const relPath: string = (file as any).webkitRelativePath || ''
+      const folderFromPath = relPath.includes('/') ? relPath.split('/').slice(0, -1).join('/') : ''
       return {
         id: makeId(),
         name: file.name,
@@ -500,6 +499,7 @@ export default function DocumentsPanel({sessionId}: Props){
         file,
         previewUrl: isImage ? URL.createObjectURL(file) : undefined,
         size: file.size,
+        folder: folderFromPath || undefined,
       }
     })
     setUploads(cur => [...cur, ...entries])

@@ -114,6 +114,8 @@ def _write_ref_folders(folders: list[str]) -> None:
 def _validate_ref_folder_path(folder: str) -> str:
     """Sanitise a folder path: strip outer slashes, block traversal attacks."""
     clean = folder.strip("/")
+    if not clean:
+        return ""
     for seg in clean.split("/"):
         if seg in ("", ".", "..") or "\\" in seg or "\x00" in seg or ":" in seg:
             raise HTTPException(status_code=400, detail=f"Invalid folder segment: {seg!r}")
@@ -338,7 +340,7 @@ async def upload_reference(
 
     size_bytes = dest_file.stat().st_size if dest_file.exists() else 0
     created_at = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-    clean_folder = (folder or "").strip("/")
+    clean_folder = _validate_ref_folder_path(folder or "")
     meta = {
         "title": title or filename,
         "filename": filename,
@@ -455,7 +457,8 @@ async def delete_ref_folder(
         if meta_path.exists():
             try:
                 ref_meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                if ref_meta.get("folder", "") == clean:
+                ref_folder = ref_meta.get("folder", "")
+                if ref_folder == clean or ref_folder.startswith(clean + "/"):
                     raise HTTPException(
                         status_code=400,
                         detail=f"Folder '{clean}' is not empty — move or delete its references first.",
@@ -485,12 +488,13 @@ async def move_reference(
     if not directory.exists() or not directory.is_dir():
         raise HTTPException(status_code=404, detail="Reference not found")
     meta_path = directory / "metadata.json"
-    ref_meta: dict = {}
     if meta_path.exists():
         try:
             ref_meta = json.loads(meta_path.read_text(encoding="utf-8"))
         except Exception:
-            pass
+            ref_meta = {"title": ref_id, "filename": "", "pages": 0, "system_ref": False}
+    else:
+        ref_meta = {"title": ref_id, "filename": "", "pages": 0, "system_ref": False}
     ref_meta["folder"] = clean
     meta_path.write_text(json.dumps(ref_meta, indent=2), encoding="utf-8")
     return {"id": ref_id, "meta": ref_meta}
@@ -512,12 +516,13 @@ async def patch_reference_meta(
     if not directory.exists() or not directory.is_dir():
         raise HTTPException(status_code=404, detail="Reference not found")
     meta_path = directory / "metadata.json"
-    ref_meta: dict = {}
     if meta_path.exists():
         try:
             ref_meta = json.loads(meta_path.read_text(encoding="utf-8"))
         except Exception:
-            pass
+            ref_meta = {"title": ref_id, "filename": "", "pages": 0, "system_ref": False}
+    else:
+        ref_meta = {"title": ref_id, "filename": "", "pages": 0, "system_ref": False}
     if body.game_system is not None:
         ref_meta["game_system"] = body.game_system.strip() or "global"
     if body.title is not None:
