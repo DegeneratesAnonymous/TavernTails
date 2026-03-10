@@ -37,11 +37,30 @@ class ReferenceMeta(BaseModel):
     game_system: str = "global"  # e.g. "D&D 5e", "Pathfinder 2e", or "global" for cross-system docs
     size_bytes: int = 0
     created_at: str = ""  # ISO 8601 UTC timestamp
+    folder: str = ""  # logical folder path; empty = root
 
 
 class ReferenceListItem(BaseModel):
     id: str
     meta: ReferenceMeta
+
+
+class FolderListResponse(BaseModel):
+    folders: list[str]
+
+
+class FolderItem(BaseModel):
+    folder: str
+
+
+class MoveRefRequest(BaseModel):
+    folder: str = ""
+
+
+class PatchRefMetaRequest(BaseModel):
+    game_system: str | None = None
+    title: str | None = None
+    system_ref: bool | None = None
 
 
 class ReferenceSearchResult(BaseModel):
@@ -72,6 +91,35 @@ def _storage_root() -> Path:
     root = Path(__file__).resolve().parents[1] / "storage" / "references"
     root.mkdir(parents=True, exist_ok=True)
     return root
+
+
+def _folders_file() -> Path:
+    return _storage_root() / "folders.json"
+
+
+def _load_ref_folders() -> list[str]:
+    f = _folders_file()
+    if not f.exists():
+        return []
+    try:
+        return json.loads(f.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+
+def _write_ref_folders(folders: list[str]) -> None:
+    _folders_file().write_text(json.dumps(sorted(set(folders))), encoding="utf-8")
+
+
+def _validate_ref_folder_path(folder: str) -> str:
+    """Sanitise a folder path: strip outer slashes, block traversal attacks."""
+    clean = folder.strip("/")
+    if not clean:
+        return ""
+    for seg in clean.split("/"):
+        if seg in ("", ".", "..") or "\\" in seg or "\x00" in seg or ":" in seg:
+            raise HTTPException(status_code=400, detail=f"Invalid folder segment: {seg!r}")
+    return clean
 
 
 def _save_uploaded_file(dest: Path, upload: UploadFile):
@@ -237,6 +285,7 @@ async def upload_reference(
     title: str = Form(None),
     system_ref: bool = Form(False),
     game_system: str = Form("global"),
+    folder: str = Form(""),
     current_user=Depends(get_current_user),
 ):
     """Upload a reference document for AI lookup.
@@ -291,6 +340,7 @@ async def upload_reference(
 
     size_bytes = dest_file.stat().st_size if dest_file.exists() else 0
     created_at = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    clean_folder = _validate_ref_folder_path(folder or "")
     meta = {
         "title": title or filename,
         "filename": filename,
@@ -299,7 +349,14 @@ async def upload_reference(
         "game_system": game_system or "global",
         "size_bytes": size_bytes,
         "created_at": created_at,
+        "folder": clean_folder,
     }
+    # Register the folder so it appears in the folder list
+    if clean_folder:
+        existing_folders = _load_ref_folders()
+        if clean_folder not in existing_folders:
+            existing_folders.append(clean_folder)
+            _write_ref_folders(existing_folders)
     (dest_dir / "metadata.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     (dest_dir / "pages.json").write_text(json.dumps(pages_json, ensure_ascii=False), encoding="utf-8")
 
@@ -357,6 +414,123 @@ async def list_references(current_user=Depends(get_current_user)):
             continue
         out.append({"id": directory.name, "meta": meta})
     return out
+
+
+@router.get("/folders", response_model=FolderListResponse)
+async def list_ref_folders(current_user=Depends(get_current_user)):
+    """Return the list of all known reference folders."""
+    return {"folders": _load_ref_folders()}
+
+
+@router.post("/folders", status_code=201, response_model=FolderItem)
+async def create_ref_folder(
+    body: FolderItem,
+    current_user=Depends(get_current_user),
+):
+    """Create a new logical folder for organising references. Admin only."""
+    if not _db.is_admin_user(current_user):
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    clean = _validate_ref_folder_path(body.folder)
+    if not clean:
+        raise HTTPException(status_code=400, detail="Folder name required.")
+    folders = _load_ref_folders()
+    if clean not in folders:
+        folders.append(clean)
+        _write_ref_folders(folders)
+    return {"folder": clean}
+
+
+@router.delete("/folders/{folder_path:path}")
+async def delete_ref_folder(
+    folder_path: str,
+    current_user=Depends(get_current_user),
+):
+    """Delete a folder. Fails if any reference is still assigned to it. Admin only."""
+    if not _db.is_admin_user(current_user):
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    clean = _validate_ref_folder_path(folder_path)
+    root = _storage_root()
+    for directory in root.iterdir():
+        if not directory.is_dir():
+            continue
+        meta_path = directory / "metadata.json"
+        if meta_path.exists():
+            try:
+                ref_meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                ref_folder = ref_meta.get("folder", "")
+                if ref_folder == clean or ref_folder.startswith(clean + "/"):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Folder '{clean}' is not empty — move or delete its references first.",
+                    )
+            except HTTPException:
+                raise
+            except Exception:
+                pass
+    _write_ref_folders([f for f in _load_ref_folders() if f != clean])
+    return {"ok": True}
+
+
+@router.patch("/{ref_id}/move", response_model=ReferenceListItem)
+async def move_reference(
+    ref_id: str,
+    body: MoveRefRequest,
+    current_user=Depends(get_current_user),
+):
+    """Move a reference to a different logical folder. Admin only."""
+    if not _db.is_admin_user(current_user):
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    if not re.match(r"^[A-Za-z0-9_.\ -]+$", ref_id) or ".." in ref_id:
+        raise HTTPException(status_code=400, detail="Invalid reference id.")
+    clean = _validate_ref_folder_path(body.folder) if body.folder.strip("/") else ""
+    root = _storage_root()
+    directory = root / ref_id
+    if not directory.exists() or not directory.is_dir():
+        raise HTTPException(status_code=404, detail="Reference not found")
+    meta_path = directory / "metadata.json"
+    if meta_path.exists():
+        try:
+            ref_meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        except Exception:
+            ref_meta = {"title": ref_id, "filename": "", "pages": 0, "system_ref": False}
+    else:
+        ref_meta = {"title": ref_id, "filename": "", "pages": 0, "system_ref": False}
+    ref_meta["folder"] = clean
+    meta_path.write_text(json.dumps(ref_meta, indent=2), encoding="utf-8")
+    return {"id": ref_id, "meta": ref_meta}
+
+
+@router.patch("/{ref_id}/meta", response_model=ReferenceListItem)
+async def patch_reference_meta(
+    ref_id: str,
+    body: PatchRefMetaRequest,
+    current_user=Depends(get_current_user),
+):
+    """Update editable metadata fields (game_system, title, system_ref) on a reference. Admin only."""
+    if not _db.is_admin_user(current_user):
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    if not re.match(r"^[A-Za-z0-9_.\ -]+$", ref_id) or ".." in ref_id:
+        raise HTTPException(status_code=400, detail="Invalid reference id.")
+    root = _storage_root()
+    directory = root / ref_id
+    if not directory.exists() or not directory.is_dir():
+        raise HTTPException(status_code=404, detail="Reference not found")
+    meta_path = directory / "metadata.json"
+    if meta_path.exists():
+        try:
+            ref_meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        except Exception:
+            ref_meta = {"title": ref_id, "filename": "", "pages": 0, "system_ref": False}
+    else:
+        ref_meta = {"title": ref_id, "filename": "", "pages": 0, "system_ref": False}
+    if body.game_system is not None:
+        ref_meta["game_system"] = body.game_system.strip() or "global"
+    if body.title is not None:
+        ref_meta["title"] = body.title.strip()
+    if body.system_ref is not None:
+        ref_meta["system_ref"] = body.system_ref
+    meta_path.write_text(json.dumps(ref_meta, indent=2), encoding="utf-8")
+    return {"id": ref_id, "meta": ref_meta}
 
 
 @router.get("/search", response_model=ReferenceSearchResponse)
@@ -541,7 +715,26 @@ def delete_reference(ref_id: str, current_user=Depends(get_current_user)):
     return Response(status_code=204)
 
 
-def search_query(q: str, top_k: int = 5, *, system_only: bool = False, include_system: bool = True):
+# Mapping from short ruleset IDs (as stored in campaign settings) to the
+# game_system label written to reference metadata during upload.
+_RULESET_DOC_SYSTEM: dict[str, str] = {
+    "swse": "Star Wars Saga",
+    "star wars saga": "Star Wars Saga",
+    "srd-5.2": "D&D 5e",
+    "dnd5e": "D&D 5e",
+    "pf2e": "Pathfinder 2e",
+    "pf1e": "Pathfinder 1e",
+    "starfinder": "Starfinder",
+    "coc": "Call of Cthulhu",
+    "shadowrun": "Shadowrun",
+    "wfrp": "Warhammer Fantasy",
+    "alien": "Alien RPG",
+    "startrek": "Star Trek Adventures",
+    "sotdl": "Shadow of the Demon Lord",
+}
+
+
+def search_query(q: str, top_k: int = 5, *, system_only: bool = False, include_system: bool = True, game_system: str | None = None):
     """Synchronous helper for other server modules to search references.
 
     Returns list of result dicts: {source_id, page, snippet, score, paraphrase_required}
@@ -553,6 +746,11 @@ def search_query(q: str, top_k: int = 5, *, system_only: bool = False, include_s
     include_system:
         When False, skip all system reference documents.  Useful for
         user-facing queries that should not draw on restricted material.
+    game_system:
+        When set (e.g. ``\"swse\"`` or ``\"Star Wars Saga\"``), only documents tagged
+        with the matching game_system (or ``\"global\"``) are searched.  Accepts both
+        the short ruleset ID (``swse``) and the full label stored in metadata
+        (``Star Wars Saga``).
 
     Notes
     -----
@@ -591,16 +789,24 @@ def search_query(q: str, top_k: int = 5, *, system_only: bool = False, include_s
         # Resolve system_ref flag for this directory.
         dir_meta_path = directory / "metadata.json"
         is_system = False
+        dir_game_system = "global"
         if dir_meta_path.exists():
             try:
                 dir_meta = json.loads(dir_meta_path.read_text(encoding="utf-8"))
                 is_system = bool(dir_meta.get("system_ref"))
+                dir_game_system = (dir_meta.get("game_system") or "global").strip()
             except Exception:
                 pass
         if system_only and not is_system:
             continue
         if not include_system and is_system:
             continue
+        # When a game_system filter is requested, skip documents that don't match.
+        # 'global' documents are always included as they apply to all systems.
+        if game_system:
+            normalized_filter = _RULESET_DOC_SYSTEM.get(game_system.lower(), game_system).lower()
+            if dir_game_system.lower() != "global" and dir_game_system.lower() != normalized_filter:
+                continue
         pages = json.loads(pages_path.read_text(encoding="utf-8"))
         embeddings = None
         if emb_path.exists():

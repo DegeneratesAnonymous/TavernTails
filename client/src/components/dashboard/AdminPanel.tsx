@@ -55,6 +55,7 @@ type RefLibItem = {
     game_system?: string
     size_bytes?: number
     created_at?: string
+    folder?: string
   }
 }
 
@@ -82,6 +83,7 @@ const REF_SYSTEMS: { value: string; label: string }[] = [
   { value: 'Shadow of the Demon Lord', label: 'Shadow of the Demon Lord' },
   { value: 'Warhammer Fantasy Roleplay', label: 'Warhammer Fantasy Roleplay' },
   { value: 'Alien RPG', label: 'Alien RPG' },
+  { value: 'Star Wars Saga', label: 'Star Wars Saga Edition' },
   { value: 'Shadowrun', label: 'Shadowrun' },
 ]
 const MODERATION_LIST_LIMIT = 100
@@ -166,7 +168,14 @@ export default function AdminPanel({ onBack }: Props) {
   const [refLibGameSystem, setRefLibGameSystem] = useState('global')
   const [refLibFilter, setRefLibFilter] = useState('')
   const [refLibDeleteBusy, setRefLibDeleteBusy] = useState<string | null>(null)
+  const [refLibEditingId, setRefLibEditingId] = useState<string | null>(null)
+  const [refLibEditSystem, setRefLibEditSystem] = useState('')
+  const [refLibEditBusy, setRefLibEditBusy] = useState(false)
+  const [refLibSelected, setRefLibSelected] = useState<Set<string>>(new Set())
+  const [refLibBulkSystem, setRefLibBulkSystem] = useState('global')
+  const [refLibBulkBusy, setRefLibBulkBusy] = useState(false)
   const refLibInputRef = useRef<HTMLInputElement>(null)
+  const refLibFolderInputRef = useRef<HTMLInputElement>(null)
 
   const loadRefLib = useCallback(async () => {
     setRefLibLoading(true)
@@ -182,6 +191,41 @@ export default function AdminPanel({ onBack }: Props) {
       setRefLibLoading(false)
     }
   }, [])
+
+  const handleFolderUploadRef = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? [])
+    if (!files.length) return
+    if (refLibFolderInputRef.current) refLibFolderInputRef.current.value = ''
+    setRefLibUploadError(null)
+    setRefLibUploadOk(null)
+    let successCount = 0
+    const failures: string[] = []
+    for (const file of files) {
+      const form = new FormData()
+      form.append('file', file)
+      form.append('system_ref', refLibSystemRef ? 'true' : 'false')
+      form.append('game_system', refLibGameSystem)
+      try {
+        const res = await apiFetch('/references/upload', { method: 'POST', body: form, headers: {} })
+        if (res.ok) {
+          successCount++
+        } else {
+          const d = await res.json().catch(() => null)
+          failures.push(d?.detail || `${file.name}: HTTP ${res.status}`)
+        }
+      } catch {
+        failures.push(`${file.name}: network error`)
+      }
+    }
+    await loadRefLib()
+    if (failures.length === 0) {
+      setRefLibUploadOk(`Uploaded ${successCount} file(s) from folder.`)
+    } else if (successCount === 0) {
+      setRefLibUploadError(`All ${failures.length} upload(s) failed: ${failures.join('; ')}`)
+    } else {
+      setRefLibUploadError(`${successCount} uploaded, ${failures.length} failed: ${failures.join('; ')}`)
+    }
+  }, [refLibSystemRef, refLibGameSystem, loadRefLib])
 
   const uploadRef = useCallback(async () => {
     if (!refLibFile) { setRefLibUploadError('Select a file first.'); return }
@@ -214,6 +258,28 @@ export default function AdminPanel({ onBack }: Props) {
     }
   }, [refLibFile, refLibTitle, refLibSystemRef, refLibGameSystem, loadRefLib])
 
+  const patchRefMeta = useCallback(async (id: string, patch: { game_system?: string }) => {
+    setRefLibEditBusy(true)
+    try {
+      const res = await apiFetch(`/references/${encodeURIComponent(id)}/meta`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => null)
+        setRefLibError(d?.detail || `Update failed (${res.status})`)
+        return
+      }
+      setRefLibEditingId(null)
+      await loadRefLib()
+    } catch {
+      setRefLibError('Network error updating reference.')
+    } finally {
+      setRefLibEditBusy(false)
+    }
+  }, [loadRefLib])
+
   const deleteRef = useCallback(async (id: string, title: string) => {
     if (!window.confirm(`Delete "${title}"? This cannot be undone.`)) return
     setRefLibDeleteBusy(id)
@@ -231,6 +297,41 @@ export default function AdminPanel({ onBack }: Props) {
       setRefLibDeleteBusy(null)
     }
   }, [loadRefLib])
+
+  const bulkDeleteRefs = useCallback(async () => {
+    const ids = Array.from(refLibSelected)
+    if (ids.length === 0) return
+    if (!window.confirm(`Delete ${ids.length} reference(s)? This cannot be undone.`)) return
+    setRefLibBulkBusy(true)
+    try {
+      await Promise.all(ids.map((id) => apiFetch(`/references/${encodeURIComponent(id)}`, { method: 'DELETE' })))
+      setRefLibSelected(new Set())
+      await loadRefLib()
+    } catch {
+      setRefLibError('One or more deletes failed.')
+    } finally {
+      setRefLibBulkBusy(false)
+    }
+  }, [refLibSelected, loadRefLib])
+
+  const bulkAssignSystem = useCallback(async () => {
+    const ids = Array.from(refLibSelected)
+    if (ids.length === 0) return
+    setRefLibBulkBusy(true)
+    try {
+      await Promise.all(ids.map((id) => apiFetch(`/references/${encodeURIComponent(id)}/meta`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ game_system: refLibBulkSystem }),
+      })))
+      setRefLibSelected(new Set())
+      await loadRefLib()
+    } catch {
+      setRefLibError('One or more system assignments failed.')
+    } finally {
+      setRefLibBulkBusy(false)
+    }
+  }, [refLibSelected, refLibBulkSystem, loadRefLib])
 
   const loadStats = useCallback(async () => {
     setStatsLoading(true)
@@ -968,6 +1069,26 @@ export default function AdminPanel({ onBack }: Props) {
           }
         </div>
 
+        {/* Folder upload */}
+        <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <label
+            style={{ cursor: 'pointer', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 5, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)' }}
+            title="Upload an entire folder of documents at once"
+          >
+            📂 Upload Folder
+            <input
+              ref={refLibFolderInputRef}
+              type="file"
+              {...({ webkitdirectory: 'true' } as React.InputHTMLAttributes<HTMLInputElement>)}
+              style={{ display: 'none' }}
+              onChange={handleFolderUploadRef}
+            />
+          </label>
+          <span className="muted" style={{ fontSize: 12 }}>
+            All files will be uploaded to root.
+          </span>
+        </div>
+
         <div className="row-wrap" style={{ gap: 10, alignItems: 'flex-end', marginBottom: 10 }}>
           <div className="stack" style={{ gap: 4, flex: 1, minWidth: 200 }}>
             <label className="muted" style={{ fontSize: 12 }}>Title (optional — defaults to filename)</label>
@@ -1018,14 +1139,13 @@ export default function AdminPanel({ onBack }: Props) {
 
         {/* Existing references */}
         <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', margin: '8px 0 6px' }}>
-          <div style={{ fontWeight: 600, fontSize: 14 }}>Uploaded References ({refLib.filter(r => {
-            const q = refLibFilter.toLowerCase()
-            if (!q) return true
-            const sys = (r.meta.game_system || 'global').toLowerCase()
-            return (r.meta.title || r.id).toLowerCase().includes(q) ||
-              (r.meta.filename || '').toLowerCase().includes(q) ||
-              sys.includes(q)
-          }).length} / {refLib.length})</div>
+          <div style={{ fontWeight: 600, fontSize: 14 }}>
+            {`Uploaded References (${refLib.filter(r => {
+                const q = refLibFilter.toLowerCase(); if (!q) return true
+                const sys = (r.meta.game_system || 'global').toLowerCase()
+                return (r.meta.title || r.id).toLowerCase().includes(q) || (r.meta.filename || '').toLowerCase().includes(q) || sys.includes(q)
+              }).length} / ${refLib.length})`}
+          </div>
           <div className="row-wrap" style={{ gap: 8 }}>
             <input
               className="input"
@@ -1046,7 +1166,7 @@ export default function AdminPanel({ onBack }: Props) {
                 <option key={s.value} value={s.value}>{s.label}</option>
               ))}
             </select>
-            <button className="btn btn-sm btn-secondary" type="button" onClick={loadRefLib} disabled={refLibLoading}>
+            <button className="btn btn-sm btn-secondary" type="button" onClick={() => loadRefLib()} disabled={refLibLoading}>
               {refLibLoading ? '…' : 'Refresh'}
             </button>
           </div>
@@ -1064,10 +1184,75 @@ export default function AdminPanel({ onBack }: Props) {
               (r.meta.filename || '').toLowerCase().includes(q) ||
               sys.includes(q)
           })
+          const allFilteredIds = filtered.map((r) => r.id)
+          const allSelected = allFilteredIds.length > 0 && allFilteredIds.every((id) => refLibSelected.has(id))
+          const someSelected = allFilteredIds.some((id) => refLibSelected.has(id))
+          const toggleAll = () => {
+            if (allSelected) {
+              setRefLibSelected((prev) => {
+                const next = new Set(prev)
+                allFilteredIds.forEach((id) => next.delete(id))
+                return next
+              })
+            } else {
+              setRefLibSelected((prev) => new Set([...Array.from(prev), ...allFilteredIds]))
+            }
+          }
+          const toggleOne = (id: string) => {
+            setRefLibSelected((prev) => {
+              const next = new Set(prev)
+              if (next.has(id)) next.delete(id); else next.add(id)
+              return next
+            })
+          }
           return (
+            <>
+              {refLibSelected.size > 0 && (
+                <div className="row-wrap" style={{ gap: 8, alignItems: 'center', padding: '8px 10px', marginBottom: 6, background: 'rgba(192,132,252,0.08)', border: '1px solid rgba(192,132,252,0.25)', borderRadius: 6 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{refLibSelected.size} selected</span>
+                  <select
+                    className="input"
+                    value={refLibBulkSystem}
+                    onChange={(e) => setRefLibBulkSystem(e.target.value)}
+                    style={{ fontSize: 12, padding: '3px 8px' }}
+                    disabled={refLibBulkBusy}
+                  >
+                    {REF_SYSTEMS.map((s) => (
+                      <option key={s.value} value={s.value}>{s.label}</option>
+                    ))}
+                  </select>
+                  <button
+                    className="btn btn-sm"
+                    type="button"
+                    disabled={refLibBulkBusy}
+                    onClick={bulkAssignSystem}
+                  >{refLibBulkBusy ? '…' : 'Assign System'}</button>
+                  <button
+                    className="btn btn-sm btn-danger"
+                    type="button"
+                    disabled={refLibBulkBusy}
+                    onClick={bulkDeleteRefs}
+                  >{refLibBulkBusy ? '…' : 'Delete Selected'}</button>
+                  <button
+                    className="btn btn-sm btn-secondary"
+                    type="button"
+                    onClick={() => setRefLibSelected(new Set())}
+                    disabled={refLibBulkBusy}
+                  >Clear</button>
+                </div>
+              )}
             <table className="admin-table">
               <thead>
                 <tr>
+                  <th style={{ width: 32 }}>
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      ref={(el) => { if (el) el.indeterminate = someSelected && !allSelected }}
+                      onChange={toggleAll}
+                      title="Select all visible"
+                    />
+                  </th>
                   <th>Title</th>
                   <th>System</th>
                   <th>Filename</th>
@@ -1080,14 +1265,56 @@ export default function AdminPanel({ onBack }: Props) {
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={8} style={{ textAlign: 'center', opacity: 0.5 }}>No references match the current filter.</td></tr>
+                  <tr><td colSpan={9} style={{ textAlign: 'center', opacity: 0.5 }}>No references match the current filter.</td></tr>
                 ) : filtered.map((r) => (
-                  <tr key={r.id}>
+                  <tr key={r.id} style={refLibSelected.has(r.id) ? { background: 'rgba(192,132,252,0.08)' } : undefined}>
+                    <td style={{ textAlign: 'center' }}>
+                      <input
+                        type="checkbox"
+                        checked={refLibSelected.has(r.id)}
+                        onChange={() => toggleOne(r.id)}
+                      />
+                    </td>
                     <td style={{ fontWeight: 600 }}>{r.meta.title || r.id}</td>
                     <td>
-                      <span className="badge badge-muted" style={{ textTransform: 'none' }}>
-                        {r.meta.game_system || 'global'}
-                      </span>
+                      {refLibEditingId === r.id ? (
+                        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                          <select
+                            className="input"
+                            value={refLibEditSystem}
+                            onChange={e => setRefLibEditSystem(e.target.value)}
+                            style={{ fontSize: 12, padding: '2px 6px' }}
+                            autoFocus
+                          >
+                            <option value="global">Global</option>
+                            {REF_SYSTEMS.map(s => (
+                              <option key={s.value} value={s.value}>{s.label}</option>
+                            ))}
+                          </select>
+                          <button
+                            className="btn btn-sm"
+                            type="button"
+                            disabled={refLibEditBusy}
+                            onClick={() => patchRefMeta(r.id, { game_system: refLibEditSystem })}
+                          >{refLibEditBusy ? '…' : '✓'}</button>
+                          <button
+                            className="btn btn-sm btn-secondary"
+                            type="button"
+                            onClick={() => setRefLibEditingId(null)}
+                          >✕</button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => { setRefLibEditingId(r.id); setRefLibEditSystem(r.meta.game_system || 'global') }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                          title="Click to change system"
+                        >
+                          <span className="badge badge-muted" style={{ textTransform: 'none' }}>
+                            {r.meta.game_system || 'global'}
+                          </span>
+                        </button>
+                      )}
                     </td>
                     <td className="muted" style={{ fontSize: 12 }}>{r.meta.filename || '—'}</td>
                     <td>{r.meta.pages}</td>
@@ -1112,6 +1339,7 @@ export default function AdminPanel({ onBack }: Props) {
                 ))}
               </tbody>
             </table>
+          </>
           )
         })()}
       </div>

@@ -11,6 +11,7 @@ type DocumentMeta = {
   size: number
   created_at: string
   filename?: string
+  folder?: string
 }
 
 type DocumentDetail = DocumentMeta & { content: string }
@@ -24,6 +25,7 @@ type UploadEntry = {
   file: File
   previewUrl?: string
   size: number
+  folder?: string
 }
 
 const formatBytes = (size: number) => {
@@ -56,6 +58,7 @@ export default function DocumentsPanel({sessionId}: Props){
   const [refs, setRefs] = useState<Array<{id:string, meta:any}>>([])
   const [refLoading, setRefLoading] = useState(false)
   const [refError, setRefError] = useState<string | null>(null)
+
   const uploadControllers = useRef<Record<string, () => void>>({})
 
   const hasSession = Boolean(sessionId)
@@ -229,7 +232,7 @@ export default function DocumentsPanel({sessionId}: Props){
         })
         clearCancel(entry.id)
         const key = presign.fields?.key || presign.fields?.Key || presign.key || `${sessionId}/docs/${entry.name}`
-        const registerRes = await apiFetch(`/documents/${sessionId}/register`, { method: 'POST', body: JSON.stringify({ filename: key, name: entry.name, size: entry.size, category, visibility: isHost ? visibility : 'shared' }) })
+        const registerRes = await apiFetch(`/documents/${sessionId}/register`, { method: 'POST', body: JSON.stringify({ filename: key, name: entry.name, size: entry.size, category, visibility: isHost ? visibility : 'shared', ...(entry.folder ? { folder: entry.folder } : {}) }) })
         const registerBody = await registerRes.json().catch(() => null)
         if(!registerRes.ok){
           throw new Error(registerBody?.detail || 'Register failed')
@@ -254,6 +257,7 @@ export default function DocumentsPanel({sessionId}: Props){
       form.append('name', entry.name)
       form.append('category', category)
       form.append('visibility', isHost ? visibility : 'shared')
+      if(entry.folder) form.append('folder', entry.folder)
       const controller = new AbortController()
       registerCancel(entry.id, () => controller.abort())
       const res = await fetch(buildApiUrl(`/documents/${sessionId}/upload`), {
@@ -409,7 +413,6 @@ export default function DocumentsPanel({sessionId}: Props){
       void startUpload(entry)
     })
     if(e.target) e.target.value = ''
-    // also support uploading as a reference if the filename suggests a rules doc
   }
 
   async function handleReferenceUpload(e: React.ChangeEvent<HTMLInputElement>){
@@ -476,6 +479,33 @@ export default function DocumentsPanel({sessionId}: Props){
     // If it looks like we fell back to hex for binary, treat as non-previewable.
     return !/^[0-9a-f]{128,}$/i.test(selected.content.trim())
   },[selected])
+
+  async function handleFolderUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    if(!sessionId) return
+    const files = e.target.files
+    if(!files || files.length === 0) return
+    setError(null)
+    const makeId = () => typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+    const entries: UploadEntry[] = Array.from(files).map(file => {
+      const isImage = file.type.startsWith('image/') || /(png|jpe?g|gif|webp)$/i.test(file.name)
+      // Derive logical folder from the browser-supplied relative path (folder/subfolder/file.ext)
+      const relPath: string = (file as any).webkitRelativePath || ''
+      const folderFromPath = relPath.includes('/') ? relPath.split('/').slice(0, -1).join('/') : ''
+      return {
+        id: makeId(),
+        name: file.name,
+        progress: 0,
+        status: 'uploading' as const,
+        file,
+        previewUrl: isImage ? URL.createObjectURL(file) : undefined,
+        size: file.size,
+        folder: folderFromPath || undefined,
+      }
+    })
+    setUploads(cur => [...cur, ...entries])
+    entries.forEach(entry => { void startUpload(entry) })
+    if(e.target) e.target.value = ''
+  }
 
   return (
     <div className="docsPanel">
@@ -601,6 +631,16 @@ export default function DocumentsPanel({sessionId}: Props){
         <h4 style={{ margin: '8px 0 4px' }}>Upload File</h4>
         <div className="docsPanel__uploadsTop">
           <input type="file" multiple onChange={handleUpload} disabled={!hasSession} />
+          <label className={`docsPanel__tinyBtn docsPanel__folderUploadLabel${!hasSession ? ' docsPanel__tinyBtn--disabled' : ''}`} title="Upload a folder (preserves folder structure)">
+            📂 Folder
+            <input
+              type="file"
+              {...({ webkitdirectory: 'true' } as React.InputHTMLAttributes<HTMLInputElement>)}
+              style={{ display: 'none' }}
+              onChange={handleFolderUpload}
+              disabled={!hasSession}
+            />
+          </label>
           {hasActiveUploads && <div className="docsPanel__uploadsHint">Uploading…</div>}
           {!hasActiveUploads && uploads.length > 0 && <div className="docsPanel__uploadsHint">Uploads</div>}
           {canClearUploads && (

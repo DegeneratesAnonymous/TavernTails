@@ -142,6 +142,7 @@ def continue_narrative(payload: ContinueRequest, current_user=Depends(get_curren
         raise HTTPException(status_code=404, detail='Session not found')
 
     # Ensure caller is a session member.
+    campaign_ruleset = ""
     meta_file = folder / 'meta.json'
     if meta_file.exists():
         try:
@@ -149,6 +150,15 @@ def continue_narrative(payload: ContinueRequest, current_user=Depends(get_curren
             identifier = sessions_agent._identifier_for_user(current_user)
             if not sessions_agent._user_is_member(meta, identifier):
                 raise HTTPException(status_code=403, detail='Not a member of this session')
+            # Resolve campaign ruleset for SRL game-system filtering (non-fatal).
+            campaign_id = meta.get('campaign_id')
+            if campaign_id:
+                try:
+                    from .. import db as _db
+                    c_settings = _db.get_campaign_settings(str(campaign_id), getattr(current_user, 'id', 0)) or {}
+                    campaign_ruleset = c_settings.get('ruleset', '')
+                except Exception:
+                    pass
         except HTTPException:
             raise
         except Exception as err:
@@ -206,7 +216,11 @@ def continue_narrative(payload: ContinueRequest, current_user=Depends(get_curren
             q_parts.append(npc_names)
         query = " ".join(q_parts).strip()
         if query:
-            hits = search_query(query, top_k=3)
+            hits = search_query(
+                query, top_k=3,
+                system_only=True,
+                game_system=campaign_ruleset or None,
+            )
             if hits:
                 scene_desc += "\nRelevant rule passages: "
                 snippets = []
