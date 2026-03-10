@@ -6,6 +6,7 @@ type Props = {
   onDone: () => void
   onGoToImportPdf: () => void
   onGoToQuickCreate: () => void
+  onGoToWizard?: () => void
   notificationsPending?: boolean
   onNotificationsClick?: () => void
 }
@@ -14,6 +15,7 @@ export default function CreatingCharacterView({
   onDone,
   onGoToImportPdf,
   onGoToQuickCreate,
+  onGoToWizard,
   notificationsPending,
   onNotificationsClick,
 }: Props) {
@@ -21,7 +23,7 @@ export default function CreatingCharacterView({
     <section className="dashboard-panel stack">
       <PageHeader
         title="Creating a Character"
-        subtitle="Use TavernTails with a quick, lightweight character, or import a D&D Beyond PDF/JSON export to populate details."
+        subtitle="Build a character from scratch with the guided wizard, import from D&D Beyond, or create a quick placeholder."
         actions={
           <button className="btn btn-quiet" type="button" onClick={onDone}>
             Done
@@ -29,13 +31,28 @@ export default function CreatingCharacterView({
         }
       />
 
+      {onGoToWizard && (
+        <div className="card card-pad stack" style={{ maxWidth: 980 }}>
+          <div style={{ fontWeight: 750 }}>⚔️ Recommended: Character Creation Wizard</div>
+          <div className="muted" style={{ fontSize: 13 }}>
+            Answer a few quick questions — pick your system, ancestry, class, and background through scenario-style choices.
+            No spreadsheets, no wall of text. Works for all 10 supported game systems.
+          </div>
+          <div className="row-wrap">
+            <button className="btn" type="button" onClick={onGoToWizard}>
+              Launch Wizard
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="card card-pad stack" style={{ maxWidth: 980 }}>
-        <div style={{ fontWeight: 750 }}>Recommended: Import from D&D Beyond</div>
+        <div style={{ fontWeight: 750 }}>Import from D&D Beyond</div>
         <div className="muted" style={{ fontSize: 13 }}>
-          If you already have a character in D&amp;D Beyond, download the PDF export and upload it here. TavernTails reads the fillable PDF field values (best-effort) and keeps the raw extracted data so we can improve parsing over time.
+          Already have a character in D&amp;D Beyond? Download the PDF export and upload it here. TavernTails reads the fillable PDF field values and keeps the raw data for future improvements.
         </div>
         <div className="row-wrap">
-          <button className="btn" type="button" onClick={onGoToImportPdf}>
+          <button className="btn btn-secondary" type="button" onClick={onGoToImportPdf}>
             Upload DDB PDF
           </button>
         </div>
@@ -45,9 +62,9 @@ export default function CreatingCharacterView({
       </div>
 
       <div className="card card-pad stack" style={{ maxWidth: 980 }}>
-        <div style={{ fontWeight: 750 }}>Quick create in TavernTails</div>
+        <div style={{ fontWeight: 750 }}>Quick create</div>
         <div className="muted" style={{ fontSize: 13 }}>
-          Create a minimal character (name, level, class) and start playing. You can import richer data later.
+          Create a minimal character (name, level, class) and start playing. You can add more detail later.
         </div>
         <div className="row-wrap">
           <button className="btn btn-secondary" type="button" onClick={onGoToQuickCreate}>

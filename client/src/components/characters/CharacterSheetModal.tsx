@@ -627,6 +627,14 @@ export default function CharacterSheetModal({ open, character, loading = false, 
     if ((sheet as any)?.skills && !mergedRaw.skills) {
       mergedRaw.skills = (sheet as any).skills
     }
+    // Backward compat: wizard used to write ability_scores instead of stats; alias for existing stored characters.
+    if ((sheet as any)?.ability_scores && typeof (sheet as any).ability_scores === 'object' && !mergedRaw.stats) {
+      mergedRaw.stats = { ...((sheet as any).ability_scores as object) }
+    }
+    // Backward compat: wizard used to write starting_gear instead of inventory.
+    if (Array.isArray((sheet as any)?.starting_gear) && !Array.isArray(mergedRaw.inventory)) {
+      mergedRaw.inventory = (sheet as any).starting_gear
+    }
 
     // Keep combined text available
     if (!mergedRaw.text) mergedRaw.text = sheet?.raw_text || importMeta?.extracted?.name || ''

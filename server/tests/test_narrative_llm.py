@@ -91,7 +91,7 @@ def test_continue_narrative_includes_references(monkeypatch, tmp_path):
     monkeypatch.setattr(narrative, 'Path', Path)
 
     # Monkeypatch search_query to return a sample hit
-    monkeypatch.setattr(narrative, 'search_query', lambda q, top_k=3: [{'source_id': 'PHB', 'page': 123, 'snippet': 'Fireball deals 8d6 fire damage', 'score': 0.9}])
+    monkeypatch.setattr(narrative, 'search_query', lambda q, top_k=3, **_kw: [{'source_id': 'PHB', 'page': 123, 'snippet': 'Fireball deals 8d6 fire damage', 'score': 0.9}])
 
     # Ensure the session folder is in the actual sessions location used by narrative
     real_sessions_dir = Path(__file__).resolve().parents[1] / 'sessions'
