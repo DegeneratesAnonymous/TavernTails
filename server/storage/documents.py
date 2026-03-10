@@ -148,7 +148,7 @@ class DocumentStore:
     def delete_folder(self, session_id: str, folder_path: str) -> bool:
         return True
 
-    def move_document(self, session_id: str, doc_id: str, folder: str) -> "DocumentMeta | None":
+    def move_document(self, session_id: str, doc_id: str, folder: str) -> DocumentMeta | None:
         return None
 
 
