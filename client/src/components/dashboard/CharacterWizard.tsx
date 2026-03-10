@@ -1425,7 +1425,11 @@ export default function CharacterWizard({ onDone, onCharacterCreated }: Props) {
   // ── Draft updaters ──────────────────────────
   function selectSystem(id: SystemId) {
     setDraft({ ...EMPTY_DRAFT, systemId: id, level: 1, abilityScores: { ...EMPTY_ABILITY_SCORES } })
-    goNext()
+    // goNext() would use the stale steps list (no system yet), so compute the
+    // new step list immediately from the just-selected system.
+    const newSteps = buildStepList(getSystem(id), null)
+    const next = newSteps[1]
+    if (next) { setStep(next); setQuizIndex(0) }
   }
 
   function selectAncestry(id: string) {
