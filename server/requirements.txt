@@ -22,7 +22,7 @@ passlib==1.7.4
 pluggy==1.6.0
 pycparser==3.0
 pydantic==2.12.5
-pydantic_core==2.41.5
+pydantic_core==2.47.0
 requests==2.33.0
 Pygments==2.19.2
 pytest==9.0.3
