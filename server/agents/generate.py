@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from .. import db
 from ..auth import get_current_user
+from ..steward_llm import chat_complete
 from .references import search_query as _search_refs
 from .srd import build_ruleset_prompt_context
 
@@ -44,46 +45,25 @@ def _get_model(settings: Dict[str, Any]) -> str:
 
 
 def _call_llm(system_prompt: str, user_content: str, settings: Dict[str, Any]) -> Dict[str, Any] | None:
-    """Call the configured OpenAI model and return a parsed JSON dict, or None on failure.
+    """Call Steward's Ollama (or configured LLM endpoint) and return a parsed JSON dict.
 
-    Returns None when no API key is configured or when the call / parse fails so
-    callers can fall back to placeholder data transparently.
+    Returns None when no LLM is configured or on any failure so callers fall back
+    to placeholder data transparently.
     """
-    openai_key = os.environ.get("OPENAI_API_KEY")
-    if not openai_key:
+    text = chat_complete(
+        [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_content}]
+    )
+    if not text:
         return None
-    try:
-        import openai
-
-        openai.api_key = openai_key
-        model = _get_model(settings)
-        max_tokens = int(os.environ.get("OPENAI_MAX_TOKENS", "500"))
-        temp = float(os.environ.get("OPENAI_TEMPERATURE", "0.7"))
-
-        resp = openai.ChatCompletion.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content},
-            ],
-            max_tokens=max_tokens,
-            temperature=temp,
-        )
-        text = ""
-        if resp and isinstance(resp, dict):
-            choices = resp.get("choices") or []
-            if choices and isinstance(choices, list):
-                text = (choices[0].get("message") or {}).get("content") or ""
-        if not text:
-            return None
-        text = text.strip()
-        start = text.find("{")
-        end = text.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            return json.loads(text[start : end + 1])
-        return None
-    except Exception:
-        return None
+    text = text.strip()
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        try:
+            return json.loads(text[start: end + 1])
+        except Exception:
+            pass
+    return None
 
 
 def _require_user_id(current_user) -> int:

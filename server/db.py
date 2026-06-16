@@ -984,6 +984,49 @@ def get_user_by_beyond20_relay_token(token: str) -> User | None:
 
 
 # ---------------------------------------------------------------------------
+# Steward Dashboard SSO integration
+# ---------------------------------------------------------------------------
+
+def _unique_username(session, base: str) -> str:
+    """Return base username, appending a counter if already taken."""
+    candidate = base.strip() or "Player"
+    stmt = select(User).where(func.lower(User.username) == candidate.lower())
+    if not session.exec(stmt).first():
+        return candidate
+    for i in range(2, 100):
+        suffixed = f"{candidate}{i}"
+        stmt2 = select(User).where(func.lower(User.username) == suffixed.lower())
+        if not session.exec(stmt2).first():
+            return suffixed
+    return candidate + secrets.token_hex(4)
+
+
+def get_or_create_steward_user(profile_id: str, display_name: str) -> User:
+    """Find or create a TavernTails user linked to a Steward Dashboard profile."""
+    email = f"{profile_id}@steward.local"
+    with Session(engine) as session:
+        user = session.exec(select(User).where(func.lower(User.email) == email.lower())).first()
+        if user:
+            return user
+        user = User(
+            email=email,
+            username=_unique_username(session, display_name),
+            password_hash=hash_password(secrets.token_hex(32)),
+            verified=True,
+            profile={
+                "name": display_name,
+                "email": email,
+                "steward_profile_id": profile_id,
+                "source": "steward_sso",
+            },
+        )
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+        return user
+
+
+# ---------------------------------------------------------------------------
 # Admin helpers
 # ---------------------------------------------------------------------------
 

@@ -3,20 +3,9 @@ const inferApiBase = () => {
     return process.env.REACT_APP_API_URL.trim().replace(/\/$/, '')
   }
   if (typeof window !== 'undefined') {
-    const origin = window.location.origin
-    // If running on localhost (any port), map to backend port 8000 for dev
-    try {
-      const url = new URL(origin)
-      if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
-        return `${url.protocol}//${url.hostname}:8000`
-      }
-    } catch (e) {
-      // fallback
-      if (/localhost|127\.0\.0\.1/.test(origin)) return origin.replace(/:\d+$/,'') + ':8000'
-    }
-    return origin
+    return window.location.origin
   }
-  return 'http://localhost:8000'
+  return 'http://localhost:8002'
 }
 
 export const API_BASE = inferApiBase()

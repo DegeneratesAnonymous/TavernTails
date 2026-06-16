@@ -107,6 +107,10 @@ async def log_requests(request, call_next):
     logger.info(f"--> {request.method} {request.url}")
     response = await call_next(request)
     logger.info(f"<-- {response.status_code} {request.method} {request.url}")
+    # Allow embedding in the Steward dashboard iframe.
+    # frame-ancestors * is permissive but safe for a locally-run private tool.
+    response.headers["Content-Security-Policy"] = "frame-ancestors *"
+    response.headers.pop("X-Frame-Options", None)
     return response
 
 
