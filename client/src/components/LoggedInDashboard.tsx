@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import '../LoggedIn.css';
 import './LoggedInDashboard.css';
+import SourceRef from './ui/SourceRef'
 import GameplayLayout from './GameplayLayout'
 import SessionSettings from './SessionSettings'
 import { apiFetch, buildApiUrl } from '../api'
@@ -1926,7 +1927,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                                                   <div style={{ flex: 1, minWidth: 0 }}>
                                                     <span style={{ fontWeight: 600 }}>{f.name}</span>
                                                     {f.source ? (
-                                                      <span className="muted" style={{ fontSize: 10, marginLeft: 6 }}>{f.source}</span>
+                                                      <SourceRef source={f.source} style={{ marginLeft: 6, color: 'var(--accent, #c8941a)' }} />
                                                     ) : null}
                                                   </div>
                                                   {hasDetails ? (

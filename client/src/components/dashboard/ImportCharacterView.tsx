@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { apiFetch, API_BASE, buildApiUrl } from '../../api'
 import PageHeader from '../ui/PageHeader'
 import Modal from '../ui/Modal'
+import SourceRef from '../ui/SourceRef'
 
 // Known TTRPG systems available for the game-system selector.
 // Listing these names in a UI dropdown is purely referential – the same as
@@ -120,14 +121,16 @@ export default function ImportCharacterView({
     }
   }, [backendPaths])
 
-  function featureLabel(f: any): string {
-    if (typeof f === 'string') return f
-    if (f && typeof f === 'object') {
-      const name = String(f.name || '').trim()
-      const src = f.source ? String(f.source).trim() : ''
-      return src ? `${name} — ${src}` : name
+  function featureParts(f: any): { name: string; source: string | null } {
+    if (typeof f === 'string') {
+      const bullet = f.indexOf(' • ')
+      if (bullet !== -1) return { name: f.slice(0, bullet).trim(), source: f.slice(bullet + 3).trim() || null }
+      return { name: f, source: null }
     }
-    return String(f || '')
+    if (f && typeof f === 'object') {
+      return { name: String(f.name || '').trim(), source: f.source ? String(f.source).trim() : null }
+    }
+    return { name: String(f || ''), source: null }
   }
 
   function featureDetailText(f: any): string {
@@ -682,7 +685,12 @@ export default function ImportCharacterView({
                           onClick={() => handleFeatureClick(featureDetailText(f))}
                           style={{ textAlign: 'left', padding: '6px 10px', background: 'rgba(200,148,26,0.06)', border: '1px solid rgba(200,148,26,0.15)', borderRadius: 5, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}
                         >
-                          <span style={{ fontWeight: 600, fontSize: 12 }}>{featureLabel(f)}</span>
+                          <span style={{ flex: 1, minWidth: 0 }}>
+                            <span style={{ fontWeight: 600, fontSize: 12 }}>{featureParts(f).name}</span>
+                            {featureParts(f).source ? (
+                              <SourceRef source={featureParts(f).source!} style={{ marginLeft: 6, color: 'var(--accent, #c8941a)', fontSize: 11 }} />
+                            ) : null}
+                          </span>
                           {(f && typeof f === 'object' && f.description) ? <span style={{ fontSize: 10, opacity: 0.5, flexShrink: 0 }}>▼</span> : null}
                         </button>
                       ))}
@@ -701,7 +709,12 @@ export default function ImportCharacterView({
                           onClick={() => handleFeatureClick(featureDetailText(f))}
                           style={{ textAlign: 'left', padding: '6px 10px', background: 'rgba(200,148,26,0.06)', border: '1px solid rgba(200,148,26,0.15)', borderRadius: 5, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}
                         >
-                          <span style={{ fontWeight: 600, fontSize: 12 }}>{featureLabel(f)}</span>
+                          <span style={{ flex: 1, minWidth: 0 }}>
+                            <span style={{ fontWeight: 600, fontSize: 12 }}>{featureParts(f).name}</span>
+                            {featureParts(f).source ? (
+                              <SourceRef source={featureParts(f).source!} style={{ marginLeft: 6, color: 'var(--accent, #c8941a)', fontSize: 11 }} />
+                            ) : null}
+                          </span>
                           {(f && typeof f === 'object' && f.description) ? <span style={{ fontSize: 10, opacity: 0.5, flexShrink: 0 }}>▼</span> : null}
                         </button>
                       ))}
@@ -720,7 +733,12 @@ export default function ImportCharacterView({
                           onClick={() => handleFeatureClick(featureDetailText(f))}
                           style={{ textAlign: 'left', padding: '6px 10px', background: 'rgba(200,148,26,0.06)', border: '1px solid rgba(200,148,26,0.15)', borderRadius: 5, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}
                         >
-                          <span style={{ fontWeight: 600, fontSize: 12 }}>{featureLabel(f)}</span>
+                          <span style={{ flex: 1, minWidth: 0 }}>
+                            <span style={{ fontWeight: 600, fontSize: 12 }}>{featureParts(f).name}</span>
+                            {featureParts(f).source ? (
+                              <SourceRef source={featureParts(f).source!} style={{ marginLeft: 6, color: 'var(--accent, #c8941a)', fontSize: 11 }} />
+                            ) : null}
+                          </span>
                           {(f && typeof f === 'object' && f.description) ? <span style={{ fontSize: 10, opacity: 0.5, flexShrink: 0 }}>▼</span> : null}
                         </button>
                       ))}
