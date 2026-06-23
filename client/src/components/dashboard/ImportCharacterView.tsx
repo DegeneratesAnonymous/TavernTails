@@ -120,11 +120,25 @@ export default function ImportCharacterView({
     }
   }, [backendPaths])
 
-  function shortPreview(text: string, limit = 140) {
-    if (!text) return ''
-    const collapsed = text.replace(/\s+/g, ' ').trim()
-    if (collapsed.length <= limit) return collapsed
-    return collapsed.slice(0, limit).trim() + '…'
+  function featureLabel(f: any): string {
+    if (typeof f === 'string') return f
+    if (f && typeof f === 'object') {
+      const name = String(f.name || '').trim()
+      const src = f.source ? String(f.source).trim() : ''
+      return src ? `${name} — ${src}` : name
+    }
+    return String(f || '')
+  }
+
+  function featureDetailText(f: any): string {
+    if (typeof f === 'string') return f
+    if (f && typeof f === 'object') {
+      const name = String(f.name || '').trim()
+      const src = f.source ? ` (${f.source})` : ''
+      const desc = f.description ? `\n\n${f.description}` : ''
+      return `${name}${src}${desc}`
+    }
+    return String(f || '')
   }
 
   const pdfPreview = useMemo(() => {
@@ -581,7 +595,7 @@ export default function ImportCharacterView({
                         <div className="muted">Attributes</div>
                         <div className="row-wrap" style={{ gap: 8 }}>
                           {(['control', 'daring', 'fitness', 'insight', 'presence', 'reason'] as const).map((k) => (
-                            <div key={k} className="input input-mono" style={{ padding: '6px 8px' }}>
+                            <div key={k} style={{ padding: '5px 8px', background: 'rgba(200,148,26,0.1)', border: '1px solid rgba(200,148,26,0.2)', borderRadius: 5, fontFamily: 'monospace', fontSize: 13 }}>
                               <strong>{k.slice(0, 3).charAt(0).toUpperCase() + k.slice(1, 3)}:</strong> {typeof (pdfPreview.staAttributes as any)[k] === 'number' ? (pdfPreview.staAttributes as any)[k] : '—'}
                             </div>
                           ))}
@@ -592,7 +606,7 @@ export default function ImportCharacterView({
                           <div className="muted">Disciplines</div>
                           <div className="row-wrap" style={{ gap: 8 }}>
                             {(['command', 'conn', 'engineering', 'medicine', 'science', 'security'] as const).map((k) => (
-                              <div key={k} className="input input-mono" style={{ padding: '6px 8px' }}>
+                              <div key={k} style={{ padding: '5px 8px', background: 'rgba(200,148,26,0.1)', border: '1px solid rgba(200,148,26,0.2)', borderRadius: 5, fontFamily: 'monospace', fontSize: 13 }}>
                                 <strong>{k.slice(0, 3).charAt(0).toUpperCase() + k.slice(1, 3)}:</strong> {typeof (pdfPreview.staDisciplines as any)[k] === 'number' ? (pdfPreview.staDisciplines as any)[k] : '—'}
                               </div>
                             ))}
@@ -605,8 +619,8 @@ export default function ImportCharacterView({
                       <div className="muted">Ability scores</div>
                       <div className="row-wrap" style={{ gap: 8 }}>
                         {(['str', 'dex', 'con', 'int', 'wis', 'cha'] as const).map((k) => (
-                          <div key={k} className="input input-mono" style={{ padding: '6px 8px' }}>
-                            <strong>{k.toUpperCase()}:</strong> {typeof (pdfPreview.stats as any)[k] === 'number' ? (pdfPreview.stats as any)[k] : '—'}
+                          <div key={k} style={{ padding: '5px 8px', background: 'rgba(200,148,26,0.1)', border: '1px solid rgba(200,148,26,0.2)', borderRadius: 5, fontFamily: 'monospace', fontSize: 13 }}>
+                            <strong style={{ color: 'var(--accent, #c8941a)' }}>{k.toUpperCase()}</strong> {typeof (pdfPreview.stats as any)[k] === 'number' ? (pdfPreview.stats as any)[k] : '—'}
                           </div>
                         ))}
                       </div>
@@ -659,18 +673,17 @@ export default function ImportCharacterView({
               <>
                 {(Array.isArray(preview?.sheet?.classFeatures) && preview.sheet.classFeatures.length > 0) ? (
                   <div className="card card-pad stack" style={{ background: 'var(--muted-surface)' }}>
-                    <div style={{ fontWeight: 750 }}>{preview?.class_name ? `${preview.class_name} Features` : 'Class Features'}</div>
-                    <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>Click a feature to view more details.</div>
-                    <div style={{ maxHeight: 220, overflowY: 'auto', display: 'grid', gap: 6 }}>
+                    <div style={{ fontWeight: 700, fontSize: 10, color: 'var(--accent, #c8941a)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{preview?.class_name ? `${preview.class_name} Features` : 'Class Features'}</div>
+                    <div style={{ display: 'grid', gap: 4 }}>
                       {preview.sheet.classFeatures.map((f: any, idx: number) => (
                         <button
                           key={`class-${idx}`}
                           type="button"
-                          className="btn btn-ghost"
-                          style={{ textAlign: 'left', padding: '8px 10px' }}
-                          onClick={() => handleFeatureClick(typeof f === 'string' ? f : JSON.stringify(f, null, 2))}
+                          onClick={() => handleFeatureClick(featureDetailText(f))}
+                          style={{ textAlign: 'left', padding: '6px 10px', background: 'rgba(200,148,26,0.06)', border: '1px solid rgba(200,148,26,0.15)', borderRadius: 5, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}
                         >
-                          <div style={{ whiteSpace: 'normal', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortPreview(String(f || ''))}</div>
+                          <span style={{ fontWeight: 600, fontSize: 12 }}>{featureLabel(f)}</span>
+                          {(f && typeof f === 'object' && f.description) ? <span style={{ fontSize: 10, opacity: 0.5, flexShrink: 0 }}>▼</span> : null}
                         </button>
                       ))}
                     </div>
@@ -679,18 +692,17 @@ export default function ImportCharacterView({
 
                 {(Array.isArray(preview?.sheet?.racialFeatures) && preview.sheet.racialFeatures.length > 0) ? (
                   <div className="card card-pad stack" style={{ background: 'var(--muted-surface)' }}>
-                    <div style={{ fontWeight: 750 }}>{preview?.sheet?.import?.extracted?.class_name ? `${preview.sheet.import.extracted.class_name} Species Traits` : 'Species Traits'}</div>
-                    <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>Click a trait to view more details.</div>
-                    <div style={{ maxHeight: 220, overflowY: 'auto', display: 'grid', gap: 6 }}>
+                    <div style={{ fontWeight: 700, fontSize: 10, color: 'var(--accent, #c8941a)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Species Traits</div>
+                    <div style={{ display: 'grid', gap: 4 }}>
                       {preview.sheet.racialFeatures.map((f: any, idx: number) => (
                         <button
                           key={`race-${idx}`}
                           type="button"
-                          className="btn btn-ghost"
-                          style={{ textAlign: 'left', padding: '8px 10px' }}
-                          onClick={() => handleFeatureClick(typeof f === 'string' ? f : JSON.stringify(f, null, 2))}
+                          onClick={() => handleFeatureClick(featureDetailText(f))}
+                          style={{ textAlign: 'left', padding: '6px 10px', background: 'rgba(200,148,26,0.06)', border: '1px solid rgba(200,148,26,0.15)', borderRadius: 5, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}
                         >
-                          <div style={{ whiteSpace: 'normal', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortPreview(String(f || ''))}</div>
+                          <span style={{ fontWeight: 600, fontSize: 12 }}>{featureLabel(f)}</span>
+                          {(f && typeof f === 'object' && f.description) ? <span style={{ fontSize: 10, opacity: 0.5, flexShrink: 0 }}>▼</span> : null}
                         </button>
                       ))}
                     </div>
@@ -699,23 +711,23 @@ export default function ImportCharacterView({
 
                 {(Array.isArray(preview?.sheet?.otherFeatures) && preview.sheet.otherFeatures.length > 0) ? (
                   <div className="card card-pad stack" style={{ background: 'var(--muted-surface)' }}>
-                    <div style={{ fontWeight: 750 }}>Other Features</div>
-                    <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>Click a feature to view more details.</div>
-                    <div style={{ maxHeight: 220, overflowY: 'auto', display: 'grid', gap: 6 }}>
+                    <div style={{ fontWeight: 700, fontSize: 10, color: 'var(--accent, #c8941a)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Other Features</div>
+                    <div style={{ maxHeight: 260, overflowY: 'auto', display: 'grid', gap: 4 }}>
                       {preview.sheet.otherFeatures.map((f: any, idx: number) => (
                         <button
                           key={`other-${idx}`}
                           type="button"
-                          className="btn btn-ghost"
-                          style={{ textAlign: 'left', padding: '8px 10px' }}
-                          onClick={() => handleFeatureClick(typeof f === 'string' ? f : JSON.stringify(f, null, 2))}
+                          onClick={() => handleFeatureClick(featureDetailText(f))}
+                          style={{ textAlign: 'left', padding: '6px 10px', background: 'rgba(200,148,26,0.06)', border: '1px solid rgba(200,148,26,0.15)', borderRadius: 5, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}
                         >
-                          <div style={{ whiteSpace: 'normal', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortPreview(String(f || ''))}</div>
+                          <span style={{ fontWeight: 600, fontSize: 12 }}>{featureLabel(f)}</span>
+                          {(f && typeof f === 'object' && f.description) ? <span style={{ fontSize: 10, opacity: 0.5, flexShrink: 0 }}>▼</span> : null}
                         </button>
                       ))}
                     </div>
                   </div>
                 ) : null}
+
 
                 {(Array.isArray(preview?.sheet?.spellbook) && preview.sheet.spellbook.length > 0) ? (
                   <div className="card card-pad stack" style={{ background: 'var(--muted-surface)' }}>
