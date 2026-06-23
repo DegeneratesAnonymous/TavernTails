@@ -4781,6 +4781,7 @@ class CharacterUpdate(BaseModel):
     level: int | None = Field(default=None, ge=1, le=20)
     class_name: str | None = None
     sheet: dict[str, Any] | None = None
+    sheet_patch: dict[str, Any] | None = None
 
 
 class CharacterImport(BaseModel):

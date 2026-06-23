@@ -1,4 +1,5 @@
-import React, {useMemo, useRef, useState} from 'react'
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react'
+import { apiFetch } from '../api'
 import {CharacterSnapshot} from './CharacterIconStrip'
 import EmptyState from './ui/EmptyState'
 import SourceRef from './ui/SourceRef'
@@ -49,6 +50,7 @@ type Props = {
   onGoToCharacters?: () => void
   onGoToImport?: () => void
   onQuickAction?: (action: {type: 'attack' | 'cast' | 'short_rest' | 'long_rest'; detail?: string}) => void
+  onSheetUpdate?: (characterId: string, patch: Record<string, any>) => void
 }
 
 type SheetTab = 'skills' | 'spells' | 'features' | 'inventory'
@@ -65,6 +67,7 @@ export default function CharacterPanel({
   onGoToCharacters,
   onGoToImport,
   onQuickAction,
+  onSheetUpdate,
 }: Props){
   const [drawerKey, setDrawerKey] = useState<string | null>(null)
   const [sheetTab, setSheetTab] = useState<SheetTab | null>('skills')
@@ -73,11 +76,90 @@ export default function CharacterPanel({
   const [cueError, setCueError] = useState<string | null>(null)
   const [castPickOpen, setCastPickOpen] = useState(false)
 
+  // Local session-time overrides (reset when character changes)
+  const prevIdRef = useRef<string | undefined>(undefined)
+  const [hpLocal, setHpLocal] = useState<{current: number; max: number; temp?: number} | null>(null)
+  const [slotsLocal, setSlotsLocal] = useState<Record<string, {max: number; used: number; level?: number}> | null>(null)
+  const [invLocal, setInvLocal] = useState<string[] | null>(null)
+  // HP edit UI
+  const [hpEditOpen, setHpEditOpen] = useState(false)
+  const [hpAdjInput, setHpAdjInput] = useState('')
+  // Add-item UI
+  const [addItemInput, setAddItemInput] = useState('')
+  // Upcast flow
+  const [castFlow, setCastFlow] = useState<{spell: string; minLevel: number; options: number[]} | null>(null)
+  // Rest dialog
+  const [restDialog, setRestDialog] = useState<'short' | 'long' | null>(null)
+  const [shortRestInput, setShortRestInput] = useState('')
+  // Saving indicator
+  const [saving, setSaving] = useState(false)
+
   const selected = useMemo(() => {
     if(!roster.length) return undefined
     if(!selectedId) return roster[0]
     return roster.find(r => r.id === selectedId) ?? roster[0]
   }, [roster, selectedId])
+
+  // Reset local overrides when active character changes
+  useEffect(() => {
+    if (selected?.id !== prevIdRef.current) {
+      setHpLocal(null)
+      setSlotsLocal(null)
+      setInvLocal(null)
+      setHpEditOpen(false)
+      setHpAdjInput('')
+      setCastFlow(null)
+      setRestDialog(null)
+      setShortRestInput('')
+      prevIdRef.current = selected?.id
+    }
+  }, [selected?.id])
+
+  const effectiveHp = hpLocal ?? selected?.hp ?? { current: 0, max: 0 }
+  const effectiveSlots: Record<string, {max: number; used: number; level?: number}> =
+    slotsLocal ?? (selected?.spellSlots ?? {})
+  const effectiveInv: string[] = invLocal ?? (selected?.inventory ?? [])
+
+  // Map spell name (lowercase) → minimum slot level
+  const spellLevelMap = useMemo(() => {
+    const map: Record<string, number> = {}
+    for (const entry of (selected?.spellbook ?? [])) {
+      if (!entry?.name || !entry?.header) continue
+      const hdr = String(entry.header).toLowerCase()
+      const m = hdr.match(/(\d+)/)
+      if (hdr.includes('cantrip')) { map[String(entry.name).toLowerCase()] = 0; continue }
+      if (m) map[String(entry.name).toLowerCase()] = Number(m[1])
+    }
+    return map
+  }, [selected?.spellbook])
+
+  const pushSheetPatch = useCallback((patch: Record<string, any>) => {
+    if (!selected?.id) return
+    setSaving(true)
+    apiFetch(`/characters/${selected.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ sheet_patch: patch }),
+    }).then(() => {
+      onSheetUpdate?.(selected.id, patch)
+    }).catch(() => {}).finally(() => setSaving(false))
+  }, [selected?.id, onSheetUpdate])
+
+  const applyHp = useCallback((next: {current: number; max: number; temp?: number}) => {
+    const clamped = { ...next, current: Math.max(0, Math.min(next.max, next.current)) }
+    setHpLocal(clamped)
+    pushSheetPatch({ hp: clamped })
+  }, [pushSheetPatch])
+
+  const applySlots = useCallback((next: Record<string, {max: number; used: number; level?: number}>) => {
+    setSlotsLocal(next)
+    pushSheetPatch({ spell_slots: next })
+  }, [pushSheetPatch])
+
+  const markSlotUsed = useCallback((lvl: string) => {
+    const slot = effectiveSlots[lvl]
+    if (!slot || slot.used >= slot.max) return
+    applySlots({ ...effectiveSlots, [lvl]: { ...slot, used: slot.used + 1 } })
+  }, [effectiveSlots, applySlots])
 
   const computeMod = (score: number) => Math.floor((score - 10) / 2)
   const fmtMod = (mod: number) => (mod >= 0 ? `+${mod}` : `${mod}`)
@@ -109,8 +191,7 @@ export default function CharacterPanel({
     return { equippedWeapons, hasSpells }
   }, [selected?.inventory, selected?.spells])
 
-  const spellSlots = selected?.spellSlots ?? {}
-  const slotEntries = Object.entries(spellSlots)
+  const slotEntries = Object.entries(effectiveSlots)
     .filter(([, slot]) => slot.max > 0)
     .sort(([a],[b]) => a === 'pact' ? 1 : b === 'pact' ? -1 : Number(a) - Number(b))
 
@@ -147,7 +228,7 @@ export default function CharacterPanel({
 
   // ── In-session character sheet ─────────────────────────────────────────────
   if(!showRoster){
-    const hp = selected?.hp ?? { current: 0, max: 0 }
+    const hp = effectiveHp
     const hpPct = hp.max > 0 ? Math.max(0, Math.min(1, hp.current / hp.max)) : 0
     const hpColor = hpPct > 0.6 ? '#4caf82' : hpPct > 0.3 ? '#e0a352' : '#e05252'
     const exhaustion = selected?.exhaustion ?? 0
@@ -192,10 +273,17 @@ export default function CharacterPanel({
         <div className="cs-vitals">
           <div className="cs-vital cs-vital--hp">
             <span className="cs-vital-label">HP</span>
-            <span className="cs-vital-value" style={{ color: hpColor }}>
+            <button
+              type="button"
+              className="cs-hp-display"
+              style={{ color: hpColor }}
+              onClick={() => { setHpEditOpen(v => !v); setHpAdjInput('') }}
+              title="Click to adjust HP"
+            >
               {hp.current}<span className="cs-vital-denom">/{hp.max}</span>
-            </span>
-            {hp.temp ? <span className="cs-vital-temp">+{hp.temp}</span> : null}
+              {hp.temp ? <span className="cs-vital-temp">+{hp.temp}</span> : null}
+              <span className="cs-hp-edit-icon">✎</span>
+            </button>
           </div>
           <div className="cs-vital">
             <span className="cs-vital-label">AC</span>
@@ -217,6 +305,73 @@ export default function CharacterPanel({
         <div className="cs-hp-bar-track">
           <div className="cs-hp-bar-fill" style={{ width: `${hpPct * 100}%`, background: hpColor }} />
         </div>
+
+        {/* HP edit row (toggle via ✎ click) */}
+        {hpEditOpen ? (
+          <div className="cs-hp-edit-row">
+            <div className="cs-hp-edit-group">
+              <span className="cs-hp-edit-label" style={{ color: '#e05252' }}>Damage</span>
+              <div className="cs-hp-edit-adj">
+                <input
+                  className="cs-hp-edit-input"
+                  type="number"
+                  min={0}
+                  placeholder="0"
+                  value={hpAdjInput}
+                  onChange={e => setHpAdjInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      const n = parseInt(hpAdjInput, 10)
+                      if (!isNaN(n) && n > 0) {
+                        applyHp({ ...hp, current: hp.current - n })
+                        setHpAdjInput('')
+                        setHpEditOpen(false)
+                      }
+                    }
+                  }}
+                />
+                <button type="button" className="cs-hp-edit-btn cs-hp-edit-btn--dmg"
+                  onClick={() => {
+                    const n = parseInt(hpAdjInput, 10)
+                    if (!isNaN(n) && n > 0) { applyHp({ ...hp, current: hp.current - n }); setHpAdjInput(''); setHpEditOpen(false) }
+                  }}>
+                  Apply
+                </button>
+              </div>
+            </div>
+            <div className="cs-hp-edit-group">
+              <span className="cs-hp-edit-label" style={{ color: '#4caf82' }}>Heal</span>
+              <div className="cs-hp-edit-adj">
+                <input
+                  className="cs-hp-edit-input"
+                  type="number"
+                  min={0}
+                  placeholder="0"
+                  value={hpAdjInput}
+                  onChange={e => setHpAdjInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      const n = parseInt(hpAdjInput, 10)
+                      if (!isNaN(n) && n > 0) {
+                        applyHp({ ...hp, current: hp.current + n })
+                        setHpAdjInput('')
+                        setHpEditOpen(false)
+                      }
+                    }
+                  }}
+                />
+                <button type="button" className="cs-hp-edit-btn cs-hp-edit-btn--heal"
+                  onClick={() => {
+                    const n = parseInt(hpAdjInput, 10)
+                    if (!isNaN(n) && n > 0) { applyHp({ ...hp, current: hp.current + n }); setHpAdjInput(''); setHpEditOpen(false) }
+                  }}>
+                  Apply
+                </button>
+              </div>
+            </div>
+            <button type="button" className="cs-hp-edit-close" onClick={() => setHpEditOpen(false)}>✕</button>
+          </div>
+        ) : null}
 
         {/* Status indicators (exhaustion / death saves — only when relevant) */}
         {(showDeathSaves || showExhaustion) ? (
@@ -251,9 +406,21 @@ export default function CharacterPanel({
               <div key={lvl} className="cs-slot-row">
                 <span className="cs-slot-label">{lvl === 'pact' ? 'Pact' : `L${lvl}`}</span>
                 <span className="cs-slot-pips">
-                  {Array.from({length: slot.max}).map((_,i) => (
-                    <span key={i} className={`cs-slot-pip ${i < slot.used ? 'cs-slot-pip--used' : ''}`} />
-                  ))}
+                  {Array.from({length: slot.max}).map((_,i) => {
+                    const isUsed = i < slot.used
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        className={`cs-slot-pip cs-slot-pip--btn ${isUsed ? 'cs-slot-pip--used' : ''}`}
+                        title={isUsed ? 'Mark slot available' : 'Mark slot used'}
+                        onClick={() => {
+                          const newUsed = isUsed ? i : i + 1
+                          applySlots({ ...effectiveSlots, [lvl]: { ...slot, used: newUsed } })
+                        }}
+                      />
+                    )
+                  })}
                 </span>
                 <span className="cs-slot-count">{slot.max - slot.used}/{slot.max}</span>
               </div>
@@ -276,50 +443,171 @@ export default function CharacterPanel({
         </div>
 
         {/* ── Quick Actions ── */}
-        {(quickActions.equippedWeapons.length > 0 || quickActions.hasSpells) ? (
-          <div className="cs-actions">
-            <span className="cs-actions-label">Actions</span>
-            <div className="cs-actions-row">
-              {quickActions.equippedWeapons.map(weapon => (
-                <button
-                  key={weapon}
-                  type="button"
-                  className="cs-action-btn cs-action-btn--attack"
-                  onClick={() => onQuickAction?.({ type: 'attack', detail: weapon })}
-                  title={`Attack with ${weapon}`}
-                >
-                  ⚔ {weapon}
-                </button>
-              ))}
-              {quickActions.hasSpells ? (
-                <div style={{ position: 'relative' }}>
+        <div className="cs-actions">
+          {(quickActions.equippedWeapons.length > 0 || quickActions.hasSpells) ? (
+            <>
+              <span className="cs-actions-label">Actions</span>
+              <div className="cs-actions-row">
+                {quickActions.equippedWeapons.map(weapon => (
                   <button
+                    key={weapon}
                     type="button"
-                    className="cs-action-btn cs-action-btn--cast"
-                    onClick={() => setCastPickOpen(v => !v)}
+                    className="cs-action-btn cs-action-btn--attack"
+                    onClick={() => onQuickAction?.({ type: 'attack', detail: weapon })}
+                    title={`Attack with ${weapon}`}
                   >
-                    ✦ Cast
+                    ⚔ {weapon}
                   </button>
-                  {castPickOpen ? (
-                    <div className="cs-cast-picker">
-                      {(selected?.spells || []).map(spell => (
-                        <button
-                          key={spell}
-                          type="button"
-                          className="cs-cast-item"
-                          onClick={() => { onQuickAction?.({ type: 'cast', detail: spell }); setCastPickOpen(false) }}
-                        >
-                          {spell}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-              <button type="button" className="cs-action-btn cs-action-btn--rest"
-                onClick={() => onQuickAction?.({ type: 'short_rest' })}>Short Rest</button>
-              <button type="button" className="cs-action-btn cs-action-btn--rest"
-                onClick={() => onQuickAction?.({ type: 'long_rest' })}>Long Rest</button>
+                ))}
+                {quickActions.hasSpells ? (
+                  <div style={{ position: 'relative' }}>
+                    <button
+                      type="button"
+                      className="cs-action-btn cs-action-btn--cast"
+                      onClick={() => { setCastPickOpen(v => !v); setCastFlow(null) }}
+                    >
+                      ✦ Cast
+                    </button>
+                    {castPickOpen ? (
+                      <div className="cs-cast-picker">
+                        {(selected?.spells || []).map(spell => (
+                          <button
+                            key={spell}
+                            type="button"
+                            className="cs-cast-item"
+                            onClick={() => {
+                              const minLevel = spellLevelMap[spell.toLowerCase()] ?? 1
+                              if (minLevel === 0) {
+                                onQuickAction?.({ type: 'cast', detail: spell })
+                                setCastPickOpen(false)
+                                return
+                              }
+                              const available = Object.entries(effectiveSlots)
+                                .filter(([lvl, s]) => {
+                                  const n = lvl === 'pact' ? (s.level ?? 0) : Number(lvl)
+                                  return n >= minLevel && s.used < s.max
+                                })
+                                .map(([lvl, s]) => lvl === 'pact' ? (s.level ?? 0) : Number(lvl))
+                                .filter(n => n > 0)
+                                .sort((a, b) => a - b)
+                              if (!available.length) {
+                                onQuickAction?.({ type: 'cast', detail: spell })
+                                setCastPickOpen(false)
+                                return
+                              }
+                              if (available.length === 1) {
+                                markSlotUsed(String(available[0]))
+                                onQuickAction?.({ type: 'cast', detail: spell })
+                                setCastPickOpen(false)
+                                return
+                              }
+                              setCastPickOpen(false)
+                              setCastFlow({ spell, minLevel, options: available })
+                            }}
+                          >
+                            {spell}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            </>
+          ) : null}
+
+          {/* Upcast dialog (appears when multiple slot levels available) */}
+          {castFlow ? (
+            <div className="cs-cast-picker cs-cast-picker--upcast">
+              <div className="cs-cast-upcast-label">Cast <strong>{castFlow.spell}</strong> at level:</div>
+              <div className="cs-cast-upcast-options">
+                {castFlow.options.map(lvl => (
+                  <button
+                    key={lvl}
+                    type="button"
+                    className="cs-cast-item"
+                    onClick={() => {
+                      markSlotUsed(String(lvl))
+                      onQuickAction?.({ type: 'cast', detail: castFlow.spell })
+                      setCastFlow(null)
+                    }}
+                  >
+                    {lvl === castFlow.minLevel ? `Level ${lvl}` : `Level ${lvl} ↑`}
+                  </button>
+                ))}
+                <button type="button" className="cs-cast-item cs-cast-item--cancel"
+                  onClick={() => setCastFlow(null)}>Cancel</button>
+              </div>
+            </div>
+          ) : null}
+
+          {/* Rest buttons — always visible */}
+          <div className="cs-rest-row">
+            <button type="button" className="cs-action-btn cs-action-btn--rest"
+              onClick={() => { setRestDialog('short'); setShortRestInput('') }}>
+              Short Rest
+            </button>
+            <button type="button" className="cs-action-btn cs-action-btn--rest"
+              onClick={() => setRestDialog('long')}>
+              Long Rest
+            </button>
+          </div>
+        </div>
+
+        {/* Rest dialogs */}
+        {restDialog === 'short' ? (
+          <div className="cs-rest-dialog">
+            <div className="cs-rest-dialog-title">Short Rest — Restore HP</div>
+            <div className="cs-rest-dialog-row">
+              <input
+                className="cs-hp-edit-input"
+                type="number"
+                min={0}
+                placeholder="HP to restore"
+                value={shortRestInput}
+                onChange={e => setShortRestInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    const n = parseInt(shortRestInput, 10)
+                    if (!isNaN(n) && n >= 0) { applyHp({ ...hp, current: hp.current + n }); setRestDialog(null) }
+                  }
+                  if (e.key === 'Escape') setRestDialog(null)
+                }}
+                autoFocus
+              />
+              <button type="button" className="cs-hp-edit-btn cs-hp-edit-btn--heal"
+                onClick={() => {
+                  const n = parseInt(shortRestInput, 10)
+                  if (!isNaN(n) && n >= 0) { applyHp({ ...hp, current: hp.current + n }); setRestDialog(null) }
+                }}>
+                Rest
+              </button>
+              <button type="button" className="cs-hp-edit-close" onClick={() => setRestDialog(null)}>✕</button>
+            </div>
+          </div>
+        ) : null}
+        {restDialog === 'long' ? (
+          <div className="cs-rest-dialog">
+            <div className="cs-rest-dialog-title">Long Rest</div>
+            <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 8 }}>
+              Restore to full HP and recover all spell slots?
+            </div>
+            <div className="cs-rest-dialog-row">
+              <button type="button" className="cs-hp-edit-btn cs-hp-edit-btn--heal"
+                onClick={() => {
+                  const fullHp = { ...hp, current: hp.max }
+                  setHpLocal(fullHp)
+                  const resetSlots = Object.fromEntries(
+                    Object.entries(effectiveSlots).map(([k, s]) => [k, { ...s, used: 0 }])
+                  )
+                  setSlotsLocal(resetSlots)
+                  pushSheetPatch({ hp: fullHp, spell_slots: resetSlots })
+                  onQuickAction?.({ type: 'long_rest' })
+                  setRestDialog(null)
+                }}>
+                Take Long Rest
+              </button>
+              <button type="button" className="cs-hp-edit-close" onClick={() => setRestDialog(null)}>✕</button>
             </div>
           </div>
         ) : null}
@@ -428,16 +716,64 @@ export default function CharacterPanel({
             })() : null}
 
             {sheetTab === 'inventory' ? (
-              <div>
-                {(selected?.inventory || []).length === 0 ? (
-                  <div className="cs-empty">No inventory recorded</div>
+              <div className="cs-inv-wrapper">
+                {effectiveInv.length === 0 ? (
+                  <div className="cs-empty">No items recorded</div>
                 ) : (
-                  <ul className="cs-list">
-                    {(selected?.inventory || []).map(item => (
-                      <li key={item}>{item}</li>
+                  <ul className="cs-inv-list">
+                    {effectiveInv.map((item, idx) => (
+                      <li key={`${item}-${idx}`} className="cs-inv-item">
+                        <span className="cs-inv-name">{item}</span>
+                        <button
+                          type="button"
+                          className="cs-inv-remove"
+                          title="Remove item"
+                          onClick={() => {
+                            const next = effectiveInv.filter((_, i) => i !== idx)
+                            setInvLocal(next)
+                            pushSheetPatch({ inventory: next })
+                          }}
+                        >
+                          ×
+                        </button>
+                      </li>
                     ))}
                   </ul>
                 )}
+                <div className="cs-inv-add">
+                  <input
+                    className="cs-inv-add-input"
+                    type="text"
+                    placeholder="Add item…"
+                    value={addItemInput}
+                    onChange={e => setAddItemInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        const val = addItemInput.trim()
+                        if (!val) return
+                        const next = [...effectiveInv, val]
+                        setInvLocal(next)
+                        pushSheetPatch({ inventory: next })
+                        setAddItemInput('')
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="cs-inv-add-btn"
+                    disabled={!addItemInput.trim()}
+                    onClick={() => {
+                      const val = addItemInput.trim()
+                      if (!val) return
+                      const next = [...effectiveInv, val]
+                      setInvLocal(next)
+                      pushSheetPatch({ inventory: next })
+                      setAddItemInput('')
+                    }}
+                  >
+                    +
+                  </button>
+                </div>
               </div>
             ) : null}
 

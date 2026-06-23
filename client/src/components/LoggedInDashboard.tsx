@@ -1267,6 +1267,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                   }}
                   isAdmin={isAdmin}
                   onLogout={onLogout}
+                  onRefreshRoster={fetchCharacters}
                   onSelectCharId={async (idStr) => {
                     const parsed = Number(idStr)
                     if(!Number.isFinite(parsed)) return

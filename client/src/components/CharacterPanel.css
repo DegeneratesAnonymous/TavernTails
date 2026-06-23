@@ -324,6 +324,9 @@
   border-radius: 50%;
   border: 1.5px solid rgba(155,89,182,0.6);
   background: rgba(155,89,182,0.22);
+  flex-shrink: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
 .cs-slot-pip--used {
@@ -643,4 +646,318 @@
 
 .cs-block-title--npc {
   color: #8ecae6;
+}
+
+/* ── HP interactive ── */
+.cs-hp-display {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 900;
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+  color: inherit;
+}
+
+.cs-hp-display:hover .cs-hp-edit-icon {
+  opacity: 0.6;
+}
+
+.cs-hp-edit-icon {
+  font-size: 10px;
+  margin-left: 4px;
+  opacity: 0.3;
+  transition: opacity 0.15s;
+  font-weight: 400;
+}
+
+.cs-hp-edit-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  background: rgba(0,0,0,0.2);
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.cs-hp-edit-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 100px;
+}
+
+.cs-hp-edit-label {
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.85;
+}
+
+.cs-hp-edit-adj {
+  display: flex;
+  gap: 4px;
+}
+
+.cs-hp-edit-input {
+  flex: 1;
+  width: 0;
+  min-width: 0;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 5px;
+  color: inherit;
+  font-size: 13px;
+  font-family: inherit;
+  padding: 4px 6px;
+  text-align: center;
+}
+
+.cs-hp-edit-input:focus {
+  outline: none;
+  border-color: rgba(200,148,26,0.45);
+}
+
+.cs-hp-edit-btn {
+  padding: 4px 8px;
+  border-radius: 5px;
+  border: 1px solid;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+.cs-hp-edit-btn--dmg {
+  background: rgba(224,82,82,0.12);
+  border-color: rgba(224,82,82,0.3);
+  color: #e05252;
+}
+
+.cs-hp-edit-btn--dmg:hover:not(:disabled) {
+  background: rgba(224,82,82,0.22);
+}
+
+.cs-hp-edit-btn--heal {
+  background: rgba(76,175,130,0.12);
+  border-color: rgba(76,175,130,0.3);
+  color: #4caf82;
+}
+
+.cs-hp-edit-btn--heal:hover:not(:disabled) {
+  background: rgba(76,175,130,0.22);
+}
+
+.cs-hp-edit-close {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.35);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 4px;
+  align-self: center;
+  line-height: 1;
+}
+
+.cs-hp-edit-close:hover {
+  color: rgba(255,255,255,0.65);
+}
+
+/* ── Slot pip button ── */
+.cs-slot-pip--btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(155,89,182,0.6);
+  background: rgba(155,89,182,0.22);
+  transition: opacity 0.1s, border-color 0.1s;
+  display: inline-block;
+}
+
+.cs-slot-pip--btn:hover {
+  opacity: 0.75;
+  border-color: rgba(155,89,182,1);
+}
+
+.cs-slot-pip--btn.cs-slot-pip--used {
+  background: transparent;
+  border-color: rgba(255,255,255,0.15);
+}
+
+.cs-slot-pip--btn.cs-slot-pip--used:hover {
+  border-color: rgba(155,89,182,0.6);
+}
+
+/* ── Cast upcast picker ── */
+.cs-cast-picker--upcast {
+  position: static;
+  margin-top: 4px;
+  width: auto;
+}
+
+.cs-cast-upcast-label {
+  font-size: 11px;
+  color: rgba(255,255,255,0.6);
+  margin-bottom: 6px;
+  padding: 0 4px;
+}
+
+.cs-cast-upcast-options {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cs-cast-item--cancel {
+  border-color: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.4);
+}
+
+.cs-cast-item--cancel:hover {
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.6);
+}
+
+/* ── Rest buttons row ── */
+.cs-rest-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+/* ── Rest dialog ── */
+.cs-rest-dialog {
+  padding: 10px 12px;
+  background: rgba(0,0,0,0.25);
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.cs-rest-dialog-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255,255,255,0.7);
+  margin-bottom: 8px;
+}
+
+.cs-rest-dialog-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* ── Inventory ── */
+.cs-inv-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cs-inv-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cs-inv-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.05);
+  gap: 8px;
+}
+
+.cs-inv-name {
+  font-size: 12px;
+  color: rgba(255,255,255,0.8);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cs-inv-remove {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.25);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+
+.cs-inv-remove:hover {
+  color: rgba(224,82,82,0.8);
+}
+
+.cs-inv-add {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.cs-inv-add-input {
+  flex: 1;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px;
+  color: inherit;
+  font-size: 12px;
+  font-family: inherit;
+  padding: 5px 8px;
+}
+
+.cs-inv-add-input:focus {
+  outline: none;
+  border-color: rgba(200,148,26,0.4);
+}
+
+.cs-inv-add-input::placeholder {
+  color: rgba(255,255,255,0.3);
+}
+
+.cs-inv-add-btn {
+  background: rgba(200,148,26,0.14);
+  border: 1px solid rgba(200,148,26,0.3);
+  border-radius: 6px;
+  color: rgba(255,255,255,0.8);
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 3px 10px;
+  line-height: 1;
+}
+
+.cs-inv-add-btn:hover:not(:disabled) {
+  background: rgba(200,148,26,0.24);
+}
+
+.cs-inv-add-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
 }

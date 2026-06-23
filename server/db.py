@@ -820,6 +820,16 @@ def get_character_for_owner(character_id: int, owner_id: int) -> Character | Non
         return session.exec(stmt).first()
 
 
+def _apply_sheet_patch(sheet: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, Any]:
+    result = dict(sheet)
+    for k, v in patch.items():
+        if isinstance(v, dict) and isinstance(result.get(k), dict):
+            result[k] = {**result[k], **v}
+        else:
+            result[k] = v
+    return result
+
+
 def update_character(character_id: int, owner_id: int, updates: Dict[str, Any]) -> Character | None:
     with Session(engine) as session:
         stmt = select(Character).where(Character.id == character_id, Character.owner_id == owner_id)
@@ -835,6 +845,9 @@ def update_character(character_id: int, owner_id: int, updates: Dict[str, Any]) 
             char.level = max(1, int(updates['level']))
         if 'sheet' in updates and isinstance(updates['sheet'], dict):
             char.sheet = updates['sheet']
+        if 'sheet_patch' in updates and isinstance(updates['sheet_patch'], dict):
+            existing = dict(char.sheet) if isinstance(char.sheet, dict) else {}
+            char.sheet = _apply_sheet_patch(existing, updates['sheet_patch'])
         session.add(char)
         session.commit()
         session.refresh(char)

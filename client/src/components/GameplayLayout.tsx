@@ -1,4 +1,4 @@
-import React, {useEffect, useMemo, useState} from 'react'
+import React, {useCallback, useEffect, useMemo, useState} from 'react'
 import './GameplayLayout.css'
 import NarrativeView from './NarrativeView'
 import Chat from './Chat'
@@ -38,6 +38,7 @@ type Props = {
   notificationsPending?: boolean
   onNotificationsClick?: () => void
   isAdmin?: boolean
+  onRefreshRoster?: () => void
 }
 
 const BellIcon = () => (
@@ -65,6 +66,7 @@ export default function GameplayLayout({
   onSelectCharId,
   onNavigate,
   onLogout,
+  onRefreshRoster,
   currentUserEmail,
   currentUsername,
   activeCampaignId,
@@ -101,6 +103,10 @@ export default function GameplayLayout({
 
   const [partyData, setPartyData] = useState<any | null>(null)
   const [partyError, setPartyError] = useState<string | null>(null)
+
+  const handleSheetUpdate = useCallback((_characterId: string, _patch: Record<string, any>) => {
+    onRefreshRoster?.()
+  }, [onRefreshRoster])
   const [sessionStarted, setSessionStarted] = useState(false)
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false)
   const [campaignTitle, setCampaignTitle] = useState('Current Campaign')
@@ -1001,6 +1007,7 @@ export default function GameplayLayout({
                       onCueRoll={triggerCueRoll}
                       onGoToCharacters={onGoToCharacters}
                       onGoToImport={onGoToImport}
+                      onSheetUpdate={handleSheetUpdate}
                     />
                   </div>
                 </div>
