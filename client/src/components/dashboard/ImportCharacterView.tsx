@@ -592,7 +592,7 @@ export default function ImportCharacterView({
                   {pdfPreview.staAttributes ? (
                     <>
                       <div className="stack" style={{ gap: 6, minWidth: 200 }}>
-                        <div className="muted">Attributes</div>
+                        <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--accent, #c8941a)', opacity: 0.85 }}>Attributes</div>
                         <div className="row-wrap" style={{ gap: 8 }}>
                           {(['control', 'daring', 'fitness', 'insight', 'presence', 'reason'] as const).map((k) => (
                             <div key={k} style={{ padding: '5px 8px', background: 'rgba(200,148,26,0.1)', border: '1px solid rgba(200,148,26,0.2)', borderRadius: 5, fontFamily: 'monospace', fontSize: 13 }}>
@@ -603,7 +603,7 @@ export default function ImportCharacterView({
                       </div>
                       {pdfPreview.staDisciplines ? (
                         <div className="stack" style={{ gap: 6, minWidth: 200 }}>
-                          <div className="muted">Disciplines</div>
+                          <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--accent, #c8941a)', opacity: 0.85 }}>Disciplines</div>
                           <div className="row-wrap" style={{ gap: 8 }}>
                             {(['command', 'conn', 'engineering', 'medicine', 'science', 'security'] as const).map((k) => (
                               <div key={k} style={{ padding: '5px 8px', background: 'rgba(200,148,26,0.1)', border: '1px solid rgba(200,148,26,0.2)', borderRadius: 5, fontFamily: 'monospace', fontSize: 13 }}>
@@ -616,7 +616,7 @@ export default function ImportCharacterView({
                     </>
                   ) : (
                     <div className="stack" style={{ gap: 6, minWidth: 200 }}>
-                      <div className="muted">Ability scores</div>
+                      <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--accent, #c8941a)', opacity: 0.85 }}>Ability scores</div>
                       <div className="row-wrap" style={{ gap: 8 }}>
                         {(['str', 'dex', 'con', 'int', 'wis', 'cha'] as const).map((k) => (
                           <div key={k} style={{ padding: '5px 8px', background: 'rgba(200,148,26,0.1)', border: '1px solid rgba(200,148,26,0.2)', borderRadius: 5, fontFamily: 'monospace', fontSize: 13 }}>
@@ -627,7 +627,7 @@ export default function ImportCharacterView({
                     </div>
                   )}
                   <div className="stack" style={{ gap: 6, minWidth: 180 }}>
-                    <div className="muted">Combat</div>
+                    <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--accent, #c8941a)', opacity: 0.85 }}>Combat</div>
                     <div><strong>AC:</strong> {pdfPreview.ac ?? '—'}</div>
                     <div><strong>HP:</strong> {pdfPreview.hp?.current ?? '—'} / {pdfPreview.hp?.max ?? '—'}</div>
                     <div><strong>Temp:</strong> {pdfPreview.hp?.temp ?? '—'}</div>
@@ -637,11 +637,11 @@ export default function ImportCharacterView({
                     ) : null}
                   </div>
                   <div className="stack" style={{ gap: 6, minWidth: 160 }}>
-                    <div className="muted">Features</div>
+                    <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--accent, #c8941a)', opacity: 0.85 }}>Features</div>
                     <div>{pdfPreview.featuresCount} detected</div>
                   </div>
                   <div className="stack" style={{ gap: 6, minWidth: 180 }}>
-                    <div className="muted">Extraction</div>
+                    <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--accent, #c8941a)', opacity: 0.85 }}>Extraction</div>
                     <div><strong>Widgets:</strong> {pdfPreview.widgetCount ?? '—'}</div>
                     <div><strong>Text chars:</strong> {pdfPreview.rawTextLen ?? '—'}</div>
                   </div>
