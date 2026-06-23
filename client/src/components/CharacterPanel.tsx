@@ -86,7 +86,10 @@ export default function CharacterPanel({
   const [hpAdjInput, setHpAdjInput] = useState('')
   // Add-item UI
   const [addItemInput, setAddItemInput] = useState('')
-  // Upcast flow
+  // Expanded spell (for inline cast flow)
+  const [expandedSpell, setExpandedSpell] = useState<string | null>(null)
+  const [spellUpcastOptions, setSpellUpcastOptions] = useState<{spell: string; minLevel: number; options: number[]} | null>(null)
+  // Upcast flow (from ✦ Cast picker — kept for weapon/top-level cast button)
   const [castFlow, setCastFlow] = useState<{spell: string; minLevel: number; options: number[]} | null>(null)
   // Rest dialog
   const [restDialog, setRestDialog] = useState<'short' | 'long' | null>(null)
@@ -109,6 +112,8 @@ export default function CharacterPanel({
       setHpEditOpen(false)
       setHpAdjInput('')
       setCastFlow(null)
+      setExpandedSpell(null)
+      setSpellUpcastOptions(null)
       setRestDialog(null)
       setShortRestInput('')
       prevIdRef.current = selected?.id
@@ -444,9 +449,9 @@ export default function CharacterPanel({
 
         {/* ── Quick Actions ── */}
         <div className="cs-actions">
-          {(quickActions.equippedWeapons.length > 0 || quickActions.hasSpells) ? (
+          {quickActions.equippedWeapons.length > 0 ? (
             <>
-              <span className="cs-actions-label">Actions</span>
+              <span className="cs-actions-label">Weapons</span>
               <div className="cs-actions-row">
                 {quickActions.equippedWeapons.map(weapon => (
                   <button
@@ -459,86 +464,8 @@ export default function CharacterPanel({
                     ⚔ {weapon}
                   </button>
                 ))}
-                {quickActions.hasSpells ? (
-                  <div style={{ position: 'relative' }}>
-                    <button
-                      type="button"
-                      className="cs-action-btn cs-action-btn--cast"
-                      onClick={() => { setCastPickOpen(v => !v); setCastFlow(null) }}
-                    >
-                      ✦ Cast
-                    </button>
-                    {castPickOpen ? (
-                      <div className="cs-cast-picker">
-                        {(selected?.spells || []).map(spell => (
-                          <button
-                            key={spell}
-                            type="button"
-                            className="cs-cast-item"
-                            onClick={() => {
-                              const minLevel = spellLevelMap[spell.toLowerCase()] ?? 1
-                              if (minLevel === 0) {
-                                onQuickAction?.({ type: 'cast', detail: spell })
-                                setCastPickOpen(false)
-                                return
-                              }
-                              const available = Object.entries(effectiveSlots)
-                                .filter(([lvl, s]) => {
-                                  const n = lvl === 'pact' ? (s.level ?? 0) : Number(lvl)
-                                  return n >= minLevel && s.used < s.max
-                                })
-                                .map(([lvl, s]) => lvl === 'pact' ? (s.level ?? 0) : Number(lvl))
-                                .filter(n => n > 0)
-                                .sort((a, b) => a - b)
-                              if (!available.length) {
-                                onQuickAction?.({ type: 'cast', detail: spell })
-                                setCastPickOpen(false)
-                                return
-                              }
-                              if (available.length === 1) {
-                                markSlotUsed(String(available[0]))
-                                onQuickAction?.({ type: 'cast', detail: spell })
-                                setCastPickOpen(false)
-                                return
-                              }
-                              setCastPickOpen(false)
-                              setCastFlow({ spell, minLevel, options: available })
-                            }}
-                          >
-                            {spell}
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
               </div>
             </>
-          ) : null}
-
-          {/* Upcast dialog (appears when multiple slot levels available) */}
-          {castFlow ? (
-            <div className="cs-cast-picker cs-cast-picker--upcast">
-              <div className="cs-cast-upcast-label">Cast <strong>{castFlow.spell}</strong> at level:</div>
-              <div className="cs-cast-upcast-options">
-                {castFlow.options.map(lvl => (
-                  <button
-                    key={lvl}
-                    type="button"
-                    className="cs-cast-item"
-                    onClick={() => {
-                      markSlotUsed(String(lvl))
-                      onQuickAction?.({ type: 'cast', detail: castFlow.spell })
-                      setCastFlow(null)
-                    }}
-                  >
-                    {lvl === castFlow.minLevel ? `Level ${lvl}` : `Level ${lvl} ↑`}
-                  </button>
-                ))}
-                <button type="button" className="cs-cast-item cs-cast-item--cancel"
-                  onClick={() => setCastFlow(null)}>Cancel</button>
-              </div>
-            </div>
           ) : null}
 
           {/* Rest buttons — always visible */}
@@ -656,19 +583,190 @@ export default function CharacterPanel({
               </div>
             ) : null}
 
-            {sheetTab === 'spells' ? (
-              <div>
-                {(selected?.spells || []).length === 0 ? (
-                  <div className="cs-empty">No spells recorded</div>
-                ) : (
-                  <ul className="cs-list">
-                    {(selected?.spells || []).map(spell => (
-                      <li key={spell}>{spell}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            ) : null}
+            {sheetTab === 'spells' ? (() => {
+              // Build grouped spellbook from spellbook entries (rich) or flat spells (fallback)
+              const book = Array.isArray(selected?.spellbook) ? selected!.spellbook : []
+              const ORDINAL: Record<string, number> = {
+                cantrip: 0, cantrips: 0,
+                '1st': 1, '2nd': 2, '3rd': 3, '4th': 4, '5th': 5,
+                '6th': 6, '7th': 7, '8th': 8, '9th': 9,
+              }
+              const parseLevelFromHeader = (h: string): number => {
+                const lc = h.toLowerCase()
+                const m = lc.match(/(\d+)(?:st|nd|rd|th)?\s*level/)
+                if (m) return Number(m[1])
+                if (lc.includes('cantrip')) return 0
+                const w = lc.split(/\s+/)[0]
+                return ORDINAL[w] ?? 99
+              }
+
+              type SpellEntry = { name: string; level: number; save_hit?: string; time?: string; range?: string; components?: string; duration?: string; notes?: string; prepared?: boolean }
+              let entries: SpellEntry[] = []
+
+              if (book.length > 0) {
+                let currentLevel = 1
+                for (const e of book) {
+                  if (!e) continue
+                  if (e.header) currentLevel = parseLevelFromHeader(String(e.header))
+                  if (!e.name) continue
+                  entries.push({
+                    name: String(e.name),
+                    level: currentLevel,
+                    save_hit: e.save_hit ? String(e.save_hit) : undefined,
+                    time: e.time ? String(e.time) : undefined,
+                    range: e.range ? String(e.range) : undefined,
+                    components: e.components ? String(e.components) : undefined,
+                    duration: e.duration ? String(e.duration) : undefined,
+                    notes: e.notes ? String(e.notes) : undefined,
+                    prepared: Boolean(e.prepared),
+                  })
+                }
+              } else {
+                entries = (selected?.spells ?? []).map(name => ({ name, level: 1 }))
+              }
+
+              if (!entries.length) return <div className="cs-empty">No spells recorded</div>
+
+              // Group by level
+              const grouped = new Map<number, SpellEntry[]>()
+              for (const e of entries) {
+                if (!grouped.has(e.level)) grouped.set(e.level, [])
+                grouped.get(e.level)!.push(e)
+              }
+              const levels = Array.from(grouped.keys()).sort((a, b) => a - b)
+
+              const levelLabel = (n: number) => {
+                if (n === 0) return 'Cantrips'
+                const ord = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th'][n] ?? `${n}th`
+                return `${ord} Level`
+              }
+
+              const handleCastFromDetail = (spell: SpellEntry) => {
+                const minLevel = spell.level
+                if (minLevel === 0) {
+                  onQuickAction?.({ type: 'cast', detail: spell.name })
+                  setExpandedSpell(null)
+                  return
+                }
+                const available = Object.entries(effectiveSlots)
+                  .filter(([lvl, s]) => {
+                    const n = lvl === 'pact' ? (s.level ?? 0) : Number(lvl)
+                    return n >= minLevel && s.used < s.max
+                  })
+                  .map(([lvl, s]) => lvl === 'pact' ? (s.level ?? 0) : Number(lvl))
+                  .filter(n => n > 0)
+                  .sort((a, b) => a - b)
+
+                if (!available.length) {
+                  onQuickAction?.({ type: 'cast', detail: spell.name })
+                  setExpandedSpell(null)
+                  return
+                }
+                if (available.length === 1) {
+                  markSlotUsed(String(available[0]))
+                  onQuickAction?.({ type: 'cast', detail: spell.name })
+                  setExpandedSpell(null)
+                  return
+                }
+                setSpellUpcastOptions({ spell: spell.name, minLevel, options: available })
+              }
+
+              return (
+                <div className="cs-spell-book">
+                  {levels.map(lvl => {
+                    const spellsAtLevel = grouped.get(lvl)!
+                    // Find slot info for this level
+                    const slotKey = String(lvl)
+                    const slot = lvl > 0 ? (effectiveSlots[slotKey] ?? null) : null
+                    const slotsAvail = slot ? slot.max - slot.used : null
+
+                    return (
+                      <div key={lvl} className="cs-spell-level-group">
+                        <div className="cs-spell-level-header">
+                          <span className="cs-spell-level-label">{levelLabel(lvl)}</span>
+                          {slot && slot.max > 0 ? (
+                            <span className="cs-spell-level-slots">
+                              {slotsAvail}/{slot.max} slots
+                            </span>
+                          ) : null}
+                        </div>
+                        {spellsAtLevel.map(spell => {
+                          const isExpanded = expandedSpell === spell.name
+                          const isUpcastTarget = spellUpcastOptions?.spell === spell.name
+                          return (
+                            <div key={spell.name} className={`cs-spell-item ${isExpanded ? 'cs-spell-item--open' : ''}`}>
+                              <button
+                                type="button"
+                                className="cs-spell-name-btn"
+                                onClick={() => {
+                                  setExpandedSpell(prev => prev === spell.name ? null : spell.name)
+                                  setSpellUpcastOptions(null)
+                                }}
+                              >
+                                <span className="cs-spell-name">{spell.name}</span>
+                                {spell.prepared ? <span className="cs-spell-prepared" title="Prepared">◆</span> : null}
+                                {spell.save_hit ? <span className="cs-spell-tag">{spell.save_hit}</span> : null}
+                                <span className="cs-spell-chevron">{isExpanded ? '▲' : '▼'}</span>
+                              </button>
+
+                              {isExpanded ? (
+                                <div className="cs-spell-detail">
+                                  <div className="cs-spell-meta-row">
+                                    {spell.time ? <span className="cs-spell-meta"><span className="cs-spell-meta-key">Cast</span> {spell.time}</span> : null}
+                                    {spell.range ? <span className="cs-spell-meta"><span className="cs-spell-meta-key">Range</span> {spell.range}</span> : null}
+                                    {spell.duration ? <span className="cs-spell-meta"><span className="cs-spell-meta-key">Dur</span> {spell.duration}</span> : null}
+                                    {spell.components ? <span className="cs-spell-meta"><span className="cs-spell-meta-key">Comp</span> {spell.components}</span> : null}
+                                  </div>
+                                  {spell.notes ? <div className="cs-spell-notes">{spell.notes}</div> : null}
+
+                                  {isUpcastTarget ? (
+                                    <div className="cs-spell-upcast">
+                                      <div className="cs-spell-upcast-label">Cast at level:</div>
+                                      <div className="cs-spell-upcast-options">
+                                        {spellUpcastOptions!.options.map(lvlOpt => (
+                                          <button
+                                            key={lvlOpt}
+                                            type="button"
+                                            className="cs-spell-upcast-btn"
+                                            onClick={() => {
+                                              markSlotUsed(String(lvlOpt))
+                                              onQuickAction?.({ type: 'cast', detail: spell.name })
+                                              setSpellUpcastOptions(null)
+                                              setExpandedSpell(null)
+                                            }}
+                                          >
+                                            {lvlOpt === spellUpcastOptions!.minLevel ? `Level ${lvlOpt}` : `Level ${lvlOpt} ↑`}
+                                          </button>
+                                        ))}
+                                        <button
+                                          type="button"
+                                          className="cs-spell-upcast-btn cs-spell-upcast-btn--cancel"
+                                          onClick={() => setSpellUpcastOptions(null)}
+                                        >
+                                          Cancel
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      className="cs-spell-cast-btn"
+                                      onClick={() => handleCastFromDetail(spell)}
+                                    >
+                                      {spell.level === 0 ? '✦ Cast Cantrip' : slotsAvail === 0 ? '✦ Cast (no slots)' : '✦ Cast'}
+                                    </button>
+                                  )}
+                                </div>
+                              ) : null}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })() : null}
 
             {sheetTab === 'features' ? (() => {
               const cf = selected?.classFeatures ?? []

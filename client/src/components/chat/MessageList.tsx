@@ -4,6 +4,7 @@ type Msg = {
   id: number | string
   who: 'gm' | 'you' | 'system' | 'ally'
   text: string
+  createdAt?: string
   mentions?: string[]
   senderId?: number | null
   pinned?: boolean
@@ -17,110 +18,114 @@ type Props = {
   onDelete?: (id: number | string) => void
 }
 
-const ROLE_OPTIONS = [
-  { value: '', label: 'All' },
-  { value: 'you', label: 'You' },
-  { value: 'gm', label: 'GM' },
-  { value: 'ally', label: 'Others' },
-  { value: 'system', label: 'System' },
-]
+function formatTime(ts?: string): string {
+  if (!ts) return ''
+  const d = new Date(ts)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
 
 const MessageList = React.forwardRef<HTMLDivElement, Props>(function MessageList(
   { loading, messages, currentUserId, onPin, onDelete },
   ref,
 ) {
-  const [roleFilter, setRoleFilter] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
   const [searchText, setSearchText] = useState('')
 
   const filtered = useMemo(() => {
-    let list = messages
-    if (roleFilter) list = list.filter(m => m.who === roleFilter)
-    if (searchText.trim()) {
-      const q = searchText.trim().toLowerCase()
-      list = list.filter(m => m.text.toLowerCase().includes(q))
-    }
-    return list
-  }, [messages, roleFilter, searchText])
+    if (!searchText.trim()) return messages
+    const q = searchText.trim().toLowerCase()
+    return messages.filter(m => m.text.toLowerCase().includes(q))
+  }, [messages, searchText])
 
   return (
     <div className="chat-messages-wrapper">
-      <div className="chat-filter-bar">
-        <select
-          className="chat-filter-select"
-          value={roleFilter}
-          onChange={e => setRoleFilter(e.target.value)}
-          aria-label="Filter by role"
-        >
-          {ROLE_OPTIONS.map(o => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-        <input
-          className="chat-filter-search input"
-          type="text"
-          value={searchText}
-          onChange={e => setSearchText(e.target.value)}
-          placeholder="Search messages…"
-          aria-label="Search chat"
-        />
-        {(roleFilter || searchText) && (
-          <button
-            className="btn btn-sm btn-secondary"
-            type="button"
-            onClick={() => { setRoleFilter(''); setSearchText('') }}
-            aria-label="Clear filters"
-          >
-            ✕
-          </button>
-        )}
-      </div>
+      {searchOpen ? (
+        <div className="chat-search-bar">
+          <input
+            className="chat-search-input"
+            type="text"
+            autoFocus
+            value={searchText}
+            onChange={e => setSearchText(e.target.value)}
+            placeholder="Search messages…"
+          />
+          <button className="chat-search-close" type="button"
+            onClick={() => { setSearchOpen(false); setSearchText('') }}>✕</button>
+        </div>
+      ) : null}
+
       <div className="chat-messages" ref={ref}>
-        {loading ? <div className="chat-loading">Loading chat…</div> : null}
+        {loading ? <div className="chat-loading">Loading…</div> : null}
+
         {filtered.length === 0 && !loading ? (
           <div className="chat-empty">
-            {messages.length === 0 ? 'No messages yet.' : 'No messages match the current filter.'}
+            {messages.length === 0 ? 'The session begins in silence.' : 'No messages match.'}
           </div>
         ) : null}
+
         {filtered.map((m) => {
+          const ts = formatTime(m.createdAt)
           const canDelete = onDelete && typeof m.id === 'number' && m.senderId !== null && m.senderId !== undefined && m.senderId === currentUserId
           const canPin = onPin && typeof m.id === 'number'
+
+          if (m.who === 'gm') {
+            return (
+              <div key={m.id} className={`chat-msg chat-msg--gm ${m.pinned ? 'chat-msg--pinned' : ''}`}>
+                <div className="chat-msg-gm-text">{m.text}</div>
+                <div className="chat-msg-footer">
+                  {ts ? <span className="chat-msg-ts">{ts}</span> : null}
+                  {m.pinned ? <span className="chat-msg-pin-badge" title="Pinned">⊙</span> : null}
+                  <div className="chat-msg-actions">
+                    {canPin ? <button className="chat-action-btn" type="button" title={m.pinned ? 'Pinned' : 'Pin'} onClick={() => onPin!(m.id)}>pin</button> : null}
+                    {canDelete ? <button className="chat-action-btn chat-action-btn--danger" type="button" onClick={() => onDelete!(m.id)}>✕</button> : null}
+                  </div>
+                </div>
+              </div>
+            )
+          }
+
+          if (m.who === 'system') {
+            return (
+              <div key={m.id} className="chat-msg chat-msg--system">
+                <span className="chat-msg-system-text">{m.text}</span>
+                {ts ? <span className="chat-msg-ts">{ts}</span> : null}
+              </div>
+            )
+          }
+
+          const isYou = m.who === 'you'
           return (
-            <div key={m.id} className={`chat-message ${m.who === 'system' ? 'chat-message-system' : ''} ${m.pinned ? 'chat-message-pinned' : ''}`}>
-              <div className="chat-message-who">{m.who.toUpperCase()}</div>
-              <div className={`chat-message-bubble ${m.who === 'you' ? 'chat-message-you' : ''}`}>{m.text}</div>
-              {m.pinned ? <span className="chat-pin-badge" title="Pinned">📌</span> : null}
-              {!!m.mentions?.length ? <div className="chat-message-mentions">Mentions: {m.mentions.join(', ')}</div> : null}
-              <div className="chat-message-actions">
-                {canPin ? (
-                  <button
-                    className="chat-action-btn"
-                    type="button"
-                    title={m.pinned ? 'Pinned' : 'Pin message'}
-                    onClick={() => onPin!(m.id)}
-                    aria-label="Pin message"
-                  >
-                    📌
-                  </button>
-                ) : null}
-                {canDelete ? (
-                  <button
-                    className="chat-action-btn chat-action-btn--danger"
-                    type="button"
-                    title="Delete message"
-                    onClick={() => onDelete!(m.id)}
-                    aria-label="Delete message"
-                  >
-                    🗑
-                  </button>
-                ) : null}
+            <div key={m.id} className={`chat-msg ${isYou ? 'chat-msg--you' : 'chat-msg--ally'} ${m.pinned ? 'chat-msg--pinned' : ''}`}>
+              {!isYou ? <div className="chat-msg-who">Player</div> : null}
+              <div className={`chat-msg-bubble ${isYou ? 'chat-msg-bubble--you' : ''}`}>
+                {m.text}
+              </div>
+              <div className="chat-msg-footer">
+                {ts ? <span className="chat-msg-ts">{ts}</span> : null}
+                {m.pinned ? <span className="chat-msg-pin-badge">⊙</span> : null}
+                {!!m.mentions?.length ? <span className="chat-msg-mention">@{m.mentions.join(', @')}</span> : null}
+                <div className="chat-msg-actions">
+                  {canPin ? <button className="chat-action-btn" type="button" title={m.pinned ? 'Pinned' : 'Pin'} onClick={() => onPin!(m.id)}>pin</button> : null}
+                  {canDelete ? <button className="chat-action-btn chat-action-btn--danger" type="button" onClick={() => onDelete!(m.id)}>✕</button> : null}
+                </div>
               </div>
             </div>
           )
         })}
       </div>
+
+      <button
+        className="chat-search-toggle"
+        type="button"
+        title="Search messages"
+        onClick={() => setSearchOpen(v => !v)}
+        aria-label="Search"
+      >
+        {searchOpen ? '⊗' : '🔍'}
+      </button>
     </div>
   )
 })
 
 export default MessageList
-
