@@ -91,7 +91,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [characterSettingsOpen, setCharacterSettingsOpen] = useState(false)
   const [characterPanelMode, setCharacterPanelMode] = useState<'summary' | 'spells' | 'features' | 'journal' | 'inventory'>('summary')
   const [selectedSpellRow, setSelectedSpellRow] = useState<any | null>(null)
-  const [showAllFeatures, setShowAllFeatures] = useState(false)
   const [selectedFeatureRow, setSelectedFeatureRow] = useState<any | null>(null)
   const [showAllSummaryInventory, setShowAllSummaryInventory] = useState(false)
   const [showAllSummarySkills, setShowAllSummarySkills] = useState(false)
@@ -345,7 +344,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       setCharacterPanelMode('summary')
       setSelectedSpellRow(null)
       setSelectedFeatureRow(null)
-      setShowAllFeatures(false)
       setShowAllSummaryInventory(false)
       setShowAllSummarySkills(false)
       setShowAllInventoryPanel(false)
@@ -379,21 +377,36 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       return value
         .map((v) => {
           if (typeof v === 'string') {
-            const name = v.trim()
-            if (!name) return null
+            const raw = v.trim()
+            if (!raw) return null
+            // Filter DDB section delimiter lines: "=== WIZARD FEATURES ===" etc.
+            if (/^={2,}.*={2,}$/.test(raw)) return null
+            // Parse "Feature Name • PHB 114" or "Feature Name (PHB p.114)" source notation
+            let name = raw
+            let source: string | undefined
+            const bulletIdx = raw.indexOf(' • ')
+            if (bulletIdx !== -1) {
+              name = raw.slice(0, bulletIdx).trim()
+              source = raw.slice(bulletIdx + 3).trim() || undefined
+            } else {
+              const parenM = raw.match(/^(.+?)\s+\(([^)]+p\.\s*\d+[^)]*)\)\s*$/)
+              if (parenM) {
+                name = parenM[1].trim()
+                source = parenM[2].trim()
+              }
+            }
             const lower = name.toLowerCase()
-            // Skip bare container category names with no real feature info
             if (FEATURE_SKIP_NAMES.has(lower)) return null
             if (FEATURE_CATEGORY_PATTERN.test(name) && !name.includes(':')) return null
-            return { name }
+            return { name, source }
           }
           if (v && typeof v === 'object') {
             const name = String(v.name || '').trim()
             if (!name) return null
+            if (/^={2,}.*={2,}$/.test(name)) return null
             const lower = name.toLowerCase()
             const desc = v.description ? String(v.description) : undefined
             if (FEATURE_SKIP_NAMES.has(lower)) return null
-            // Filter container category names only when they have no description
             if (!desc && FEATURE_CATEGORY_PATTERN.test(name) && !name.includes(':')) return null
             return { name, source: v.source ? String(v.source) : undefined, description: desc }
           }
@@ -1057,28 +1070,25 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
         await assignCharacterToSession(selectedId)
       }
 
-      if (playerRunMode) {
-        alert('Player-run mode is enabled for this campaign. AI scene generation was skipped.')
-        setView('gameplay')
-        return
-      }
+      // Navigate to gameplay immediately — don't block on bootstrap.
+      // Bootstrap calls the LLM which can take 10–60 s; the gameplay view
+      // receives the scene via WebSocket (narrative.scene) when it arrives.
+      setView('gameplay')
 
-      // Bootstrap (generates narrative scene + emits suggestions/cues)
-      const boot = await apiFetch(`/sessions/${sessionId}/bootstrap`, {
+      if (playerRunMode) return
+
+      // Fire bootstrap in the background — errors are non-fatal.
+      apiFetch(`/sessions/${sessionId}/bootstrap`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
-      })
-      if (!boot.ok) {
-        const err = await boot.json().catch(() => null)
-        throw new Error(err?.detail || 'Failed to bootstrap scene')
-      }
-      const bootData = await boot.json().catch(() => ({} as any))
-      if (bootData?.scene) {
-        window.dispatchEvent(new CustomEvent('narrative:scene', { detail: { scene: bootData.scene } }))
-      }
-
-      setView('gameplay')
+      }).then(async (boot) => {
+        if (!boot.ok) return
+        const bootData = await boot.json().catch(() => ({} as any))
+        if (bootData?.scene) {
+          window.dispatchEvent(new CustomEvent('narrative:scene', { detail: { scene: bootData.scene } }))
+        }
+      }).catch(() => {/* silent — WS will deliver the scene */})
     } catch (e: any) {
       alert(e?.message || 'Failed to start playing')
     } finally {
@@ -1541,12 +1551,10 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                                   const rawSkillList: any[] = Array.isArray((selectedCharacter?.sheet as any)?.skills) ? (selectedCharacter?.sheet as any).skills : []
                                   const hasObjects = rawSkillList.some((s) => s && typeof s === 'object' && 'name' in s)
                                   if (hasObjects) {
-                                    const visibleSkills = showAllSummarySkills ? rawSkillList : rawSkillList.slice(0, 8)
-                                    const more = rawSkillList.length - visibleSkills.length
                                     return (
                                       <>
                                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 8px' }}>
-                                          {visibleSkills.map((s: any) => {
+                                          {rawSkillList.map((s: any) => {
                                             const name = typeof s === 'string' ? s : String(s?.name || '')
                                             if (!name) return null
                                             const mod = typeof s?.modifier === 'number' ? s.modifier : (typeof s?.mod === 'number' ? s.mod : null)
@@ -1560,15 +1568,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                                             )
                                           })}
                                         </div>
-                                        {!showAllSummarySkills && more > 0 ? (
-                                          <button className="btn btn-quiet" style={{ fontSize: 12, marginTop: 6, padding: '2px 0', color: 'var(--tt-accent, #c084fc)' }} onClick={() => setShowAllSummarySkills(true)}>
-                                            + {more} more — Show all
-                                          </button>
-                                        ) : showAllSummarySkills && rawSkillList.length > 8 ? (
-                                          <button className="btn btn-quiet" style={{ fontSize: 12, marginTop: 6, padding: '2px 0', color: 'var(--tt-accent, #c084fc)' }} onClick={() => setShowAllSummarySkills(false)}>
-                                            ▲ Show less
-                                          </button>
-                                        ) : null}
                                       </>
                                     )
                                   }
@@ -1668,10 +1667,34 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                                 ? spellbook
                                 : spellNames.map((name: any) => ({ name: String(name) }))
 
+                              // If no explicit slot data, derive slot counts from slot_header fields
+                              // in the spellbook (DDB PDF format: "4 Slots OOOO" on a spell row that
+                              // also has a header like "1st Level").
+                              const derivedSlots: Array<{ level: number; max: number; used: number }> = rawSlots.length === 0
+                                ? (() => {
+                                    const seen = new Set<number>()
+                                    const derived: Array<{ level: number; max: number; used: number }> = []
+                                    for (const row of rows) {
+                                      if (!row?.slot_header || !row?.header) continue
+                                      const lvlM = String(row.header).match(/(\d+)/)
+                                      const cntM = String(row.slot_header).match(/(\d+)/)
+                                      if (!lvlM || !cntM) continue
+                                      const level = parseInt(lvlM[1], 10)
+                                      const max = parseInt(cntM[1], 10)
+                                      if (level >= 1 && level <= 9 && max > 0 && !seen.has(level)) {
+                                        seen.add(level)
+                                        derived.push({ level, max, used: 0 })
+                                      }
+                                    }
+                                    return derived
+                                  })()
+                                : []
+
                               // Build slot map: level -> {max, used}, filtering out zero-max levels
                               // (e.g. a Fighter with SlotsTotal1: "0" should not show an empty row).
+                              const effectiveSlots = rawSlots.length > 0 ? rawSlots : derivedSlots
                               const slotMap = new Map<number, { max: number; used: number }>(
-                                rawSlots
+                                effectiveSlots
                                   .filter(s => (s.max ?? 0) > 0)
                                   .map(s => [s.level, { max: s.max ?? 0, used: s.used ?? 0 }])
                               )
@@ -1692,7 +1715,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                                 // Clicking an available slot (index >= used) uses slots up to and including it.
                                 const newUsed = slotIndex < current.used ? slotIndex : slotIndex + 1
                                 // Optimistically update local state
-                                const updatedSlots = rawSlots.map(s =>
+                                const updatedSlots = effectiveSlots.map(s =>
                                   s.level === level ? { ...s, used: newUsed } : s
                                 )
                                 // Persist to server
@@ -1814,7 +1837,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                                                           onClick={() => setSelectedSpellRow(isExpanded ? null : row)}
                                                         >
                                                           <span style={{ fontWeight: 600, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row?.name || '—'}</span>
-                                                          {row?.slot_header ? <span className="muted" style={{ fontSize: 10 }}>{row.slot_header}</span> : null}
                                                         </button>
                                                         {isExpanded && hasDetails ? (
                                                           <div className="card card-pad" style={{ fontSize: 12, background: 'rgba(0,0,0,0.15)', gridColumn: 'span 2', marginLeft: 0 }}>
@@ -1858,78 +1880,68 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                           {selectedSheetSummary ? (
                             <>
                               {selectedSheetSummary.featureGroups.length > 0 ? (
-                                (() => {
-                                  const FEATURE_LIMIT = 15
-                                  const allItems = selectedSheetSummary.features.items
-                                  const visibleItems = showAllFeatures ? allItems : allItems.slice(0, FEATURE_LIMIT)
-                                  const hiddenCount = allItems.length - visibleItems.length
-                                  const visibleNames = new Set(visibleItems.map(f => f.name))
-                                  return (
-                                    <div className="stack" style={{ gap: 8 }}>
-                                      {selectedSheetSummary.featureGroups.map((group, gi) => {
-                                        const groupItems = showAllFeatures
-                                          ? group.items
-                                          : group.items.filter(f => visibleNames.has(f.name))
-                                        if (!groupItems.length) return null
-                                        return (
-                                          <div key={`group-${gi}`}>
-                                            <div style={{ fontWeight: 700, fontSize: 11, padding: '4px 0 4px', opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{group.label}</div>
-                                            <div className="stack" style={{ gap: 4 }}>
-                                              {groupItems.map((f, idx) => {
-                                                const isExpanded = selectedFeatureRow?.name === f.name
-                                                const hasDetails = Boolean(f.description || f.source)
-                                                return (
-                                                  <React.Fragment key={`${f.name}-${idx}`}>
-                                                    <button
-                                                      type="button"
-                                                      className="btn btn-quiet"
-                                                      style={{
-                                                        textAlign: 'left',
-                                                        justifyContent: 'space-between',
-                                                        background: isExpanded ? 'rgba(173,136,95,0.20)' : undefined,
-                                                        borderRadius: 6,
-                                                        padding: '6px 10px',
-                                                        fontSize: 13,
-                                                      }}
-                                                      onClick={() => setSelectedFeatureRow(isExpanded ? null : f)}
-                                                    >
-                                                      <span style={{ fontWeight: 600 }}>{f.name}</span>
-                                                      {hasDetails ? <span className="muted" style={{ fontSize: 11 }}>{isExpanded ? '▲' : '▼'}</span> : null}
-                                                    </button>
-                                                    {isExpanded && hasDetails ? (
-                                                      <div className="card card-pad" style={{ fontSize: 12, background: 'rgba(0,0,0,0.15)', marginLeft: 8 }}>
-                                                        {f.description ? <div style={{ lineHeight: 1.5 }}>{f.description}</div> : null}
-                                                      </div>
+                                <div className="stack" style={{ gap: 12 }}>
+                                  {selectedSheetSummary.featureGroups.map((group, gi) => {
+                                    if (!group.items.length) return null
+                                    return (
+                                      <div key={`group-${gi}`}>
+                                        <div style={{
+                                          fontWeight: 700,
+                                          fontSize: 10,
+                                          padding: '3px 0 6px',
+                                          color: 'var(--accent, #c8941a)',
+                                          textTransform: 'uppercase',
+                                          letterSpacing: '0.08em',
+                                          borderBottom: '1px solid rgba(200,148,26,0.25)',
+                                          marginBottom: 6,
+                                        }}>
+                                          {group.label}
+                                        </div>
+                                        <div className="stack" style={{ gap: 3 }}>
+                                          {group.items.map((f, idx) => {
+                                            const isExpanded = selectedFeatureRow?.name === f.name
+                                            const hasDetails = Boolean(f.description)
+                                            return (
+                                              <React.Fragment key={`${f.name}-${idx}`}>
+                                                <button
+                                                  type="button"
+                                                  className="btn btn-quiet"
+                                                  style={{
+                                                    textAlign: 'left',
+                                                    justifyContent: 'space-between',
+                                                    alignItems: 'flex-start',
+                                                    background: isExpanded ? 'rgba(200,148,26,0.12)' : 'rgba(255,255,255,0.03)',
+                                                    borderRadius: 5,
+                                                    padding: '5px 8px',
+                                                    fontSize: 12,
+                                                    border: isExpanded ? '1px solid rgba(200,148,26,0.3)' : '1px solid transparent',
+                                                    gap: 6,
+                                                  }}
+                                                  onClick={() => setSelectedFeatureRow(isExpanded ? null : f)}
+                                                >
+                                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                                    <span style={{ fontWeight: 600 }}>{f.name}</span>
+                                                    {f.source ? (
+                                                      <span className="muted" style={{ fontSize: 10, marginLeft: 6 }}>{f.source}</span>
                                                     ) : null}
-                                                  </React.Fragment>
-                                                )
-                                              })}
-                                            </div>
-                                          </div>
-                                        )
-                                      })}
-                                      {hiddenCount > 0 ? (
-                                        <button
-                                          type="button"
-                                          className="btn btn-quiet"
-                                          style={{ fontSize: 12, padding: '4px 10px', color: 'var(--tt-accent, #c084fc)' }}
-                                          onClick={() => setShowAllFeatures(true)}
-                                        >
-                                          + {hiddenCount} more — Show all
-                                        </button>
-                                      ) : allItems.length > FEATURE_LIMIT ? (
-                                        <button
-                                          type="button"
-                                          className="btn btn-quiet"
-                                          style={{ fontSize: 12, padding: '4px 10px', color: 'var(--tt-accent, #c084fc)' }}
-                                          onClick={() => setShowAllFeatures(false)}
-                                        >
-                                          ▲ Show less
-                                        </button>
-                                      ) : null}
-                                    </div>
-                                  )
-                                })()
+                                                  </div>
+                                                  {hasDetails ? (
+                                                    <span className="muted" style={{ fontSize: 10, flexShrink: 0, marginTop: 1 }}>{isExpanded ? '▲' : '▼'}</span>
+                                                  ) : null}
+                                                </button>
+                                                {isExpanded && hasDetails ? (
+                                                  <div style={{ fontSize: 12, lineHeight: 1.55, padding: '6px 10px 8px', background: 'rgba(0,0,0,0.2)', borderRadius: '0 0 5px 5px', marginTop: -3 }}>
+                                                    {f.description}
+                                                  </div>
+                                                ) : null}
+                                              </React.Fragment>
+                                            )
+                                          })}
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
                               ) : (
                                 <div className="muted">No features parsed.</div>
                               )}

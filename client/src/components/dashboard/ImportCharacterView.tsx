@@ -503,7 +503,7 @@ export default function ImportCharacterView({
               </div>
             ) : null}
 
-            <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)' }}>
+            <div className="card card-pad stack" style={{ background: 'var(--muted-surface)' }}>
               <div style={{ fontWeight: 750 }}>Basic info</div>
               <div className="row-wrap" style={{ gap: 10 }}>
                 <div className="stack" style={{ gap: 6, minWidth: 240, flex: 1 }}>
@@ -537,7 +537,7 @@ export default function ImportCharacterView({
               </div>
             </div>
 
-            <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)' }}>
+            <div className="card card-pad stack" style={{ background: 'var(--muted-surface)' }}>
               <div style={{ fontWeight: 750 }}>What to include</div>
 
               {previewSource === 'paste' || previewSource === 'file' ? (
@@ -556,7 +556,7 @@ export default function ImportCharacterView({
             </div>
 
             {pdfPreview ? (
-              <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)' }}>
+              <div className="card card-pad stack" style={{ background: 'var(--muted-surface)' }}>
                 <div style={{ fontWeight: 750 }}>PDF extraction summary</div>
 
                 {pdfPreview.sheetType === 'ship' ? (
@@ -658,7 +658,7 @@ export default function ImportCharacterView({
               (Array.isArray(preview?.sheet?.spells) && preview.sheet.spells.length > 0)) ? (
               <>
                 {(Array.isArray(preview?.sheet?.classFeatures) && preview.sheet.classFeatures.length > 0) ? (
-                  <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                  <div className="card card-pad stack" style={{ background: 'var(--muted-surface)' }}>
                     <div style={{ fontWeight: 750 }}>{preview?.class_name ? `${preview.class_name} Features` : 'Class Features'}</div>
                     <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>Click a feature to view more details.</div>
                     <div style={{ maxHeight: 220, overflowY: 'auto', display: 'grid', gap: 6 }}>
@@ -678,7 +678,7 @@ export default function ImportCharacterView({
                 ) : null}
 
                 {(Array.isArray(preview?.sheet?.racialFeatures) && preview.sheet.racialFeatures.length > 0) ? (
-                  <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                  <div className="card card-pad stack" style={{ background: 'var(--muted-surface)' }}>
                     <div style={{ fontWeight: 750 }}>{preview?.sheet?.import?.extracted?.class_name ? `${preview.sheet.import.extracted.class_name} Species Traits` : 'Species Traits'}</div>
                     <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>Click a trait to view more details.</div>
                     <div style={{ maxHeight: 220, overflowY: 'auto', display: 'grid', gap: 6 }}>
@@ -698,7 +698,7 @@ export default function ImportCharacterView({
                 ) : null}
 
                 {(Array.isArray(preview?.sheet?.otherFeatures) && preview.sheet.otherFeatures.length > 0) ? (
-                  <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                  <div className="card card-pad stack" style={{ background: 'var(--muted-surface)' }}>
                     <div style={{ fontWeight: 750 }}>Other Features</div>
                     <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>Click a feature to view more details.</div>
                     <div style={{ maxHeight: 220, overflowY: 'auto', display: 'grid', gap: 6 }}>
@@ -718,7 +718,7 @@ export default function ImportCharacterView({
                 ) : null}
 
                 {(Array.isArray(preview?.sheet?.spellbook) && preview.sheet.spellbook.length > 0) ? (
-                  <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                  <div className="card card-pad stack" style={{ background: 'var(--muted-surface)' }}>
                     <div style={{ fontWeight: 750 }}>Detected spellbook</div>
                     <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>
                       Spells parsed from the PDF table (name + columns).
@@ -755,7 +755,7 @@ export default function ImportCharacterView({
                     </div>
                   </div>
                 ) : (Array.isArray(preview?.sheet?.spells) && preview.sheet.spells.length > 0) ? (
-                  <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                  <div className="card card-pad stack" style={{ background: 'var(--muted-surface)' }}>
                     <div style={{ fontWeight: 750 }}>Detected spells</div>
                     <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>Spells extracted from the PDF (one per line).</div>
                     <div style={{ maxHeight: 220, overflowY: 'auto' }}>
@@ -771,7 +771,7 @@ export default function ImportCharacterView({
             ) : null}
 
             {nameConflict ? (
-              <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)' }}>
+              <div className="card card-pad stack" style={{ background: 'var(--muted-surface)' }}>
                 <div style={{ fontWeight: 750 }}>Name conflict</div>
                 <div className="muted" style={{ fontSize: 13 }}>
                   Choose whether to overwrite the existing character or create a new one.
@@ -912,7 +912,7 @@ export default function ImportCharacterView({
             <div className="inline-alert">
               Beyond 20 is a free browser extension that reads your D&amp;D Beyond rolls and sends them to TavernTails. The only install required is the Beyond 20 extension itself — no additional software needed.
             </div>
-            <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)', gap: 8 }}>
+            <div className="card card-pad stack" style={{ background: 'var(--muted-surface)', gap: 8 }}>
               <div style={{ fontWeight: 750 }}>Step 1 — Install the Beyond 20 extension</div>
               <div className="muted" style={{ fontSize: 13 }}>
                 Install Beyond 20 from the Chrome Web Store or Firefox Add-ons. Once installed, it will automatically detect rolls on your D&amp;D Beyond character sheet.
@@ -936,7 +936,7 @@ export default function ImportCharacterView({
                 </a>
               </div>
             </div>
-            <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)', gap: 8 }}>
+            <div className="card card-pad stack" style={{ background: 'var(--muted-surface)', gap: 8 }}>
               <div style={{ fontWeight: 750 }}>Step 2 — Roll on D&amp;D Beyond</div>
               <div className="muted" style={{ fontSize: 13 }}>
                 With a session open in TavernTails, click any roll button on your D&amp;D Beyond character sheet. Beyond 20 will relay the result directly into your TavernTails session chat.
@@ -952,7 +952,7 @@ export default function ImportCharacterView({
               We only parse files you upload. No D&amp;D Beyond scraping. PDF parsing is best-effort; some DDB PDFs don’t contain extractable text. Use overrides if needed.
             </div>
 
-            <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)' }}>
+            <div className="card card-pad stack" style={{ background: 'var(--muted-surface)' }}>
               <div style={{ fontWeight: 750 }}>How to get the PDF from D&amp;D Beyond</div>
               <div className="muted" style={{ fontSize: 13 }}>
                 On your D&amp;D Beyond character sheet, use the print/export option to download a PDF, then upload it here.

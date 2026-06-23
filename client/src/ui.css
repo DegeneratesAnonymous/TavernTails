@@ -900,3 +900,96 @@
   color: var(--accent);
   flex-shrink: 0;
 }
+
+/* ── Campaign card ─────────────────────────────────────── */
+
+.campaign-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.campaign-card-header {
+  min-width: 0;
+}
+
+.campaign-card-name {
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.campaign-card-desc {
+  font-size: 13px;
+  margin-top: 4px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.campaign-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.campaign-card-icon-btns {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.campaign-card-play-btn {
+  flex: 1;
+  min-width: 120px;
+  justify-content: center;
+}
+
+/* ── Dashboard global responsive ─────────────────────────── */
+
+@media (max-width: 640px) {
+  /* Page headers stack on mobile */
+  .page-header {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .page-header-actions {
+    width: 100%;
+  }
+
+  .page-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  /* Campaign cards stack actions */
+  .campaign-card {
+    padding: 12px;
+  }
+
+  .campaign-card-name {
+    font-size: 14px;
+  }
+
+  .campaign-card-play-btn {
+    width: 100%;
+    flex: none;
+    justify-content: center;
+  }
+
+  .campaign-card-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .campaign-card-icon-btns {
+    justify-content: flex-start;
+  }
+}

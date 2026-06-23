@@ -14,7 +14,7 @@
  *   5. Review & create (shows inferred tone / genre mood, confirm)
  */
 
-import React, { useState } from 'react'
+import React, { useState, useCallback } from 'react'
 import { apiFetch } from '../../api'
 import PageHeader from '../ui/PageHeader'
 import {
@@ -47,6 +47,38 @@ const EMPTY_DRAFT: CampaignDraft = {
 }
 
 const STEPS: Step[] = ['quiz', 'name', 'ruleset', 'level', 'review']
+
+// ─────────────────────────────────────────────
+// Campaign name pool
+// ─────────────────────────────────────────────
+
+const RANDOM_CAMPAIGN_NAMES = [
+  'The Shattered Crown',
+  'Ashes of the Fallen Throne',
+  'The Sunken Citadel',
+  'Echoes of the Elder War',
+  'Blood and Starlight',
+  'The Tomb of Forgotten Kings',
+  'Shadows Over Veldrath',
+  'The Iron Covenant',
+  'A Song of Wolves and Winter',
+  'The Gilded Serpent',
+  'Beyond the Pale Gate',
+  'The Last Lantern',
+  'Children of the Cursed Moon',
+  'Heirs of the Broken Empire',
+  'The Verdant Conspiracy',
+  'Storm and Ember',
+  'Relics of the Void',
+  'The Wandering Dark',
+  'Salt, Steel, and Sorcery',
+  'The Amber Throne',
+  'Where Ravens Gather',
+  'The Silence Before the War',
+  'Pact of the Hollow Gods',
+  'The Obsidian League',
+  'Fires of the Forgotten Age',
+]
 
 const STEP_LABELS: Record<Step, string> = {
   quiz: 'Scenario',
@@ -211,6 +243,11 @@ function StepName({
   const toneName = TONE_LABELS[derived.tone] ?? derived.tone
   const genreName = GENRE_LABELS[derived.genre] ?? derived.genre
 
+  const randomizeName = useCallback(() => {
+    const pick = RANDOM_CAMPAIGN_NAMES[Math.floor(Math.random() * RANDOM_CAMPAIGN_NAMES.length)]
+    onNameChange(pick)
+  }, [onNameChange])
+
   return (
     <div className="wizard-body">
       <div>
@@ -224,15 +261,27 @@ function StepName({
           <label style={{ fontSize: 12, color: 'var(--muted-text)', fontWeight: 600 }}>
             Campaign Name
           </label>
-          <input
-            className="wizard-name-input"
-            type="text"
-            value={draft.name}
-            onChange={(e) => onNameChange(e.target.value)}
-            placeholder="e.g. The Shattered Crown"
-            autoFocus
-            maxLength={100}
-          />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              className="wizard-name-input"
+              type="text"
+              value={draft.name}
+              onChange={(e) => onNameChange(e.target.value)}
+              placeholder="e.g. The Shattered Crown"
+              autoFocus
+              maxLength={100}
+              style={{ flex: 1 }}
+            />
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={randomizeName}
+              title="Random campaign name"
+              style={{ flexShrink: 0, fontSize: 18, padding: '6px 12px', lineHeight: 1 }}
+            >
+              &#x21BA;
+            </button>
+          </div>
         </div>
         <div className="stack" style={{ gap: 6 }}>
           <label style={{ fontSize: 12, color: 'var(--muted-text)', fontWeight: 600 }}>
@@ -512,7 +561,7 @@ export default function CampaignCreationWizard({ onDone, onCampaignCreated }: Pr
     setError(null)
     try {
       // 1. Create the campaign
-      const createRes = await apiFetch('/campaigns/', {
+      const createRes = await apiFetch('/campaigns', {
         method: 'POST',
         body: JSON.stringify({
           name: draft.name.trim(),
@@ -523,7 +572,8 @@ export default function CampaignCreationWizard({ onDone, onCampaignCreated }: Pr
         const err = await createRes.json().catch(() => null)
         throw new Error(err?.detail || 'Failed to create campaign')
       }
-      const campaign = await createRes.json()
+      const body = await createRes.json()
+      const campaign = body?.campaign ?? body
       const cid = campaign?.id ?? campaign?.campaign_id
 
       if (!cid) throw new Error('Campaign created but ID not returned')

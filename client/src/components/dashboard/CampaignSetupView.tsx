@@ -662,42 +662,36 @@ export default function CampaignSetupView({
     const associatedChars = characters.filter(
       (c) => c?.sheet?.associations?.campaign_id === String(campaign.id)
     )
-    const missingMandatorySettings = !campaign.metadata_json?.settings?.world_name?.trim()
     return (
       <div
         key={campaign.id}
-        className="card"
-        style={{
-          padding: 10,
-          borderColor: isActive ? 'rgba(173,136,95,0.6)' : 'var(--tt-border)',
-        }}
+        className="card campaign-card"
+        style={{ borderColor: isActive ? 'var(--accent, rgba(173,136,95,0.8))' : 'var(--tt-border)' }}
       >
-        <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {campaign.name}
-              {isGmRole ? <span className="muted" style={{ fontSize: 11, marginLeft: 6 }}>(GM)</span> : null}
-            </div>
-            {campaign.description ? (
-              <div className="muted" style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {campaign.description}
-              </div>
-            ) : null}
-            {campaign.gm_invite_pending ? (
-              <div className="muted" style={{ fontSize: 11, color: 'var(--accent)', marginTop: 2 }}>Invite pending acceptance</div>
-            ) : null}
-            {associatedChars.length > 0 ? (
-              <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-                {associatedChars.map((c) => (
-                  <span key={c.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginRight: 8 }}>
-                    🧙 {c.name}{c.class_name ? ` (${c.class_name})` : ''}{c.level ? ` L${c.level}` : ''}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-            {isActive ? <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>Selected</div> : null}
+        {/* Top row: name + description */}
+        <div className="campaign-card-header">
+          <div className="campaign-card-name">
+            {campaign.name}
+            {isGmRole ? <span className="muted" style={{ fontSize: 11, marginLeft: 8, fontWeight: 400 }}>(GM)</span> : null}
           </div>
-          <div className="row-wrap" style={{ gap: 6, justifyContent: 'flex-end' }}>
+          {campaign.description ? (
+            <div className="muted campaign-card-desc">{campaign.description}</div>
+          ) : null}
+          {campaign.gm_invite_pending ? (
+            <div style={{ fontSize: 12, color: 'var(--accent)', marginTop: 4 }}>Invite pending acceptance</div>
+          ) : null}
+          {associatedChars.length > 0 ? (
+            <div className="muted" style={{ fontSize: 12, marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: '2px 12px' }}>
+              {associatedChars.map((c) => (
+                <span key={c.id}>🧙 {c.name}{c.class_name ? ` · ${c.class_name}` : ''}{c.level ? ` L${c.level}` : ''}</span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        {/* Bottom row: actions */}
+        <div className="campaign-card-actions">
+          <div className="campaign-card-icon-btns">
             <button className="btn btn-secondary btn-sm btn-icon-only" type="button" onClick={() => openCampaignView(String(campaign.id), 'settings')} title="Settings" aria-label="Settings">
               <SettingsIcon />
             </button>
@@ -709,20 +703,19 @@ export default function CampaignSetupView({
                 <button className="btn btn-secondary btn-sm btn-icon-only" type="button" onClick={() => openCampaignView(String(campaign.id), 'players')} title="Players" aria-label="Players">
                   <PlayersIcon />
                 </button>
-                {onPlay ? (
-                  <button
-                    className="btn btn-sm"
-                    type="button"
-                    disabled={Boolean(playBusy) || missingMandatorySettings}
-                    title={missingMandatorySettings ? 'Fill in mandatory settings (world name) before starting a session' : 'Start Session'}
-                    onClick={() => onPlay(String(campaign.id))}
-                  >
-                    {playBusy && String(campaign.id) === activeCampaignId ? 'Starting…' : 'Start Session'}
-                  </button>
-                ) : null}
               </>
             ) : null}
           </div>
+          {!isGmRole && onPlay ? (
+            <button
+              className="btn campaign-card-play-btn"
+              type="button"
+              disabled={Boolean(playBusy)}
+              onClick={() => onPlay(String(campaign.id))}
+            >
+              {playBusy && String(campaign.id) === activeCampaignId ? 'Starting…' : 'Start Session'}
+            </button>
+          ) : null}
         </div>
       </div>
     )
@@ -736,66 +729,64 @@ export default function CampaignSetupView({
         subtitle="Create, configure, and start/restart scenes."
       />
 
-      <div className="row-wrap" style={{ gap: 16, alignItems: 'stretch' }}>
-        <div style={{ minWidth: 260, flex: '1 1 260px' }}>
-          <div className="card card-pad stack" style={{ gap: 10 }}>
-            <div className="row-wrap card-section-header" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>My Campaigns</div>
-              <button className="btn btn-secondary btn-sm btn-icon-only" type="button" onClick={onCreateCampaign} title="New Campaign" aria-label="New Campaign">
-                <NewIcon />
-              </button>
-            </div>
-
-            {sortedCampaigns.length === 0 ? (
-              <div className="muted" style={{ fontSize: 13 }}>
-                No campaigns yet. Create one to set the world and session settings.
-              </div>
-            ) : (
-              <div className="stack" style={{ gap: 10 }}>
-                {sortedCampaigns.map((campaign) => renderCampaignCard(campaign, false))}
-              </div>
-            )}
-
-            {sortedGmCampaigns.length > 0 ? (
-              <>
-                <div className="card-section-header" style={{ marginTop: 8 }}>
-                  Campaigns I GM
-                </div>
-                <div className="stack" style={{ gap: 10 }}>
-                  {sortedGmCampaigns.map((campaign) => renderCampaignCard(campaign, true))}
-                </div>
-              </>
-            ) : null}
+      {/* ── Campaign list ────────────────────────────── */}
+      {viewMode === 'list' ? (
+        <div className="stack" style={{ gap: 16 }}>
+          <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="card-section-header" style={{ border: 'none', paddingBottom: 0 }}>My Campaigns</div>
+            <button className="btn btn-secondary btn-sm" type="button" onClick={onCreateCampaign}>
+              <NewIcon />
+              <span style={{ marginLeft: 6 }}>New Campaign</span>
+            </button>
           </div>
-        </div>
 
-        <div style={{ minWidth: 320, flex: '2 1 520px' }}>
-          {viewMode === 'list' ? (
-            <div className="card card-pad">
-              <div className="muted" style={{ marginBottom: 8 }}>Select a campaign action</div>
-              <div className="muted" style={{ fontSize: 13 }}>
-                Choose Settings, Documents, or Players on the left to manage a campaign. Settings covers world details and tone.
+          {sortedCampaigns.length === 0 ? (
+            <div className="card card-pad muted" style={{ fontSize: 13 }}>
+              No campaigns yet. Create one to set the world and session settings.
+            </div>
+          ) : (
+            <div className="stack" style={{ gap: 10 }}>
+              {sortedCampaigns.map((campaign) => renderCampaignCard(campaign, false))}
+            </div>
+          )}
+
+          {sortedGmCampaigns.length > 0 ? (
+            <>
+              <div className="card-section-header" style={{ marginTop: 4 }}>Campaigns I GM</div>
+              <div className="stack" style={{ gap: 10 }}>
+                {sortedGmCampaigns.map((campaign) => renderCampaignCard(campaign, true))}
               </div>
-            </div>
-          ) : !activeCampaignId ? (
-            <div className="inline-alert">
-              Select a campaign to view and edit settings, or create a new campaign.
-            </div>
+            </>
           ) : null}
-
+        </div>
+      ) : (
+        /* ── Detail panel (settings / documents / players) ── */
+        <div className="stack" style={{ gap: 0 }}>
           {message ? (
-            <div className={`inline-alert ${message.kind === 'error' ? 'inline-alert-error' : ''}`}>
+            <div className={`inline-alert ${message.kind === 'error' ? 'inline-alert-error' : ''} `} style={{ marginBottom: 12 }}>
               {message.text}
             </div>
           ) : null}
 
           {viewMode === 'settings' ? (
             <>
-              <button className="btn btn-secondary btn-sm" type="button" onClick={() => setViewMode('list')}>
-                ← Back to campaigns
-              </button>
+              <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <button className="btn btn-secondary btn-sm" type="button" onClick={() => setViewMode('list')}>
+                  ← Back to campaigns
+                </button>
+                {onPlay && activeCampaignId ? (
+                  <button
+                    className="btn btn-sm"
+                    type="button"
+                    disabled={Boolean(playBusy)}
+                    onClick={() => onPlay(activeCampaignId)}
+                  >
+                    {playBusy ? 'Starting…' : 'Start Session'}
+                  </button>
+                ) : null}
+              </div>
 
-              <div className="card card-pad" style={{ marginTop: 12 }}>
+              <div className="card card-pad">
                 <div className="row-wrap card-section-header" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
                   <div>Adventure details</div>
                   <div className="row-wrap" style={{ gap: 8 }}>
@@ -1094,10 +1085,22 @@ export default function CampaignSetupView({
 
           {viewMode === 'documents' ? (
             <>
-              <button className="btn btn-secondary btn-sm" type="button" onClick={() => setViewMode('list')}>
-                ← Back to campaigns
-              </button>
-              <div className="card card-pad" style={{ marginTop: 12 }}>
+              <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <button className="btn btn-secondary btn-sm" type="button" onClick={() => setViewMode('list')}>
+                  ← Back to campaigns
+                </button>
+                {onPlay && activeCampaignId ? (
+                  <button
+                    className="btn btn-sm"
+                    type="button"
+                    disabled={Boolean(playBusy)}
+                    onClick={() => onPlay(activeCampaignId)}
+                  >
+                    {playBusy ? 'Starting…' : 'Start Session'}
+                  </button>
+                ) : null}
+              </div>
+              <div className="card card-pad">
                 <div className="card-section-header" style={{ marginBottom: 8 }}>Campaign Documents</div>
                 <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
                   Upload PDFs, campaign modules, random tables, or instruction sets. The AI uses these during gameplay.
@@ -1142,16 +1145,28 @@ export default function CampaignSetupView({
 
           {viewMode === 'players' ? (
             <>
-              <button className="btn btn-secondary btn-sm" type="button" onClick={() => setViewMode('list')}>
-                ← Back to campaigns
-              </button>
-              <div className="card card-pad" style={{ marginTop: 12 }}>
+              <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <button className="btn btn-secondary btn-sm" type="button" onClick={() => setViewMode('list')}>
+                  ← Back to campaigns
+                </button>
+                {onPlay && activeCampaignId ? (
+                  <button
+                    className="btn btn-sm"
+                    type="button"
+                    disabled={Boolean(playBusy)}
+                    onClick={() => onPlay(activeCampaignId)}
+                  >
+                    {playBusy ? 'Starting…' : 'Start Session'}
+                  </button>
+                ) : null}
+              </div>
+              <div className="card card-pad">
                 <div className="card-section-header" style={{ marginBottom: 8 }}>Players</div>
                 <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
                   Invite players by username or email to grant access to this campaign.
                 </div>
-                <div style={{ gap: 8, marginBottom: 12 }}>
-                  <div style={{ flex: 1, marginBottom: 6 }}>
+                <div className="stack" style={{ gap: 8, marginBottom: 12 }}>
+                  <div>
                     <label className="muted" style={{ fontSize: 12 }}>Username or email</label>
                     <input
                       className="input"
@@ -1163,9 +1178,9 @@ export default function CampaignSetupView({
                     />
                   </div>
                   {inviteMatchBusy ? (
-                    <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>Searching…</div>
+                    <div className="muted" style={{ fontSize: 12 }}>Searching…</div>
                   ) : inviteMatches.length > 0 ? (
-                    <div className="card" style={{ padding: 8, marginBottom: 8, display: 'grid', gap: 4 }}>
+                    <div className="card" style={{ padding: 8, display: 'grid', gap: 4 }}>
                       <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Matches</div>
                       {inviteMatches.map((m) => {
                         const key = String(m?.id ?? m?.email ?? m?.username ?? Math.random())
@@ -1217,7 +1232,7 @@ export default function CampaignSetupView({
             </>
           ) : null}
         </div>
-      </div>
+      )}
     </section>
       {toast ? (
         <Toast message={toast} onDone={() => setToast(null)} />
