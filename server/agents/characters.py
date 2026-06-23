@@ -3849,24 +3849,81 @@ def _build_character_import_sheet_from_pdf(
         elif any(x in kn for x in ("feature", "trait")) and len(stripped) > 10:
             other_blobs.append(v)
 
-    def _lines_from_blobs(blobs: list[str]) -> list[str]:
-        out: list[str] = []
-        seen: set[str] = set()
+    # Matches a trailing source reference like "PHB 114", "EGTW 184", "SOTDQ,26", "TCOE 80", "PHB"
+    _src_ref_pat = re.compile(r"\s+([A-Z][A-Z0-9&]{1,7}(?:[,\s]\s*\d{1,4}(?:-\d+)?)?)\s*$")
+    # Usage info lines: start with a digit + "/" (e.g. "1 / Long Rest Special")
+    _usage_line_pat = re.compile(r"^\d+\s*/", re.I)
+
+    def _is_feature_name(s: str) -> bool:
+        """Heuristic: is this line a feature header rather than description text?"""
+        if len(s) > 80 or s.endswith("."):
+            return False
+        if _src_ref_pat.search(s):
+            return True
+        # Short ALL-CAPS line with no sentence structure → sub-heading like "CHRONURGY MAGIC"
+        if len(s) <= 50 and s == s.upper() and re.search(r"[A-Z]{2}", s):
+            return True
+        return False
+
+    def _lines_from_blobs(blobs: list[str]) -> list[dict]:
+        """Parse PDF text blobs into grouped feature objects {name, source?, description?}."""
+        features: list[dict] = []
+        seen_names: set[str] = set()
+        current: dict | None = None
+
+        def _flush() -> None:
+            if current is None:
+                return
+            name = current.get("name", "").strip()
+            if not name or len(name) < 2:
+                return
+            key = name.lower()
+            if key not in seen_names:
+                seen_names.add(key)
+                features.append(dict(current))
+
         for blob in blobs:
-            for line in re.split(r"\r?\n", blob):
-                s = re.sub(r"^[ \t\r\n•\-*_\u2022]+|[ \t\r\n•\-*_\u2022]+$", "", line)
-                if not s:
+            for raw in re.split(r"\r?\n", blob):
+                line = re.sub(r"^[ \t\r\n•\-*_\u2022]+|[ \t\r\n•\-*_\u2022]+$", "", raw)
+                if not line:
                     continue
-                key = s.lower()
-                if key in seen:
+                # Skip DDB section delimiter lines like "=== CLASS FEATURES ==="
+                if re.match(r"^={2,}.*={2,}$", line):
                     continue
-                seen.add(key)
-                out.append(s if len(s) <= 200 else s[:200].rstrip() + "…")
-                if len(out) >= 200:
+
+                if _is_feature_name(line):
+                    _flush()
+                    m = _src_ref_pat.search(line)
+                    if m:
+                        name_part = line[:m.start()].strip()
+                        src_part = m.group(1).strip() or None
+                    else:
+                        name_part = line
+                        src_part = None
+                    current = {"name": name_part, "source": src_part}
+                elif _usage_line_pat.match(line):
+                    if current is None:
+                        current = {"name": line}
+                    else:
+                        existing = current.get("description") or ""
+                        current["description"] = (existing + "\n" + line).strip() if existing else line
+                else:
+                    # Description / continuation text
+                    if current is None:
+                        current = {"name": line[:80].rstrip()}
+                    else:
+                        existing = current.get("description") or ""
+                        snippet = line if len(line) <= 400 else line[:400].rstrip() + "…"
+                        current["description"] = (existing + "\n" + snippet).strip() if existing else snippet
+
+                if len(features) >= 150:
                     break
-            if len(out) >= 200:
+            _flush()
+            current = None
+            if len(features) >= 150:
                 break
-        return out
+
+        return features
 
     text = _read_pdf_text(content)
     # Combine extracted page text + widget key/value lines for better downstream parsing.
@@ -3910,18 +3967,10 @@ def _build_character_import_sheet_from_pdf(
     racial_features = _lines_from_blobs(race_blobs)
     other_features = _lines_from_blobs(other_blobs)
     # If grouping failed, fall back to the general extracted features list.
-    if not class_features and features_from_widgets:
-        # try to pick entries that mention the class name
-        if final_class_name:
-            cands = [f for f in features_from_widgets if final_class_name.lower() in f.lower()]
-            class_features = cands
-    if not racial_features and features_from_widgets:
-        # rough heuristic: look for common race/species words or short lists near top
-        cands = [f for f in features_from_widgets if any(x in f.lower() for x in ("elf", "dwarf", "halfling", "human", "tiefling", "dragonborn", "gnome", "goliath", "aasimar"))]
-        racial_features = cands
-    # remaining go to other_features
-    remaining = [f for f in features_from_widgets if f not in class_features and f not in racial_features]
-    other_features = other_features or remaining
+    # Fallback: when no class/racial/other blobs were found, use features_from_widgets (string list)
+    # as a last resort. Convert strings to dict format for consistency.
+    if not class_features and not racial_features and not other_features and features_from_widgets:
+        other_features = [{"name": f} for f in features_from_widgets]
 
     safe_level = final_level if isinstance(final_level, int) else 1
     safe_level = max(1, min(20, safe_level))

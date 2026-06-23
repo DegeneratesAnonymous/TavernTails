@@ -437,9 +437,13 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
 
     const classFeatures = uniqFeatures(toFeatureList((sheet as any)?.classFeatures))
     const racialFeatures = uniqFeatures(toFeatureList((sheet as any)?.racialFeatures))
+    const structuredOther = toFeatureList((sheet as any)?.otherFeatures)
+    // Only pull in the flat features_from_widgets list when the structured arrays are all empty
+    // — otherwise it duplicates entries that already appear in class/racial/otherFeatures.
+    const hasStructured = classFeatures.length > 0 || racialFeatures.length > 0 || structuredOther.length > 0
     const otherFeaturesSrc = uniqFeatures([
-      ...toFeatureList((sheet as any)?.otherFeatures),
-      ...toFeatureList(sheet?.features),
+      ...structuredOther,
+      ...(hasStructured ? [] : toFeatureList(sheet?.features)),
     ])
     // Deduplicate: remove items already in class/racial by name+source composite key
     const classOrRaceKeys = new Set([
@@ -1930,7 +1934,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                                                   ) : null}
                                                 </button>
                                                 {isExpanded && hasDetails ? (
-                                                  <div style={{ fontSize: 12, lineHeight: 1.55, padding: '6px 10px 8px', background: 'rgba(0,0,0,0.2)', borderRadius: '0 0 5px 5px', marginTop: -3 }}>
+                                                  <div style={{ fontSize: 12, lineHeight: 1.55, padding: '6px 10px 8px', background: 'rgba(0,0,0,0.2)', borderRadius: '0 0 5px 5px', marginTop: -3, whiteSpace: 'pre-wrap' }}>
                                                     {f.description}
                                                   </div>
                                                 ) : null}
