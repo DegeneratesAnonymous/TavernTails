@@ -1,6 +1,7 @@
 import React, {useMemo, useRef, useState} from 'react'
-import CharacterIconStrip, {CharacterSnapshot, CharacterStripKey} from './CharacterIconStrip'
+import {CharacterSnapshot} from './CharacterIconStrip'
 import EmptyState from './ui/EmptyState'
+import SourceRef from './ui/SourceRef'
 import './CharacterPanel.css'
 
 const WEAPON_KEYWORDS = /sword|axe|bow|dagger|mace|hammer|spear|lance|staff|wand|blade|club|flail|glaive|halberd|maul|pike|rapier|scimitar|shortsword|longbow|crossbow|trident|whip|handaxe|greataxe|battleaxe|greatsword|longsword/i
@@ -19,6 +20,7 @@ export type CharacterSummary = CharacterSnapshot & {
   id: string
   name: string
   level: number
+  class_name?: string | null
   hp: { current: number; max: number; temp?: number }
   ac: number
   spellSave: number
@@ -41,9 +43,10 @@ type Props = {
   showRoster?: boolean
   onGoToCharacters?: () => void
   onGoToImport?: () => void
-  /** Called when the player uses a Quick Action in-session */
   onQuickAction?: (action: {type: 'attack' | 'cast' | 'short_rest' | 'long_rest'; detail?: string}) => void
 }
+
+type SheetTab = 'skills' | 'spells' | 'features' | 'inventory'
 
 export default function CharacterPanel({
   roster,
@@ -58,7 +61,8 @@ export default function CharacterPanel({
   onGoToImport,
   onQuickAction,
 }: Props){
-  const [drawerKey, setDrawerKey] = useState<CharacterStripKey | null>(null)
+  const [drawerKey, setDrawerKey] = useState<string | null>(null)
+  const [sheetTab, setSheetTab] = useState<SheetTab | null>('skills')
   const containerRef = useRef<HTMLDivElement|null>(null)
   const [rollingCueId, setRollingCueId] = useState<string | null>(null)
   const [cueError, setCueError] = useState<string | null>(null)
@@ -70,63 +74,29 @@ export default function CharacterPanel({
     return roster.find(r => r.id === selectedId) ?? roster[0]
   }, [roster, selectedId])
 
+  const computeMod = (score: number) => Math.floor((score - 10) / 2)
+  const fmtMod = (mod: number) => (mod >= 0 ? `+${mod}` : `${mod}`)
+
   const abilities = useMemo(() => {
     const stats = selected?.stats
     if(!stats) return []
-    const computeMod = (score: number) => Math.floor((score - 10) / 2)
-    const formatMod = (mod: number) => (mod >= 0 ? `+${mod}` : `${mod}`)
     const str = typeof stats.str === 'number' ? stats.str : 10
     const dex = typeof stats.dex === 'number' ? stats.dex : 10
     const con = typeof (stats as any).con === 'number' ? (stats as any).con : 10
     const int = typeof (stats as any).int === 'number' ? (stats as any).int : 10
     const wis = typeof stats.wis === 'number' ? stats.wis : 10
     const cha = typeof (stats as any).cha === 'number' ? (stats as any).cha : 10
-    const rows = [
+    return [
       { key: 'STR', score: str, mod: computeMod(str) },
       { key: 'DEX', score: dex, mod: computeMod(dex) },
       { key: 'CON', score: con, mod: computeMod(con) },
       { key: 'INT', score: int, mod: computeMod(int) },
       { key: 'WIS', score: wis, mod: computeMod(wis) },
       { key: 'CHA', score: cha, mod: computeMod(cha) },
-    ]
-    return rows.map(r => ({ ...r, modLabel: formatMod(r.mod) }))
+    ].map(r => ({ ...r, modLabel: fmtMod(r.mod) }))
   }, [selected?.stats])
 
-  const overview = useMemo(() => {
-    if(!selected) return null
-    const hpCurrent = typeof selected.hp?.current === 'number' ? selected.hp.current : 0
-    const hpMax = typeof selected.hp?.max === 'number' ? selected.hp.max : 0
-    const tempHp = typeof selected.hp?.temp === 'number' ? selected.hp.temp : 0
-    const ac = typeof selected.ac === 'number' ? selected.ac : 0
-    const level = typeof selected.level === 'number' ? selected.level : 0
-    const spellSave = typeof selected.spellSave === 'number' ? selected.spellSave : 0
-
-    const dexRow = abilities.find(r => r.key === 'DEX')
-    const initMod = dexRow ? dexRow.mod : 0
-
-    const inventoryCount = Array.isArray(selected.inventory) ? selected.inventory.length : 0
-    const featuresCount = Array.isArray(selected.features) ? selected.features.length : 0
-    const skillsCount = Array.isArray(selected.skills) ? selected.skills.length : 0
-    const exhaustion = typeof selected.exhaustion === 'number' ? selected.exhaustion : 0
-    const deathSaves = selected.deathSaves ?? { successes: 0, failures: 0 }
-    const spellSlots = selected.spellSlots ?? {}
-
-    return {
-      hpCurrent,
-      hpMax,
-      tempHp,
-      ac,
-      level,
-      spellSave,
-      initMod,
-      inventoryCount,
-      featuresCount,
-      skillsCount,
-      exhaustion,
-      deathSaves,
-      spellSlots,
-    }
-  }, [abilities, selected])
+  const dexMod = abilities.find(r => r.key === 'DEX')?.mod ?? 0
 
   const quickActions = useMemo(() => {
     const equippedWeapons = (selected?.inventory || []).filter(name => WEAPON_KEYWORDS.test(name))
@@ -134,201 +104,18 @@ export default function CharacterPanel({
     return { equippedWeapons, hasSpells }
   }, [selected?.inventory, selected?.spells])
 
-  const drawerTitle = useMemo(() => {
-    if(drawerKey === 'abilities') return 'Abilities'
-    if(drawerKey === 'features') return 'Features'
-    if(drawerKey === 'inventory') return 'Inventory'
-    if(drawerKey === 'journal') return 'Journal'
-    if(drawerKey === 'skills') return 'Skills'
-    if(drawerKey === 'spells') return 'Spells'
-    return 'Overview'
-  }, [drawerKey])
-
-  const drawerContent = useMemo(() => {
-    if(drawerKey === 'abilities'){
-      return (
-        <div className="character-abilities character-abilities--tiles">
-          {abilities.map(row => (
-            <div key={row.key} className="character-ability-tile">
-              <div className="character-ability-key">{row.key}</div>
-              <div className="character-ability-mod">{row.modLabel}</div>
-              <div className="character-ability-score">{row.score}</div>
-            </div>
-          ))}
-          {!abilities.length ? <div className="muted">No ability scores available.</div> : null}
-        </div>
-      )
-    }
-
-    if(drawerKey === 'features'){
-      return selected?.features?.length ? (
-        <ul className="character-section-ul">
-          {selected.features.map((feature) => (
-            <li key={feature}>{feature}</li>
-          ))}
-        </ul>
-      ) : (
-        <div className="muted">No features listed.</div>
-      )
-    }
-
-    if(drawerKey === 'inventory'){
-      return selected?.inventory?.length ? (
-        <ul className="character-section-ul">
-          {selected.inventory.map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-        </ul>
-      ) : (
-        <div className="muted">No inventory items.</div>
-      )
-    }
-
-    if(drawerKey === 'journal'){
-      return (
-        <div>
-          <div className="muted" style={{marginBottom: 8}}>
-            {typeof selected?.journalEntries === 'number' ? `${selected.journalEntries} entries` : 'No journal data'}
-          </div>
-          <div className="muted">Journal entry contents aren’t wired up yet.</div>
-        </div>
-      )
-    }
-
-    if(drawerKey === 'skills'){
-      return (
-        <div className="character-section-list character-section-list--skills" style={{marginTop: 0}}>
-          <ul className="character-section-ul character-section-ul--skills">
-            {selected?.skills?.map(skill => (
-              <li key={skill.name} className="character-skill-item">
-                <span className="character-skill-name">{skill.name}</span>
-                <span className="character-skill-mod">
-                  {skill.mod >= 0 ? '+' : ''}{skill.mod}
-                </span>
-              </li>
-            ))}
-          </ul>
-          {!selected?.skills?.length ? <div className="muted">No skills listed.</div> : null}
-        </div>
-      )
-    }
-
-    if(drawerKey === 'spells'){
-      const spellList = selected?.spells || []
-      const spellSlots = selected?.spellSlots ?? {}
-      const slotLevels = Object.keys(spellSlots).filter(k => k !== 'pact').sort((a,b) => Number(a)-Number(b))
-      const pactSlot = spellSlots['pact']
-      return (
-        <div>
-          {(slotLevels.length > 0 || pactSlot) ? (
-            <div className="spell-slots-grid" aria-label="Spell slots">
-              {slotLevels.map(lvl => {
-                const slot = spellSlots[lvl]
-                return (
-                  <div key={lvl} className="spell-slot-row">
-                    <span className="spell-slot-label">Lvl {lvl}</span>
-                    <span className="spell-slot-pips">
-                      {Array.from({length: slot.max}).map((_, i) => (
-                        <span key={i} className={`spell-slot-pip ${i < slot.used ? 'spell-slot-pip--used' : ''}`} />
-                      ))}
-                    </span>
-                    <span className="spell-slot-count muted">{slot.max - slot.used}/{slot.max}</span>
-                  </div>
-                )
-              })}
-              {pactSlot ? (
-                <div className="spell-slot-row">
-                  <span className="spell-slot-label">Pact (L{pactSlot.level})</span>
-                  <span className="spell-slot-pips">
-                    {Array.from({length: pactSlot.max}).map((_, i) => (
-                      <span key={i} className={`spell-slot-pip ${i < pactSlot.used ? 'spell-slot-pip--used' : ''}`} />
-                    ))}
-                  </span>
-                  <span className="spell-slot-count muted">{pactSlot.max - pactSlot.used}/{pactSlot.max}</span>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-          {spellList.length ? (
-            <ul className="character-section-ul" style={{marginTop: slotLevels.length || pactSlot ? 10 : 0}}>
-              {spellList.map(spell => (
-                <li key={spell}>{spell}</li>
-              ))}
-            </ul>
-          ) : (
-            <div className="muted">No spells listed.</div>
-          )}
-        </div>
-      )
-    }
-
-    return null
-  }, [abilities, drawerKey, selected])
-
-  const previewContent = useMemo(() => {
-    if(!selected) return null
-    const features = Array.isArray(selected.features) ? selected.features : []
-    const inventory = Array.isArray(selected.inventory) ? selected.inventory : []
-    const skills = Array.isArray(selected.skills) ? selected.skills : []
-
-    const topFeatures = features.slice(0, 6)
-    const topInventory = inventory.slice(0, 6)
-    const topSkills = skills.slice(0, 12)
-
-    return (
-      <div className="character-sheet-preview">
-        <div className="character-sheet-preview-row">
-          <div className="character-sheet-preview-col">
-            <div className="character-sheet-subhead">Skills</div>
-            {topSkills.length ? (
-              <ul className="character-sheet-mini-list">
-                {topSkills.map(s => (
-                  <li key={s.name}>
-                    <span className="character-sheet-mini-name">{s.name}</span>
-                    <span className="character-sheet-mini-mod">{s.mod >= 0 ? '+' : ''}{s.mod}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="muted">No skills listed.</div>
-            )}
-          </div>
-
-          <div className="character-sheet-preview-col">
-            <div className="character-sheet-subhead">Features</div>
-            {topFeatures.length ? (
-              <ul className="character-sheet-mini-list">
-                {topFeatures.map(f => (<li key={f}>{f}</li>))}
-              </ul>
-            ) : (
-              <div className="muted">No features listed.</div>
-            )}
-
-            <div className="character-sheet-subhead" style={{marginTop: 12}}>Inventory</div>
-            {topInventory.length ? (
-              <ul className="character-sheet-mini-list">
-                {topInventory.map(i => (<li key={i}>{i}</li>))}
-              </ul>
-            ) : (
-              <div className="muted">No inventory items.</div>
-            )}
-          </div>
-        </div>
-      </div>
-    )
-  }, [selected])
+  const spellSlots = selected?.spellSlots ?? {}
+  const slotEntries = Object.entries(spellSlots)
+    .filter(([, slot]) => slot.max > 0)
+    .sort(([a],[b]) => a === 'pact' ? 1 : b === 'pact' ? -1 : Number(a) - Number(b))
 
   async function handleCueRoll(cue: SceneCue){
     if(!onCueRoll || !cue.roll) return
     setCueError(null)
     setRollingCueId(cue.id)
-    try{
-      await onCueRoll(cue)
-    }catch(err:any){
-      setCueError(err?.message || 'Failed to trigger roll')
-    }finally{
-      setRollingCueId(null)
-    }
+    try{ await onCueRoll(cue) }
+    catch(err:any){ setCueError(err?.message || 'Failed to trigger roll') }
+    finally{ setRollingCueId(null) }
   }
 
   if(!roster.length){
@@ -341,14 +128,10 @@ export default function CharacterPanel({
           actions={!showRoster && (onGoToCharacters || onGoToImport) ? (
             <div style={{display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap'}}>
               {onGoToCharacters ? (
-                <button className="btn" type="button" onClick={onGoToCharacters}>
-                  Manage Characters
-                </button>
+                <button className="btn" type="button" onClick={onGoToCharacters}>Manage Characters</button>
               ) : null}
               {onGoToImport ? (
-                <button className="btn btn-secondary" type="button" onClick={onGoToImport}>
-                  Import Character
-                </button>
+                <button className="btn btn-secondary" type="button" onClick={onGoToImport}>Import Character</button>
               ) : null}
             </div>
           ) : null}
@@ -357,90 +140,146 @@ export default function CharacterPanel({
     )
   }
 
-  // Player-sheet mode: BG3/D&D Beyond-inspired, space-efficient layout
+  // ── In-session character sheet ─────────────────────────────────────────────
   if(!showRoster){
+    const hp = selected?.hp ?? { current: 0, max: 0 }
+    const hpPct = hp.max > 0 ? Math.max(0, Math.min(1, hp.current / hp.max)) : 0
+    const hpColor = hpPct > 0.6 ? '#4caf82' : hpPct > 0.3 ? '#e0a352' : '#e05252'
+    const exhaustion = selected?.exhaustion ?? 0
+    const deathSaves = selected?.deathSaves ?? { successes: 0, failures: 0 }
+    const showDeathSaves = hp.current <= 0
+    const showExhaustion = exhaustion > 0
+
+    const subtitle = [
+      `Lv${selected?.level ?? 0}`,
+      selected?.class_name ?? null,
+    ].filter(Boolean).join(' ')
+
+    const featureName = (f: any): string => {
+      if(typeof f === 'string') return f
+      if(f && typeof f === 'object') return String(f.name || '').trim()
+      return String(f || '')
+    }
+    const featureSource = (f: any): string | null => {
+      if(f && typeof f === 'object') return String(f.source || '').trim() || null
+      return null
+    }
+    const featureDesc = (f: any): string | null => {
+      if(f && typeof f === 'object') return String(f.description || '').trim() || null
+      return null
+    }
+
     return (
-      <div className="character-panel-root character-panel-root--sheet">
-        <div className="character-sheet-header">
-          <div className="character-sheet-portrait" aria-hidden="true">
-            <div className="character-sheet-portrait-initial">{(selected?.name || '?').slice(0, 1).toUpperCase()}</div>
+      <div className="cs-root">
+
+        {/* ── Header ── */}
+        <header className="cs-header">
+          <div className="cs-portrait" aria-hidden="true">
+            {(selected?.name || '?').slice(0, 1).toUpperCase()}
           </div>
-          <div className="character-sheet-title">
-            <div className="character-sheet-name">{selected?.name}</div>
-            <div className="character-sheet-subtitle muted">Level {selected?.level ?? 0}</div>
+          <div className="cs-identity">
+            <div className="cs-name">{selected?.name ?? 'Character'}</div>
+            <div className="cs-subtitle">{subtitle}</div>
           </div>
+        </header>
+
+        {/* ── Combat vitals ── */}
+        <div className="cs-vitals">
+          <div className="cs-vital cs-vital--hp">
+            <span className="cs-vital-label">HP</span>
+            <span className="cs-vital-value" style={{ color: hpColor }}>
+              {hp.current}<span className="cs-vital-denom">/{hp.max}</span>
+            </span>
+            {hp.temp ? <span className="cs-vital-temp">+{hp.temp}</span> : null}
+          </div>
+          <div className="cs-vital">
+            <span className="cs-vital-label">AC</span>
+            <span className="cs-vital-value">{selected?.ac ?? '—'}</span>
+          </div>
+          <div className="cs-vital">
+            <span className="cs-vital-label">Init</span>
+            <span className="cs-vital-value">{dexMod >= 0 ? '+' : ''}{dexMod}</span>
+          </div>
+          {(selected?.spellSave ?? 0) > 0 ? (
+            <div className="cs-vital">
+              <span className="cs-vital-label">DC</span>
+              <span className="cs-vital-value">{selected!.spellSave}</span>
+            </div>
+          ) : null}
         </div>
 
-        {overview ? (
-          <section className="player-status" aria-label="Player stats" style={{padding: 10, borderRadius: 12, border: '1px solid rgba(255,255,255,0.06)', marginBottom: 10}}>
-            <div className="player-status-grid">
-              <div>
-                <div className="player-status-label">Armor Class</div>
-                <div className="player-status-value">{overview.ac}</div>
-              </div>
-              <div>
-                <div className="player-status-label">Hit Points</div>
-                <div className="player-status-value">{overview.hpCurrent} / {overview.hpMax}{overview.tempHp ? <span className="player-status-temp"> +{overview.tempHp}</span> : null}</div>
-              </div>
-              <div>
-                <div className="player-status-label">Initiative</div>
-                <div className="player-status-value">{overview.initMod >= 0 ? '+' : ''}{overview.initMod}</div>
-              </div>
-              <div>
-                <div className="player-status-label">Spell Save DC</div>
-                <div className="player-status-value">{overview.spellSave}</div>
-              </div>
-              <div>
-                <div className="player-status-label">Exhaustion</div>
-                <div className="player-status-value">{overview.exhaustion} / 6</div>
-              </div>
-              <div>
-                <div className="player-status-label">Death Saves</div>
-                <div className="player-status-value player-status-death-saves">
-                  <span className="death-saves-success" title="Successes">
-                    {Array.from({length: 3}).map((_, i) => (
-                      <span key={i} className={`death-save-pip ${i < overview.deathSaves.successes ? 'death-save-pip--success' : ''}`} aria-label={i < overview.deathSaves.successes ? 'success' : 'empty'} />
-                    ))}
-                  </span>
-                  <span className="death-saves-sep">·</span>
-                  <span className="death-saves-failure" title="Failures">
-                    {Array.from({length: 3}).map((_, i) => (
-                      <span key={i} className={`death-save-pip ${i < overview.deathSaves.failures ? 'death-save-pip--failure' : ''}`} aria-label={i < overview.deathSaves.failures ? 'failure' : 'empty'} />
-                    ))}
-                  </span>
-                </div>
-              </div>
-            </div>
-            {/* Spell slots mini-display */}
-            {Object.keys(overview.spellSlots).length > 0 ? (
-              <div className="spell-slots-summary" aria-label="Spell slots">
-                {Object.entries(overview.spellSlots)
-                  .sort(([a],[b]) => a === 'pact' ? 1 : b === 'pact' ? -1 : Number(a) - Number(b))
-                  .map(([lvl, slot]) => (
-                    <div key={lvl} className="spell-slot-mini">
-                      <span className="spell-slot-mini-label">{lvl === 'pact' ? `Pact` : `L${lvl}`}</span>
-                      <span className="spell-slot-mini-pips">
-                        {Array.from({length: slot.max}).map((_, i) => (
-                          <span key={i} className={`spell-slot-pip spell-slot-pip--sm ${i < slot.used ? 'spell-slot-pip--used' : ''}`} />
-                        ))}
-                      </span>
-                    </div>
-                  ))}
+        {/* HP bar */}
+        <div className="cs-hp-bar-track">
+          <div className="cs-hp-bar-fill" style={{ width: `${hpPct * 100}%`, background: hpColor }} />
+        </div>
+
+        {/* Status indicators (exhaustion / death saves — only when relevant) */}
+        {(showDeathSaves || showExhaustion) ? (
+          <div className="cs-status-row">
+            {showExhaustion ? (
+              <div className="cs-status-badge cs-status-badge--warn">
+                Exhaustion {exhaustion}/6
               </div>
             ) : null}
-          </section>
+            {showDeathSaves ? (
+              <div className="cs-status-badge cs-status-badge--danger">
+                <span>
+                  {Array.from({length: 3}).map((_,i) => (
+                    <span key={i} className={`cs-ds-pip ${i < deathSaves.successes ? 'cs-ds-pip--success' : ''}`} />
+                  ))}
+                </span>
+                <span className="cs-ds-sep">·</span>
+                <span>
+                  {Array.from({length: 3}).map((_,i) => (
+                    <span key={i} className={`cs-ds-pip ${i < deathSaves.failures ? 'cs-ds-pip--failure' : ''}`} />
+                  ))}
+                </span>
+              </div>
+            ) : null}
+          </div>
         ) : null}
 
-        {/* Quick Actions — only in session mode */}
-        {(quickActions.equippedWeapons.length || quickActions.hasSpells) ? (
-          <div className="character-quick-actions" aria-label="Quick Actions">
-            <div className="character-quick-actions-title">Actions</div>
-            <div className="character-quick-actions-row">
+        {/* ── Spell slots (always visible for casters) ── */}
+        {slotEntries.length > 0 ? (
+          <div className="cs-slots">
+            {slotEntries.map(([lvl, slot]) => (
+              <div key={lvl} className="cs-slot-row">
+                <span className="cs-slot-label">{lvl === 'pact' ? 'Pact' : `L${lvl}`}</span>
+                <span className="cs-slot-pips">
+                  {Array.from({length: slot.max}).map((_,i) => (
+                    <span key={i} className={`cs-slot-pip ${i < slot.used ? 'cs-slot-pip--used' : ''}`} />
+                  ))}
+                </span>
+                <span className="cs-slot-count">{slot.max - slot.used}/{slot.max}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {/* ── Ability scores (always visible) ── */}
+        <div className="cs-abilities">
+          {abilities.map(row => (
+            <div key={row.key} className="cs-ability">
+              <span className="cs-ability-key">{row.key}</span>
+              <span className="cs-ability-mod">{row.modLabel}</span>
+              <span className="cs-ability-score">{row.score}</span>
+            </div>
+          ))}
+          {!abilities.length ? (
+            <div style={{gridColumn:'1/-1', fontSize:12, opacity:.5}}>No ability scores available</div>
+          ) : null}
+        </div>
+
+        {/* ── Quick Actions ── */}
+        {(quickActions.equippedWeapons.length > 0 || quickActions.hasSpells) ? (
+          <div className="cs-actions">
+            <span className="cs-actions-label">Actions</span>
+            <div className="cs-actions-row">
               {quickActions.equippedWeapons.map(weapon => (
                 <button
                   key={weapon}
                   type="button"
-                  className="btn btn-sm character-quick-action-btn character-quick-action-btn--attack"
+                  className="cs-action-btn cs-action-btn--attack"
                   onClick={() => onQuickAction?.({ type: 'attack', detail: weapon })}
                   title={`Attack with ${weapon}`}
                 >
@@ -451,18 +290,18 @@ export default function CharacterPanel({
                 <div style={{ position: 'relative' }}>
                   <button
                     type="button"
-                    className="btn btn-sm character-quick-action-btn character-quick-action-btn--cast"
+                    className="cs-action-btn cs-action-btn--cast"
                     onClick={() => setCastPickOpen(v => !v)}
                   >
-                    ✦ Cast Spell
+                    ✦ Cast
                   </button>
                   {castPickOpen ? (
-                    <div className="character-cast-picker">
+                    <div className="cs-cast-picker">
                       {(selected?.spells || []).map(spell => (
                         <button
                           key={spell}
                           type="button"
-                          className="character-cast-picker-item"
+                          className="cs-cast-item"
                           onClick={() => { onQuickAction?.({ type: 'cast', detail: spell }); setCastPickOpen(false) }}
                         >
                           {spell}
@@ -472,261 +311,125 @@ export default function CharacterPanel({
                   ) : null}
                 </div>
               ) : null}
-              <button
-                type="button"
-                className="btn btn-sm btn-quiet character-quick-action-btn"
-                onClick={() => onQuickAction?.({ type: 'short_rest' })}
-                title="Take a short rest"
-              >
-                Short Rest
-              </button>
-              <button
-                type="button"
-                className="btn btn-sm btn-quiet character-quick-action-btn"
-                onClick={() => onQuickAction?.({ type: 'long_rest' })}
-                title="Take a long rest"
-              >
-                Long Rest
-              </button>
+              <button type="button" className="cs-action-btn cs-action-btn--rest"
+                onClick={() => onQuickAction?.({ type: 'short_rest' })}>Short Rest</button>
+              <button type="button" className="cs-action-btn cs-action-btn--rest"
+                onClick={() => onQuickAction?.({ type: 'long_rest' })}>Long Rest</button>
             </div>
           </div>
         ) : null}
 
-        <CharacterIconStrip
-          character={selected}
-          activeKey={drawerKey}
-          variant="tabs"
-          hiddenKeys={['abilities']}
-          onSelect={(key) => {
-            setDrawerKey(prev => (prev === key ? null : key))
-            setTimeout(() => {
-              if(containerRef.current) containerRef.current.scrollTop = 0
-            }, 0)
-          }}
-        />
-
-        <div className="character-panel-scroll" ref={containerRef}>
-          <div className="character-sheet-abilities" aria-label="Ability scores">
-            {abilities.map(row => (
+        {/* ── Tab navigation ── */}
+        <div className="cs-tabs" role="tablist">
+          {(['skills', 'spells', 'features', 'inventory'] as SheetTab[]).map(tab => {
+            const counts: Record<SheetTab, number> = {
+              skills: selected?.skills?.length ?? 0,
+              spells: selected?.spells?.length ?? 0,
+              features: selected?.features?.length ?? 0,
+              inventory: selected?.inventory?.length ?? 0,
+            }
+            return (
               <button
-                key={row.key}
+                key={tab}
                 type="button"
-                className="character-ability-tile character-ability-tile--button"
-                onClick={() => setDrawerKey(prev => (prev === 'abilities' ? null : 'abilities'))}
-                aria-label={`View abilities details (${row.key})`}
+                role="tab"
+                aria-selected={sheetTab === tab}
+                className={`cs-tab ${sheetTab === tab ? 'cs-tab--active' : ''}`}
+                onClick={() => setSheetTab(prev => prev === tab ? null : tab)}
               >
-                <div className="character-ability-key">{row.key}</div>
-                <div className="character-ability-mod">{row.modLabel}</div>
-                <div className="character-ability-score">{row.score}</div>
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {counts[tab] > 0 ? <span className="cs-tab-count">{counts[tab]}</span> : null}
               </button>
-            ))}
-          </div>
+            )
+          })}
+        </div>
 
-          <div className="character-sheet-grid">
-            <div className="character-sheet-card" aria-label="Skills">
-              <div className="character-sheet-card-header">
-                <div className="character-sheet-card-title">Skills</div>
-                <button
-                  type="button"
-                  className={`character-sheet-card-action ${drawerKey === 'skills' ? 'active' : ''}`}
-                  onClick={() => setDrawerKey(prev => (prev === 'skills' ? null : 'skills'))}
-                >
-                  {drawerKey === 'skills' ? 'Hide' : 'Show all'}
-                </button>
+        {/* ── Tab content ── */}
+        {sheetTab ? (
+          <div className="cs-tab-body" ref={containerRef}>
+
+            {sheetTab === 'skills' ? (
+              <div className="cs-skill-list">
+                {(selected?.skills || []).length === 0 ? (
+                  <div className="cs-empty">No skills recorded</div>
+                ) : (
+                  (selected?.skills || []).map(s => (
+                    <div key={s.name} className="cs-skill-item">
+                      <span className="cs-skill-name">{s.name}</span>
+                      <span className="cs-skill-mod">{s.mod >= 0 ? '+' : ''}{s.mod}</span>
+                    </div>
+                  ))
+                )}
               </div>
-              {drawerKey === 'skills' ? drawerContent : (
-                <div className="character-sheet-mini-skills">
-                  <ul className="character-sheet-mini-list">
-                    {(selected?.skills || []).slice(0, 14).map(s => (
-                      <li key={s.name}>
-                        <span className="character-sheet-mini-name">{s.name}</span>
-                        <span className="character-sheet-mini-mod">{s.mod >= 0 ? '+' : ''}{s.mod}</span>
-                      </li>
+            ) : null}
+
+            {sheetTab === 'spells' ? (
+              <div>
+                {(selected?.spells || []).length === 0 ? (
+                  <div className="cs-empty">No spells recorded</div>
+                ) : (
+                  <ul className="cs-list">
+                    {(selected?.spells || []).map(spell => (
+                      <li key={spell}>{spell}</li>
                     ))}
                   </ul>
-                  {!selected?.skills?.length ? <div className="muted">No skills listed.</div> : null}
-                </div>
-              )}
-            </div>
-
-            <div className="character-sheet-card" aria-label="Character details">
-              <div className="character-sheet-card-header">
-                <div className="character-sheet-card-title">{drawerTitle}</div>
-                {drawerKey ? (
-                  <button
-                    type="button"
-                    className="character-panel-drawer-close"
-                    onClick={() => setDrawerKey(null)}
-                    aria-label="Close details"
-                  >
-                    ✕
-                  </button>
-                ) : null}
-              </div>
-              <div className="character-sheet-card-body">
-                {drawerKey ? drawerContent : previewContent}
-              </div>
-            </div>
-          </div>
-
-          {sceneCues.length > 0 && (
-            <div className="character-panel-block">
-              <div className="character-panel-block-title character-panel-block-title--scene">Scene Cues</div>
-              <ul className="character-panel-cues">
-                {sceneCues.map((cue)=>(
-                  <li key={cue.id} className="character-panel-cue">
-                    <div className="character-panel-cue-prompt">{cue.prompt}</div>
-                    {cue.roll ? (
-                      <button
-                        className="btn btn-quiet btn-sm"
-                        type="button"
-                        onClick={()=>handleCueRoll(cue)}
-                        disabled={rollingCueId === cue.id}
-                      >
-                        {rollingCueId === cue.id ? 'Rolling…' : `Roll ${cue.roll.skill || cue.roll.type || 'd20'}`}
-                      </button>
-                    ) : (
-                      <div className="character-panel-cue-muted">Awaiting clarification</div>
-                    )}
-                  </li>
-                ))}
-              </ul>
-              {cueError && <div className="character-panel-error">{cueError}</div>}
-            </div>
-          )}
-
-          {npcSpotlight.length > 0 && (
-            <div className="character-panel-block">
-              <div className="character-panel-block-title character-panel-block-title--npc">NPC Spotlight</div>
-              <ul className="character-panel-npcs">
-                {npcSpotlight.map(npc => (
-                  <li key={npc.name}>
-                    <strong>{npc.name}</strong>{npc.initiative_hint ? ` · ${npc.initiative_hint}` : ''}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="character-panel-root">
-      <h3 className="character-panel-title">{title}</h3>
-      <CharacterIconStrip
-        character={selected}
-        activeKey={drawerKey}
-        onSelect={(key) => {
-          setDrawerKey(prev => (prev === key ? null : key))
-          // keep the drawer area visible when toggled
-          setTimeout(() => {
-            if(containerRef.current) containerRef.current.scrollTop = 0
-          }, 0)
-        }}
-      />
-      <div className="character-panel-scroll" ref={containerRef}>
-        <div className={`character-panel-layout ${drawerKey ? 'character-panel-layout--drawer' : ''}`}>
-          {drawerKey ? (
-            <aside className="character-panel-drawer" aria-label="Character details drawer">
-              <div className="character-panel-drawer-header">
-                <div className="character-panel-drawer-title">
-                  {drawerTitle}
-                </div>
-                <button className="character-panel-drawer-close" type="button" onClick={() => setDrawerKey(null)} aria-label="Close drawer">
-                  ✕
-                </button>
-              </div>
-
-              <div className="character-panel-drawer-body">
-                {drawerContent}
-              </div>
-            </aside>
-          ) : null}
-
-          <div className="character-panel-main">
-            {!drawerKey && overview ? (
-              <div className="character-overview">
-                <div className="character-overview-header">
-                  <div>
-                    <div className="character-overview-name">{selected?.name}</div>
-                    <div className="character-overview-subtitle muted">Level {selected?.level} {selected?.features?.length ? `· ${selected.features.length} features` : ''}</div>
-                  </div>
-                </div>
-
-                <div className="character-overview-grid">
-                  <div className="character-overview-card">
-                    <div className="character-overview-label">HP</div>
-                    <div className="character-overview-value">
-                      {overview.hpCurrent}/{overview.hpMax}
-                      {overview.tempHp ? <span className="character-overview-muted"> (+{overview.tempHp} temp)</span> : null}
-                    </div>
-                  </div>
-
-                  <div className="character-overview-card">
-                    <div className="character-overview-label">AC</div>
-                    <div className="character-overview-value">{overview.ac}</div>
-                  </div>
-
-                  <div className="character-overview-card">
-                    <div className="character-overview-label">Level</div>
-                    <div className="character-overview-value">{overview.level}</div>
-                  </div>
-
-                  <div className="character-overview-card">
-                    <div className="character-overview-label">Initiative</div>
-                    <div className="character-overview-value">
-                      {overview.initMod >= 0 ? '+' : ''}{overview.initMod}
-                    </div>
-                  </div>
-
-                  <div className="character-overview-card">
-                    <div className="character-overview-label">Spell Save DC</div>
-                    <div className="character-overview-value">{overview.spellSave}</div>
-                  </div>
-                </div>
-
-                <div className="character-overview-meta">
-                  <div className="character-overview-pill">Features: {overview.featuresCount}</div>
-                  <div className="character-overview-pill">Inventory: {overview.inventoryCount}</div>
-                  <div className="character-overview-pill">Skills: {overview.skillsCount}</div>
-                  {(selected?.spells?.length ?? 0) > 0 ? (
-                    <div className="character-overview-pill">Spells: {selected!.spells!.length}</div>
-                  ) : null}
-                </div>
+                )}
               </div>
             ) : null}
 
-            {showRoster ? (
-              <div className="character-roster">
-                {roster.map(entry => (
-                  <div key={entry.id} className={`character-card ${entry.id === selected?.id ? 'active' : ''}`}>
-                    <button onClick={() => onSelect?.(entry.id)}>
-                      <div className="character-name">{entry.name}</div>
-                      <div className="character-meta">HP {entry.hp.current}/{entry.hp.max} • Level {entry.level}</div>
-                    </button>
+            {sheetTab === 'features' ? (
+              <div>
+                {(selected?.features || []).length === 0 ? (
+                  <div className="cs-empty">No features recorded</div>
+                ) : (
+                  <div className="cs-feature-list">
+                    {(selected?.features || []).map((f, idx) => {
+                      const name = featureName(f)
+                      const src = featureSource(f)
+                      const desc = featureDesc(f)
+                      return (
+                        <div key={`${name}-${idx}`} className="cs-feature-item">
+                          <div className="cs-feature-name">
+                            {name}
+                            {src ? <SourceRef source={src} style={{ marginLeft: 6, color: 'var(--accent, #c8941a)', fontSize: 11 }} /> : null}
+                          </div>
+                          {desc ? <div className="cs-feature-desc">{desc}</div> : null}
+                        </div>
+                      )
+                    })}
                   </div>
-                ))}
+                )}
               </div>
             ) : null}
-          </div>
-        </div>
 
-        {sceneCues.length > 0 && (
-          <div className="character-panel-block">
-            <div className="character-panel-block-title character-panel-block-title--scene">Scene Cues</div>
+            {sheetTab === 'inventory' ? (
+              <div>
+                {(selected?.inventory || []).length === 0 ? (
+                  <div className="cs-empty">No inventory recorded</div>
+                ) : (
+                  <ul className="cs-list">
+                    {(selected?.inventory || []).map(item => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ) : null}
+
+          </div>
+        ) : null}
+
+        {/* ── Scene Cues ── */}
+        {sceneCues.length > 0 ? (
+          <div className="cs-block">
+            <div className="cs-block-title cs-block-title--scene">Scene Cues</div>
             <ul className="character-panel-cues">
-              {sceneCues.map((cue)=>(
+              {sceneCues.map(cue => (
                 <li key={cue.id} className="character-panel-cue">
                   <div className="character-panel-cue-prompt">{cue.prompt}</div>
                   {cue.roll ? (
-                    <button
-                      className="btn btn-quiet btn-sm"
-                      type="button"
-                      onClick={()=>handleCueRoll(cue)}
-                      disabled={rollingCueId === cue.id}
-                    >
+                    <button className="btn btn-quiet btn-sm" type="button"
+                      onClick={() => handleCueRoll(cue)} disabled={rollingCueId === cue.id}>
                       {rollingCueId === cue.id ? 'Rolling…' : `Roll ${cue.roll.skill || cue.roll.type || 'd20'}`}
                     </button>
                   ) : (
@@ -735,11 +438,67 @@ export default function CharacterPanel({
                 </li>
               ))}
             </ul>
-            {cueError && <div className="character-panel-error">{cueError}</div>}
+            {cueError ? <div className="character-panel-error">{cueError}</div> : null}
           </div>
-        )}
+        ) : null}
 
-        {npcSpotlight.length > 0 && (
+        {/* ── NPC Spotlight ── */}
+        {npcSpotlight.length > 0 ? (
+          <div className="cs-block">
+            <div className="cs-block-title cs-block-title--npc">NPC Spotlight</div>
+            <ul className="character-panel-npcs">
+              {npcSpotlight.map(npc => (
+                <li key={npc.name}>
+                  <strong>{npc.name}</strong>{npc.initiative_hint ? ` · ${npc.initiative_hint}` : ''}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+      </div>
+    )
+  }
+
+  // ── Roster / GM view ──────────────────────────────────────────────────────
+  return (
+    <div className="character-panel-root">
+      <h3 className="character-panel-title">{title}</h3>
+      <div className="character-panel-scroll" ref={containerRef}>
+        <div className="character-roster">
+          {roster.map(entry => (
+            <div key={entry.id} className={`character-card ${entry.id === selected?.id ? 'active' : ''}`}>
+              <button onClick={() => onSelect?.(entry.id)}>
+                <div className="character-name">{entry.name}</div>
+                <div className="character-meta">HP {entry.hp.current}/{entry.hp.max} · AC {entry.ac} · Level {entry.level}{entry.class_name ? ` ${entry.class_name}` : ''}</div>
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {sceneCues.length > 0 ? (
+          <div className="character-panel-block">
+            <div className="character-panel-block-title character-panel-block-title--scene">Scene Cues</div>
+            <ul className="character-panel-cues">
+              {sceneCues.map(cue => (
+                <li key={cue.id} className="character-panel-cue">
+                  <div className="character-panel-cue-prompt">{cue.prompt}</div>
+                  {cue.roll ? (
+                    <button className="btn btn-quiet btn-sm" type="button"
+                      onClick={() => handleCueRoll(cue)} disabled={rollingCueId === cue.id}>
+                      {rollingCueId === cue.id ? 'Rolling…' : `Roll ${cue.roll.skill || cue.roll.type || 'd20'}`}
+                    </button>
+                  ) : (
+                    <div className="character-panel-cue-muted">Awaiting clarification</div>
+                  )}
+                </li>
+              ))}
+            </ul>
+            {cueError ? <div className="character-panel-error">{cueError}</div> : null}
+          </div>
+        ) : null}
+
+        {npcSpotlight.length > 0 ? (
           <div className="character-panel-block">
             <div className="character-panel-block-title character-panel-block-title--npc">NPC Spotlight</div>
             <ul className="character-panel-npcs">
@@ -750,7 +509,7 @@ export default function CharacterPanel({
               ))}
             </ul>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   )
