@@ -4036,21 +4036,20 @@ def _build_character_import_sheet_from_pdf(
                         src_part = None
                     current = {"name": name_part, "source": src_part}
                 elif _usage_line_pat.match(line):
-                    if current is None:
-                        current = {"name": line}
-                    else:
+                    if current is not None:
                         existing = current.get("description") or ""
                         current["description"] = (existing + "\n" + line).strip() if existing else line
+                    # else: orphaned usage line before any feature — skip
                 else:
-                    if current is None:
-                        current = {"name": line[:80].rstrip()}
-                    else:
+                    if current is not None:
                         existing = current.get("description") or ""
                         snippet = line if len(line) <= 400 else line[:400].rstrip() + "…"
                         current["description"] = (existing + "\n" + snippet).strip() if existing else snippet
-            _flush(cat)
-            current = None
-            cat = "other"
+                    # else: orphaned description text before any feature — skip
+            # Do NOT reset cat or current between blobs.
+            # Two-column PDFs produce separate blobs where the second column
+            # continues the same section without repeating the === header.
+        _flush(cat)
         return buckets["class"], buckets["racial"], buckets["other"]
 
     # If other_blobs have === headers, use the categorized parser; else fall back to flat.

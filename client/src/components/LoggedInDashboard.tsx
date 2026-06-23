@@ -453,22 +453,8 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     ])
     const otherFeatures = otherFeaturesSrc.filter(f => !classOrRaceKeys.has(`${f.name}::${f.source || ''}`))
 
-    // Group class features by source (class name) if source info is available
-    const classFeatureGroups: Array<{ label: string; items: Array<{ name: string; source?: string; description?: string }> }> = []
-    const classFeaturesBySource = new Map<string, Array<{ name: string; source?: string; description?: string }>>()
-    for (const f of classFeatures) {
-      const src = f.source || 'Class Features'
-      if (!classFeaturesBySource.has(src)) classFeaturesBySource.set(src, [])
-      classFeaturesBySource.get(src)!.push(f)
-    }
-    if (classFeaturesBySource.size > 1) {
-      classFeaturesBySource.forEach((items, label) => classFeatureGroups.push({ label, items }))
-    } else if (classFeatures.length) {
-      classFeatureGroups.push({ label: 'Class Features', items: classFeatures })
-    }
-
     const featureGroups: Array<{ label: string; items: Array<{ name: string; source?: string; description?: string }> }> = [
-      ...classFeatureGroups,
+      ...(classFeatures.length ? [{ label: 'Class Features', items: classFeatures }] : []),
       ...(racialFeatures.length ? [{ label: 'Racial / Species Features', items: racialFeatures }] : []),
       ...(otherFeatures.length ? [{ label: 'Other Features', items: otherFeatures }] : []),
     ]
