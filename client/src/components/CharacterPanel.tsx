@@ -16,6 +16,8 @@ export type SceneCue = {
   }
 }
 
+export type FeatureItem = { name: string; source?: string; description?: string }
+
 export type CharacterSummary = CharacterSnapshot & {
   id: string
   name: string
@@ -30,6 +32,9 @@ export type CharacterSummary = CharacterSnapshot & {
   exhaustion?: number
   deathSaves?: { successes: number; failures: number }
   spellSlots?: Record<string, { max: number; used: number; level?: number }>
+  classFeatures?: FeatureItem[]
+  racialFeatures?: FeatureItem[]
+  otherFeatures?: FeatureItem[]
 }
 
 type Props = {
@@ -325,7 +330,7 @@ export default function CharacterPanel({
             const counts: Record<SheetTab, number> = {
               skills: selected?.skills?.length ?? 0,
               spells: selected?.spells?.length ?? 0,
-              features: selected?.features?.length ?? 0,
+              features: (selected?.classFeatures?.length ?? 0) + (selected?.racialFeatures?.length ?? 0) + (selected?.otherFeatures?.length ?? 0) || (selected?.features?.length ?? 0),
               inventory: selected?.inventory?.length ?? 0,
             }
             return (
@@ -377,30 +382,50 @@ export default function CharacterPanel({
               </div>
             ) : null}
 
-            {sheetTab === 'features' ? (
-              <div>
-                {(selected?.features || []).length === 0 ? (
-                  <div className="cs-empty">No features recorded</div>
-                ) : (
-                  <div className="cs-feature-list">
-                    {(selected?.features || []).map((f, idx) => {
-                      const name = featureName(f)
-                      const src = featureSource(f)
-                      const desc = featureDesc(f)
-                      return (
-                        <div key={`${name}-${idx}`} className="cs-feature-item">
-                          <div className="cs-feature-name">
-                            {name}
-                            {src ? <SourceRef source={src} style={{ marginLeft: 6, color: 'var(--accent, #c8941a)', fontSize: 11 }} /> : null}
-                          </div>
-                          {desc ? <div className="cs-feature-desc">{desc}</div> : null}
-                        </div>
-                      )
-                    })}
+            {sheetTab === 'features' ? (() => {
+              const cf = selected?.classFeatures ?? []
+              const rf = selected?.racialFeatures ?? []
+              const of_ = selected?.otherFeatures ?? []
+              const hasGroups = cf.length > 0 || rf.length > 0 || of_.length > 0
+              // Fallback: use flat features array if no categorized data
+              const fallback = hasGroups ? [] : (selected?.features ?? []).map((f: any) => featureSource(f) ? { name: featureName(f), source: featureSource(f) ?? undefined, description: featureDesc(f) ?? undefined } : { name: featureName(f) })
+              const groups: Array<{ label: string; items: FeatureItem[] }> = hasGroups
+                ? [
+                    ...(cf.length ? [{ label: 'Class Features', items: cf }] : []),
+                    ...(rf.length ? [{ label: 'Racial / Species Features', items: rf }] : []),
+                    ...(of_.length ? [{ label: 'Other Features', items: of_ }] : []),
+                  ]
+                : (fallback.length ? [{ label: 'Features', items: fallback }] : [])
+
+              if (!groups.length) return <div className="cs-empty">No features recorded</div>
+
+              const renderItem = (f: FeatureItem, idx: number) => (
+                <div key={`${f.name}-${idx}`} className="cs-feature-item">
+                  <div className="cs-feature-name">
+                    {f.name}
+                    {f.source ? <SourceRef source={f.source} style={{ marginLeft: 6, color: 'var(--accent, #c8941a)', fontSize: 10 }} /> : null}
                   </div>
-                )}
-              </div>
-            ) : null}
+                  {f.description ? <div className="cs-feature-desc">{f.description}</div> : null}
+                </div>
+              )
+
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {groups.map(group => (
+                    <div key={group.label}>
+                      {groups.length > 1 ? (
+                        <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--accent, #c8941a)', opacity: 0.8, marginBottom: 4, paddingBottom: 3, borderBottom: '1px solid rgba(200,148,26,0.2)' }}>
+                          {group.label}
+                        </div>
+                      ) : null}
+                      <div className="cs-feature-list">
+                        {group.items.map(renderItem)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            })() : null}
 
             {sheetTab === 'inventory' ? (
               <div>

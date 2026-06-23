@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { apiFetch } from '../api'
 import './JournalPanel.css'
 
@@ -12,11 +12,28 @@ type Props = {
   sessionId?: string | null
 }
 
-function formatTimestamp(ts?: string) {
+const TYPE_COLORS: Record<string, string> = {
+  narration: '#c8941a',
+  scene:     '#5b9fd4',
+  note:      '#4caf82',
+  roll:      '#9b59b6',
+  system:    'rgba(255,255,255,0.3)',
+}
+
+function typeColor(t?: string): string {
+  if (!t) return TYPE_COLORS.system
+  return TYPE_COLORS[t.toLowerCase()] ?? TYPE_COLORS.system
+}
+
+function formatTs(ts?: string): string {
   if (!ts) return ''
-  const date = new Date(ts)
-  if (Number.isNaN(date.getTime())) return ts
-  return date.toLocaleString()
+  const d = new Date(ts)
+  if (Number.isNaN(d.getTime())) return ts
+  const now = new Date()
+  const sameDay = d.toDateString() === now.toDateString()
+  return sameDay
+    ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
 export default function JournalPanel({ sessionId }: Props) {
@@ -24,19 +41,14 @@ export default function JournalPanel({ sessionId }: Props) {
   const [notesMd, setNotesMd] = useState<string>('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
   const [noteDraft, setNoteDraft] = useState('')
   const [saving, setSaving] = useState(false)
+  const feedRef = useRef<HTMLDivElement | null>(null)
 
   const canLoad = Boolean(sessionId)
 
   const load = useCallback(async () => {
-    if (!sessionId) {
-      setStory([])
-      setNotesMd('')
-      return
-    }
-
+    if (!sessionId) { setStory([]); setNotesMd(''); return }
     setLoading(true)
     setError(null)
     try {
@@ -44,22 +56,14 @@ export default function JournalPanel({ sessionId }: Props) {
         apiFetch(`/sessions/${sessionId}/file/story.json`),
         apiFetch(`/sessions/${sessionId}/file/notes.md`),
       ])
-
       if (storyRes.ok) {
         const data = await storyRes.json().catch(() => null)
-        const entries = Array.isArray(data) ? data : []
-        setStory(entries)
-      } else {
-        setStory([])
-      }
-
+        setStory(Array.isArray(data) ? data : [])
+      } else { setStory([]) }
       if (notesRes.ok) {
         const data = await notesRes.json().catch(() => null)
-        const content = typeof data?.content === 'string' ? data.content : ''
-        setNotesMd(content)
-      } else {
-        setNotesMd('')
-      }
+        setNotesMd(typeof data?.content === 'string' ? data.content : '')
+      } else { setNotesMd('') }
     } catch (e: any) {
       setError(e?.message || 'Failed to load journal')
     } finally {
@@ -67,13 +71,17 @@ export default function JournalPanel({ sessionId }: Props) {
     }
   }, [sessionId])
 
+  useEffect(() => { load() }, [load])
+
+  // Scroll feed to bottom when entries change
   useEffect(() => {
-    load()
-  }, [load])
+    if (feedRef.current) {
+      feedRef.current.scrollTop = feedRef.current.scrollHeight
+    }
+  }, [story])
 
   const sortedStory = useMemo(() => {
     const list = Array.isArray(story) ? [...story] : []
-    // Preserve insertion order by default, but if timestamps exist, sort by ts.
     const hasTs = list.some((e) => typeof e?.ts === 'string' && e.ts)
     if (!hasTs) return list
     return list.sort((a, b) => String(a?.ts || '').localeCompare(String(b?.ts || '')))
@@ -82,7 +90,6 @@ export default function JournalPanel({ sessionId }: Props) {
   const addNote = useCallback(async () => {
     const value = noteDraft.trim()
     if (!value || !sessionId) return
-
     setSaving(true)
     setError(null)
     try {
@@ -103,57 +110,88 @@ export default function JournalPanel({ sessionId }: Props) {
     }
   }, [load, noteDraft, sessionId])
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault()
+      addNote()
+    }
+  }
+
   return (
-    <div className="journal-root" aria-label="Journal">
-      {!canLoad ? (
-        <div className="journal-empty">Select a session to view the journal.</div>
-      ) : null}
+    <div className="jrnl-root">
 
-      {error ? <div className="inline-alert inline-alert-error">{error}</div> : null}
-
-      <div className="journal-toolbar">
-        <button className="btn btn-secondary" type="button" onClick={load} disabled={!canLoad || loading}>
-          {loading ? 'Refreshing…' : 'Refresh'}
+      {/* Header */}
+      <div className="jrnl-header">
+        <span className="jrnl-title">Journal</span>
+        <button
+          className="jrnl-refresh"
+          type="button"
+          onClick={load}
+          disabled={!canLoad || loading}
+          title="Refresh journal"
+          aria-label="Refresh"
+        >
+          {loading ? '…' : '↺'}
         </button>
       </div>
 
-      <div className="journal-section">
-        <div className="journal-section-title">Player Notes</div>
-        <div className="journal-note-row">
+      {error ? <div className="jrnl-error">{error}</div> : null}
+
+      {!canLoad ? (
+        <div className="jrnl-empty">Select a session to view the journal.</div>
+      ) : null}
+
+      {/* Story feed */}
+      {sortedStory.length > 0 ? (
+        <div className="jrnl-feed" ref={feedRef}>
+          {sortedStory.map((entry, idx) => {
+            const color = typeColor(entry?.type)
+            return (
+              <div key={`${entry?.ts || 'e'}-${idx}`} className="jrnl-entry" style={{ borderLeftColor: color }}>
+                <div className="jrnl-entry-meta">
+                  {entry?.type ? <span className="jrnl-entry-type" style={{ color }}>{entry.type}</span> : null}
+                  {entry?.ts ? <span className="jrnl-entry-ts">{formatTs(entry.ts)}</span> : null}
+                </div>
+                {entry?.text ? <div className="jrnl-entry-text">{entry.text}</div> : null}
+              </div>
+            )
+          })}
+        </div>
+      ) : canLoad ? (
+        <div className="jrnl-empty">No session events yet.</div>
+      ) : null}
+
+      {/* Notes from notes.md */}
+      {notesMd ? (
+        <div className="jrnl-notes-block">
+          <div className="jrnl-notes-label">Notes</div>
+          <div className="jrnl-notes-content">{notesMd}</div>
+        </div>
+      ) : null}
+
+      {/* Composer */}
+      {canLoad ? (
+        <div className="jrnl-composer">
           <textarea
-            className="journal-note-input"
-            rows={3}
-            placeholder="Add a quick note (what happened, what we decided, loose ends)…"
+            className="jrnl-composer-input"
+            rows={2}
+            placeholder="Add a note… (⌘Enter to save)"
             value={noteDraft}
             onChange={(e) => setNoteDraft(e.target.value)}
-            disabled={!canLoad || saving}
+            onKeyDown={handleKeyDown}
+            disabled={saving}
           />
-          <button className="btn" type="button" onClick={addNote} disabled={!canLoad || saving || !noteDraft.trim()}>
-            {saving ? 'Saving…' : 'Add'}
+          <button
+            className="jrnl-composer-btn"
+            type="button"
+            onClick={addNote}
+            disabled={saving || !noteDraft.trim()}
+          >
+            {saving ? '…' : 'Add'}
           </button>
         </div>
+      ) : null}
 
-        <pre className="journal-notes">{notesMd || '(No notes yet)'}</pre>
-      </div>
-
-      <div className="journal-section">
-        <div className="journal-section-title">Session History</div>
-        {sortedStory.length === 0 ? (
-          <div className="journal-empty">(No story entries yet)</div>
-        ) : (
-          <div className="journal-story">
-            {sortedStory.map((entry, idx) => (
-              <div key={`${entry?.ts || 'entry'}-${idx}`} className="journal-story-entry">
-                <div className="journal-story-meta">
-                  <span className="journal-story-type">{entry?.type || 'entry'}</span>
-                  {entry?.ts ? <span className="journal-story-ts">{formatTimestamp(entry.ts)}</span> : null}
-                </div>
-                <div className="journal-story-text">{entry?.text || ''}</div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   )
 }

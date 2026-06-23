@@ -297,6 +297,29 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       const spellbook = Array.isArray(sheet?.spellbook) ? sheet.spellbook : []
       const features = toStringArray(sheet?.features)
       const skills = toSkillArray(sheet?.skills)
+
+      const toFeatureItems = (raw: any): Array<{ name: string; source?: string; description?: string }> => {
+        if (!Array.isArray(raw)) return []
+        return raw.flatMap((v: any) => {
+          if (!v) return []
+          if (typeof v === 'string') {
+            const s = v.trim()
+            if (!s || /^={2,}.*={2,}$/.test(s)) return []
+            const bullet = s.indexOf(' • ')
+            if (bullet !== -1) return [{ name: s.slice(0, bullet).trim(), source: s.slice(bullet + 3).trim() || undefined }]
+            return [{ name: s }]
+          }
+          if (typeof v === 'object') {
+            const name = String(v.name || '').trim()
+            if (!name || /^={2,}.*={2,}$/.test(name)) return []
+            return [{ name, source: v.source ? String(v.source) : undefined, description: v.description ? String(v.description) : undefined }]
+          }
+          return []
+        })
+      }
+      const classFeatures = toFeatureItems(sheet?.classFeatures)
+      const racialFeatures = toFeatureItems(sheet?.racialFeatures)
+      const otherFeatures = toFeatureItems(sheet?.otherFeatures)
       const exhaustion = typeof sheet?.exhaustion === 'number' ? sheet.exhaustion : 0
       const rawDs = sheet?.death_saves ?? sheet?.deathSaves
       const deathSaves = rawDs && typeof rawDs === 'object'
@@ -321,6 +344,9 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
           cha: toNum(stats?.cha) ?? 10,
         },
         features,
+        classFeatures,
+        racialFeatures,
+        otherFeatures,
         inventoryCount: typeof sheet?.inventoryCount === 'number' ? sheet.inventoryCount : inventory.length,
         journalEntries: typeof sheet?.journalEntries === 'number' ? sheet.journalEntries : 0,
         skills,
