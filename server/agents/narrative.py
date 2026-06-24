@@ -28,6 +28,10 @@ class NarrativeRequest(BaseModel):
         default=None,
         description="Quality validator feedback from a previous failed attempt; injected as an additional requirement",
     )
+    player_actions: list[str] = Field(
+        default_factory=list,
+        description="Chat messages from players this round; woven into narration as third-person outcomes",
+    )
 
 
 class NarrativeResponse(BaseModel):
@@ -61,6 +65,7 @@ def _build_director_system(
     weather_desc: str,
     time_of_day: str,
     validator_feedback: str | None,
+    player_actions: list[str] | None = None,
 ) -> str:
     """Build a directive system prompt from Scene Director JSON."""
     loc = sd.get("location") or {}
@@ -107,6 +112,20 @@ def _build_director_system(
     lines.append(f"  Atmosphere: {weather_desc}, {time_of_day}")
     lines.append(f"  Tone: {style} — {tone_desc}")
     lines.append("")
+    if player_actions:
+        actions_preview = player_actions[:6]
+        lines.append("WHAT THE PLAYERS DID (this round):")
+        for i, act in enumerate(actions_preview, 1):
+            lines.append(f"  {i}. {act}")
+        lines.append("")
+        lines.append("NARRATIVE WEAVING (required when player actions exist):")
+        lines.append(f"  — Open by narrating the outcome of the players' actions in third person, past tense")
+        lines.append(f"  — Use {player}'s name when describing what they did")
+        lines.append("  — Show the world's reaction — NPC responses, environmental changes, consequences")
+        lines.append("  — Then transition naturally into the new situation at the scene location")
+        lines.append("  — Never invent actions the players didn't take")
+        lines.append("")
+
     lines.append("WRITING REQUIREMENTS (non-negotiable):")
     lines.append(f"  1. Open IN the scene at {loc_name} — no preamble, no setup sentence")
     lines.append("  2. Include at least one physical sensory detail (what you see, smell, or hear right now)")
@@ -132,7 +151,7 @@ def _build_director_system(
     return "\n".join(lines)
 
 
-def _build_generic_system(player: str, style: str, weather_desc: str, time_of_day: str, validator_feedback: str | None) -> str:
+def _build_generic_system(player: str, style: str, weather_desc: str, time_of_day: str, validator_feedback: str | None, player_actions: list[str] | None = None) -> str:
     """Fallback system prompt when no Scene Director data is available."""
     tone = STYLE_TONES.get(style.lower(), STYLE_TONES["balanced"])
     lines = [
@@ -142,6 +161,16 @@ def _build_generic_system(player: str, style: str, weather_desc: str, time_of_da
         f"Tone: {style} — {tone}",
         f"Atmosphere: {weather_desc}, {time_of_day}",
         "",
+    ]
+    if player_actions:
+        lines.append("WHAT THE PLAYERS DID (this round):")
+        for i, act in enumerate(player_actions[:6], 1):
+            lines.append(f"  {i}. {act}")
+        lines.append("")
+        lines.append(f"  — Open by narrating the outcome of their actions in third person, past tense, using {player}'s name")
+        lines.append("  — Show consequences and world reactions before introducing the new situation")
+        lines.append("")
+    lines += [
         "REQUIREMENTS:",
         "  — Begin in-scene immediately (no setup sentence)",
         "  — Name at least one specific location",
@@ -203,6 +232,7 @@ def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
         system = _build_director_system(
             payload.scene_director_data, player, payload.style,
             weather_desc, payload.time_of_day, payload.validator_feedback,
+            player_actions=payload.player_actions or [],
         )
         # User message: the scene plan data as a structured reminder
         sd = payload.scene_director_data
@@ -218,7 +248,7 @@ def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
             payload.scene[:200] if payload.scene else "",
         ]))
     else:
-        system = _build_generic_system(player, payload.style, weather_desc, payload.time_of_day, payload.validator_feedback)
+        system = _build_generic_system(player, payload.style, weather_desc, payload.time_of_day, payload.validator_feedback, player_actions=payload.player_actions or [])
         user_content = payload.scene or ""
 
     text = chat_complete(

@@ -7,6 +7,7 @@ import JournalPanel from './JournalPanel'
 import WorldPanel from './WorldPanel'
 import ContextDebugPanel from './ContextDebugPanel'
 import StoryDashboard, { StoryDashboardData } from './StoryDashboard'
+import Chat from './Chat'
 import { apiFetch, buildWsUrl } from '../api'
 import SiteMenu from './SiteMenu'
 import SiteNavMenu from './SiteNavMenu'
@@ -126,6 +127,11 @@ export default function GameplayLayout({
   const [showContextDebug, setShowContextDebug] = useState(false)
   const [storyDebug, setStoryDebug] = useState<StoryDashboardData | null>(null)
   const [showStoryDash, setShowStoryDash] = useState(false)
+
+  // Session round-flow state
+  const [phase, setPhase] = useState<'player_turn' | 'advancing'>('player_turn')
+  const [playerReady, setPlayerReady] = useState(false)
+  const [diceRolls, setDiceRolls] = useState<Array<{type: string; skill?: string; reason?: string}>>([])
 
   useEffect(()=>{
     const handler = (event: Event) => {
@@ -350,6 +356,30 @@ export default function GameplayLayout({
       window.removeEventListener('scene:diagnostics', handler)
     }
   },[sessionId, suggestions, campaignTitle])
+
+  const doAdvanceScene = useCallback(async () => {
+    if (!sessionId) return
+    setPhase('advancing')
+    setPlayerReady(false)
+    setDiceRolls([])
+    try {
+      const res = await apiFetch(`/sessions/${sessionId}/advance-scene`, { method: 'POST', body: JSON.stringify({}) })
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d?.detail || 'Failed to advance scene') }
+      const data = await res.json()
+      if (data?.scene && typeof data.scene === 'object') {
+        window.dispatchEvent(new CustomEvent('narrative:scene', { detail: { scene: data.scene } }))
+      }
+      if (Array.isArray(data?.dice_rolls) && data.dice_rolls.length) {
+        setDiceRolls(data.dice_rolls)
+      }
+      if (data?.context_debug) setContextDebug(data.context_debug)
+      if (data?.story_debug) setStoryDebug(data.story_debug)
+    } catch (err: any) {
+      alert(err?.message || 'Failed to advance scene')
+    } finally {
+      setPhase('player_turn')
+    }
+  }, [sessionId])
 
   const triggerCueRoll = React.useCallback(async (cue: SceneCue) => {
     if(!sessionId) throw new Error('Session not active')
@@ -953,23 +983,16 @@ export default function GameplayLayout({
                   </>
                 )}
               </div>
-              <button className="btn btn-primary btn-sm" type="button" onClick={async ()=>{
-                if(!sessionId) return alert('No active session')
-                try{
-                  const res = await apiFetch(`/sessions/${sessionId}/advance-scene`, { method: 'POST', body: JSON.stringify({}) })
-                  if(!res.ok){ const d = await res.json().catch(()=>({})); throw new Error(d?.detail||'Failed') }
-                  const data = await res.json()
-                  if(data?.scene && typeof data.scene === 'object'){
-                    window.dispatchEvent(new CustomEvent('narrative:scene',{ detail: { scene: data.scene } }))
-                  }
-                  if(data?.context_debug){
-                    setContextDebug(data.context_debug)
-                  }
-                  if(data?.story_debug){
-                    setStoryDebug(data.story_debug)
-                  }
-                }catch(err:any){ alert(err?.message || 'Failed to continue scene') }
-              }}>Continue</button>
+              {isAdmin && (
+                <button
+                  className="btn btn-secondary btn-sm"
+                  type="button"
+                  disabled={phase === 'advancing'}
+                  onClick={doAdvanceScene}
+                >
+                  {phase === 'advancing' ? 'Generating…' : 'Advance Scene'}
+                </button>
+              )}
             </div>
           </div>
         </section>
@@ -978,8 +1001,59 @@ export default function GameplayLayout({
             <section className="zork-screen" aria-label="Main view screen">
               <div className="zork-screen-inner">
                 <section className="scene-area" aria-label="Scene view">
-                  <NarrativeView sessionId={sessionId} showChoicesInScene={true} />
+                  <NarrativeView sessionId={sessionId} />
                 </section>
+
+                {/* Player turn area: chat + ready button */}
+                {sessionId && (
+                  <section className="player-action-area" aria-label="Player actions">
+                    {diceRolls.length > 0 && (
+                      <div className="dice-rolls-bar" aria-label="Pending dice rolls">
+                        <span className="dice-rolls-label">Dice rolls this round:</span>
+                        {diceRolls.map((roll, i) => (
+                          <span key={i} className="dice-roll-chip">{roll.type}{roll.skill ? ` (${roll.skill})` : ''}</span>
+                        ))}
+                        <button className="btn btn-quiet btn-sm" onClick={() => setDiceRolls([])}>✕</button>
+                      </div>
+                    )}
+                    <div className="player-chat-wrap">
+                      <Chat sessionId={sessionId} variant="dock" character={playerStats ?? null} />
+                    </div>
+                    <div className="player-ready-bar">
+                      <span className={`phase-label phase-label--${phase === 'advancing' ? 'advancing' : playerReady ? 'waiting' : 'turn'}`}>
+                        {phase === 'advancing'
+                          ? 'Steward is weaving the next scene…'
+                          : playerReady
+                          ? 'Waiting for other players…'
+                          : 'Your turn — enter your actions above, then mark ready'}
+                      </span>
+                      <button
+                        className={`btn btn-sm ready-btn ${playerReady || phase === 'advancing' ? 'btn-secondary' : 'btn-primary'}`}
+                        disabled={playerReady || phase === 'advancing'}
+                        type="button"
+                        onClick={async () => {
+                          if (!sessionId || playerReady || phase === 'advancing') return
+                          setPlayerReady(true)
+                          try {
+                            const res = await apiFetch(`/sessions/${sessionId}/player-ready`, {
+                              method: 'POST',
+                              body: JSON.stringify({ done: true }),
+                            })
+                            if (!res.ok) throw new Error('Ready signal failed')
+                            const data = await res.json()
+                            if (data?.all_ready) {
+                              await doAdvanceScene()
+                            }
+                          } catch {
+                            setPlayerReady(false)
+                          }
+                        }}
+                      >
+                        {phase === 'advancing' ? 'Generating…' : playerReady ? 'Ready ✓' : "I'm Ready"}
+                      </button>
+                    </div>
+                  </section>
+                )}
               </div>
             </section>
           </div>

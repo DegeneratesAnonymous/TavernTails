@@ -687,3 +687,73 @@
 
 /* ── Context Debug Trigger (imported in ContextDebugPanel.css but placed here for layout) */
 /* The button is defined in ContextDebugPanel.css */
+
+/* ── Player Action Area ──────────────────────────────────────────────── */
+.player-action-area {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--tt-border, #2a2a3e);
+  background: var(--tt-bg, #0d0d14);
+  flex-shrink: 0;
+  max-height: 360px;
+}
+
+.player-chat-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  max-height: 300px;
+}
+
+.player-ready-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--tt-border, #2a2a3e);
+  background: var(--tt-surface, #12121e);
+  flex-shrink: 0;
+}
+
+.phase-label {
+  font-size: 12px;
+  font-style: italic;
+}
+
+.phase-label--turn { color: var(--tt-gold, #f5c842); }
+.phase-label--waiting { color: var(--tt-muted, #6c7086); }
+.phase-label--advancing { color: var(--tt-accent, #89b4fa); }
+
+.ready-btn {
+  min-width: 120px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.dice-rolls-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: rgba(245, 200, 66, 0.08);
+  border-bottom: 1px solid rgba(245, 200, 66, 0.2);
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.dice-rolls-label {
+  color: var(--tt-gold, #f5c842);
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+.dice-roll-chip {
+  background: rgba(245, 200, 66, 0.15);
+  border: 1px solid rgba(245, 200, 66, 0.3);
+  border-radius: 4px;
+  padding: 2px 8px;
+  color: var(--tt-gold, #f5c842);
+  font-size: 11px;
+  font-weight: 600;
+}

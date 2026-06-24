@@ -1430,6 +1430,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         style=style,
         weather=weather,
         time_of_day=time_of_day,
+        player_actions=player_actions,
     ))
 
     now = datetime.now(timezone.utc)

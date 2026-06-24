@@ -206,7 +206,14 @@ export default function Chat({sessionId, variant = 'full', aboveComposer, curren
           apiFetch(`/chat?session_id=${sessionId}`),
           apiFetch(`/chat/pinned?session_id=${sessionId}`),
         ])
-        if(!chatRes.ok) throw new Error('Failed to load chat log')
+        if(!chatRes.ok) {
+          // 404 = new session with no messages yet — show empty state, not an error
+          if(chatRes.status === 404) {
+            if(!canceled) setMessages([])
+            return
+          }
+          throw new Error('Failed to load chat log')
+        }
         const data = await chatRes.json()
         const pinnedIds: Set<number> = new Set()
         if(pinnedRes.ok){
@@ -667,6 +674,9 @@ export default function Chat({sessionId, variant = 'full', aboveComposer, curren
       />
 
       {error ? <div className="inline-alert inline-alert-error" style={{ marginTop: 10 }}>{error}</div> : null}
+      {!loading && !error && messages.length === 0 && sessionId ? (
+        <div className="chat-empty-state">No messages yet — enter your actions below to begin.</div>
+      ) : null}
 
       {aboveComposer ? (
         <div className="chat-above-composer" aria-label="Suggested actions">

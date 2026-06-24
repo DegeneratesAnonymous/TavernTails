@@ -801,3 +801,11 @@
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+.chat-empty-state {
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--tt-muted, #6c7086);
+  font-size: 13px;
+  font-style: italic;
+}
