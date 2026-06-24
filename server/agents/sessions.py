@@ -813,19 +813,57 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
             except Exception:
                 pass
 
-    # --- Step 1: Storyboard Agent — produces structured raw material ---
-    plot_result = storyboard_agent.generate_plot(storyboard_agent.StoryboardPlotRequest(
-        session_id=session_id,
-        players=players,
-        campaign_settings=campaign_settings,
-        campaign_variables=campaign_variables,
-        campaign_docs=campaign_docs,
-    ))
+    # --- Steps 1 + Director: run in parallel (they don't depend on each other) ---
+    # Storyboard generates raw plot material; Narrative Director sets story guidance.
+    # Both are synchronous LLM calls — run them in a thread pool concurrently.
+    import asyncio
+    import concurrent.futures as _cf
+
+    _loop = asyncio.get_event_loop()
+
+    def _run_storyboard():
+        return storyboard_agent.generate_plot(storyboard_agent.StoryboardPlotRequest(
+            session_id=session_id,
+            players=players,
+            campaign_settings=campaign_settings,
+            campaign_variables=campaign_variables,
+            campaign_docs=campaign_docs,
+        ))
+
+    # Prepare story state for narrative director (pure data ops, no I/O)
+    story_state = load_story_state(str(campaign_id)) if campaign_id else None
+    mem_threads_raw: list[dict] = world_ctx.get('active_threads') or []
+    if story_state is not None:
+        try:
+            story_state = sync_threads_from_entities(story_state, mem_threads_raw)
+            if not story_state.campaign_dna.themes:
+                story_state.campaign_dna = derive_campaign_dna(campaign_settings, campaign_variables)
+        except Exception:
+            pass
+
+    def _run_director():
+        if story_state is None:
+            return None
+        try:
+            return narrative_direct_scene(
+                state=story_state,
+                player_name=player_name if players else "",
+                player_actions=[],
+            )
+        except Exception:
+            return None
+
+    with _cf.ThreadPoolExecutor(max_workers=2) as _pool:
+        fut_plot = _loop.run_in_executor(_pool, _run_storyboard)
+        fut_director = _loop.run_in_executor(_pool, _run_director)
+        plot_result, narrative_director_output = await asyncio.gather(fut_plot, fut_director)
+
+    narrative_director_output: DirectorOutput | None = narrative_director_output  # type annotation
 
     # --- Step 1b: Merge campaign memory into Scene Director candidates ---
     mem_npc_details: list[dict] = world_ctx.get('relevant_npcs') or []
     mem_loc_details: list[dict] = world_ctx.get('locations') or []
-    mem_threads: list[dict] = world_ctx.get('active_threads') or []
+    mem_threads: list[dict] = mem_threads_raw
     mem_hooks: list[dict] = world_ctx.get('open_hooks') or []
     mem_changes: list[dict] = world_ctx.get('recent_changes') or []
 
@@ -847,23 +885,6 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
 
     # All known entity names for quality validator
     all_campaign_entities = list({*candidate_npcs, *candidate_locations, *candidate_threads})
-
-    # --- Narrative Director: determine story-level guidance for this scene ---
-    story_state = load_story_state(str(campaign_id)) if campaign_id else None
-    narrative_director_output: DirectorOutput | None = None
-    if story_state is not None:
-        try:
-            # Sync thread titles from campaign entities so health scoring is accurate
-            story_state = sync_threads_from_entities(story_state, mem_threads)
-            if not story_state.campaign_dna.themes:
-                story_state.campaign_dna = derive_campaign_dna(campaign_settings, campaign_variables)
-            narrative_director_output = narrative_direct_scene(
-                state=story_state,
-                player_name=player_name if players else "",
-                player_actions=[],
-            )
-        except Exception:
-            narrative_director_output = None
 
     # --- Step 2: Scene Director Agent — converts raw material into a concrete scene plan ---
     director_output: SceneDirectorOutput = scene_director_agent.direct_scene(SceneDirectorRequest(
