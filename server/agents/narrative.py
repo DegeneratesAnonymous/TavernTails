@@ -1,7 +1,6 @@
 """Narrative Agent: generates narration + prompt."""
 
 import json
-import os
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -110,11 +109,11 @@ def _build_director_system(
     lines.append("")
     lines.append("WRITING REQUIREMENTS (non-negotiable):")
     lines.append(f"  1. Open IN the scene at {loc_name} — no preamble, no setup sentence")
-    lines.append(f"  2. Include at least one physical sensory detail (what you see, smell, or hear right now)")
+    lines.append("  2. Include at least one physical sensory detail (what you see, smell, or hear right now)")
     if npc_name:
         lines.append(f"  3. Name {npc_name} directly and show their emotional state through action or dialogue")
-    lines.append(f"  4. Show the conflict through a concrete visible event or piece of evidence — not a mood")
-    lines.append(f"  5. Write exactly 3–5 sentences of present-tense narration")
+    lines.append("  4. Show the conflict through a concrete visible event or piece of evidence — not a mood")
+    lines.append("  5. Write exactly 3–5 sentences of present-tense narration")
     lines.append(f"  6. End with ONE player-facing question addressed to {player} by name")
     lines.append("")
     lines.append("FORBIDDEN — never write:")

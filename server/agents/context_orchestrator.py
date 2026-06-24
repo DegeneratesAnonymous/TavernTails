@@ -30,13 +30,12 @@ import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 from pydantic import BaseModel, Field
-from sqlmodel import Session, select
+from sqlmodel import select
 
 from .. import db
-from ..db import CampaignChangeLog, CampaignEntity, CampaignHook, CampaignRelationship
+from ..db import CampaignChangeLog, CampaignEntity, CampaignHook
 
 _SESSION_BASE = Path(__file__).resolve().parents[1] / "sessions"
 _CACHE_TTL_SECONDS = 90

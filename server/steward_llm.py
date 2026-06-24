@@ -26,7 +26,6 @@ Environment variables:
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 import httpx
 
@@ -34,11 +33,11 @@ import httpx
 def chat_complete(
     messages: list[dict],
     *,
-    max_tokens: Optional[int] = None,
-    temperature: Optional[float] = None,
-    task_scope: Optional[str] = None,
+    max_tokens: int | None = None,
+    temperature: float | None = None,
+    task_scope: str | None = None,
     timeout: float = 60.0,
-) -> Optional[str]:
+) -> str | None:
     """
     Send a chat completion request and return the assistant message content,
     or None if the LLM is not configured or the call fails.
@@ -107,7 +106,7 @@ def _call_openai_compat(
     max_tokens: int,
     temperature: float,
     timeout: float,
-) -> Optional[str]:
+) -> str | None:
     payload = {
         "model": model,
         "messages": messages,
