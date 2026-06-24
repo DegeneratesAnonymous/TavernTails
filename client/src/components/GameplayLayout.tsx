@@ -1054,7 +1054,6 @@ export default function GameplayLayout({
                       onGoToImport={onGoToImport}
                       onSheetUpdate={handleSheetUpdate}
                       onQuickAction={handleQuickAction}
-                      sessionId={sessionId || null}
                     />
                   </div>
                 </div>
