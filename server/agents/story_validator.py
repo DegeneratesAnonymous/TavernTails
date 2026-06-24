@@ -32,9 +32,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .story_state import CampaignStoryState
 from .narrative_director import DirectorOutput
-
+from .story_state import CampaignStoryState
 
 # ---------------------------------------------------------------------------
 # Pattern lists
