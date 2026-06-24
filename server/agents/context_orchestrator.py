@@ -30,13 +30,12 @@ import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 from pydantic import BaseModel, Field
-from sqlmodel import Session, select
+from sqlmodel import select
 
 from .. import db
-from ..db import CampaignChangeLog, CampaignEntity, CampaignHook, CampaignRelationship
+from ..db import CampaignChangeLog, CampaignEntity, CampaignHook
 
 _SESSION_BASE = Path(__file__).resolve().parents[1] / "sessions"
 _CACHE_TTL_SECONDS = 90
@@ -540,7 +539,6 @@ def _extract_clues_and_constraints(
 
     for thread in story_threads[:3]:
         d = thread.data or {}
-        engine = thread.data.get("story_engine") or {} if thread.data else {}
         # Thread clues from stakes / situation
         sit = d.get("current_situation") or ""
         if sit and len(sit) > 10:
@@ -849,9 +847,8 @@ def orchestrate(
 
         # Relationships for player character (if we can identify them by name)
         player_relationships: list[dict] = []
-        pc_entity = None
         if player_name:
-            pc_entity = next((e for e in all_entities if e.name.lower() == player_name.lower()), None)
+            pass  # player entity lookup reserved for future relationship mapping
 
     # Partition by type
     npcs = [e for e in all_entities if e.entity_type == "npc"]

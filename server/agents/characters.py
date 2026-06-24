@@ -3973,13 +3973,13 @@ def _build_character_import_sheet_from_pdf(
     # Parse blobs using === section headers to categorize features.
     # DDB PDFs put all features in one "FeaturesTraits" blob with headers like
     # "=== WIZARD FEATURES ===" and "=== KENDER SPECIES TRAITS ===".
-    _CLASS_HDR = re.compile(
+    class_hdr = re.compile(
         r"===\s*(?:\w+\s+)*(?:FEATURES?|SUBCLASS(?:\s+FEATURES?)?)\s*===", re.I
     )
-    _RACIAL_HDR = re.compile(
+    racial_hdr = re.compile(
         r"===\s*(?:\w+\s+)*(?:SPECIES|RACIAL|RACE)(?:\s+TRAITS?|FEATURES?)?\s*===", re.I
     )
-    _FEATS_HDR = re.compile(r"===\s*FEATS?\s*===", re.I)
+    feats_hdr = re.compile(r"===\s*FEATS?\s*===", re.I)
 
     def _parse_categorized(blobs: list[str]) -> tuple[list[dict], list[dict], list[dict]]:
         """Route features to class/racial/other by parsing === section headers."""
@@ -4008,11 +4008,11 @@ def _build_character_import_sheet_from_pdf(
                 if re.match(r"^={2,}.*={2,}$", line):
                     _flush(cat)
                     current = None
-                    if _RACIAL_HDR.search(line):
+                    if racial_hdr.search(line):
                         cat = "racial"
-                    elif _FEATS_HDR.search(line):
+                    elif feats_hdr.search(line):
                         cat = "other"
-                    elif _CLASS_HDR.search(line):
+                    elif class_hdr.search(line):
                         cat = "class"
                     else:
                         cat = "other"

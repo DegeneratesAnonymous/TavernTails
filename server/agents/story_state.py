@@ -278,7 +278,6 @@ def derive_campaign_dna(
     if "family" in setting.lower() or "kin" in setting.lower():
         recurring_questions.append("What is family worth?")
 
-    content = str(campaign_settings.get("content_rating") or campaign_variables.get("content_rating") or "")
     moods = []
     if "dark" in tone or "gritty" in tone:
         moods = ["grim", "tense", "atmospheric"]
@@ -461,7 +460,7 @@ def update_state_after_scene(
             state.threads[title].needs_attention = False
 
     # Thread health check
-    for title, thread in state.threads.items():
+    for _title, thread in state.threads.items():
         if thread.stage == "Resolution":
             thread.needs_attention = False
             continue
@@ -478,7 +477,7 @@ def update_state_after_scene(
         state.npc_activity[npc].activity_recommended = False
 
     # Flag NPCs inactive for too long
-    for name, npc_state in state.npc_activity.items():
+    for _name, npc_state in state.npc_activity.items():
         if scene_num - npc_state.last_active_scene > 8:
             npc_state.activity_recommended = True
 

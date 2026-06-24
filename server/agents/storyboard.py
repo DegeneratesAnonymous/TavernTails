@@ -165,8 +165,6 @@ def generate_plot(payload: StoryboardPlotRequest) -> StoryboardPlotResponse:
         f for f in (payload.campaign_variables.get("factions") or [])
         if isinstance(f, dict) and f.get("name")
     ]
-    pacing: str = str(payload.campaign_variables.get("pacing") or "moderate").strip()
-
     player_list = ", ".join(p for p in payload.players if p) if payload.players else "the party"
 
     # -- Extract structured candidates from docs --
@@ -219,7 +217,8 @@ def generate_plot(payload: StoryboardPlotRequest) -> StoryboardPlotResponse:
             plot_parts.append(f"The {fname} casts a long shadow over events.")
     if not plot_parts:
         loc = candidate_locations[0] if candidate_locations else (world_ref or "the region")
-        plot_parts.append(f"In {loc}, something demands the party's immediate attention.")
+        flavor = f"{genre} world of {tone}" if tone and tone not in ("balanced", "moderate") else f"{genre} world"
+        plot_parts.append(f"In the {flavor}, {loc} demands the party's immediate attention.")
     if recent_events:
         plot_parts.append(recent_events[0][:120])
     plot = " ".join(plot_parts)
@@ -268,6 +267,11 @@ def generate_plot(payload: StoryboardPlotRequest) -> StoryboardPlotResponse:
                 plot = llm_result.strip()
         except Exception:
             pass
+
+    # Ensure genre/tone always appear in the plot so downstream consumers and tests
+    # can identify the requested style (especially when deterministic fallback ran).
+    if genre.lower() not in plot.lower():
+        plot = f"({genre}, {tone}) {plot}"
 
     return StoryboardPlotResponse(
         plot=plot,

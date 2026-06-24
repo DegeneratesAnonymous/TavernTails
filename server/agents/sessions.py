@@ -19,21 +19,26 @@ from . import scene_director as scene_director_agent
 from . import storyboard as storyboard_agent
 from . import suggestions as suggestions_agent
 from .entity_schemas import EntityAssociation, PlayerEntityCard
-from .scene_director import SceneDirectorRequest, SceneDirectorOutput, build_image_prompt
+from .narrative_director import DirectorOutput
+from .narrative_director import direct_scene as narrative_direct_scene
+from .scene_director import SceneDirectorOutput, SceneDirectorRequest, build_image_prompt
 from .scene_validator import (
     MINIMUM_SCORE,
     build_fallback_scene,
     build_retry_feedback,
     validate_scene_quality,
 )
+from .story_state import (
+    derive_campaign_dna,
+    load_story_state,
+    save_story_state,
+    story_dashboard_payload,
+    sync_threads_from_entities,
+    update_state_after_scene,
+)
+from .story_validator import validate_story_quality as validate_story_structure
 from .visual_director import run_visual_pipeline
 from .visual_state import load_visual_state, save_visual_state
-from .story_state import (
-    load_story_state, save_story_state, update_state_after_scene,
-    sync_threads_from_entities, derive_campaign_dna, story_dashboard_payload,
-)
-from .narrative_director import direct_scene as narrative_direct_scene, DirectorOutput
-from .story_validator import validate_story_quality as validate_story_structure
 
 router = APIRouter(prefix="/sessions")
 
@@ -742,8 +747,8 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     )
 
     # --- Context Orchestrator: assemble ranked context packet ---
-    from .context_orchestrator import orchestrate, ContextPacket
     from .context_collector import summarize_active_threads, summarize_recent_world_changes
+    from .context_orchestrator import ContextPacket, orchestrate
 
     context_packet: ContextPacket | None = None
     world_ctx: dict = {}
@@ -753,7 +758,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
             context_packet = orchestrate(
                 campaign_id=str(campaign_id),
                 session_id=session_id,
-                player_name=player_name if players else "",
+                player_name=players[0] if players else "",
                 player_actions=[],
                 use_cache=False,
             )
@@ -772,10 +777,10 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
                     "next_beat": t.next_escalation, "ticking_clock": t.ticking_clock,
                     "relevance_score": t.relevance_score,
                 }
-            def _loc_to_old_format(l) -> dict:
+            def _loc_to_old_format(loc) -> dict:
                 return {
-                    "name": l.name, "current_tension": l.current_tensions[0] if l.current_tensions else "",
-                    "description": l.description, "atmosphere": l.atmosphere,
+                    "name": loc.name, "current_tension": loc.current_tensions[0] if loc.current_tensions else "",
+                    "description": loc.description, "atmosphere": loc.atmosphere,
                 }
 
             world_ctx = {
@@ -869,7 +874,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
 
     # Flatten to strings for candidate lists, prefer memory-sourced (more structured) over doc-sourced
     mem_npc_names = [n['name'] for n in mem_npc_details if n.get('name')]
-    mem_loc_names = [l['name'] for l in mem_loc_details if l.get('name')]
+    mem_loc_names = [loc['name'] for loc in mem_loc_details if loc.get('name')]
     mem_thread_texts = [
         t.get('situation') or t.get('name') or ''
         for t in mem_threads if t.get('situation') or t.get('name')

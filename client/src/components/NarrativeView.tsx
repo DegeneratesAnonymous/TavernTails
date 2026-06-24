@@ -25,9 +25,10 @@ type Props = {
   showChoicesInScene?: boolean
 }
 
-export default function NarrativeView({sessionId, showChoicesInScene = true}: Props){
+export default function NarrativeView({sessionId, showChoicesInScene = false}: Props){
   const [scene, setScene] = useState<Scene|null>(null)
   const [choicesOpen, setChoicesOpen] = useState(false)
+  const [imageError, setImageError] = useState(false)
 
   const choose = useCallback(async (id: string) => {
     try{
@@ -45,6 +46,9 @@ export default function NarrativeView({sessionId, showChoicesInScene = true}: Pr
       console.error('choice failed',e)
     }
   }, [scene?.id, sessionId])
+
+  // Reset image error state when scene changes.
+  useEffect(() => { setImageError(false) }, [scene?.id])
 
   // Broadcast the current set of choices so other layout areas (like chat) can render them.
   useEffect(() => {
@@ -79,7 +83,7 @@ export default function NarrativeView({sessionId, showChoicesInScene = true}: Pr
       }catch{
         if(sessionId){
           try{
-            await fetch(buildApiUrl(`/sessions/${sessionId}/bootstrap`), { method:'POST', headers, body: JSON.stringify({}) })
+            await fetch(buildApiUrl(`/sessions/${sessionId}/start`), { method:'POST', headers, body: JSON.stringify({}) })
             const r2 = await fetch(seedUrl, { headers })
             if(r2.ok){
               const data2 = await r2.json()
@@ -166,11 +170,9 @@ export default function NarrativeView({sessionId, showChoicesInScene = true}: Pr
   return (
     <div className="narrative-view">
       <div className="narrative-scene">
-        {scene.image ? (
-          <img src={scene.image} alt="scene" />
-        ) : (
-          <div className="narrative-image-placeholder">(No scene image yet)</div>
-        )}
+        {scene.image && !imageError ? (
+          <img src={scene.image} alt="scene" onError={() => setImageError(true)} />
+        ) : null}
 
         {process.env.NODE_ENV === 'development' && scene.visual_state ? (
           <div className="narrative-visual-meta">
