@@ -448,9 +448,8 @@
 .situation-strip {
   background: color-mix(in srgb, var(--tt-surface, #0d0d14) 95%, var(--tt-gold, #f5c842) 5%);
   border: 1px solid var(--tt-border);
-  border-top: none;
-  border-radius: 0 0 12px 12px;
-  margin-bottom: 8px;
+  border-radius: 12px;
+  margin: 8px 0;
   flex-shrink: 0;
 }
 

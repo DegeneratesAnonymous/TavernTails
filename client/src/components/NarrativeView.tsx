@@ -196,8 +196,9 @@ export default function NarrativeView({sessionId, showChoicesInScene = false}: P
   return (
     <div className="narrative-view">
 
-      {/* ── Atmospheric scene image ── */}
+      {/* ── Scene: image fills container, narrative card overlays bottom ── */}
       <div className={`narrative-scene ${hasImage ? '' : 'narrative-scene--no-image'}`}>
+
         {hasImage ? (
           <img src={scene.image!} alt="scene" onError={() => setImageError(true)} />
         ) : (
@@ -206,7 +207,7 @@ export default function NarrativeView({sessionId, showChoicesInScene = false}: P
           </div>
         )}
 
-        {/* Location + mood overlay — bottom left of image */}
+        {/* Location chip — top-left of image */}
         {locationName ? (
           <div className="scene-location-chip">
             <span className="scene-location-name">{locationName}</span>
@@ -224,67 +225,71 @@ export default function NarrativeView({sessionId, showChoicesInScene = false}: P
             ].filter(Boolean).join(' · ')}
           </div>
         ) : null}
-      </div>
 
-      {/* ── Narrative card — below the image ── */}
-      <div className="narrative-card">
+        {/* Narrative card — overlays the lower portion of the image */}
+        <div className="narrative-overlay">
+          <div className="narrative-card">
 
-        {/* Chapter / time eyebrow */}
-        {(timeLabel || scene.title) ? (
-          <div className="narrative-eyebrow">
-            {[timeLabel, scene.title].filter(Boolean).join(' · ')}
-          </div>
-        ) : null}
-
-        <div className="narrative-divider" aria-hidden="true">❖</div>
-
-        <p className="narrative-text">{narration || parsed.main}</p>
-
-        {parsed.citations && parsed.citations.length > 0 ? (
-          <div className="narrative-citations">
-            <div className="narrative-citations-label">Sources</div>
-            <ul>
-              {parsed.citations.map((c: any, i: number) => (
-                <li key={`cit-${i}`}>
-                  {c.source_id ? (
-                    <a href={buildApiUrl(`/references/${c.source_id}/raw`) + `#page=${c.page}`} target="_blank" rel="noreferrer">
-                      [{c.source_id} p{c.page}]
-                    </a>
-                  ) : null}{' '}
-                  <span className="muted">— {c.snippet || c.raw}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-
-        {/* Player-facing prompt, visually distinguished */}
-        {playerPrompt ? (
-          <div className="narrative-player-prompt">{playerPrompt}</div>
-        ) : null}
-
-        {showChoicesInScene && hasChoices ? (
-          <div className="narrative-choices-wrap">
-            <button
-              type="button"
-              className="narrative-choices-toggle"
-              aria-expanded={choicesOpen}
-              onClick={() => setChoicesOpen(v => !v)}
-            >
-              {choicesOpen ? 'Hide choices' : `Show choices (${scene.choices.length})`}
-            </button>
-            {choicesOpen ? (
-              <div className="narrative-choices">
-                {scene.choices.map(c => (
-                  <button key={c.id} className="narrative-choice-btn" onClick={() => choose(c.id)}>
-                    {c.label}
-                  </button>
-                ))}
+            {/* Chapter / time eyebrow */}
+            {(timeLabel || scene.title) ? (
+              <div className="narrative-eyebrow">
+                {[timeLabel, scene.title].filter(Boolean).join(' · ')}
               </div>
             ) : null}
-          </div>
-        ) : null}
-      </div>
+
+            <div className="narrative-divider" aria-hidden="true">❖</div>
+
+            <p className="narrative-text">{narration || parsed.main}</p>
+
+            {parsed.citations && parsed.citations.length > 0 ? (
+              <div className="narrative-citations">
+                <div className="narrative-citations-label">Sources</div>
+                <ul>
+                  {parsed.citations.map((c: any, i: number) => (
+                    <li key={`cit-${i}`}>
+                      {c.source_id ? (
+                        <a href={buildApiUrl(`/references/${c.source_id}/raw`) + `#page=${c.page}`} target="_blank" rel="noreferrer">
+                          [{c.source_id} p{c.page}]
+                        </a>
+                      ) : null}{' '}
+                      <span className="muted">— {c.snippet || c.raw}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {/* Player-facing prompt, visually distinguished */}
+            {playerPrompt ? (
+              <div className="narrative-player-prompt">{playerPrompt}</div>
+            ) : null}
+
+            {showChoicesInScene && hasChoices ? (
+              <div className="narrative-choices-wrap">
+                <button
+                  type="button"
+                  className="narrative-choices-toggle"
+                  aria-expanded={choicesOpen}
+                  onClick={() => setChoicesOpen(v => !v)}
+                >
+                  {choicesOpen ? 'Hide choices' : `Show choices (${scene.choices.length})`}
+                </button>
+                {choicesOpen ? (
+                  <div className="narrative-choices">
+                    {scene.choices.map(c => (
+                      <button key={c.id} className="narrative-choice-btn" onClick={() => choose(c.id)}>
+                        {c.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+          </div>{/* /narrative-card */}
+        </div>{/* /narrative-overlay */}
+
+      </div>{/* /narrative-scene */}
     </div>
   )
 }

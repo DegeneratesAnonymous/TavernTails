@@ -76,7 +76,7 @@ def _pollinations_url(prompt: str, style: str) -> str:
     import urllib.parse
     safe = urllib.parse.quote(prompt[:400], safe='')
     portrait = style in ('portrait', 'vertical')
-    width, height = (512, 832) if portrait else (832, 512)
+    width, height = (1080, 1920) if portrait else (1920, 1080)
     params = f"width={width}&height={height}&nologo=true&enhance=true&model=flux"
     return f"https://image.pollinations.ai/prompt/{safe}?{params}"
 
@@ -89,7 +89,7 @@ def _steward_generate(prompt: str, style: str, session_id: str | None) -> str | 
     try:
         import httpx, base64
         portrait = style in ('portrait', 'vertical')
-        width, height = (512, 832) if portrait else (832, 512)
+        width, height = (1080, 1920) if portrait else (1920, 1080)
         r = httpx.post(
             f"{steward_host}/api/image/generate",
             json={"prompt": prompt, "width": width, "height": height},

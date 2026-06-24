@@ -1,5 +1,5 @@
-/* NarrativeView — image on top, narrative card below.
-   Parent (.scene-area) is the scroll container. */
+/* NarrativeView — 1080p image fills container, narrative card overlays the bottom.
+   Parent (.scene-area) scrolls; this element is a fixed-height block. */
 
 .narrative-loading {
   padding: 24px;
@@ -10,37 +10,37 @@
 .narrative-view {
   display: flex;
   flex-direction: column;
-  /* Natural height — scrolls within .scene-area */
+  /* Takes up available space in .scene-area; height is fixed by .narrative-scene */
 }
 
-/* ── Atmospheric image ────────────────────────────────────────────────── */
+/* ── Scene container: image + overlaid card ─────────────────────────── */
 
 .narrative-scene {
-  height: min(280px, 32vh);
-  min-height: 160px;
+  /* Tall enough to show significant art above the text card.
+     Constrained so chat input stays visible without scrolling. */
+  height: min(480px, 56vh);
+  min-height: 260px;
   flex-shrink: 0;
   position: relative;
+  border-radius: 12px;
   overflow: hidden;
   background: var(--tt-surface, #0f0f11);
-  /* Connects visually to the card below */
-  border-radius: 12px 12px 0 0;
   border: 1px solid var(--tt-border);
-  border-bottom: none;
 }
 
 .narrative-scene--no-image {
-  height: min(100px, 12vh);
-  min-height: 60px;
-  background: linear-gradient(180deg, var(--tt-surface, #0f0f11) 0%, rgba(245,200,66,0.04) 100%);
+  height: min(200px, 22vh);
+  min-height: 120px;
 }
 
+/* 1080p image — displayed smaller than native so it looks crisp */
 .narrative-scene img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center 30%;
-  filter: brightness(0.7) saturate(0.9);
-  transition: opacity 0.5s ease;
+  object-position: center 25%;
+  /* Rendered at ~2-3× pixel density relative to container — looks sharp */
+  image-rendering: auto;
   display: block;
 }
 
@@ -51,25 +51,32 @@
   align-items: center;
   justify-content: center;
   color: rgba(245, 200, 66, 0.2);
-  font-size: 2rem;
+  font-size: 2.5rem;
 }
 
-/* Bottom-fade on image so card connects cleanly */
+/* Cinematic gradient: image shows clearly at top, darkens heavily at bottom
+   so the narrative card text is always readable */
 .narrative-scene::after {
   content: '';
   position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 60%;
-  background: linear-gradient(to bottom, transparent 0%, rgba(10,9,14,0.85) 100%);
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(0,0,0,0.05) 0%,
+    rgba(0,0,0,0.0)  25%,
+    rgba(0,0,0,0.25) 50%,
+    rgba(0,0,0,0.75) 75%,
+    rgba(0,0,0,0.88) 100%
+  );
   pointer-events: none;
+  z-index: 1;
 }
 
-/* Location + mood chip — bottom-left of image */
+/* ── Location + mood chip — top-left ──────────────────────────────────── */
+
 .scene-location-chip {
   position: absolute;
-  bottom: 12px;
+  top: 14px;
   left: 14px;
   z-index: 5;
   display: flex;
@@ -79,153 +86,172 @@
 }
 
 .scene-location-name {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   color: rgba(255,255,255,0.9);
-  letter-spacing: 0.05em;
-  text-shadow: 0 1px 6px rgba(0,0,0,0.8);
+  letter-spacing: 0.06em;
+  text-shadow: 0 1px 8px rgba(0,0,0,0.9);
   text-transform: uppercase;
+  background: rgba(0,0,0,0.35);
+  padding: 3px 8px;
+  border-radius: 4px;
 }
 
 .scene-mood-badge {
   font-size: 10px;
   font-weight: 600;
-  padding: 2px 7px;
+  padding: 3px 8px;
   border-radius: 999px;
   background: rgba(245,200,66,0.15);
-  color: rgba(245,200,66,0.85);
-  border: 1px solid rgba(245,200,66,0.25);
+  color: rgba(245,200,66,0.9);
+  border: 1px solid rgba(245,200,66,0.3);
   text-transform: capitalize;
   letter-spacing: 0.03em;
 }
 
-/* ── Narrative card — the story text ─────────────────────────────────── */
+/* ── Narrative overlay — sits over the bottom 55% of the image ─────── */
+
+.narrative-overlay {
+  position: absolute;
+  /* Start partway down — image is visible above, text below */
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  padding: 0 16px 14px;
+  max-height: 62%;
+  display: flex;
+  align-items: flex-end;
+}
+
+/* ── Narrative card ─────────────────────────────────────────────────── */
 
 .narrative-card {
-  background: color-mix(in srgb, var(--tt-surface, #0d0d14) 92%, var(--tt-gold, #f5c842) 8%);
-  border: 1px solid var(--tt-border);
-  border-top: none;
-  border-radius: 0 0 12px 12px;
-  padding: 20px 22px 24px;
-  /* Subtle inner glow from gold at top */
-  box-shadow: inset 0 2px 0 rgba(245,200,66,0.08);
+  width: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* Chapter / time eyebrow */
 .narrative-eyebrow {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--tt-gold, #f5c842);
-  opacity: 0.7;
-  margin-bottom: 10px;
+  opacity: 0.8;
+  margin-bottom: 6px;
+  text-shadow: 0 1px 6px rgba(0,0,0,0.8);
 }
 
 /* ❖ decorative divider */
 .narrative-divider {
-  text-align: center;
   color: var(--tt-gold, #f5c842);
-  opacity: 0.3;
-  font-size: 1rem;
-  letter-spacing: 0.6em;
-  margin: 0 0 16px 0;
-  padding-left: 0.6em; /* compensate letter-spacing */
+  opacity: 0.4;
+  font-size: 0.85rem;
+  letter-spacing: 0.5em;
+  padding-left: 0.5em;
+  margin: 0 0 10px 0;
+  text-shadow: 0 0 12px rgba(245,200,66,0.4);
 }
 
 .narrative-text {
   margin: 0;
   white-space: pre-wrap;
-  line-height: 1.7;
-  font-size: 1rem;
-  color: var(--tt-text, #cdd6f4);
+  line-height: 1.65;
+  font-size: 0.97rem;
+  color: rgba(255,255,255,0.92);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  text-shadow: 0 1px 8px rgba(0,0,0,0.7);
 }
 
-/* Player-facing prompt — distinguished from narration */
+/* Player-facing prompt — gold italic, separated from narration */
 .narrative-player-prompt {
-  margin-top: 18px;
-  padding: 12px 16px;
-  border-left: 3px solid rgba(245,200,66,0.45);
-  background: rgba(245,200,66,0.06);
-  border-radius: 0 8px 8px 0;
-  font-size: 0.95rem;
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-left: 3px solid rgba(245,200,66,0.5);
+  background: rgba(0,0,0,0.3);
+  border-radius: 0 6px 6px 0;
+  font-size: 0.92rem;
   font-style: italic;
-  color: rgba(245,200,66,0.9);
+  color: rgba(245,200,66,0.95);
   line-height: 1.5;
+  text-shadow: 0 1px 6px rgba(0,0,0,0.7);
 }
 
 /* Citations */
 .narrative-citations {
-  margin-top: 16px;
-  padding-top: 12px;
-  border-top: 1px solid var(--tt-border);
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255,255,255,0.1);
 }
 
 .narrative-citations-label {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--tt-muted, #6c7086);
-  margin-bottom: 6px;
+  color: rgba(255,255,255,0.4);
+  margin-bottom: 4px;
 }
 
 .narrative-citations ul {
   margin: 0;
-  padding: 0 0 0 16px;
+  padding: 0 0 0 14px;
   list-style: none;
 }
 
 .narrative-citations li {
-  margin-bottom: 4px;
-  font-size: 12px;
+  margin-bottom: 3px;
+  font-size: 11px;
+  color: rgba(255,255,255,0.6);
 }
 
 /* Choices */
 .narrative-choices {
-  margin-top: 12px;
+  margin-top: 8px;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .narrative-choices-wrap {
-  margin-top: 16px;
+  margin-top: 12px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .narrative-choices-toggle {
   align-self: flex-start;
   padding: 6px 12px;
   border-radius: 999px;
-  background: rgba(255,255,255,0.05);
+  background: rgba(255,255,255,0.08);
   color: rgba(255,255,255,0.85);
-  border: 1px solid rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.15);
   font-weight: 650;
-  font-size: 0.85rem;
+  font-size: 0.83rem;
 }
 
 .narrative-choices-toggle:hover {
-  border-color: var(--tt-border-strong);
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  background: rgba(255,255,255,0.12);
 }
 
 .narrative-choice-btn {
-  padding: 9px 16px;
-  border-radius: 10px;
-  background: rgba(255,255,255,0.05);
-  color: inherit;
-  border: 1px solid rgba(255,255,255,0.10);
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: rgba(0,0,0,0.45);
+  color: rgba(255,255,255,0.9);
+  border: 1px solid rgba(255,255,255,0.15);
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
+  backdrop-filter: blur(4px);
 }
 
 .narrative-choice-btn:hover {
-  border-color: var(--tt-border-strong);
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  background: rgba(245,200,66,0.12);
+  border-color: rgba(245,200,66,0.3);
 }
 
 /* ── Visual state dev chip ────────────────────────────────────────────── */
@@ -252,22 +278,18 @@
 
 @media (max-width: 600px) {
   .narrative-scene {
-    height: min(200px, 28vh);
-    min-height: 130px;
+    height: min(320px, 45vh);
+    min-height: 200px;
   }
 
-  .narrative-card {
-    padding: 16px 16px 20px;
+  .narrative-overlay {
+    padding: 0 12px 12px;
+    max-height: 70%;
   }
 
   .narrative-text {
-    font-size: 0.93rem;
+    font-size: 0.9rem;
     line-height: 1.6;
-  }
-
-  .narrative-player-prompt {
-    font-size: 0.88rem;
-    padding: 10px 12px;
   }
 
   .narrative-choice-btn {
@@ -280,6 +302,6 @@
 
   .narrative-choices {
     flex-direction: column;
-    gap: 6px;
+    gap: 5px;
   }
 }
