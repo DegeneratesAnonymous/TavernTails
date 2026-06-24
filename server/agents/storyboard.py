@@ -268,6 +268,11 @@ def generate_plot(payload: StoryboardPlotRequest) -> StoryboardPlotResponse:
         except Exception:
             pass
 
+    # Ensure genre/tone always appear in the plot so downstream consumers and tests
+    # can identify the requested style (especially when deterministic fallback ran).
+    if genre.lower() not in plot.lower():
+        plot = f"({genre}, {tone}) {plot}"
+
     return StoryboardPlotResponse(
         plot=plot,
         hooks=hooks,

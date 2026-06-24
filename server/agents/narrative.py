@@ -173,6 +173,14 @@ def _parse_narrative_response(text: str, fallback_narrative: str, fallback_promp
             if isinstance(parsed, dict):
                 out_narr = parsed.get('narrative') or parsed.get('text') or narration
                 out_prompt = parsed.get('prompt') or fallback_prompt
+                citations = parsed.get('citations') or []
+                if citations:
+                    cit_parts = []
+                    for c in citations:
+                        if isinstance(c, dict) and c.get('source_id') and c.get('page') is not None:
+                            cit_parts.append(f"[{c['source_id']} p{c['page']}] {c.get('snippet', '')}".strip())
+                    if cit_parts:
+                        out_narr = f"{out_narr}\n\nCitations: {' | '.join(cit_parts)}"
                 return str(out_narr), str(out_prompt)
     except Exception:
         pass
@@ -183,7 +191,7 @@ def _parse_narrative_response(text: str, fallback_narrative: str, fallback_promp
 def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
     weather_desc = "crisp and clear" if payload.weather == "clear" else payload.weather
     player = payload.player or "the party"
-    default_prompt = f"What does {player} do?"
+    default_prompt = f"{player}: What do you do?"
 
     # Default narration used only when LLM is completely unavailable
     default_narration = (

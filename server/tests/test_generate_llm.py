@@ -99,18 +99,17 @@ def test_generate_npc_with_llm(client: TestClient, monkeypatch):
         "faction_affiliation": "Traders Guild",
     }
 
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-fake-key")
     captured: dict = {}
-    sys.modules["openai"] = _make_fake_openai(npc_payload, captured)
+    def _fake_chat(msgs, **kw):
+        captured["last"] = {"kwargs": {"messages": msgs}}
+        return json.dumps(npc_payload)
+    monkeypatch.setattr("server.agents.generate.chat_complete", _fake_chat)
 
-    try:
-        resp = client.post(
-            "/generate/npc",
-            headers=headers,
-            json={"campaign_id": camp_id, "npc_type": "merchant"},
-        )
-    finally:
-        sys.modules.pop("openai", None)
+    resp = client.post(
+        "/generate/npc",
+        headers=headers,
+        json={"campaign_id": camp_id, "npc_type": "merchant"},
+    )
 
     assert resp.status_code == 200, resp.text
     data = resp.json()
@@ -118,7 +117,7 @@ def test_generate_npc_with_llm(client: TestClient, monkeypatch):
     assert npc["name"] == npc_payload["name"]
     assert npc["motivation"] == npc_payload["motivation"]
     assert npc["faction_affiliation"] == npc_payload["faction_affiliation"]
-    assert "last" in captured, "ChatCompletion.create was never called"
+    assert "last" in captured, "chat_complete was never called"
 
 
 # ---------------------------------------------------------------------------
