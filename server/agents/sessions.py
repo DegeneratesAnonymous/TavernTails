@@ -758,7 +758,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
             context_packet = orchestrate(
                 campaign_id=str(campaign_id),
                 session_id=session_id,
-                player_name=player_name if players else "",
+                player_name=players[0] if players else "",
                 player_actions=[],
                 use_cache=False,
             )
@@ -777,10 +777,10 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
                     "next_beat": t.next_escalation, "ticking_clock": t.ticking_clock,
                     "relevance_score": t.relevance_score,
                 }
-            def _loc_to_old_format(l) -> dict:
+            def _loc_to_old_format(loc) -> dict:
                 return {
-                    "name": l.name, "current_tension": l.current_tensions[0] if l.current_tensions else "",
-                    "description": l.description, "atmosphere": l.atmosphere,
+                    "name": loc.name, "current_tension": loc.current_tensions[0] if loc.current_tensions else "",
+                    "description": loc.description, "atmosphere": loc.atmosphere,
                 }
 
             world_ctx = {
@@ -836,7 +836,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
 
     # Flatten to strings for candidate lists, prefer memory-sourced (more structured) over doc-sourced
     mem_npc_names = [n['name'] for n in mem_npc_details if n.get('name')]
-    mem_loc_names = [l['name'] for l in mem_loc_details if l.get('name')]
+    mem_loc_names = [loc['name'] for loc in mem_loc_details if loc.get('name')]
     mem_thread_texts = [
         t.get('situation') or t.get('name') or ''
         for t in mem_threads if t.get('situation') or t.get('name')
@@ -864,7 +864,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
                 story_state.campaign_dna = derive_campaign_dna(campaign_settings, campaign_variables)
             narrative_director_output = narrative_direct_scene(
                 state=story_state,
-                player_name=player_name if players else "",
+                player_name=players[0] if players else "",
                 player_actions=[],
             )
         except Exception:

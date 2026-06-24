@@ -316,7 +316,7 @@ def _types_compatible(a: str, b: str) -> bool:
 
 
 def _emotion_to_patterns(emotion: str) -> list[str]:
-    _MAP = {
+    emotion_map = {
         "fear": [r"\b(fear|afraid|terror|dread|horror|panic|flee|flee)\b"],
         "hope": [r"\b(hope|hopeful|promise|light|salvation|trust)\b"],
         "wonder": [r"\b(wonder|awe|marvels?|strange|beautiful|extraordinary|impossible)\b"],
@@ -325,4 +325,4 @@ def _emotion_to_patterns(emotion: str) -> list[str]:
         "curiosity": [r"\b(curious|wonder|question|why|how|mystery|strange|unusual)\b"],
         "trust": [r"\b(trust|reliable|loyal|honest|true|faith|believe)\b"],
     }
-    return _MAP.get(emotion, [])
+    return emotion_map.get(emotion, [])

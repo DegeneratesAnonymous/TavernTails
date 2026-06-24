@@ -165,8 +165,6 @@ def generate_plot(payload: StoryboardPlotRequest) -> StoryboardPlotResponse:
         f for f in (payload.campaign_variables.get("factions") or [])
         if isinstance(f, dict) and f.get("name")
     ]
-    pacing: str = str(payload.campaign_variables.get("pacing") or "moderate").strip()
-
     player_list = ", ".join(p for p in payload.players if p) if payload.players else "the party"
 
     # -- Extract structured candidates from docs --

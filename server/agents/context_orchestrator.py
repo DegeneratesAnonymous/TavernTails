@@ -539,7 +539,6 @@ def _extract_clues_and_constraints(
 
     for thread in story_threads[:3]:
         d = thread.data or {}
-        engine = thread.data.get("story_engine") or {} if thread.data else {}
         # Thread clues from stakes / situation
         sit = d.get("current_situation") or ""
         if sit and len(sit) > 10:
@@ -848,9 +847,8 @@ def orchestrate(
 
         # Relationships for player character (if we can identify them by name)
         player_relationships: list[dict] = []
-        pc_entity = None
         if player_name:
-            pc_entity = next((e for e in all_entities if e.name.lower() == player_name.lower()), None)
+            pass  # player entity lookup reserved for future relationship mapping
 
     # Partition by type
     npcs = [e for e in all_entities if e.entity_type == "npc"]

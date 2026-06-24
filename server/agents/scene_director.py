@@ -188,9 +188,6 @@ def direct_scene(req: SceneDirectorRequest) -> SceneDirectorOutput:
 
     player_name = req.players[0] if req.players else "the party"
     genre = req.campaign_settings.get("genre", "fantasy")
-    tone = (req.campaign_settings.get("tone")
-            or req.campaign_variables.get("narrative_style")
-            or "balanced")
 
     ctx: list[str] = []
     if req.campaign_settings.get("world_name"):
@@ -230,12 +227,12 @@ def direct_scene(req: SceneDirectorRequest) -> SceneDirectorOutput:
 
     if req.candidate_location_details:
         loc_lines = []
-        for l in req.candidate_location_details[:3]:
-            line = f"  • {l.get('name', '?')}"
-            if l.get("current_tension"):
-                line += f" — tension: {l['current_tension'][:60]}"
-            if l.get("threat"):
-                line += f" — threat: {l['threat'][:60]}"
+        for loc in req.candidate_location_details[:3]:
+            line = f"  • {loc.get('name', '?')}"
+            if loc.get("current_tension"):
+                line += f" — tension: {loc['current_tension'][:60]}"
+            if loc.get("threat"):
+                line += f" — threat: {loc['threat'][:60]}"
             loc_lines.append(line)
         ctx.append("KNOWN LOCATIONS:\n" + "\n".join(loc_lines))
     elif req.candidate_locations:
@@ -269,7 +266,7 @@ def direct_scene(req: SceneDirectorRequest) -> SceneDirectorOutput:
         if dg.get("mystery_guidance"):
             director_lines.append(f"MYSTERY GUIDANCE: {dg['mystery_guidance']}")
         if director_lines:
-            ctx.append("NARRATIVE DIRECTOR GUIDANCE (mandatory):\n" + "\n".join(f"  — {l}" for l in director_lines))
+            ctx.append("NARRATIVE DIRECTOR GUIDANCE (mandatory):\n" + "\n".join(f"  — {item}" for item in director_lines))
 
     system = (
         "You are a tabletop RPG Scene Director. Your job: convert campaign context into ONE concrete, "
