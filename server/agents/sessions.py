@@ -19,21 +19,26 @@ from . import scene_director as scene_director_agent
 from . import storyboard as storyboard_agent
 from . import suggestions as suggestions_agent
 from .entity_schemas import EntityAssociation, PlayerEntityCard
-from .scene_director import SceneDirectorRequest, SceneDirectorOutput, build_image_prompt
+from .narrative_director import DirectorOutput
+from .narrative_director import direct_scene as narrative_direct_scene
+from .scene_director import SceneDirectorOutput, SceneDirectorRequest, build_image_prompt
 from .scene_validator import (
     MINIMUM_SCORE,
     build_fallback_scene,
     build_retry_feedback,
     validate_scene_quality,
 )
+from .story_state import (
+    derive_campaign_dna,
+    load_story_state,
+    save_story_state,
+    story_dashboard_payload,
+    sync_threads_from_entities,
+    update_state_after_scene,
+)
+from .story_validator import validate_story_quality as validate_story_structure
 from .visual_director import run_visual_pipeline
 from .visual_state import load_visual_state, save_visual_state
-from .story_state import (
-    load_story_state, save_story_state, update_state_after_scene,
-    sync_threads_from_entities, derive_campaign_dna, story_dashboard_payload,
-)
-from .narrative_director import direct_scene as narrative_direct_scene, DirectorOutput
-from .story_validator import validate_story_quality as validate_story_structure
 
 router = APIRouter(prefix="/sessions")
 
@@ -742,8 +747,8 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     )
 
     # --- Context Orchestrator: assemble ranked context packet ---
-    from .context_orchestrator import orchestrate, ContextPacket
     from .context_collector import summarize_active_threads, summarize_recent_world_changes
+    from .context_orchestrator import ContextPacket, orchestrate
 
     context_packet: ContextPacket | None = None
     world_ctx: dict = {}

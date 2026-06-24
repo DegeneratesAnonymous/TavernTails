@@ -12,18 +12,16 @@ Deterministic fallback: always available — rules-based analysis of story state
 from __future__ import annotations
 
 import json
-from typing import Any
 
 from pydantic import BaseModel, Field
 
 from .story_state import (
+    SCENE_PURPOSES,
+    SCENE_TYPES,
     CampaignStoryState,
-    EmotionalState,
     SceneHistoryEntry,
     ThreadState,
     thread_health_score,
-    SCENE_TYPES,
-    SCENE_PURPOSES,
 )
 
 try:
