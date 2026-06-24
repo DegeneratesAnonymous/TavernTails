@@ -1187,6 +1187,9 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         'retry_used': retry_used,
         'fallback_used': fallback_used,
         'image_prompt': image_prompt,
+        'scene_score': narrative.scene_score,
+        'scene_score_passed': narrative.score_passed,
+        'scene_score_detail': narrative.score_detail,
     }
 
     context_debug = context_packet.debug_payload() if context_packet else None

@@ -1,4 +1,4 @@
-"""Narrative Agent: generates narration + prompt."""
+"""Narrative Agent: generates narration + prompt with quality enforcement."""
 
 import json
 from pathlib import Path
@@ -9,9 +9,13 @@ from pydantic import BaseModel, Field
 from ..auth import get_current_user
 from ..steward_llm import chat_complete
 from . import sessions as sessions_agent
+from .narrative_linter import ScoreResult, feedback_for_regeneration, score_scene
 from .references import search_query
 
 router = APIRouter(tags=["narrative"])
+
+MAX_RETRIES = 2
+SCORE_THRESHOLD = 75
 
 
 class NarrativeRequest(BaseModel):
@@ -38,23 +42,49 @@ class NarrativeResponse(BaseModel):
     narrative: str
     prompt: str
     tone: str
+    scene_score: int = 0
+    score_passed: bool = False
+    score_detail: dict = Field(default_factory=dict)
 
 
 STYLE_TONES = {
-    "gritty realism": "Actions leave scars; wounds don't heal overnight; consequences stick.",
-    "cinematic heroism": "Daring feats reward courage; there is glory to be won.",
-    "balanced": "Risk and reward are real; clever play is rewarded.",
+    "gritty realism": "Actions leave scars; wounds don't heal overnight; consequences stick. Pain is real.",
+    "cinematic heroism": "Daring feats reward courage; there is glory to be won against impossible odds.",
+    "balanced": "Risk and reward are real; clever play is rewarded; consequences accumulate.",
 }
 
 _FORBIDDEN_NARRATIVE = [
-    "heroic fantasy adventure",
+    "heroic fantasy",
     "high fantasy",
-    "mysterious threat looms",
+    "dark fantasy",
+    "dark-fantasy",
+    "epic fantasy",
+    "fantasy world",
+    "mysterious threat",
     "choices matter",
     "outcomes stay flexible",
     "the world is dangerous",
     "paths branch ahead",
     "genre",
+    "the party must",
+    "a dark force",
+    "evil is stirring",
+    "danger looms",
+    "the adventure begins",
+    "a disturbance",
+    "unrest grows",
+    "an old acquaintance",
+]
+
+_WRITING_PRINCIPLES = [
+    "Write from INSIDE the scene — open mid-action, not with setup",
+    "First sentence must place the reader in a specific physical location with sensory grounding",
+    "Show NPCs acting, not waiting — they are doing something when the players arrive",
+    "Concrete visible events over mood — 'Dara slams the ledger shut' beats 'tension fills the air'",
+    "Named characters only — never 'a figure', 'a stranger', or 'someone nearby'",
+    "Specific stakes with a clock — 'by dusk' or 'before the guard rotation' beats 'things will get worse'",
+    "One strong question at the end, addressed to the player by name — never repeated or doubled",
+    "3–5 sentences total — trim every word that doesn't earn its place",
 ]
 
 
@@ -85,20 +115,21 @@ def _build_director_system(
     tone_desc = STYLE_TONES.get(style.lower(), STYLE_TONES["balanced"])
 
     lines = [
-        "You are a Dungeon Master writing ONE scene of a live tabletop RPG session.",
-        "You have been given a concrete scene plan. Follow it exactly.",
+        "You are a master Dungeon Master writing ONE scene of a live tabletop RPG session.",
+        "You write like a Sly Flourish keynote — immediate, grounded, never vague.",
+        "You follow The Alexandrian's Three Clue Rule: any important fact has three ways to discover it.",
         "",
-        "SCENE PLAN:",
+        "SCENE PLAN — follow exactly:",
         f"  Location: {loc_name}",
     ]
     if sensory:
-        lines.append(f"  Sensory details: {'; '.join(sensory)}")
+        lines.append(f"  Sensory details to use: {'; '.join(sensory)}")
     if npc_name:
-        lines.append(f"  Primary NPC: {npc_name} — {npc_state}")
+        lines.append(f"  Primary NPC: {npc_name} — current state: {npc_state}")
         if npc_wants:
-            lines.append(f"  They want: {npc_wants}")
+            lines.append(f"  {npc_name} wants: {npc_wants}")
         if npc_knows:
-            lines.append(f"  They know: {npc_knows}")
+            lines.append(f"  {npc_name} knows: {npc_knows}")
     if secondary:
         lines.append(f"  Also present: {', '.join(secondary[:3])}")
     if inciting:
@@ -106,57 +137,66 @@ def _build_director_system(
     if conflict:
         lines.append(f"  Central conflict: {conflict}")
     if stakes:
-        lines.append(f"  Stakes: {stakes}")
+        lines.append(f"  Immediate stakes: {stakes}")
     if clues:
         lines.append(f"  Player-visible clues: {'; '.join(clues[:3])}")
     lines.append(f"  Atmosphere: {weather_desc}, {time_of_day}")
     lines.append(f"  Tone: {style} — {tone_desc}")
     lines.append("")
+
     if player_actions:
-        actions_preview = player_actions[:6]
         lines.append("WHAT THE PLAYERS DID (this round):")
-        for i, act in enumerate(actions_preview, 1):
+        for i, act in enumerate(player_actions[:6], 1):
             lines.append(f"  {i}. {act}")
         lines.append("")
-        lines.append("NARRATIVE WEAVING (required when player actions exist):")
-        lines.append(f"  — Open by narrating the outcome of the players' actions in third person, past tense")
+        lines.append("NARRATIVE WEAVING — required:")
+        lines.append(f"  — Open with the outcome of the players' actions in third person, past tense")
         lines.append(f"  — Use {player}'s name when describing what they did")
-        lines.append("  — Show the world's reaction — NPC responses, environmental changes, consequences")
+        lines.append("  — Show the world's reaction: NPC responses, environmental changes, consequences")
         lines.append("  — Then transition naturally into the new situation at the scene location")
         lines.append("  — Never invent actions the players didn't take")
         lines.append("")
 
-    lines.append("WRITING REQUIREMENTS (non-negotiable):")
-    lines.append(f"  1. Open IN the scene at {loc_name} — no preamble, no setup sentence")
-    lines.append("  2. Include at least one physical sensory detail (what you see, smell, or hear right now)")
+    lines.append("WRITING REQUIREMENTS — non-negotiable:")
+    for i, principle in enumerate(_WRITING_PRINCIPLES, 1):
+        lines.append(f"  {i}. {principle}")
+    lines.append("")
     if npc_name:
-        lines.append(f"  3. Name {npc_name} directly and show their emotional state through action or dialogue")
-    lines.append("  4. Show the conflict through a concrete visible event or piece of evidence — not a mood")
-    lines.append("  5. Write exactly 3–5 sentences of present-tense narration")
-    lines.append(f"  6. End with ONE player-facing question addressed to {player} by name")
+        lines.append(f"  → {npc_name} must appear by name and be shown doing something specific")
+        lines.append(f"  → Use the scene's sensory details: {'; '.join(sensory) if sensory else 'invent two concrete ones'}")
+    lines.append(f"  → End with one direct question to {player}")
     lines.append("")
     lines.append("FORBIDDEN — never write:")
     for phrase in _FORBIDDEN_NARRATIVE:
-        lines.append(f"  — \"{phrase}\"")
-    lines.append("  — Do not describe the genre or campaign tone")
-    lines.append("  — Do not summarize the adventure or explain the setting")
-    lines.append("  — Do not say 'the party' — use the character's name")
+        lines.append(f'  — "{phrase}"')
+    lines.append("  — abstract moods without physical evidence ('tension fills the air')")
+    lines.append("  — genre labels or campaign descriptions")
+    lines.append(f"  — 'the party' — use {player}'s name")
+    lines.append("  — duplicate player-facing questions")
     if validator_feedback:
         lines.append("")
-        lines.append("ADDITIONAL CORRECTION REQUIRED:")
+        lines.append("PREVIOUS ATTEMPT FAILED — CORRECTIONS REQUIRED:")
         lines.append(validator_feedback)
     lines.append("")
-    lines.append('Return ONLY valid JSON — no markdown, no preamble:')
+    lines.append('Return ONLY valid JSON — no markdown, no preamble, no explanation:')
     lines.append('{"narrative": "<3-5 present-tense sentences>", "prompt": "<one question addressed to the player character by name>"}')
     return "\n".join(lines)
 
 
-def _build_generic_system(player: str, style: str, weather_desc: str, time_of_day: str, validator_feedback: str | None, player_actions: list[str] | None = None) -> str:
+def _build_generic_system(
+    player: str,
+    style: str,
+    weather_desc: str,
+    time_of_day: str,
+    validator_feedback: str | None,
+    player_actions: list[str] | None = None,
+) -> str:
     """Fallback system prompt when no Scene Director data is available."""
     tone = STYLE_TONES.get(style.lower(), STYLE_TONES["balanced"])
     lines = [
-        "You are an expert Dungeon Master narrating a live tabletop RPG session.",
-        "Your writing is vivid, immediate, and grounds the player in a specific moment.",
+        "You are a master Dungeon Master narrating a live tabletop RPG session.",
+        "Your writing is immediate, concrete, and grounds the player in a specific physical moment.",
+        "You never use genre labels, abstract moods, or setup sentences.",
         "",
         f"Tone: {style} — {tone}",
         f"Atmosphere: {weather_desc}, {time_of_day}",
@@ -167,23 +207,24 @@ def _build_generic_system(player: str, style: str, weather_desc: str, time_of_da
         for i, act in enumerate(player_actions[:6], 1):
             lines.append(f"  {i}. {act}")
         lines.append("")
-        lines.append(f"  — Open by narrating the outcome of their actions in third person, past tense, using {player}'s name")
+        lines.append("NARRATIVE WEAVING — required:")
+        lines.append(f"  — Open with the third-person past-tense outcome of those actions, using {player}'s name")
         lines.append("  — Show consequences and world reactions before introducing the new situation")
         lines.append("")
-    lines += [
-        "REQUIREMENTS:",
-        "  — Begin in-scene immediately (no setup sentence)",
-        "  — Name at least one specific location",
-        "  — Name at least one NPC or describe a concrete visible event",
-        "  — Include one physical sensory detail",
-        f"  — End with a player-facing question addressed to {player} by name",
-        "  — Write 3–5 sentences of present-tense narration",
-        "  — Never mention dice, game mechanics, or rules",
-        "  — Never describe the genre or campaign structure",
-    ]
+
+    lines.append("REQUIREMENTS:")
+    for principle in _WRITING_PRINCIPLES:
+        lines.append(f"  — {principle}")
+    lines.append("")
+    lines.append("FORBIDDEN:")
+    for phrase in _FORBIDDEN_NARRATIVE[:8]:
+        lines.append(f'  — "{phrase}"')
+    lines.append("  — abstract mood statements without physical evidence")
+    lines.append("  — genre descriptions or campaign framing")
+    lines.append(f"  — 'the party' — use {player}'s name")
     if validator_feedback:
         lines.append("")
-        lines.append("CORRECTION REQUIRED:")
+        lines.append("PREVIOUS ATTEMPT FAILED — CORRECTIONS REQUIRED:")
         lines.append(validator_feedback)
     lines.append("")
     lines.append('Return ONLY valid JSON — no markdown, no preamble:')
@@ -216,25 +257,14 @@ def _parse_narrative_response(text: str, fallback_narrative: str, fallback_promp
     return narration, fallback_prompt
 
 
-@router.post("/narrative/generate", response_model=NarrativeResponse)
-def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
-    weather_desc = "crisp and clear" if payload.weather == "clear" else payload.weather
-    player = payload.player or "the party"
-    default_prompt = f"{player}: What do you do?"
-
-    # Default narration used only when LLM is completely unavailable
-    default_narration = (
-        f"The scene unfolds before you. The air is {weather_desc} and the {payload.time_of_day} "
-        f"light plays across {payload.scene[:80] if payload.scene else 'the surroundings'}."
-    )
-
+def _build_messages(payload: NarrativeRequest, weather_desc: str, player: str, feedback: str | None) -> list[dict]:
+    """Build LLM messages list for a generation attempt."""
     if payload.scene_director_data:
         system = _build_director_system(
             payload.scene_director_data, player, payload.style,
-            weather_desc, payload.time_of_day, payload.validator_feedback,
+            weather_desc, payload.time_of_day, feedback,
             player_actions=payload.player_actions or [],
         )
-        # User message: the scene plan data as a structured reminder
         sd = payload.scene_director_data
         loc = (sd.get("location") or {}).get("name") or ""
         npc = (sd.get("primary_npc") or {}).get("name") or ""
@@ -248,21 +278,75 @@ def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
             payload.scene[:200] if payload.scene else "",
         ]))
     else:
-        system = _build_generic_system(player, payload.style, weather_desc, payload.time_of_day, payload.validator_feedback, player_actions=payload.player_actions or [])
+        system = _build_generic_system(
+            player, payload.style, weather_desc, payload.time_of_day,
+            feedback, player_actions=payload.player_actions or [],
+        )
         user_content = payload.scene or ""
 
-    text = chat_complete(
-        [{"role": "system", "content": system}, {"role": "user", "content": user_content}],
-        task_scope="taverntails_narrative",
-        max_tokens=500,
-        timeout=90.0,
+    return [{"role": "system", "content": system}, {"role": "user", "content": user_content}]
+
+
+@router.post("/narrative/generate", response_model=NarrativeResponse)
+def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
+    weather_desc = "crisp and clear" if payload.weather == "clear" else payload.weather
+    player = payload.player or "the party"
+    default_prompt = f"{player}: What do you do?"
+
+    default_narration = (
+        f"The scene unfolds before you. The air is {weather_desc} and the {payload.time_of_day} "
+        f"light plays across {payload.scene[:80] if payload.scene else 'the surroundings'}."
     )
 
-    if text:
-        narrative, prompt = _parse_narrative_response(text, default_narration, default_prompt)
-        return NarrativeResponse(narrative=narrative, prompt=prompt, tone=payload.style.lower())
+    # Extract title for linting (use location name if available)
+    scene_title = ""
+    if payload.scene_director_data:
+        loc = payload.scene_director_data.get("location") or {}
+        scene_title = loc.get("name") or ""
 
-    return NarrativeResponse(narrative=default_narration, prompt=default_prompt, tone=payload.style.lower())
+    best_narrative = default_narration
+    best_prompt = default_prompt
+    best_score: ScoreResult | None = None
+    feedback = payload.validator_feedback
+
+    for attempt in range(MAX_RETRIES + 1):
+        messages = _build_messages(payload, weather_desc, player, feedback)
+        text = chat_complete(
+            messages,
+            task_scope="taverntails_narrative",
+            max_tokens=500,
+            timeout=90.0,
+        )
+
+        if not text:
+            break
+
+        narrative, prompt = _parse_narrative_response(text, default_narration, default_prompt)
+        result = score_scene(narrative, title=scene_title, threshold=SCORE_THRESHOLD)
+
+        if best_score is None or result.score > best_score.score:
+            best_narrative = narrative
+            best_prompt = prompt
+            best_score = result
+
+        if result.passes_threshold:
+            break
+
+        # Build targeted feedback for next attempt
+        feedback = feedback_for_regeneration(result)
+
+    score_dict: dict = best_score.to_dict() if best_score else {}
+    score_val = best_score.score if best_score else 0
+    score_passed = best_score.passes_threshold if best_score else False
+
+    return NarrativeResponse(
+        narrative=best_narrative,
+        prompt=best_prompt,
+        tone=payload.style.lower(),
+        scene_score=score_val,
+        score_passed=score_passed,
+        score_detail=score_dict,
+    )
 
 
 class ContinueRequest(BaseModel):
@@ -272,17 +356,13 @@ class ContinueRequest(BaseModel):
 
 @router.post("/narrative/continue", response_model=NarrativeResponse)
 def continue_narrative(payload: ContinueRequest, current_user=Depends(get_current_user)):
-    """Generate the next scene for a session by summarizing recent story + PCs/NPCs.
-
-    This is intentionally lightweight; future improvements can call the LLM with rich context.
-    """
+    """Generate the next scene for a session by summarizing recent story + PCs/NPCs."""
     session_id = payload.session_id
     base = Path(__file__).resolve().parents[1] / 'sessions'
     folder = base / session_id
     if not folder.exists() or not folder.is_dir():
         raise HTTPException(status_code=404, detail='Session not found')
 
-    # Ensure caller is a session member.
     campaign_ruleset = ""
     meta_file = folder / 'meta.json'
     if meta_file.exists():
@@ -291,7 +371,6 @@ def continue_narrative(payload: ContinueRequest, current_user=Depends(get_curren
             identifier = sessions_agent._identifier_for_user(current_user)
             if not sessions_agent._user_is_member(meta, identifier):
                 raise HTTPException(status_code=403, detail='Not a member of this session')
-            # Resolve campaign ruleset for SRL game-system filtering (non-fatal).
             campaign_id = meta.get('campaign_id')
             if campaign_id:
                 try:
@@ -305,22 +384,19 @@ def continue_narrative(payload: ContinueRequest, current_user=Depends(get_curren
         except Exception as err:
             raise HTTPException(status_code=500, detail='Failed to read meta') from err
 
-    # Read recent story entries
     story_file = folder / 'story.json'
     story_text = ''
     try:
         if story_file.exists():
             entries = json.loads(story_file.read_text())
-            # take last few narrative entries
-            last = [e for e in entries if isinstance(e, dict) and e.get('type') in ('narration','scene')]
+            last = [e for e in entries if isinstance(e, dict) and e.get('type') in ('narration', 'scene')]
             last = last[-6:]
             story_text = ' '.join((e.get('text') or '') for e in last).strip()
     except Exception:
         story_text = ''
 
-    # Read NPCs and PCs to surface context
-    pcs = []
-    npcs = []
+    pcs: list = []
+    npcs: list = []
     try:
         pcs_file = folder / 'pcs.json'
         if pcs_file.exists():
@@ -345,9 +421,7 @@ def continue_narrative(payload: ContinueRequest, current_user=Depends(get_curren
     if npc_names:
         scene_desc += f" Notable NPCs: {npc_names}."
 
-    # Attempt to surface relevant rule passages from ingested reference PDFs.
     try:
-        # Build a compact query from story and characters to find matching pages
         q_parts = []
         if story_text:
             q_parts.append(story_text)
@@ -357,27 +431,20 @@ def continue_narrative(payload: ContinueRequest, current_user=Depends(get_curren
             q_parts.append(npc_names)
         query = " ".join(q_parts).strip()
         if query:
-            hits = search_query(
-                query, top_k=3,
-                system_only=True,
-                game_system=campaign_ruleset or None,
-            )
+            hits = search_query(query, top_k=3, system_only=True, game_system=campaign_ruleset or None)
             if hits:
                 scene_desc += "\nRelevant rule passages: "
                 snippets = []
                 for h in hits:
-                    # safe access
                     src = h.get("source_id") or "unknown"
                     page = h.get("page")
                     snip = h.get("snippet") or ""
                     snippets.append(f"[{src} p{page}] {snip}")
                 scene_desc += " | ".join(snippets)
     except Exception:
-        # Non-fatal: if references fail, continue without them
         pass
 
     player = payload.player or 'the party'
-    # Reuse generate_narrative logic to produce a short scene and prompt
     req = NarrativeRequest(scene=scene_desc, player=player)
     return generate_narrative(req)
 
@@ -389,17 +456,13 @@ class RegenerateRequest(BaseModel):
 
 @router.post("/narrative/regenerate", response_model=NarrativeResponse)
 def regenerate_narrative(payload: RegenerateRequest, current_user=Depends(get_current_user)):
-    """Regenerate the current scene from scratch, ignoring recent story history.
-
-    Useful when a player wants a fresh take on the current situation.
-    """
+    """Regenerate the current scene from scratch, ignoring recent story history."""
     session_id = payload.session_id
     base = Path(__file__).resolve().parents[1] / 'sessions'
     folder = base / session_id
     if not folder.exists() or not folder.is_dir():
         raise HTTPException(status_code=404, detail='Session not found')
 
-    # Ensure caller is a session member.
     meta_file = folder / 'meta.json'
     if meta_file.exists():
         try:
@@ -412,9 +475,8 @@ def regenerate_narrative(payload: RegenerateRequest, current_user=Depends(get_cu
         except Exception as err:
             raise HTTPException(status_code=500, detail='Failed to read meta') from err
 
-    # Read PCs/NPCs for context but skip story history (fresh scene)
-    pcs = []
-    npcs = []
+    pcs: list = []
+    npcs: list = []
     try:
         pcs_file = folder / 'pcs.json'
         if pcs_file.exists():

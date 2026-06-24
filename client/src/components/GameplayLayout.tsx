@@ -127,6 +127,7 @@ export default function GameplayLayout({
   const [showContextDebug, setShowContextDebug] = useState(false)
   const [storyDebug, setStoryDebug] = useState<StoryDashboardData | null>(null)
   const [showStoryDash, setShowStoryDash] = useState(false)
+  const [sceneQuality, setSceneQuality] = useState<{score: number; passed: boolean; detail: any} | null>(null)
 
   // Session round-flow state
   const [phase, setPhase] = useState<'player_turn' | 'advancing'>('player_turn')
@@ -379,6 +380,13 @@ export default function GameplayLayout({
       }
       if (data?.context_debug) setContextDebug(data.context_debug)
       if (data?.story_debug) setStoryDebug(data.story_debug)
+      if (data?.scene_debug?.scene_score !== undefined) {
+        setSceneQuality({
+          score: data.scene_debug.scene_score,
+          passed: data.scene_debug.scene_score_passed,
+          detail: data.scene_debug.scene_score_detail,
+        })
+      }
     } catch (err: any) {
       alert(err?.message || 'Failed to advance scene')
     } finally {
@@ -996,14 +1004,42 @@ export default function GameplayLayout({
                   </>
                 )}
               </div>
-              {isAdmin && (
+              {/* Ready button lives here — far from the chat send button */}
+              {sessionId && (
+                <button
+                  className={`btn btn-sm session-ready-btn ${playerReady || phase === 'advancing' ? 'session-ready-btn--done' : 'btn-gold'}`}
+                  disabled={playerReady || phase === 'advancing'}
+                  type="button"
+                  onClick={async () => {
+                    if (!sessionId || playerReady || phase === 'advancing') return
+                    setPlayerReady(true)
+                    try {
+                      const res = await apiFetch(`/sessions/${sessionId}/player-ready`, {
+                        method: 'POST',
+                        body: JSON.stringify({ done: true }),
+                      })
+                      if (!res.ok) throw new Error('Ready signal failed')
+                      const data = await res.json()
+                      if (data?.all_ready) await doAdvanceScene()
+                    } catch {
+                      setPlayerReady(false)
+                    }
+                  }}
+                >
+                  {phase === 'advancing'
+                    ? '⏳ Generating…'
+                    : playerReady
+                    ? '✓ Ready'
+                    : "I'm Ready"}
+                </button>
+              )}
+              {isAdmin && !playerReady && phase !== 'advancing' && (
                 <button
                   className="btn btn-secondary btn-sm"
                   type="button"
-                  disabled={phase === 'advancing'}
                   onClick={doAdvanceScene}
                 >
-                  {phase === 'advancing' ? 'Generating…' : 'Advance Scene'}
+                  Force Advance
                 </button>
               )}
             </div>
@@ -1047,42 +1083,6 @@ export default function GameplayLayout({
                   </section>
                 )}
 
-                {/* Ready banner — clearly separated from chat, full-width below */}
-                {sessionId && (
-                  <div className={`ready-banner ${playerReady ? 'ready-banner--waiting' : ''} ${phase === 'advancing' ? 'ready-banner--hidden' : ''}`}
-                    aria-label="Player ready status"
-                  >
-                    <span className="ready-banner-text">
-                      {playerReady
-                        ? '⏳ Waiting for other players…'
-                        : 'When you\'ve entered all your actions above — '}
-                    </span>
-                    <button
-                      className={`btn ready-banner-btn ${playerReady ? 'btn-secondary' : 'btn-gold'}`}
-                      disabled={playerReady || phase === 'advancing'}
-                      type="button"
-                      onClick={async () => {
-                        if (!sessionId || playerReady || phase === 'advancing') return
-                        setPlayerReady(true)
-                        try {
-                          const res = await apiFetch(`/sessions/${sessionId}/player-ready`, {
-                            method: 'POST',
-                            body: JSON.stringify({ done: true }),
-                          })
-                          if (!res.ok) throw new Error('Ready signal failed')
-                          const data = await res.json()
-                          if (data?.all_ready) {
-                            await doAdvanceScene()
-                          }
-                        } catch {
-                          setPlayerReady(false)
-                        }
-                      }}
-                    >
-                      {playerReady ? 'Ready ✓' : "I'm Ready — Advance Story"}
-                    </button>
-                  </div>
-                )}
               </div>
             </section>
           </div>
@@ -1173,6 +1173,16 @@ export default function GameplayLayout({
           </aside>
         </section>
       </main>
+
+      {/* Narrative score chip — dev mode only */}
+      {process.env.NODE_ENV === 'development' && sceneQuality ? (
+        <div
+          className={`scene-score-chip ${sceneQuality.passed ? 'scene-score-chip--pass' : 'scene-score-chip--fail'}`}
+          title={sceneQuality.detail?.failed_checks?.join('\n') || ''}
+        >
+          {sceneQuality.passed ? '✓' : '✗'} {sceneQuality.score}
+        </div>
+      ) : null}
 
       {/* Context Debug Panel — dev mode only */}
       {process.env.NODE_ENV === 'development' && contextDebug ? (

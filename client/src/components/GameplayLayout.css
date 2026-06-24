@@ -53,8 +53,29 @@
 
 .session-banner-row{
   display: flex;
-  align-items: flex-start;
-  gap: 14px;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Ready button in the session banner — clear of the chat area */
+.session-ready-btn {
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 7px 14px;
+  white-space: nowrap;
+}
+
+.session-ready-btn--done {
+  background: rgba(108,112,134,0.15);
+  color: var(--tt-muted, #6c7086);
+  border: 1px solid rgba(108,112,134,0.25);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 14px;
+  cursor: default;
 }
 
 .drawer-toggle-inline{
@@ -685,6 +706,22 @@
     font-size: 0.8rem;
   }
 }
+
+/* ── Narrative score chip (dev mode) ─────────────────────────────────── */
+.scene-score-chip {
+  position: fixed;
+  bottom: 12px;
+  left: 12px;
+  z-index: 999;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: monospace;
+  pointer-events: none;
+}
+.scene-score-chip--pass { background: rgba(166,227,161,0.18); color: #a6e3a1; border: 1px solid #a6e3a1; }
+.scene-score-chip--fail { background: rgba(243,139,168,0.18); color: #f38ba8; border: 1px solid #f38ba8; }
 
 /* ── Context Debug Trigger (imported in ContextDebugPanel.css but placed here for layout) */
 /* The button is defined in ContextDebugPanel.css */
