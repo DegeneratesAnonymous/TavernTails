@@ -998,6 +998,11 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         'text': f"{narrative.narrative}\n\n{narrative.prompt}",
         'choices': choices,
         'hooks': plot_result.hooks,
+        'location': loc_name,
+        'weather': weather,
+        'time_of_day': time_of_day,
+        'immediate_stakes': director_output.immediate_stakes or '',
+        'active_threads': director_output.threads_to_advance or [],
     }
     (folder / 'scene.json').write_text(json.dumps(scene))
 

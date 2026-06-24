@@ -433,13 +433,190 @@
 /* Scene area for image and narration overlay */
 .scene-area {
   flex: 1 1 auto;
-  position: relative;
-  padding: 8px;
-  box-sizing: border-box;
   min-height: 0;
-  overflow: hidden;
+  /* Scrollable — narrative card can be taller than viewport */
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding: 8px 8px 0;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
+}
+
+/* ── Situation Strip ──────────────────────────────────────────────────── */
+.situation-strip {
+  background: color-mix(in srgb, var(--tt-surface, #0d0d14) 95%, var(--tt-gold, #f5c842) 5%);
+  border: 1px solid var(--tt-border);
+  border-top: none;
+  border-radius: 0 0 12px 12px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.situation-strip-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: none;
+  border: none;
+  color: var(--tt-muted, #6c7086);
+  cursor: pointer;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+  border-top: 1px solid var(--tt-border);
+}
+
+.situation-strip-toggle:hover {
+  color: var(--tt-text, #cdd6f4);
+}
+
+.situation-strip-title {
+  flex: 1;
+  text-align: left;
+}
+
+.situation-strip-chevron {
+  font-size: 9px;
+  opacity: 0.5;
+}
+
+.situation-strip-body {
+  padding: 8px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.situation-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px 16px;
+}
+
+.situation-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.situation-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--tt-muted, #6c7086);
+}
+
+.situation-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tt-text, #cdd6f4);
+  text-transform: capitalize;
+}
+
+.situation-value--threat {
+  color: #f38ba8;
+}
+
+.situation-stakes {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-top: 6px;
+  border-top: 1px solid var(--tt-border);
+}
+
+.situation-stakes-text {
+  font-size: 12px;
+  color: rgba(245,200,66,0.75);
+  font-style: italic;
+  line-height: 1.45;
+}
+
+.situation-threads {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.situation-thread-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.situation-thread-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--tt-text, #cdd6f4);
+}
+
+.situation-thread-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--tt-gold, #f5c842);
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+/* ── Session banner context row ───────────────────────────────────────── */
+.session-banner-context {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-wrap: wrap;
+}
+
+.sbc-item {
+  font-size: 11px;
+  color: var(--tt-muted, #6c7086);
+  font-weight: 500;
+}
+
+.sbc-item::before {
+  content: ' · ';
+  opacity: 0.5;
+}
+
+.sbc-item:first-child::before {
+  content: '';
+}
+
+.sbc-status {
+  color: #a6e3a1;
+  font-weight: 700;
+}
+
+.sbc-location {
+  color: var(--tt-gold, #f5c842);
+  opacity: 0.85;
+}
+
+/* ── Player action prompt label ───────────────────────────────────────── */
+.player-action-prompt {
+  padding: 9px 16px 6px;
+  border-bottom: 1px solid var(--tt-border, #1e1e2e);
+  flex-shrink: 0;
+}
+
+.player-action-prompt-text {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tt-gold, #f5c842);
+  opacity: 0.75;
 }
 
 .scene-image-area {

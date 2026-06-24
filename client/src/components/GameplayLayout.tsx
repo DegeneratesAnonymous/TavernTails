@@ -129,6 +129,18 @@ export default function GameplayLayout({
   const [showStoryDash, setShowStoryDash] = useState(false)
   const [sceneQuality, setSceneQuality] = useState<{score: number; passed: boolean; detail: any} | null>(null)
 
+  // Live situation context (populated from scene data)
+  const [situation, setSituation] = useState<{
+    location?: string
+    weather?: string
+    timeOfDay?: string
+    mood?: string
+    threat?: string
+    threads?: string[]
+    stakes?: string
+  }>({})
+  const [situationOpen, setSituationOpen] = useState(true)
+
   // Session round-flow state
   const [phase, setPhase] = useState<'player_turn' | 'advancing'>('player_turn')
   const [phaseLabel, setPhaseLabel] = useState('')
@@ -419,6 +431,29 @@ export default function GameplayLayout({
     }
     await res.json().catch(()=>null)
   },[sessionId])
+
+  // Sync situation data from scene-meta events emitted by NarrativeView
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const s = (event as CustomEvent).detail as any
+      if (!s) return
+      setSituation({
+        location: s.visual_state?.location_name || s.location || '',
+        weather: s.weather || '',
+        timeOfDay: s.time_of_day || '',
+        mood: s.visual_state?.mood || '',
+        threat: s.visual_state?.threat_level || '',
+        threads: Array.isArray(s.active_threads) ? s.active_threads : [],
+        stakes: s.immediate_stakes || '',
+      })
+    }
+    // @ts-ignore
+    window.addEventListener('narrative:scene-meta', handler)
+    return () => {
+      // @ts-ignore
+      window.removeEventListener('narrative:scene-meta', handler)
+    }
+  }, [])
 
   useEffect(()=>{
     const handler = (event: Event)=>{
@@ -892,7 +927,20 @@ export default function GameplayLayout({
             <div style={{ minWidth: 0 }}>
               <div className="session-banner-title">{activeCampaign?.name || activeBanner?.title}</div>
               <div className="session-banner-subtitle">
-                {sessionStarted ? 'In play' : 'Not started yet'}
+                {sessionStarted ? (
+                  <span className="session-banner-context">
+                    <span className="sbc-item sbc-status">In Play</span>
+                    {situation.timeOfDay ? (
+                      <span className="sbc-item">{situation.timeOfDay.charAt(0).toUpperCase() + situation.timeOfDay.slice(1)}</span>
+                    ) : null}
+                    {situation.weather ? (
+                      <span className="sbc-item">{situation.weather}</span>
+                    ) : null}
+                    {situation.location ? (
+                      <span className="sbc-item sbc-location">⬡ {situation.location}</span>
+                    ) : null}
+                  </span>
+                ) : 'Not started yet'}
               </div>
             </div>
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -1061,13 +1109,94 @@ export default function GameplayLayout({
                   </div>
                 )}
 
+                {/* Scrollable narrative + situation area */}
                 <section className="scene-area" aria-label="Scene view">
                   <NarrativeView sessionId={sessionId} />
+
+                  {/* Situation strip — current context at a glance */}
+                  {(situation.location || situation.mood || (situation.threads && situation.threads.length > 0)) && (
+                    <div className="situation-strip">
+                      <button
+                        className="situation-strip-toggle"
+                        type="button"
+                        onClick={() => setSituationOpen(v => !v)}
+                        aria-expanded={situationOpen}
+                      >
+                        <span className="situation-strip-title">Current Situation</span>
+                        <span className="situation-strip-chevron">{situationOpen ? '▲' : '▼'}</span>
+                      </button>
+
+                      {situationOpen && (
+                        <div className="situation-strip-body">
+                          <div className="situation-grid">
+                            {situation.location ? (
+                              <div className="situation-item">
+                                <span className="situation-label">Location</span>
+                                <span className="situation-value">{situation.location}</span>
+                              </div>
+                            ) : null}
+                            {situation.timeOfDay ? (
+                              <div className="situation-item">
+                                <span className="situation-label">Time</span>
+                                <span className="situation-value">{situation.timeOfDay.charAt(0).toUpperCase() + situation.timeOfDay.slice(1)}</span>
+                              </div>
+                            ) : null}
+                            {situation.weather ? (
+                              <div className="situation-item">
+                                <span className="situation-label">Weather</span>
+                                <span className="situation-value">{situation.weather}</span>
+                              </div>
+                            ) : null}
+                            {situation.mood ? (
+                              <div className="situation-item">
+                                <span className="situation-label">Mood</span>
+                                <span className="situation-value">{situation.mood}</span>
+                              </div>
+                            ) : null}
+                            {situation.threat ? (
+                              <div className="situation-item">
+                                <span className="situation-label">Threat</span>
+                                <span className="situation-value situation-value--threat">{situation.threat}</span>
+                              </div>
+                            ) : null}
+                          </div>
+                          {situation.stakes ? (
+                            <div className="situation-stakes">
+                              <span className="situation-label">Stakes</span>
+                              <span className="situation-stakes-text">{situation.stakes}</span>
+                            </div>
+                          ) : null}
+                          {situation.threads && situation.threads.length > 0 ? (
+                            <div className="situation-threads">
+                              <span className="situation-label">Active Threads</span>
+                              <ul className="situation-thread-list">
+                                {situation.threads.slice(0, 5).map((t, i) => (
+                                  <li key={i} className="situation-thread-item">
+                                    <span className="situation-thread-dot" />
+                                    {t}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </section>
 
                 {/* Chat dock — player message input */}
                 {sessionId && (
                   <section className="player-action-area" aria-label="Player actions">
+                    {/* Action prompt label */}
+                    <div className="player-action-prompt">
+                      <span className="player-action-prompt-text">
+                        {playerStats?.name
+                          ? `What does ${playerStats.name} do?`
+                          : 'What do you do?'}
+                      </span>
+                    </div>
+
                     {diceRolls.length > 0 && (
                       <div className="dice-rolls-bar" aria-label="Pending dice rolls">
                         <span className="dice-rolls-label">Dice rolls this round:</span>
