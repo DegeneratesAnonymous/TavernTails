@@ -87,7 +87,9 @@ def _steward_generate(prompt: str, style: str, session_id: str | None) -> str | 
     if not steward_host:
         return None
     try:
-        import httpx, base64
+        import base64
+
+        import httpx
         portrait = style in ('portrait', 'vertical')
         width, height = (512, 832) if portrait else (832, 512)
         r = httpx.post(
@@ -216,9 +218,10 @@ def clear_gallery(session_id: str, current_user=Depends(get_current_user)) -> No
 
 
 @router.get("/api/image-file/{session_id}/{filename}")
-def serve_image_file(session_id: str, filename: str) -> "Response":
+def serve_image_file(session_id: str, filename: str) -> Response:
     """Serve a locally generated scene image (produced by Steward's ComfyUI)."""
-    from fastapi.responses import FileResponse, Response as FResponse
+    from fastapi.responses import FileResponse
+    from fastapi.responses import Response as FResponse
     safe_session = session_id.replace("..", "").replace("/", "")
     safe_file = filename.replace("..", "").replace("/", "")
     img_path = _BASE / safe_session / "scene_images" / safe_file
