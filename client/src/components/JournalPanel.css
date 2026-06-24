@@ -201,3 +201,22 @@
   opacity: 0.4;
   cursor: default;
 }
+
+/* ── Mobile ≤600px ─────────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .jrnl-composer-input {
+    font-size: 14px; /* prevents iOS auto-zoom */
+    min-height: 48px;
+  }
+
+  .jrnl-composer-btn {
+    min-height: 44px;
+    height: auto;
+    padding: 10px 16px;
+    font-size: 13px;
+  }
+
+  .jrnl-entry-text {
+    font-size: 13px;
+  }
+}

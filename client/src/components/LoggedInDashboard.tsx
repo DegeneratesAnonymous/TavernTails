@@ -326,6 +326,9 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
         ? { successes: toNum(rawDs.successes) ?? 0, failures: toNum(rawDs.failures) ?? 0 }
         : { successes: 0, failures: 0 }
       const spellSlots = (sheet?.spell_slots && typeof sheet.spell_slots === 'object') ? sheet.spell_slots : undefined
+      const preparedOverrides = (sheet?.prepared_spell_overrides && typeof sheet.prepared_spell_overrides === 'object' && !Array.isArray(sheet.prepared_spell_overrides))
+        ? sheet.prepared_spell_overrides as Record<string, boolean>
+        : undefined
 
       return {
         id: String(c?.id ?? ''),
@@ -356,6 +359,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
         exhaustion,
         deathSaves,
         spellSlots,
+        preparedOverrides,
       }
     }).filter((c: any) => Boolean(c?.id))
   }, [characters])
@@ -1098,16 +1102,20 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
 
       if (playerRunMode) return
 
-      // Fire bootstrap in the background — errors are non-fatal.
-      apiFetch(`/sessions/${sessionId}/bootstrap`, {
+      // Fire full session start in the background — LLM pipeline runs here (10–60 s).
+      // The scene arrives via WebSocket (narrative.scene); the HTTP response is a fallback.
+      apiFetch(`/sessions/${sessionId}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
       }).then(async (boot) => {
         if (!boot.ok) return
         const bootData = await boot.json().catch(() => ({} as any))
-        if (bootData?.scene) {
+        if (bootData?.scene && typeof bootData.scene === 'object') {
           window.dispatchEvent(new CustomEvent('narrative:scene', { detail: { scene: bootData.scene } }))
+        }
+        if (bootData?.context_debug) {
+          window.dispatchEvent(new CustomEvent('context:debug', { detail: bootData.context_debug }))
         }
       }).catch(() => {/* silent — WS will deliver the scene */})
     } catch (e: any) {

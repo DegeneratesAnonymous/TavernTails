@@ -565,3 +565,125 @@
     max-height: 52vh;
   }
 }
+
+/* ── Mobile ≤600px ─────────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .gameplay-body {
+    padding: 4px 4px 6px;
+    gap: 6px;
+  }
+
+  /* Session panel shorter on phones to leave room for narrative */
+  .session-panel {
+    height: clamp(240px, 38vh, 380px);
+  }
+
+  /* Larger tap targets for all toggle/tab buttons */
+  .drawer-toggle,
+  .drawer-toggle-inline {
+    min-height: 44px;
+    padding: 10px 16px;
+  }
+
+  .session-panel-tab {
+    min-height: 44px;
+    padding: 10px 6px;
+    font-size: 0.82rem;
+  }
+
+  /* Suggestion pills: easier to tap */
+  .suggestion-pill {
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: 0.88rem;
+    line-height: 1.2;
+  }
+
+  /* Narration card: narrower viewport, give it more width */
+  .narration-card {
+    max-width: 90%;
+    padding: 12px 14px;
+    margin-top: 3%;
+    font-size: 0.92rem;
+  }
+
+  .narrative-choice-btn {
+    min-height: 44px;
+    padding: 10px 14px;
+  }
+
+  /* Bottom row: stack vertically on phones */
+  .bottom-row {
+    flex-direction: column;
+    height: auto;
+    min-height: 0;
+  }
+
+  .chat-area {
+    flex: 1 1 auto;
+    min-height: 200px;
+  }
+
+  .chars-area {
+    width: 100%;
+    max-width: 100%;
+    border-left: none;
+    border-top: 1px solid rgba(255,255,255,0.04);
+    max-height: 40vh;
+  }
+
+  /* Site menu panel: full-width on phones */
+  .site-panel {
+    width: min(95vw, 340px);
+  }
+
+  /* Session banner: tighter on phones */
+  .session-banner {
+    padding: 10px 12px;
+  }
+  .session-banner-title {
+    font-size: 1.05rem;
+  }
+
+  /* Suggestions bar: tighter padding */
+  .suggestions-bar {
+    padding: 6px 10px;
+    gap: 8px;
+  }
+  .suggestions-label {
+    display: none; /* hide "SUGGESTIONS" label on narrow screens */
+  }
+}
+
+/* ── Mobile ≤430px (portrait phone) ───────────────────────────────────── */
+@media (max-width: 430px) {
+  .gameplay-body {
+    padding: 2px 2px 4px;
+    gap: 4px;
+  }
+
+  .session-panel {
+    height: clamp(200px, 34vh, 320px);
+  }
+
+  .session-panel-tab {
+    font-size: 0.78rem;
+    padding: 8px 4px;
+  }
+
+  .suggestion-pill {
+    font-size: 0.82rem;
+    padding: 8px 12px;
+  }
+
+  .session-banner-title {
+    font-size: 0.95rem;
+  }
+
+  .session-banner-subtitle {
+    font-size: 0.8rem;
+  }
+}
+
+/* ── Context Debug Trigger (imported in ContextDebugPanel.css but placed here for layout) */
+/* The button is defined in ContextDebugPanel.css */

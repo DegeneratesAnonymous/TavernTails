@@ -5,6 +5,8 @@ import Chat from './Chat'
 import CharacterPanel, {CharacterSummary, SceneCue} from './CharacterPanel'
 import DocumentsPanel from './DocumentsPanel'
 import JournalPanel from './JournalPanel'
+import WorldPanel from './WorldPanel'
+import ContextDebugPanel from './ContextDebugPanel'
 import { apiFetch, buildWsUrl } from '../api'
 import SiteMenu from './SiteMenu'
 import SiteNavMenu from './SiteNavMenu'
@@ -90,7 +92,7 @@ export default function GameplayLayout({
   const openDrawer = () => setDrawerOpen(true)
   const closeDrawer = () => setDrawerOpen(false)
 
-  const [rightTab, setRightTab] = useState<'chat' | 'character' | 'journal'>('chat')
+  const [rightTab, setRightTab] = useState<'chat' | 'character' | 'journal' | 'world'>('chat')
   const [drawerView, setDrawerView] = useState<'site' | 'panels' | 'party' | 'documents'>('panels')
   const [partySelectedId, setPartySelectedId] = useState<string | null>(null)
   const [showInviteForm, setShowInviteForm] = useState(false)
@@ -107,6 +109,13 @@ export default function GameplayLayout({
   const handleSheetUpdate = useCallback((_characterId: string, _patch: Record<string, any>) => {
     onRefreshRoster?.()
   }, [onRefreshRoster])
+
+  const [composerInject, setComposerInject] = useState<string | null>(null)
+  const handleQuickAction = useCallback((action: {type: string; detail?: string}) => {
+    if (!action.detail) return
+    const tag = '@' + action.detail.replace(/\s+/g, '_') + ' '
+    setComposerInject(tag)
+  }, [])
   const [sessionStarted, setSessionStarted] = useState(false)
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false)
   const [campaignTitle, setCampaignTitle] = useState('Current Campaign')
@@ -116,6 +125,20 @@ export default function GameplayLayout({
   const [remoteRoll, setRemoteRoll] = useState<{by?: string | null; total?: number | null; expression?: string | null} | null>(null)
   const [sceneCues, setSceneCues] = useState<SceneCue[]>([])
   const [npcSpotlight, setNpcSpotlight] = useState<Array<{name: string; initiative_hint?: string}>>([])
+  const [contextDebug, setContextDebug] = useState<any | null>(null)
+  const [showContextDebug, setShowContextDebug] = useState(false)
+
+  useEffect(()=>{
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent).detail
+      if(detail) setContextDebug(detail)
+    }
+    // @ts-ignore
+    window.addEventListener('context:debug', handler)
+    return () => { // @ts-ignore
+      window.removeEventListener('context:debug', handler)
+    }
+  }, [])
   useEffect(()=>{
     if(!waitingOverride) return
     const ms = Math.max(0, waitingOverride.expiresAt - Date.now())
@@ -893,7 +916,22 @@ export default function GameplayLayout({
                             if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d?.detail || 'Failed') }
                             const data = await res.json()
                             if (data?.narrative) {
-                              window.dispatchEvent(new CustomEvent('narrative:scene', { detail: { scene: data.narrative } }))
+                              window.dispatchEvent(new CustomEvent('narrative:scene', {
+                                detail: {
+                                  scene: {
+                                    id: `regen-${Date.now()}`,
+                                    title: 'Regenerated Scene',
+                                    text: `${data.narrative}\n\n${data.prompt || ''}`.trim(),
+                                    image: null,
+                                    choices: [
+                                      { id: 'investigate', label: 'Investigate the most immediate clue' },
+                                      { id: 'talk',        label: 'Talk to someone nearby' },
+                                      { id: 'press_on',   label: 'Press on toward the obvious destination' },
+                                      { id: 'plan',        label: 'Huddle and make a plan' },
+                                    ],
+                                  }
+                                }
+                              }))
                             }
                           } catch (err: any) { alert(err?.message || 'Failed to regenerate scene') }
                         }}
@@ -907,13 +945,15 @@ export default function GameplayLayout({
               <button className="btn btn-primary btn-sm" type="button" onClick={async ()=>{
                 if(!sessionId) return alert('No active session')
                 try{
-                  const res = await apiFetch('/narrative/continue', { method: 'POST', body: JSON.stringify({ session_id: sessionId }) })
+                  const res = await apiFetch(`/sessions/${sessionId}/advance-scene`, { method: 'POST', body: JSON.stringify({}) })
                   if(!res.ok){ const d = await res.json().catch(()=>({})); throw new Error(d?.detail||'Failed') }
                   const data = await res.json()
-                  // Dispatch scene update to NarrativeView
-                  window.dispatchEvent(new CustomEvent('narrative:scene',{ detail: { scene: data.narrative } }))
-                  // Optionally open the chat with the prompt
-                  window.dispatchEvent(new CustomEvent('narrative:suggestions',{ detail: { suggestions: [data.prompt] } }))
+                  if(data?.scene && typeof data.scene === 'object'){
+                    window.dispatchEvent(new CustomEvent('narrative:scene',{ detail: { scene: data.scene } }))
+                  }
+                  if(data?.context_debug){
+                    setContextDebug(data.context_debug)
+                  }
                 }catch(err:any){ alert(err?.message || 'Failed to continue scene') }
               }}>Continue</button>
             </div>
@@ -960,6 +1000,15 @@ export default function GameplayLayout({
               >
                 Journal
               </button>
+              <button
+                type="button"
+                role="tab"
+                className={rightTab === 'world' ? 'session-panel-tab active' : 'session-panel-tab'}
+                aria-selected={rightTab === 'world'}
+                onClick={() => setRightTab('world')}
+              >
+                World
+              </button>
             </div>
 
             <div className="session-panel-body" role="tabpanel">
@@ -968,6 +1017,9 @@ export default function GameplayLayout({
                   <Chat
                     sessionId={sessionId || undefined}
                     variant="dock"
+                    composerInject={composerInject}
+                    onComposerInjectConsumed={() => setComposerInject(null)}
+                    character={playerStats ?? null}
                   />
                 </div>
               ) : null}
@@ -1008,6 +1060,8 @@ export default function GameplayLayout({
                       onGoToCharacters={onGoToCharacters}
                       onGoToImport={onGoToImport}
                       onSheetUpdate={handleSheetUpdate}
+                      onQuickAction={handleQuickAction}
+                      sessionId={sessionId || null}
                     />
                   </div>
                 </div>
@@ -1016,10 +1070,33 @@ export default function GameplayLayout({
               {rightTab === 'journal' ? (
                 <JournalPanel sessionId={sessionId || null} />
               ) : null}
+
+              {rightTab === 'world' ? (
+                <WorldPanel campaignId={activeCampaignId} />
+              ) : null}
             </div>
           </aside>
         </section>
       </main>
+
+      {/* Context Debug Panel — dev mode only */}
+      {process.env.NODE_ENV === 'development' && contextDebug ? (
+        <>
+          <button
+            className="context-debug-trigger"
+            title="Context Debug"
+            onClick={() => setShowContextDebug(v => !v)}
+          >
+            {showContextDebug ? '✕' : '🔍'}
+          </button>
+          {showContextDebug ? (
+            <ContextDebugPanel
+              data={contextDebug}
+              onClose={() => setShowContextDebug(false)}
+            />
+          ) : null}
+        </>
+      ) : null}
     </div>
   )
 }

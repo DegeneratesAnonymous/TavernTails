@@ -4,6 +4,11 @@
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+try:
+    from ..steward_llm import chat_complete as _chat_complete
+except Exception:
+    _chat_complete = None  # type: ignore
+
 router = APIRouter(tags=["storyboard"])
 
 
@@ -63,21 +68,39 @@ class StoryboardPlotRequest(BaseModel):
 
 
 class StoryboardPlotResponse(BaseModel):
-    """Structured story plot produced for the Narrative Agent (New Session Workflow, Step 1 output)."""
+    """Raw campaign material produced for the Scene Director (New Session Workflow, Step 1 output)."""
 
-    plot: str = Field(..., description="High-level story plot description for the opening scene")
-    hooks: list[str] = Field(default_factory=list, description="Active story hooks/threads to weave into the scene")
-    npcs_mentioned: list[str] = Field(default_factory=list, description="NPC names referenced in the plot")
+    plot: str = Field(..., description="Evocative plot seed — passed to Scene Director as context")
+    hooks: list[str] = Field(default_factory=list, description="Active story hooks from campaign docs/memory")
+    npcs_mentioned: list[str] = Field(default_factory=list, description="NPC names extracted from docs/factions")
+
+    # Structured candidate lists for the Scene Director
+    candidate_story_threads: list[str] = Field(default_factory=list, description="Unresolved threads / quests from docs")
+    candidate_npcs: list[str] = Field(default_factory=list, description="Alias for npcs_mentioned — for Scene Director")
+    candidate_locations: list[str] = Field(default_factory=list, description="Named locations extracted from docs/settings")
+    candidate_factions: list[str] = Field(default_factory=list, description="Faction names from campaign variables")
+    recent_events: list[str] = Field(default_factory=list, description="Recent-event lines from campaign docs")
+    open_hooks: list[str] = Field(default_factory=list, description="Player-facing hooks (not yet resolved)")
+    recommended_scene_purpose: str = Field(
+        default="opening",
+        description="Suggested scene type: opening | consequence | discovery | social | travel",
+    )
 
 
 _DEFAULT_HOOKS = [
-    "A mysterious threat looms on the horizon.",
-    "An old acquaintance appears with an urgent request.",
-    "Strange omens hint at danger ahead.",
+    "The road ahead is quiet — too quiet for a busy trade route.",
+    "Smoke rises from a direction it shouldn't.",
+    "A sealed letter arrived last night, addressed to no one.",
 ]
 
-_MIN_HOOK_LENGTH = 10   # Discard lines shorter than this — they're likely headings or noise.
-_MAX_HOOK_LENGTH = 120  # Truncate hooks at this length so they fit cleanly in prompt context.
+_MIN_HOOK_LENGTH = 10
+_MAX_HOOK_LENGTH = 120
+
+# Doc-line prefixes that mark candidate entities
+_NPC_PREFIXES = ("npc:", "enemy:", "villain:", "ally:", "contact:", "boss:", "patron:")
+_LOCATION_PREFIXES = ("location:", "place:", "town:", "city:", "village:", "dungeon:", "inn:", "keep:", "fortress:", "region:")
+_THREAD_PREFIXES = ("thread:", "quest:", "hook:", "mission:", "task:", "objective:", "conflict:", "problem:")
+_EVENT_PREFIXES = ("event:", "recent:", "news:", "rumor:", "rumour:", "happening:", "incident:")
 
 
 def _extract_hooks_from_docs(docs: list[str]) -> list[str]:
@@ -88,8 +111,23 @@ def _extract_hooks_from_docs(docs: list[str]) -> list[str]:
             stripped = line.strip(" -#*\t")
             if len(stripped) > _MIN_HOOK_LENGTH and not stripped.lower().startswith(("use this", "(ai gm", "session notes")):
                 hooks.append(stripped[:_MAX_HOOK_LENGTH])
-                break  # one hook per document
+                break
     return hooks
+
+
+def _extract_prefixed(docs: list[str], prefixes: tuple[str, ...]) -> list[str]:
+    """Extract values after labelled prefixes (e.g. 'NPC: Elira Voss') from docs."""
+    found: list[str] = []
+    for doc in docs:
+        for line in doc.splitlines():
+            lower = line.lower().strip()
+            for prefix in prefixes:
+                if lower.startswith(prefix):
+                    value = line[len(prefix):].split(",")[0].split(".")[0].strip()
+                    if value and value not in found:
+                        found.append(value)
+                    break
+    return found
 
 
 @router.post("/storyboard/generate", response_model=StoryboardPlotResponse)
@@ -110,15 +148,15 @@ def generate_plot(payload: StoryboardPlotRequest) -> StoryboardPlotResponse:
     """
     # -- Campaign settings (genre, tone, setting) --
     genre = str(payload.campaign_settings.get("genre") or "fantasy").strip() or "fantasy"
-    # tone from settings; fall back to narrative_style from variables
     tone = (
         str(payload.campaign_settings.get("tone") or "").strip()
         or str(payload.campaign_variables.get("narrative_style") or "balanced").strip()
         or "balanced"
     )
-    setting = (
-        str(payload.campaign_settings.get("setting_summary") or payload.campaign_settings.get("setting") or "").strip()
-    )
+    setting = str(
+        payload.campaign_settings.get("setting_summary")
+        or payload.campaign_settings.get("setting") or ""
+    ).strip()
     world_name = str(payload.campaign_settings.get("world_name") or "").strip()
 
     # -- Campaign variables (themes, factions) --
@@ -131,51 +169,115 @@ def generate_plot(payload: StoryboardPlotRequest) -> StoryboardPlotResponse:
 
     player_list = ", ".join(p for p in payload.players if p) if payload.players else "the party"
 
+    # -- Extract structured candidates from docs --
     doc_hooks = _extract_hooks_from_docs(payload.campaign_docs)
-    hooks: list[str] = []
+    candidate_locations = _extract_prefixed(payload.campaign_docs, _LOCATION_PREFIXES)
+    candidate_npcs_from_docs = _extract_prefixed(payload.campaign_docs, _NPC_PREFIXES)
+    candidate_threads = _extract_prefixed(payload.campaign_docs, _THREAD_PREFIXES)
+    recent_events = _extract_prefixed(payload.campaign_docs, _EVENT_PREFIXES)
 
-    # Themes from campaign variables become the first-class hooks.
-    if themes:
-        hooks.extend(themes[:3])
-    # Supplement with doc-extracted hooks.
-    for h in doc_hooks:
-        if h not in hooks:
-            hooks.append(h)
-    if not hooks:
-        hooks = list(_DEFAULT_HOOKS[:2])
-
-    # Build a succinct plot seed from available context.
-    location_hint = f" in {world_name or setting}" if (world_name or setting) else ""
-    pacing_hint = f" ({pacing} pacing)" if pacing and pacing != "moderate" else ""
-    plot_parts = [f"A {tone} {genre} adventure{location_hint}{pacing_hint} awaits {player_list}."]
-
-    # Weave active factions into the plot for richness.
-    for faction in factions[:2]:
-        fname = str(faction.get("name") or "").strip()
-        fgoals = [str(g) for g in (faction.get("goals") or []) if g]
-        if fname and fgoals:
-            plot_parts.append(f"The {fname} pursues: {fgoals[0]}.")
-        elif fname:
-            plot_parts.append(f"The {fname} casts a long shadow over events.")
-
-    plot_parts.extend(hooks[:3])
-    plot = " ".join(plot_parts)
-
-    # Extract NPC names: "NPC:" / "Enemy:" / "Villain:" / "Ally:" prefixes in docs,
-    # and faction member names from campaign variables.
-    npcs_mentioned: list[str] = []
-    for doc in payload.campaign_docs:
-        for line in doc.splitlines():
-            lower = line.lower().strip()
-            for prefix in ("npc:", "enemy:", "villain:", "ally:"):
-                if lower.startswith(prefix):
-                    name = line[len(prefix):].split(",")[0].split(".")[0].strip()
-                    if name and name not in npcs_mentioned:
-                        npcs_mentioned.append(name)
-
+    # Faction names from variables
+    faction_names = [str(f.get("name", "")).strip() for f in factions if f.get("name")]
+    # Faction members as NPC candidates
+    npcs_mentioned: list[str] = list(candidate_npcs_from_docs)
     for faction in factions:
         for member in faction.get("members") or []:
             if member and member not in npcs_mentioned:
                 npcs_mentioned.append(member)
 
-    return StoryboardPlotResponse(plot=plot, hooks=hooks, npcs_mentioned=npcs_mentioned)
+    # -- Open hooks: prefer thread / quest lines over generic doc hooks --
+    open_hooks = candidate_threads[:3] or doc_hooks[:3]
+    hooks: list[str] = []
+    if themes:
+        hooks.extend(themes[:3])
+    for h in (candidate_threads or doc_hooks):
+        if h not in hooks:
+            hooks.append(h)
+    if not hooks:
+        hooks = list(_DEFAULT_HOOKS[:2])
+
+    # -- Determine recommended scene purpose --
+    if candidate_threads or open_hooks:
+        recommended_purpose = "consequence" if recent_events else "opening"
+    else:
+        recommended_purpose = "opening"
+
+    # -- Build rule-based plot seed from structured data --
+    # Don't write "A heroic fantasy adventure awaits." — be specific.
+    world_ref = world_name or setting
+    plot_parts: list[str] = []
+    if candidate_threads:
+        plot_parts.append(candidate_threads[0][:200])
+    elif open_hooks:
+        plot_parts.append(open_hooks[0][:200])
+    if factions:
+        fname = factions[0].get("name", "")
+        fgoals = [str(g) for g in (factions[0].get("goals") or []) if g]
+        if fname and fgoals:
+            plot_parts.append(f"The {fname} is moving: {fgoals[0][:80]}.")
+        elif fname:
+            plot_parts.append(f"The {fname} casts a long shadow over events.")
+    if not plot_parts:
+        loc = candidate_locations[0] if candidate_locations else (world_ref or "the region")
+        plot_parts.append(f"In {loc}, something demands the party's immediate attention.")
+    if recent_events:
+        plot_parts.append(recent_events[0][:120])
+    plot = " ".join(plot_parts)
+
+    # -- LLM enrichment: produce a specific, grounded plot seed --
+    if _chat_complete:
+        try:
+            ctx: list[str] = []
+            if world_ref:
+                ctx.append(f"Setting: {world_ref[:150]}")
+            ctx.append(f"Genre/Tone: {genre}, {tone}")
+            ctx.append(f"Player character: {player_list}")
+            if candidate_threads:
+                ctx.append("Active story threads:\n" + "\n".join(f"  • {t}" for t in candidate_threads[:3]))
+            if open_hooks:
+                ctx.append("Open hooks:\n" + "\n".join(f"  • {h}" for h in open_hooks[:3]))
+            if npcs_mentioned:
+                ctx.append(f"Known NPCs: {', '.join(npcs_mentioned[:5])}")
+            if candidate_locations:
+                ctx.append(f"Known locations: {', '.join(candidate_locations[:4])}")
+            if faction_names:
+                ctx.append(f"Factions: {', '.join(faction_names[:3])}")
+            if recent_events:
+                ctx.append(f"Recent events: {'; '.join(recent_events[:2])}")
+
+            llm_sys = (
+                "You are a tabletop RPG campaign architect. Write a SPECIFIC, GROUNDED plot seed "
+                f"(2–3 sentences, max 80 words) for the opening of this {genre} session.\n\n"
+                "Requirements:\n"
+                "  — Name a SPECIFIC location from the context (or invent one that fits)\n"
+                "  — Name a SPECIFIC NPC from the context (or invent one with a real name)\n"
+                "  — Describe what is ACTIVELY HAPPENING right now — a concrete event, not a vague mood\n"
+                "  — Create immediate urgency or tension\n"
+                "  — Do NOT start with 'The party'. Do NOT say 'heroic fantasy adventure' or similar.\n"
+                "  — Do NOT describe the genre or campaign structure\n\n"
+                "Return only the plot text. No JSON, no commentary, no title."
+            )
+            llm_result = _chat_complete(
+                [{"role": "system", "content": llm_sys},
+                 {"role": "user", "content": "\n".join(ctx)}],
+                task_scope="taverntails_plot",
+                max_tokens=200,
+                timeout=90.0,
+            )
+            if llm_result and len(llm_result.strip()) > 20:
+                plot = llm_result.strip()
+        except Exception:
+            pass
+
+    return StoryboardPlotResponse(
+        plot=plot,
+        hooks=hooks,
+        npcs_mentioned=npcs_mentioned,
+        candidate_story_threads=candidate_threads,
+        candidate_npcs=npcs_mentioned,
+        candidate_locations=candidate_locations,
+        candidate_factions=faction_names,
+        recent_events=recent_events,
+        open_hooks=open_hooks,
+        recommended_scene_purpose=recommended_purpose,
+    )

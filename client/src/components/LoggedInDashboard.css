@@ -629,3 +629,45 @@
     padding: 12px;
   }
 }
+
+/* ── Mobile ≤430px (portrait phone) ───────────────────────────────────── */
+@media (max-width: 430px) {
+  .topbar-icon-btn {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 8px 10px;
+  }
+
+  .nav-btn {
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 0.9rem;
+  }
+
+  .account-provider {
+    min-height: 44px;
+    padding: 10px 14px;
+  }
+
+  .home-qa-card {
+    padding: 14px 12px;
+  }
+
+  .dashboard-topbar {
+    padding: 0 8px;
+    min-height: 52px;
+  }
+
+  /* Campaign / session cards: full width, larger tap area */
+  .session-card,
+  .campaign-card {
+    padding: 12px 14px;
+  }
+
+  /* Play Now button: very prominent tap target */
+  .btn-primary {
+    min-height: 48px;
+    font-size: 1rem;
+    padding: 12px 20px;
+  }
+}

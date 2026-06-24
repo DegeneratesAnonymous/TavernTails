@@ -435,6 +435,7 @@
 .chat-composer-wrap {
   flex-shrink: 0;
   margin-top: 8px;
+  position: relative;
 }
 
 .chat-composer-row {
@@ -520,6 +521,116 @@
   opacity: 0.35;
   cursor: default;
 }
+
+/* Rolling state on send button */
+.chat-composer-send--rolling {
+  animation: chat-dice-spin 0.4s steps(6, end) infinite;
+  color: rgba(200, 148, 26, 0.7) !important;
+}
+@keyframes chat-dice-spin {
+  0%   { content: '⚀'; transform: scale(1.0); }
+  17%  { transform: scale(1.1); }
+  33%  { transform: scale(0.95); }
+  50%  { transform: scale(1.05); }
+  67%  { transform: scale(0.98); }
+  83%  { transform: scale(1.02); }
+  100% { transform: scale(1.0); }
+}
+
+/* ── @-tag autocomplete dropdown ─────────────────────────────────────────── */
+.chat-ac-dropdown {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #1a1008;
+  border: 1px solid rgba(200,148,26,0.3);
+  border-radius: 8px;
+  overflow: hidden;
+  z-index: 200;
+  box-shadow: 0 -4px 16px rgba(0,0,0,0.5);
+}
+
+.chat-ac-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 12px;
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.8);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  text-align: left;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  transition: background 0.08s;
+}
+
+.chat-ac-item:last-child { border-bottom: none; }
+
+.chat-ac-item:hover,
+.chat-ac-item--active {
+  background: rgba(200,148,26,0.1);
+  color: rgba(200,148,26,0.95);
+}
+
+.chat-ac-type {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.ac-type--ability { background: rgba(224,163,82,0.2); color: #e0a352; }
+.ac-type--skill   { background: rgba(82,148,224,0.2); color: #82b4e0; }
+.ac-type--spell   { background: rgba(155,89,182,0.2); color: #c39be0; }
+.ac-type--feature { background: rgba(140,200,140,0.2); color: #8cc88c; }
+.ac-type--item    { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.5); }
+
+.chat-ac-label { flex: 1; font-weight: 500; }
+
+/* ── @-tag chips in messages ─────────────────────────────────────────────── */
+.chat-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  white-space: nowrap;
+  vertical-align: middle;
+  line-height: 1.5;
+}
+
+.chat-tag--ref {
+  background: rgba(155,89,182,0.18);
+  border: 1px solid rgba(155,89,182,0.3);
+  color: rgba(200,160,230,0.9);
+}
+
+.chat-tag--roll {
+  background: rgba(200,148,26,0.16);
+  border: 1px solid rgba(200,148,26,0.3);
+  color: rgba(200,148,26,0.95);
+}
+
+.chat-tag-result {
+  background: rgba(200,148,26,0.25);
+  border-radius: 3px;
+  padding: 0 4px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Relative positioning added to existing .chat-composer-wrap for autocomplete */
 
 /* ── Image gallery ───────────────────────────────────────────────────────── */
 .image-gallery {
@@ -610,4 +721,83 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* ── Mobile ≤600px ─────────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  /* Toolbar chips: more tappable */
+  .chat-tool-chip {
+    font-size: 12px;
+    padding: 7px 12px;
+    min-height: 34px;
+  }
+
+  /* Composer row: taller for easier touch */
+  .chat-composer-row {
+    padding: 8px 10px;
+    gap: 8px;
+    min-height: 52px;
+  }
+
+  .chat-composer-input {
+    font-size: 16px; /* prevents iOS auto-zoom on focus */
+    padding: 4px 4px;
+  }
+
+  /* Send button: proper 44px tap target */
+  .chat-composer-send {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 8px 14px;
+    font-size: 18px;
+  }
+
+  /* Dice buttons: larger tap targets */
+  .chat-die-btn {
+    font-size: 11px;
+    padding: 6px 8px;
+    min-height: 36px;
+    min-width: 32px;
+  }
+
+  /* Message bubbles: a bit more breathing room */
+  .chat-msg--you .chat-msg-bubble,
+  .chat-msg--other .chat-msg-bubble {
+    max-width: 90%;
+  }
+
+  /* Roll result chips: slightly more readable */
+  .chat-action-btn {
+    font-size: 12px;
+    padding: 7px 12px;
+    min-height: 36px;
+  }
+
+  /* Search input */
+  .chat-search-input {
+    font-size: 14px;
+  }
+
+  /* Autocomplete dropdown: readable text */
+  .chat-ac-item {
+    font-size: 13px;
+    padding: 10px 12px;
+    min-height: 44px;
+  }
+
+  /* Pinned bar text */
+  .chat-pinned-bar-text {
+    font-size: 13px;
+  }
+  .chat-pinned-bar-unpin {
+    min-height: 36px;
+    min-width: 36px;
+    padding: 6px;
+    font-size: 14px;
+  }
+
+  /* Image gallery: 2-col on phone instead of auto-fill */
+  .image-gallery-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }

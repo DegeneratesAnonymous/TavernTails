@@ -262,6 +262,25 @@
   color: #e05252;
 }
 
+.cs-status-badge--conc {
+  background: rgba(82,148,224,0.15);
+  border: 1px solid rgba(82,148,224,0.35);
+  color: #82b4e0;
+  gap: 6px;
+}
+.cs-conc-label { opacity: 0.7; font-weight: 500; }
+.cs-status-clear {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 10px;
+  opacity: 0.7;
+  line-height: 1;
+}
+.cs-status-clear:hover { opacity: 1; }
+
 .cs-ds-pip {
   display: inline-block;
   width: 9px;
@@ -1102,7 +1121,7 @@
 }
 
 .cs-spell-cast-btn {
-  width: 100%;
+  flex: 1;
   padding: 7px 12px;
   background: rgba(200,148,26,0.14);
   border: 1px solid rgba(200,148,26,0.3);
@@ -1164,4 +1183,600 @@
 .cs-spell-upcast-btn--cancel:hover {
   background: rgba(255,255,255,0.08);
   color: rgba(255,255,255,0.6);
+}
+
+/* Spell badges (C = concentration, R = ritual, ◆ = prepared, ◇ = unprepared) */
+.cs-spell-badges {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.cs-spell-badge {
+  font-size: 9px;
+  font-weight: 800;
+  border-radius: 3px;
+  padding: 1px 4px;
+  line-height: 1.3;
+  letter-spacing: 0.02em;
+}
+
+.cs-spell-badge--prep {
+  color: rgba(200,148,26,0.8);
+}
+
+.cs-spell-badge--unprep {
+  color: rgba(255,255,255,0.25);
+}
+
+.cs-spell-badge--conc {
+  background: rgba(82,148,224,0.18);
+  border: 1px solid rgba(82,148,224,0.3);
+  color: rgba(82,148,224,0.9);
+}
+
+.cs-spell-badge--ritual {
+  background: rgba(140,200,140,0.14);
+  border: 1px solid rgba(140,200,140,0.25);
+  color: rgba(140,200,140,0.85);
+}
+
+/* Dimmed unprepared spells */
+.cs-spell-item--dim .cs-spell-name {
+  opacity: 0.45;
+}
+
+/* Not-prepared notice in detail pane */
+.cs-spell-not-prepared {
+  font-size: 11px;
+  color: rgba(255,255,255,0.35);
+  font-style: italic;
+  padding: 6px 0 2px;
+}
+
+/* Pact slot label */
+.cs-spell-level-slots--pact {
+  color: rgba(180,120,220,0.9);
+  background: rgba(155,89,182,0.14);
+  border-color: rgba(155,89,182,0.28);
+}
+
+/* Spell filter bar */
+.cs-spell-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 4px;
+}
+
+.cs-spell-filter-btn {
+  padding: 3px 9px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: inherit;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.4);
+  cursor: pointer;
+  transition: all 0.1s;
+}
+
+.cs-spell-filter-btn:hover {
+  background: rgba(255,255,255,0.07);
+  color: rgba(255,255,255,0.65);
+}
+
+.cs-spell-filter-btn--active {
+  background: rgba(200,148,26,0.14);
+  border-color: rgba(200,148,26,0.32);
+  color: rgba(200,148,26,0.9);
+}
+
+.cs-spell-prep-count {
+  margin-left: auto;
+  font-size: 10px;
+  color: rgba(255,255,255,0.3);
+}
+
+/* Spell action row (Cast + Ritual buttons) */
+.cs-spell-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.cs-spell-cast-btn--ritual {
+  flex: 0 0 auto;
+  width: auto;
+  background: rgba(140,200,140,0.1);
+  border-color: rgba(140,200,140,0.22);
+  color: rgba(140,200,140,0.8);
+  font-size: 11px;
+}
+
+.cs-spell-cast-btn--ritual:hover {
+  background: rgba(140,200,140,0.18);
+}
+
+/* Concentration conflict warning */
+.cs-conc-warning {
+  background: rgba(82,148,224,0.08);
+  border: 1px solid rgba(82,148,224,0.25);
+  border-radius: 7px;
+  padding: 8px 10px;
+  font-size: 11px;
+  color: rgba(255,255,255,0.75);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-bottom: 6px;
+}
+
+.cs-conc-warning em {
+  color: rgba(82,148,224,0.9);
+  font-style: normal;
+  font-weight: 600;
+}
+
+.cs-conc-warning-btns {
+  display: flex;
+  gap: 6px;
+}
+
+.cs-conc-confirm {
+  padding: 4px 12px;
+  background: rgba(82,148,224,0.18);
+  border: 1px solid rgba(82,148,224,0.35);
+  border-radius: 5px;
+  color: rgba(82,148,224,0.95);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.cs-conc-confirm:hover { background: rgba(82,148,224,0.28); }
+
+.cs-conc-cancel {
+  padding: 4px 12px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 5px;
+  color: rgba(255,255,255,0.4);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.cs-conc-cancel:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.65); }
+
+/* ── All Known Spells section ────────────────────────────────────────────── */
+.cs-known-section {
+  margin-top: 12px;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.cs-known-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(255,255,255,0.03);
+  border: none;
+  color: rgba(255,255,255,0.45);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.1s, color 0.1s;
+}
+
+.cs-known-toggle:hover { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.7); }
+
+.cs-known-chevron { font-size: 8px; }
+
+.cs-known-list { padding: 4px 0 8px; }
+
+.cs-known-level-group { margin-bottom: 4px; }
+
+.cs-known-level-label {
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(200,148,26,0.6);
+  padding: 4px 12px 2px;
+}
+
+.cs-known-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+
+.cs-known-row:last-child { border-bottom: none; }
+
+.cs-known-name {
+  flex: 1;
+  font-size: 12px;
+  color: rgba(255,255,255,0.7);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Prepare toggle button */
+.cs-prep-toggle {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: inherit;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.35);
+  cursor: pointer;
+  transition: all 0.1s;
+}
+
+.cs-prep-toggle:hover {
+  background: rgba(200,148,26,0.1);
+  border-color: rgba(200,148,26,0.25);
+  color: rgba(200,148,26,0.7);
+}
+
+.cs-prep-toggle--prepared {
+  background: rgba(200,148,26,0.12);
+  border-color: rgba(200,148,26,0.3);
+  color: rgba(200,148,26,0.85);
+}
+
+.cs-prep-toggle--prepared:hover {
+  background: rgba(200,60,60,0.12);
+  border-color: rgba(200,60,60,0.3);
+  color: rgba(200,100,100,0.85);
+}
+
+/* ── Add Spell section ───────────────────────────────────────────────────── */
+.cs-add-spell-section { margin-top: 10px; }
+
+.cs-add-spell-trigger {
+  width: 100%;
+  padding: 6px;
+  background: rgba(255,255,255,0.03);
+  border: 1px dashed rgba(255,255,255,0.1);
+  border-radius: 6px;
+  color: rgba(255,255,255,0.3);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.1s;
+}
+
+.cs-add-spell-trigger:hover {
+  background: rgba(200,148,26,0.06);
+  border-color: rgba(200,148,26,0.2);
+  color: rgba(200,148,26,0.6);
+}
+
+.cs-add-spell-form {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.cs-add-spell-input {
+  flex: 1;
+  padding: 5px 8px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 5px;
+  color: rgba(255,255,255,0.85);
+  font-size: 11px;
+  font-family: inherit;
+  min-width: 0;
+}
+
+.cs-add-spell-input:focus { outline: none; border-color: rgba(200,148,26,0.4); }
+
+.cs-add-spell-level {
+  flex-shrink: 0;
+  padding: 5px 6px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 5px;
+  color: rgba(255,255,255,0.7);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.cs-add-spell-btn {
+  flex-shrink: 0;
+  padding: 5px 10px;
+  background: rgba(200,148,26,0.15);
+  border: 1px solid rgba(200,148,26,0.3);
+  border-radius: 5px;
+  color: rgba(200,148,26,0.9);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.cs-add-spell-btn:disabled { opacity: 0.4; cursor: default; }
+.cs-add-spell-btn:not(:disabled):hover { background: rgba(200,148,26,0.25); }
+
+.cs-add-spell-cancel {
+  flex-shrink: 0;
+  padding: 5px 7px;
+  background: none;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 5px;
+  color: rgba(255,255,255,0.3);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.cs-add-spell-cancel:hover { color: rgba(255,255,255,0.6); }
+
+/* ── Spell slot pips inline in level header ──────────────────────────────── */
+.cs-spell-slot-pips-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cs-spell-slot-label-sm {
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(155,89,182,0.7);
+  margin-right: 2px;
+}
+
+.cs-spell-slot-pips-row--pact .cs-spell-slot-label-sm {
+  color: rgba(180,120,220,0.8);
+}
+
+.cs-spell-slot-pip {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(155,89,182,0.55);
+  background: rgba(155,89,182,0.08);
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.1s, border-color 0.1s, transform 0.08s;
+  flex-shrink: 0;
+}
+
+.cs-spell-slot-pip:hover {
+  border-color: rgba(155,89,182,0.9);
+  transform: scale(1.15);
+}
+
+.cs-spell-slot-pip--used {
+  background: rgba(155,89,182,0.7);
+  border-color: rgba(155,89,182,0.8);
+}
+
+.cs-spell-slot-pip--used:hover {
+  background: rgba(155,89,182,0.35);
+}
+
+.cs-spell-slot-count {
+  font-size: 9px;
+  color: rgba(155,89,182,0.65);
+  font-variant-numeric: tabular-nums;
+  margin-left: 2px;
+}
+
+/* ── Content browser (shared by Add Spell & Add Item) ────────────────────── */
+.cs-content-browser {
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.cs-content-browser-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  background: rgba(255,255,255,0.02);
+}
+
+.cs-content-search {
+  flex: 1;
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.85);
+  font-size: 12px;
+  font-family: inherit;
+  padding: 2px 0;
+  min-width: 0;
+}
+
+.cs-content-search::placeholder { color: rgba(255,255,255,0.3); }
+.cs-content-search:focus { outline: none; }
+
+.cs-content-browser-close {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.3);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  flex-shrink: 0;
+}
+
+.cs-content-browser-close:hover { color: rgba(255,255,255,0.7); }
+
+.cs-content-section { padding: 4px 0; }
+
+.cs-content-section + .cs-content-section {
+  border-top: 1px solid rgba(255,255,255,0.04);
+}
+
+.cs-content-section-label {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(255,255,255,0.3);
+  padding: 4px 10px 2px;
+}
+
+.cs-content-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 6px 10px;
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.75);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.08s;
+  gap: 8px;
+}
+
+.cs-content-result:hover {
+  background: rgba(200,148,26,0.08);
+  color: rgba(200,148,26,0.9);
+}
+
+.cs-content-result-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.cs-content-result-meta {
+  font-size: 9px;
+  color: rgba(155,89,182,0.7);
+  background: rgba(155,89,182,0.1);
+  border-radius: 3px;
+  padding: 1px 5px;
+  flex-shrink: 0;
+}
+
+.cs-content-result-meta--doc {
+  color: rgba(82,148,224,0.7);
+  background: rgba(82,148,224,0.1);
+}
+
+.cs-content-manual {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  padding: 6px 8px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  background: rgba(255,255,255,0.01);
+}
+
+.cs-content-manual .cs-add-spell-btn { flex: 1; font-size: 11px; padding: 5px 8px; }
+
+/* Inventory add row & document suggestions */
+.cs-inv-add-row { display: flex; gap: 6px; }
+.cs-inv-suggestions { margin-top: 4px; border-radius: 6px; overflow: hidden; border: 1px solid rgba(255,255,255,0.07); }
+
+/* ── Mobile ≤600px ─────────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  /* Character tabs: full width, 44px tap target */
+  .cs-tabs {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 2px;
+    padding: 6px;
+  }
+
+  .cs-tab {
+    min-height: 40px;
+    font-size: 10px;
+    padding: 6px 4px;
+  }
+
+  /* Abilities: 3-col on phone is fine, increase cell padding */
+  .cs-abilities {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    padding: 8px;
+  }
+
+  /* Skill list: 1-col on very narrow phones */
+  .cs-skill-list {
+    grid-template-columns: 1fr;
+  }
+
+  /* Action buttons: at least 36px tap target */
+  .cs-action-btn {
+    min-height: 36px;
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+
+  /* Slot pips: group them, tap on the count badge not the pip */
+  .cs-slot-pip {
+    width: 12px;
+    height: 12px;
+  }
+
+  /* Inventory add input */
+  .cs-inv-add-input {
+    font-size: 14px;
+    min-height: 40px;
+  }
+
+  /* Portrait */
+  .cs-portrait {
+    width: 52px;
+    height: 52px;
+  }
+
+  /* HP / stat values */
+  .cs-hp-value {
+    font-size: 1.4rem;
+  }
+
+  /* Add-item / add-spell buttons */
+  .cs-add-item-btn,
+  .cs-add-spell-btn {
+    min-height: 36px;
+    font-size: 12px;
+    padding: 8px 12px;
+  }
+}
+
+/* ── 430px and below ───────────────────────────────────────────────────── */
+@media (max-width: 430px) {
+  .cs-tabs {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+  }
+
+  .cs-tab {
+    font-size: 9px;
+    min-height: 38px;
+    padding: 5px 2px;
+  }
+
+  .cs-abilities {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+  }
 }

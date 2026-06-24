@@ -2,12 +2,22 @@ import React, {useCallback, useEffect, useState} from 'react'
 import { buildApiUrl } from '../api'
 import './NarrativeView.css'
 
+type VisualStateMeta = {
+  visual_type?: string
+  location_name?: string
+  mood?: string
+  threat_level?: string
+  last_refresh_reason?: string
+  image_refresh_required?: boolean
+}
+
 type Scene = {
   id: string
   title: string
   image?: string
   text: string
   choices: Array<{id:string,label:string}>
+  visual_state?: VisualStateMeta
 }
 
 type Props = {
@@ -161,6 +171,18 @@ export default function NarrativeView({sessionId, showChoicesInScene = true}: Pr
         ) : (
           <div className="narrative-image-placeholder">(No scene image yet)</div>
         )}
+
+        {process.env.NODE_ENV === 'development' && scene.visual_state ? (
+          <div className="narrative-visual-meta">
+            {[
+              scene.visual_state.visual_type,
+              scene.visual_state.location_name,
+              scene.visual_state.mood,
+              scene.visual_state.threat_level ? `⚠ ${scene.visual_state.threat_level}` : null,
+              scene.visual_state.image_refresh_required === false ? '♻ reused' : '🖼 new',
+            ].filter(Boolean).join(' · ')}
+          </div>
+        ) : null}
 
         <div className="narrative-overlay">
           <div className="narrative-card">
