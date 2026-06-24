@@ -110,11 +110,8 @@ export default function GameplayLayout({
     onRefreshRoster?.()
   }, [onRefreshRoster])
 
-  const [composerInject, setComposerInject] = useState<string | null>(null)
   const handleQuickAction = useCallback((action: {type: string; detail?: string}) => {
     if (!action.detail) return
-    const tag = '@' + action.detail.replace(/\s+/g, '_') + ' '
-    setComposerInject(tag)
   }, [])
   const [sessionStarted, setSessionStarted] = useState(false)
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false)
