@@ -45,10 +45,13 @@ def chat_complete(
     max_tokens = max_tokens or int(os.environ.get("OPENAI_MAX_TOKENS", "500"))
     temperature = temperature if temperature is not None else float(os.environ.get("OPENAI_TEMPERATURE", "0.7"))
 
-    # ── 1. Steward AI proxy (preferred) ────────────────────────────────────
+    # ── 1. Steward AI proxy (exclusive when configured) ────────────────────
+    # When STEWARD_HOST is set, ALL AI calls route through Steward's model
+    # router. No fallback to direct Ollama or OpenAI — Steward owns routing,
+    # node selection, and model choice.
     steward_host = os.environ.get("STEWARD_HOST", "").rstrip("/")
     if steward_host:
-        scope = task_scope or os.environ.get("STEWARD_TASK_SCOPE", "short_summary")
+        scope = task_scope or os.environ.get("STEWARD_TASK_SCOPE", "creative_story")
         try:
             with httpx.Client(timeout=timeout) as client:
                 r = client.post(
@@ -61,9 +64,11 @@ def chat_complete(
                 if choices:
                     return (choices[0].get("message") or {}).get("content") or None
         except Exception:
-            pass  # fall through to direct Ollama / OpenAI
+            pass
+        # Steward is configured — do not fall through to other providers.
+        return None
 
-    # ── 2. Direct Ollama ────────────────────────────────────────────────────
+    # ── 2. Direct Ollama (standalone mode, no STEWARD_HOST) ────────────────
     ollama_host = os.environ.get("OLLAMA_HOST", "").rstrip("/")
     if ollama_host:
         model = os.environ.get("OLLAMA_MODEL", "qwen3:4b")

@@ -34,6 +34,7 @@ from .agents.storyboard import router as storyboard_router
 from .agents.suggestions import router as suggestions_router
 from .agents.support import router as support_router
 from .agents.turns import router as turns_router
+from .agents.campaign_memory import router as campaign_memory_router
 from .agents.users import router as users_router
 
 # Simple request logging to make activity visible in the console
@@ -159,8 +160,12 @@ app.include_router(scene_router)
 app.include_router(npc_router)
 app.include_router(references_router.router)
 app.include_router(srd_router.router)
+app.include_router(campaign_memory_router)
 
-# Serve static build (if present) so the app is reachable at the backend port.
+# Serve static build at both root and /taverntails prefix.
+# - Root mount: handles direct port access (8002/8443)
+# - /taverntails mount: handles asset requests when proxied behind Steward
+#   (index.html references /taverntails/static/... due to homepage setting)
 build_dir = Path(__file__).resolve().parents[1] / 'client' / 'build'
 if build_dir.exists():
     app.mount('/', StaticFiles(directory=str(build_dir), html=True), name='static')

@@ -3475,6 +3475,24 @@ def _extract_spellbook_from_text(text: str | None, debug: bool = False) -> list[
         m = re.search(r"\b(self|touch|sight|special|\d+\s*ft\.?|\d+\s*feet|\d+\s*mi\.?|\d+\s*miles?)\b", line, re.I)
         return m.group(1) if m else None
 
+    def _concentration(duration: str | None) -> bool:
+        return bool(duration and re.search(r'\bconcentration\b', duration, re.I))
+
+    def _ritual(components: str | None, notes: str | None) -> bool:
+        text = f"{components or ''} {notes or ''}"
+        return bool(re.search(r'\(R\)|\britual\b', text, re.I))
+
+    def _prepared_bool(raw: str | None) -> bool | None:
+        if raw is None:
+            return None
+        if isinstance(raw, bool):
+            return raw
+        if str(raw).lower() in {"yes", "true", "1", "o", "○", "◯", "•"}:
+            return True
+        if str(raw).lower() in {"no", "false", "0", "x"}:
+            return False
+        return None
+
     for raw in lines:
         line = raw.strip()
         if re.match(r"^[=\-]{2,}\s*.*\s*[=\-]{2,}$", line):
@@ -3551,7 +3569,8 @@ def _extract_spellbook_from_text(text: str | None, debug: bool = False) -> list[
                     continue
 
                 # If it passed all filters, treat as spell name
-                entries.append({"name": line, "header": current_header})
+                entries.append({"name": line, "header": current_header,
+                                 "prepared": None, "concentration": False, "ritual": False})
                 if len(entries) >= 500:
                     break
             continue
@@ -3588,7 +3607,9 @@ def _extract_spellbook_from_text(text: str | None, debug: bool = False) -> list[
                     "duration": duration,
                     "page": page,
                     "notes": notes,
-                    "prepared": prepared,
+                    "prepared": _prepared_bool(prepared),
+                    "concentration": _concentration(duration),
+                    "ritual": _ritual(components, notes),
                     "header": current_header,
                 }
             )
@@ -3642,7 +3663,9 @@ def _extract_spellbook_from_text(text: str | None, debug: bool = False) -> list[
                 "duration": duration,
                 "page": page,
                 "notes": None,
-                "prepared": prep,
+                "prepared": _prepared_bool(prep),
+                "concentration": _concentration(duration),
+                "ritual": _ritual(components, None),
                 "header": current_header,
             }
         )

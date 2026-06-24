@@ -44,14 +44,19 @@ def _get_model(settings: Dict[str, Any]) -> str:
     return settings.get("ai_model") or os.environ.get("OPENAI_MODEL", "gpt-4o")
 
 
-def _call_llm(system_prompt: str, user_content: str, settings: Dict[str, Any]) -> Dict[str, Any] | None:
-    """Call Steward's Ollama (or configured LLM endpoint) and return a parsed JSON dict.
-
-    Returns None when no LLM is configured or on any failure so callers fall back
-    to placeholder data transparently.
-    """
+def _call_llm(
+    system_prompt: str,
+    user_content: str,
+    settings: Dict[str, Any],
+    task_scope: str = "taverntails_npc",
+    max_tokens: int = 500,
+) -> Dict[str, Any] | None:
+    """Call Steward's LLM and return a parsed JSON dict, or None on failure."""
     text = chat_complete(
-        [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_content}]
+        [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_content}],
+        task_scope=task_scope,
+        max_tokens=max_tokens,
+        timeout=90.0,
     )
     if not text:
         return None
@@ -180,7 +185,7 @@ def generate_npc(req: GenerateNPCRequest, current_user=Depends(get_current_user)
         }
     )
 
-    llm_result = _call_llm(system_prompt, user_content, settings)
+    llm_result = _call_llm(system_prompt, user_content, settings, task_scope="taverntails_npc")
     npc: Dict[str, Any]
     if llm_result:
         npc = {
@@ -267,7 +272,7 @@ def generate_location(req: GenerateLocationRequest, current_user=Depends(get_cur
         }
     )
 
-    llm_result = _call_llm(system_prompt, user_content, settings)
+    llm_result = _call_llm(system_prompt, user_content, settings, task_scope="taverntails_location")
     location: Dict[str, Any]
     if llm_result:
         location = {
@@ -348,7 +353,7 @@ def generate_loot(req: GenerateLootRequest, current_user=Depends(get_current_use
         }
     )
 
-    llm_result = _call_llm(system_prompt, user_content, settings)
+    llm_result = _call_llm(system_prompt, user_content, settings, task_scope="taverntails_loot", max_tokens=350)
     loot: Dict[str, Any]
     if llm_result:
         loot = {

@@ -1,0 +1,7 @@
+No venv found — using system Python3 (pip --user packages)
+Starting TavernTAIls on port 8002 (Ollama: http://localhost:11434, model: qwen3:4b)
+  Backend PID: 1103089  →  http://localhost:8002
+
+Open the Games tab in Steward to play, or go to http://localhost:8002 directly.
+Press Ctrl+C to stop.
+Stopped.

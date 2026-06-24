@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react'
+import { CharacterSummary } from '../CharacterPanel'
 
 type Msg = {
   id: number | string
@@ -16,6 +17,7 @@ type Props = {
   currentUserId?: number | null
   onPin?: (id: number | string) => void
   onDelete?: (id: number | string) => void
+  character?: CharacterSummary | null
 }
 
 function formatTime(ts?: string): string {
@@ -23,6 +25,61 @@ function formatTime(ts?: string): string {
   const d = new Date(ts)
   if (Number.isNaN(d.getTime())) return ''
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
+// Parse message text into segments: plain text and @tag tokens
+type TextSegment = { kind: 'text'; text: string }
+type TagSegment = { kind: 'tag'; tag: string; result: string | null }
+type Segment = TextSegment | TagSegment
+
+function parseSegments(text: string): Segment[] {
+  const segments: Segment[] = []
+  // Match @tagname or @tagname[result]
+  const re = /@([\w+\-']+)(?:\[([^\]]+)\])?/g
+  let last = 0
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) segments.push({ kind: 'text', text: text.slice(last, m.index) })
+    const tag = m[1]
+    const resultStr = m[2] ?? null
+    segments.push({ kind: 'tag', tag, result: resultStr })
+    last = m.index + m[0].length
+  }
+  if (last < text.length) segments.push({ kind: 'text', text: text.slice(last) })
+  return segments
+}
+
+function extractTotal(result: string): string {
+  // result like "14+3=17" or "9-2=7" — extract the final number
+  const m = result.match(/=(-?\d+)$/)
+  return m ? m[1] : result
+}
+
+function renderSegments(segments: Segment[]): React.ReactNode {
+  return segments.map((seg, i) => {
+    if (seg.kind === 'text') return seg.text || null
+    const display = seg.tag.replace(/_/g, ' ')
+    if (seg.result !== null) {
+      const total = extractTotal(seg.result)
+      return (
+        <span key={i} className="chat-tag chat-tag--roll" title={`${display}: ${seg.result}`}>
+          {display} <span className="chat-tag-result">{total}</span>
+        </span>
+      )
+    }
+    return (
+      <span key={i} className="chat-tag chat-tag--ref">
+        @{display}
+      </span>
+    )
+  })
+}
+
+function RenderText({ text }: { text: string }) {
+  const segs = useMemo(() => parseSegments(text), [text])
+  const hasTag = segs.some(s => s.kind === 'tag')
+  if (!hasTag) return <>{text}</>
+  return <>{renderSegments(segs)}</>
 }
 
 const MessageList = React.forwardRef<HTMLDivElement, Props>(function MessageList(
@@ -72,7 +129,7 @@ const MessageList = React.forwardRef<HTMLDivElement, Props>(function MessageList
           if (m.who === 'gm') {
             return (
               <div key={m.id} className={`chat-msg chat-msg--gm ${m.pinned ? 'chat-msg--pinned' : ''}`}>
-                <div className="chat-msg-gm-text">{m.text}</div>
+                <div className="chat-msg-gm-text"><RenderText text={m.text} /></div>
                 <div className="chat-msg-footer">
                   {ts ? <span className="chat-msg-ts">{ts}</span> : null}
                   {m.pinned ? <span className="chat-msg-pin-badge" title="Pinned">⊙</span> : null}
@@ -88,7 +145,7 @@ const MessageList = React.forwardRef<HTMLDivElement, Props>(function MessageList
           if (m.who === 'system') {
             return (
               <div key={m.id} className="chat-msg chat-msg--system">
-                <span className="chat-msg-system-text">{m.text}</span>
+                <span className="chat-msg-system-text"><RenderText text={m.text} /></span>
                 {ts ? <span className="chat-msg-ts">{ts}</span> : null}
               </div>
             )
@@ -99,7 +156,7 @@ const MessageList = React.forwardRef<HTMLDivElement, Props>(function MessageList
             <div key={m.id} className={`chat-msg ${isYou ? 'chat-msg--you' : 'chat-msg--ally'} ${m.pinned ? 'chat-msg--pinned' : ''}`}>
               {!isYou ? <div className="chat-msg-who">Player</div> : null}
               <div className={`chat-msg-bubble ${isYou ? 'chat-msg-bubble--you' : ''}`}>
-                {m.text}
+                <RenderText text={m.text} />
               </div>
               <div className="chat-msg-footer">
                 {ts ? <span className="chat-msg-ts">{ts}</span> : null}

@@ -216,12 +216,77 @@ class BannedEmail(SQLModel, table=True):
     """A banned or suspended email / email pattern."""
 
     id: int | None = Field(default=None, primary_key=True)
-    email: str = Field(index=True)  # exact email or @domain.com pattern
+    email: str = Field(index=True)
     reason: str = Field(default="")
-    ban_type: str = Field(default="ban")  # ban | suspend
-    suspended_until: datetime | None = None  # for suspensions; None = permanent
+    ban_type: str = Field(default="ban")
+    suspended_until: datetime | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     created_by_id: int | None = Field(default=None, foreign_key="user.id")
+
+
+# ---------------------------------------------------------------------------
+# Campaign Memory System
+# ---------------------------------------------------------------------------
+
+class CampaignEntity(SQLModel, table=True):
+    """A named entity in the campaign world (NPC, location, faction, backstory, story_thread, world_event)."""
+
+    id: str = Field(primary_key=True)
+    campaign_id: str = Field(index=True, foreign_key="campaign.id")
+    entity_type: str = Field(index=True)  # npc | location | faction | backstory | story_thread | world_event
+    name: str = Field(index=True)
+    status: str = Field(default="active")  # active | resolved | archived
+    visibility: str = Field(default="gm_only")  # gm_only | shared
+    tags: list[str] = Field(default_factory=list, sa_column=Column(JSON))
+    data: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class CampaignRelationship(SQLModel, table=True):
+    """A directional link between two CampaignEntity records."""
+
+    id: str = Field(primary_key=True)
+    campaign_id: str = Field(index=True, foreign_key="campaign.id")
+    source_entity_id: str = Field(index=True)
+    target_entity_id: str = Field(index=True)
+    relationship_type: str = Field(default="")
+    description: str = Field(default="")
+    scores: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    secrecy_level: str = Field(default="public")  # public | private | hidden
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class CampaignHook(SQLModel, table=True):
+    """An unresolved story hook, ticking clock, or consequence attached to the campaign."""
+
+    id: str = Field(primary_key=True)
+    campaign_id: str = Field(index=True, foreign_key="campaign.id")
+    entity_id: str | None = Field(default=None, index=True)
+    title: str
+    description: str = Field(default="")
+    hook_type: str = Field(default="unresolved")  # unresolved | ticking_clock | escalation | consequence
+    priority: int = Field(default=5)  # 1 (low) – 10 (critical)
+    status: str = Field(default="active")  # active | triggered | resolved
+    deadline: str | None = Field(default=None)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class CampaignChangeLog(SQLModel, table=True):
+    """Immutable record of a significant change to a campaign entity."""
+
+    id: str = Field(primary_key=True)
+    campaign_id: str = Field(index=True, foreign_key="campaign.id")
+    entity_id: str = Field(index=True)
+    session_id: str | None = Field(default=None)
+    change_type: str = Field(default="update")  # create | update | resolve | reveal | damage | death
+    summary: str
+    before_data: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    after_data: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    caused_by_player_action: bool = Field(default=False)
+    related_event_id: str | None = Field(default=None)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 def _profile_with_identity(user: User) -> dict[str, Any]:

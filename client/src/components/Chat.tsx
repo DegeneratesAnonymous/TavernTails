@@ -9,6 +9,7 @@ import MessageList from './chat/MessageList'
 import PinnedBar from './chat/PinnedBar'
 import Composer from './chat/Composer'
 import NpcSnapshotModal from './chat/NpcSnapshotModal'
+import {CharacterSummary} from './CharacterPanel'
 
 type Msg = {
   id: number|string
@@ -34,6 +35,41 @@ type Props = {
   variant?: 'full' | 'dock'
   aboveComposer?: React.ReactNode
   currentUserId?: number | null
+  composerInject?: string | null
+  onComposerInjectConsumed?: () => void
+  character?: CharacterSummary | null
+}
+
+// Resolve @tag to a roll result string. Returns original match if no roll needed.
+function resolveAtTag(tag: string, character?: CharacterSummary | null): string {
+  const display = tag.replace(/_/g, ' ')
+  const lower = display.toLowerCase()
+
+  const ABILITY_KEYS: Record<string, keyof NonNullable<CharacterSummary['stats']>> = {
+    str: 'str', strength: 'str', dex: 'dex', dexterity: 'dex',
+    con: 'con', constitution: 'con', int: 'int', intelligence: 'int',
+    wis: 'wis', wisdom: 'wis', cha: 'cha', charisma: 'cha',
+  }
+  const abilKey = ABILITY_KEYS[lower]
+  if (abilKey && character?.stats) {
+    const score = (character.stats as any)[abilKey] ?? 10
+    const mod = Math.floor((score - 10) / 2)
+    const roll = Math.floor(Math.random() * 20) + 1
+    const total = roll + mod
+    const modStr = mod >= 0 ? `+${mod}` : `${mod}`
+    return `@${tag}[${roll}${modStr}=${total}]`
+  }
+
+  const skill = character?.skills?.find(s => s.name.toLowerCase() === lower)
+  if (skill) {
+    const roll = Math.floor(Math.random() * 20) + 1
+    const total = roll + skill.mod
+    const modStr = skill.mod >= 0 ? `+${skill.mod}` : `${skill.mod}`
+    return `@${tag}[${roll}${modStr}=${total}]`
+  }
+
+  // Spell / feature / item reference — no roll, keep as mention
+  return `@${tag}`
 }
 
 /** Shape of a chat message returned by the /chat API. */
@@ -90,10 +126,11 @@ const ADVANCED_TOOLS: AdvancedTool[] = [
 
 const ADVANCED_TOOLS_FOR_PANEL = ADVANCED_TOOLS.map((t) => ({ id: t.id, label: t.label, description: t.description }))
 
-export default function Chat({sessionId, variant = 'full', aboveComposer, currentUserId}: Props){
+export default function Chat({sessionId, variant = 'full', aboveComposer, currentUserId, composerInject, onComposerInjectConsumed, character}: Props){
   const [messages, setMessages] = useState<Msg[]>([])
   const [pinnedMessages, setPinnedMessages] = useState<Msg[]>([])
   const [value, setValue] = useState('')
+  const [rolling, setRolling] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string|null>(null)
   const [toolbarMessage, setToolbarMessage] = useState<string|null>(null)
@@ -128,6 +165,16 @@ export default function Chat({sessionId, variant = 'full', aboveComposer, curren
     })
     return ()=>window.cancelAnimationFrame(raf)
   },[messages])
+
+  useEffect(()=>{
+    if(!composerInject) return
+    setValue(prev => {
+      const trimmed = prev.trimEnd()
+      return trimmed ? trimmed + ' ' + composerInject : composerInject
+    })
+    onComposerInjectConsumed?.()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[composerInject])
 
   useEffect(()=>{
     function onAdvance(e: CustomEvent){
@@ -441,7 +488,6 @@ export default function Chat({sessionId, variant = 'full', aboveComposer, curren
     }
     if(text.toLowerCase().startsWith('!notes')){
       await requestNotesRecap()
-      if(typeof override !== 'string') setValue('')
       return
     }
     const slashMatch = text.match(slashRollRegex)
@@ -454,7 +500,18 @@ export default function Chat({sessionId, variant = 'full', aboveComposer, curren
       await sendRoll(normalizeRollExpression(text))
       return
     }
-    await sendToBackend(text)
+    // Resolve @tags that need dice rolls (abilities/skills)
+    const TAG_RE = /@([\w+\-']+)/g
+    const hasRollableTags = TAG_RE.test(text)
+    if(hasRollableTags){
+      setRolling(true)
+      await new Promise(r => setTimeout(r, 650))
+      const resolved = text.replace(/@([\w+\-']+)/g, (_, tag) => resolveAtTag(tag, character))
+      setRolling(false)
+      await sendToBackend(resolved)
+    } else {
+      await sendToBackend(text)
+    }
   }
 
   useEffect(()=>{
@@ -606,6 +663,7 @@ export default function Chat({sessionId, variant = 'full', aboveComposer, curren
         currentUserId={currentUserId ?? null}
         onPin={sessionId ? handlePinMessage : undefined}
         onDelete={sessionId ? handleDeleteMessage : undefined}
+        character={character}
       />
 
       {error ? <div className="inline-alert inline-alert-error" style={{ marginTop: 10 }}>{error}</div> : null}
@@ -616,7 +674,7 @@ export default function Chat({sessionId, variant = 'full', aboveComposer, curren
         </div>
       ) : null}
 
-      <Composer sessionId={sessionId} value={value} onChange={setValue} onSend={() => handleSend()} />
+      <Composer sessionId={sessionId} value={value} onChange={setValue} onSend={() => handleSend()} rolling={rolling} character={character} />
     </div>
   )
 }

@@ -7,6 +7,59 @@ import './CharacterPanel.css'
 
 const WEAPON_KEYWORDS = /sword|axe|bow|dagger|mace|hammer|spear|lance|staff|wand|blade|club|flail|glaive|halberd|maul|pike|rapier|scimitar|shortsword|longbow|crossbow|trident|whip|handaxe|greataxe|battleaxe|greatsword|longsword/i
 
+// Standard D&D 5e spell slot tables indexed by character level
+const _FULL_CASTER_SLOTS: number[][] = [
+  [],                        // 0 unused
+  [2],                       // 1
+  [3],                       // 2
+  [4,2],                     // 3
+  [4,3],                     // 4
+  [4,3,2],                   // 5
+  [4,3,3],                   // 6
+  [4,3,3,1],                 // 7
+  [4,3,3,2],                 // 8
+  [4,3,3,3,1],               // 9
+  [4,3,3,3,2],               // 10
+  [4,3,3,3,2,1],             // 11
+  [4,3,3,3,2,1],             // 12
+  [4,3,3,3,2,1,1],           // 13
+  [4,3,3,3,2,1,1],           // 14
+  [4,3,3,3,2,1,1,1],         // 15
+  [4,3,3,3,2,1,1,1],         // 16
+  [4,3,3,3,2,1,1,1,1],       // 17
+  [4,3,3,3,3,1,1,1,1],       // 18
+  [4,3,3,3,3,2,1,1,1],       // 19
+  [4,3,3,3,3,2,2,1,1],       // 20
+]
+const _HALF_CASTER_SLOTS: number[][] = [
+  [],[],[2],[3],[3],[4,2],[4,2],[4,3],[4,3],[4,3,2],[4,3,2],
+  [4,3,3],[4,3,3],[4,3,3,1],[4,3,3,1],[4,3,3,2],[4,3,3,2],
+  [4,3,3,3,1],[4,3,3,3,1],[4,3,3,3,2],[4,3,3,3,2],
+]
+const _THIRD_CASTER_SLOTS: number[][] = [
+  [],[],[],[2],[3],[3],[3],[4,2],[4,2],[4,2],[4,3],
+  [4,3],[4,3],[4,3,2],[4,3,2],[4,3,2],[4,3,3],[4,3,3],
+  [4,3,3],[4,3,3,1],[4,3,3,1],
+]
+
+function computeStandardSlots(
+  className: string | null | undefined,
+  level: number | undefined
+): Record<string, {max: number; used: number}> {
+  const cn = (className ?? '').toLowerCase()
+  const lvl = Math.max(1, Math.min(20, level ?? 1))
+  if (!cn) return {}
+  let table: number[][] | null = null
+  if (/wizard|cleric|druid|bard|sorcerer/.test(cn)) table = _FULL_CASTER_SLOTS
+  else if (/paladin|ranger|artificer/.test(cn)) table = _HALF_CASTER_SLOTS
+  else if (/eldritch knight|arcane trickster/.test(cn)) table = _THIRD_CASTER_SLOTS
+  if (!table) return {}
+  const slots = table[lvl] ?? []
+  const result: Record<string, {max: number; used: number}> = {}
+  slots.forEach((max, i) => { if (max > 0) result[String(i + 1)] = { max, used: 0 } })
+  return result
+}
+
 export type SceneCue = {
   id: string
   prompt: string
@@ -36,6 +89,7 @@ export type CharacterSummary = CharacterSnapshot & {
   classFeatures?: FeatureItem[]
   racialFeatures?: FeatureItem[]
   otherFeatures?: FeatureItem[]
+  preparedOverrides?: Record<string, boolean>
 }
 
 type Props = {
@@ -51,6 +105,7 @@ type Props = {
   onGoToImport?: () => void
   onQuickAction?: (action: {type: 'attack' | 'cast' | 'short_rest' | 'long_rest'; detail?: string}) => void
   onSheetUpdate?: (characterId: string, patch: Record<string, any>) => void
+  sessionId?: string | null
 }
 
 type SheetTab = 'skills' | 'spells' | 'features' | 'inventory'
@@ -68,12 +123,12 @@ export default function CharacterPanel({
   onGoToImport,
   onQuickAction,
   onSheetUpdate,
+  sessionId,
 }: Props){
   const [sheetTab, setSheetTab] = useState<SheetTab | null>('skills')
   const containerRef = useRef<HTMLDivElement|null>(null)
   const [rollingCueId, setRollingCueId] = useState<string | null>(null)
   const [cueError, setCueError] = useState<string | null>(null)
-
 
   // Local session-time overrides (reset when character changes)
   const prevIdRef = useRef<string | undefined>(undefined)
@@ -88,11 +143,19 @@ export default function CharacterPanel({
   // Expanded spell (for inline cast flow)
   const [expandedSpell, setExpandedSpell] = useState<string | null>(null)
   const [spellUpcastOptions, setSpellUpcastOptions] = useState<{spell: string; minLevel: number; options: number[]} | null>(null)
-  // Upcast flow (from ✦ Cast picker — kept for weapon/top-level cast button)
+  // Concentration tracking
+  const [concentratingOn, setConcentratingOn] = useState<string | null>(null)
+  const [concWarning, setConcWarning] = useState<{spell: string; action: () => void} | null>(null)
+  // Spell filter + preparation management
+  const [spellFilter, setSpellFilter] = useState<'castable' | 'all' | 'ritual'>('castable')
+  const [preparedOverridesLocal, setPreparedOverridesLocal] = useState<Record<string, boolean> | null>(null)
+  const [showAllKnown, setShowAllKnown] = useState(false)
+  const [showAddSpell, setShowAddSpell] = useState(false)
+  const [addSpellName, setAddSpellName] = useState('')
+  const [addSpellLevel, setAddSpellLevel] = useState(1)
   // Rest dialog
   const [restDialog, setRestDialog] = useState<'short' | 'long' | null>(null)
   const [shortRestInput, setShortRestInput] = useState('')
-  // Saving indicator
 
   const selected = useMemo(() => {
     if(!roster.length) return undefined
@@ -110,6 +173,14 @@ export default function CharacterPanel({
       setHpAdjInput('')
       setExpandedSpell(null)
       setSpellUpcastOptions(null)
+      setConcentratingOn(null)
+      setConcWarning(null)
+      setSpellFilter('castable')
+      setPreparedOverridesLocal(null)
+      setShowAllKnown(false)
+      setShowAddSpell(false)
+      setAddSpellName('')
+      setAddSpellLevel(1)
       setRestDialog(null)
       setShortRestInput('')
       prevIdRef.current = selected?.id
@@ -117,11 +188,66 @@ export default function CharacterPanel({
   }, [selected?.id])
 
   const effectiveHp = hpLocal ?? selected?.hp ?? { current: 0, max: 0 }
-  const effectiveSlots: Record<string, {max: number; used: number; level?: number}> = useMemo(
-    () => slotsLocal ?? (selected?.spellSlots ?? {}),
-    [slotsLocal, selected?.spellSlots]
-  )
+  const effectiveSlots: Record<string, {max: number; used: number; level?: number}> = (() => {
+    if (slotsLocal) return slotsLocal
+    const fromSheet = selected?.spellSlots ?? {}
+    if (Object.keys(fromSheet).length > 0) return fromSheet
+    return computeStandardSlots(selected?.class_name, selected?.level)
+  })()
   const effectiveInv: string[] = invLocal ?? (selected?.inventory ?? [])
+
+  // Prepared overrides: local changes layered on top of server-persisted overrides
+  const effectivePreparedOverrides: Record<string, boolean> = {
+    ...(selected?.preparedOverrides ?? {}),
+    ...(preparedOverridesLocal ?? {}),
+  }
+  const getPrepared = (spellName: string, basePrepared: boolean | null): boolean | null => {
+    if (spellName in effectivePreparedOverrides) return effectivePreparedOverrides[spellName]
+    return basePrepared
+  }
+  const togglePrepared = (spellName: string, currentPrepared: boolean | null) => {
+    const next = !(currentPrepared === true)
+    const newOverrides = { ...effectivePreparedOverrides, [spellName]: next }
+    setPreparedOverridesLocal(newOverrides)
+    pushSheetPatch({ prepared_spell_overrides: newOverrides })
+  }
+  const ORD_LEVELS = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th']
+  const addSpellToBook = (name?: string, level?: number) => {
+    const spellName = (name ?? addSpellName).trim()
+    const spellLevel = level ?? addSpellLevel
+    if (!spellName || !selected?.id) return
+    const currentBook = Array.isArray(selected?.spellbook) ? [...selected.spellbook] : []
+    const levelHeader = spellLevel === 0 ? 'Cantrips' : `${ORD_LEVELS[spellLevel] ?? `${spellLevel}th`} Level`
+    const newEntry = { name: spellName, header: levelHeader, prepared: null, concentration: false, ritual: false }
+    pushSheetPatch({ spellbook: [...currentBook, newEntry] })
+    setAddSpellName('')
+    setShowAddSpell(false)
+  }
+
+  // Session document content for content-aware search
+  const [sessionDocContent, setSessionDocContent] = useState('')
+  const [docsFetched, setDocsFetched] = useState(false)
+  useEffect(() => {
+    if (!sessionId || docsFetched) return
+    setDocsFetched(true)
+    apiFetch(`/documents/${sessionId}`).then(async r => {
+      if (!r.ok) return
+      const docs = await r.json() as any[]
+      const shared = docs.filter(d => d.visibility !== 'hidden').slice(0, 12)
+      const texts = await Promise.allSettled(
+        shared.map(async (d: any) => {
+          const dr = await apiFetch(`/documents/${sessionId}/${d.id}`)
+          if (!dr.ok) return ''
+          const dd = await dr.json()
+          return String(dd.content ?? '')
+        })
+      )
+      setSessionDocContent(
+        texts.filter(r => r.status === 'fulfilled').map(r => (r as PromiseFulfilledResult<string>).value).join('\n')
+      )
+    }).catch(() => {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, docsFetched])
 
   const pushSheetPatch = useCallback((patch: Record<string, any>) => {
     if (!selected?.id) return
@@ -362,9 +488,15 @@ export default function CharacterPanel({
           </div>
         ) : null}
 
-        {/* Status indicators (exhaustion / death saves — only when relevant) */}
-        {(showDeathSaves || showExhaustion) ? (
+        {/* Status indicators (exhaustion / concentration / death saves — only when relevant) */}
+        {(showDeathSaves || showExhaustion || concentratingOn) ? (
           <div className="cs-status-row">
+            {concentratingOn ? (
+              <div className="cs-status-badge cs-status-badge--conc">
+                <span className="cs-conc-label">Conc:</span> {concentratingOn}
+                <button type="button" className="cs-status-clear" onClick={() => setConcentratingOn(null)} title="Drop concentration">✕</button>
+              </div>
+            ) : null}
             {showExhaustion ? (
               <div className="cs-status-badge cs-status-badge--warn">
                 Exhaustion {exhaustion}/6
@@ -568,7 +700,17 @@ export default function CharacterPanel({
             ) : null}
 
             {sheetTab === 'spells' ? (() => {
-              // Build grouped spellbook from spellbook entries (rich) or flat spells (fallback)
+              // Caster type detection
+              const KNOWN_CASTERS = /sorcerer|bard|ranger|warlock|eldritch\s*knight|arcane\s*trickster/i
+              const PREPARED_CASTERS = /cleric|druid|paladin|wizard|artificer/i
+              const PACT_CASTERS = /warlock/i
+              const cn = selected?.class_name ?? ''
+              const casterType: 'prepared' | 'known' | 'unknown' =
+                PREPARED_CASTERS.test(cn) ? 'prepared' :
+                KNOWN_CASTERS.test(cn) ? 'known' : 'unknown'
+              const isPactCaster = PACT_CASTERS.test(cn)
+
+              // Build spell entries
               const book = Array.isArray(selected?.spellbook) ? selected!.spellbook : []
               const ORDINAL: Record<string, number> = {
                 cantrip: 0, cantrips: 0,
@@ -584,36 +726,67 @@ export default function CharacterPanel({
                 return ORDINAL[w] ?? 99
               }
 
-              type SpellEntry = { name: string; level: number; save_hit?: string; time?: string; range?: string; components?: string; duration?: string; notes?: string; prepared?: boolean }
-              let entries: SpellEntry[] = []
+              type SpellEntry = {
+                name: string; level: number; prepared: boolean | null
+                concentration: boolean; ritual: boolean
+                save_hit?: string; time?: string; range?: string
+                components?: string; duration?: string; notes?: string
+              }
 
+              let entries: SpellEntry[] = []
               if (book.length > 0) {
                 let currentLevel = 1
                 for (const e of book) {
                   if (!e) continue
                   if (e.header) currentLevel = parseLevelFromHeader(String(e.header))
                   if (!e.name) continue
+                  const p = e.prepared
+                  const basePrepared: boolean | null =
+                    p === true || p === 'yes' || p === 1 ? true :
+                    p === false || p === 'no' || p === 0 ? false : null
                   entries.push({
-                    name: String(e.name),
-                    level: currentLevel,
+                    name: String(e.name), level: currentLevel,
+                    prepared: getPrepared(String(e.name), basePrepared),
+                    concentration: Boolean(e.concentration),
+                    ritual: Boolean(e.ritual),
                     save_hit: e.save_hit ? String(e.save_hit) : undefined,
                     time: e.time ? String(e.time) : undefined,
                     range: e.range ? String(e.range) : undefined,
                     components: e.components ? String(e.components) : undefined,
                     duration: e.duration ? String(e.duration) : undefined,
                     notes: e.notes ? String(e.notes) : undefined,
-                    prepared: Boolean(e.prepared),
                   })
                 }
               } else {
-                entries = (selected?.spells ?? []).map(name => ({ name, level: 1 }))
+                entries = (selected?.spells ?? []).map((name: string) => ({
+                  name, level: 1, prepared: null, concentration: false, ritual: false,
+                }))
               }
 
               if (!entries.length) return <div className="cs-empty">No spells recorded</div>
 
-              // Group by level
-              const grouped = new Map<number, SpellEntry[]>()
+              const isCastable = (spell: SpellEntry): boolean => {
+                if (spell.level === 0) return true
+                if (casterType === 'known') return true
+                if (casterType === 'prepared') return spell.prepared === true
+                return true
+              }
+              // Group entries by level for the Known section
+              const knownByLevel = new Map<number, SpellEntry[]>()
               for (const e of entries) {
+                if (!knownByLevel.has(e.level)) knownByLevel.set(e.level, [])
+                knownByLevel.get(e.level)!.push(e)
+              }
+              const knownLevels = Array.from(knownByLevel.keys()).sort((a, b) => a - b)
+
+              const filteredEntries = entries.filter(spell => {
+                if (spellFilter === 'ritual') return spell.ritual
+                if (spellFilter === 'castable') return isCastable(spell)
+                return true
+              })
+
+              const grouped = new Map<number, SpellEntry[]>()
+              for (const e of filteredEntries) {
                 if (!grouped.has(e.level)) grouped.set(e.level, [])
                 grouped.get(e.level)!.push(e)
               }
@@ -625,43 +798,100 @@ export default function CharacterPanel({
                 return `${ord} Level`
               }
 
-              const handleCastFromDetail = (spell: SpellEntry) => {
-                const minLevel = spell.level
-                if (minLevel === 0) {
-                  onQuickAction?.({ type: 'cast', detail: spell.name })
-                  setExpandedSpell(null)
+              // Core cast execution (slot marked + concentration tracked)
+              const doCast = (spell: SpellEntry, slotLevel: number | null) => {
+                if (slotLevel !== null && slotLevel > 0) {
+                  const pactEntry = Object.entries(effectiveSlots).find(([k]) => k === 'pact')
+                  const pactLevel = pactEntry ? (pactEntry[1].level ?? 0) : 0
+                  const slotKey = isPactCaster && pactLevel === slotLevel ? 'pact' : String(slotLevel)
+                  markSlotUsed(slotKey)
+                }
+                if (spell.concentration) setConcentratingOn(spell.name)
+                onQuickAction?.({ type: 'cast', detail: spell.name })
+                setExpandedSpell(null)
+                setSpellUpcastOptions(null)
+                setConcWarning(null)
+              }
+
+              // Guard concentration conflict, then execute
+              const withConcCheck = (spell: SpellEntry, action: () => void) => {
+                if (spell.concentration && concentratingOn && concentratingOn !== spell.name) {
+                  setConcWarning({ spell: spell.name, action })
+                } else {
+                  action()
+                }
+              }
+
+              const handleCastFromDetail = (spell: SpellEntry, isRitual: boolean = false) => {
+                if (isRitual) {
+                  withConcCheck(spell, () => {
+                    if (spell.concentration) setConcentratingOn(spell.name)
+                    onQuickAction?.({ type: 'cast', detail: `${spell.name} (ritual)` })
+                    setExpandedSpell(null)
+                    setConcWarning(null)
+                  })
                   return
                 }
+                if (spell.level === 0) { withConcCheck(spell, () => doCast(spell, null)); return }
                 const available = Object.entries(effectiveSlots)
                   .filter(([lvl, s]) => {
                     const n = lvl === 'pact' ? (s.level ?? 0) : Number(lvl)
-                    return n >= minLevel && s.used < s.max
+                    return n >= spell.level && s.used < s.max
                   })
                   .map(([lvl, s]) => lvl === 'pact' ? (s.level ?? 0) : Number(lvl))
                   .filter(n => n > 0)
                   .sort((a, b) => a - b)
-
-                if (!available.length) {
-                  onQuickAction?.({ type: 'cast', detail: spell.name })
-                  setExpandedSpell(null)
-                  return
-                }
-                if (available.length === 1) {
-                  markSlotUsed(String(available[0]))
-                  onQuickAction?.({ type: 'cast', detail: spell.name })
-                  setExpandedSpell(null)
-                  return
-                }
-                setSpellUpcastOptions({ spell: spell.name, minLevel, options: available })
+                if (!available.length) { withConcCheck(spell, () => doCast(spell, null)); return }
+                if (available.length === 1) { withConcCheck(spell, () => doCast(spell, available[0])); return }
+                setSpellUpcastOptions({ spell: spell.name, minLevel: spell.level, options: available })
               }
+
+              const preparedCount = casterType === 'prepared'
+                ? entries.filter(e => e.level > 0 && e.prepared === true).length : null
 
               return (
                 <div className="cs-spell-book">
+                  {/* Filter bar */}
+                  <div className="cs-spell-filter-bar">
+                    {(['castable', 'all', 'ritual'] as const).map(f => (
+                      <button
+                        key={f}
+                        type="button"
+                        className={`cs-spell-filter-btn ${spellFilter === f ? 'cs-spell-filter-btn--active' : ''}`}
+                        onClick={() => { setSpellFilter(f); setExpandedSpell(null); setSpellUpcastOptions(null) }}
+                      >
+                        {f === 'castable' ? 'Castable' : f === 'all' ? 'All' : 'Rituals'}
+                      </button>
+                    ))}
+                    {preparedCount !== null ? (
+                      <span className="cs-spell-prep-count">{preparedCount} prepared</span>
+                    ) : null}
+                  </div>
+
+                  {/* Concentration conflict warning */}
+                  {concWarning ? (
+                    <div className="cs-conc-warning">
+                      <span>End <em>{concentratingOn}</em> to cast <em>{concWarning.spell}</em>?</span>
+                      <div className="cs-conc-warning-btns">
+                        <button type="button" className="cs-conc-confirm" onClick={() => {
+                          setConcentratingOn(null)
+                          concWarning.action()
+                        }}>Confirm</button>
+                        <button type="button" className="cs-conc-cancel" onClick={() => setConcWarning(null)}>Cancel</button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {!filteredEntries.length ? (
+                    <div className="cs-empty">No spells match this filter</div>
+                  ) : null}
+
                   {levels.map(lvl => {
                     const spellsAtLevel = grouped.get(lvl)!
-                    // Find slot info for this level
-                    const slotKey = String(lvl)
-                    const slot = lvl > 0 ? (effectiveSlots[slotKey] ?? null) : null
+                    const pactEntry = Object.entries(effectiveSlots).find(([k]) => k === 'pact')
+                    const pactLevel = pactEntry ? (pactEntry[1].level ?? 0) : 0
+                    const usePactSlot = isPactCaster && lvl > 0 && pactLevel === lvl
+                    const slot = lvl > 0 ? (effectiveSlots[usePactSlot ? 'pact' : String(lvl)] ?? null) : null
                     const slotsAvail = slot ? slot.max - slot.used : null
 
                     return (
@@ -669,26 +899,51 @@ export default function CharacterPanel({
                         <div className="cs-spell-level-header">
                           <span className="cs-spell-level-label">{levelLabel(lvl)}</span>
                           {slot && slot.max > 0 ? (
-                            <span className="cs-spell-level-slots">
-                              {slotsAvail}/{slot.max} slots
-                            </span>
+                            <div className={`cs-spell-slot-pips-row ${usePactSlot ? 'cs-spell-slot-pips-row--pact' : ''}`}>
+                              {usePactSlot ? <span className="cs-spell-slot-label-sm">Pact</span> : null}
+                              {Array.from({length: slot.max}).map((_, i) => {
+                                const isUsed = i < slot.used
+                                const slotK = usePactSlot ? 'pact' : String(lvl)
+                                return (
+                                  <button
+                                    key={i}
+                                    type="button"
+                                    className={`cs-spell-slot-pip ${isUsed ? 'cs-spell-slot-pip--used' : ''}`}
+                                    title={isUsed ? 'Restore slot' : 'Use slot'}
+                                    onClick={e => {
+                                      e.stopPropagation()
+                                      const newUsed = isUsed ? i : i + 1
+                                      applySlots({...effectiveSlots, [slotK]: {...slot, used: newUsed}})
+                                    }}
+                                  />
+                                )
+                              })}
+                              <span className="cs-spell-slot-count">{slotsAvail}/{slot.max}</span>
+                            </div>
                           ) : null}
                         </div>
                         {spellsAtLevel.map(spell => {
                           const isExpanded = expandedSpell === spell.name
                           const isUpcastTarget = spellUpcastOptions?.spell === spell.name
+                          const castable = isCastable(spell)
                           return (
-                            <div key={spell.name} className={`cs-spell-item ${isExpanded ? 'cs-spell-item--open' : ''}`}>
+                            <div key={spell.name} className={`cs-spell-item ${isExpanded ? 'cs-spell-item--open' : ''} ${!castable ? 'cs-spell-item--dim' : ''}`}>
                               <button
                                 type="button"
                                 className="cs-spell-name-btn"
                                 onClick={() => {
                                   setExpandedSpell(prev => prev === spell.name ? null : spell.name)
                                   setSpellUpcastOptions(null)
+                                  setConcWarning(null)
                                 }}
                               >
                                 <span className="cs-spell-name">{spell.name}</span>
-                                {spell.prepared ? <span className="cs-spell-prepared" title="Prepared">◆</span> : null}
+                                <span className="cs-spell-badges">
+                                  {spell.prepared === true ? <span className="cs-spell-badge cs-spell-badge--prep" title="Prepared">◆</span> : null}
+                                  {spell.prepared === false && spellFilter === 'all' ? <span className="cs-spell-badge cs-spell-badge--unprep" title="Not prepared">◇</span> : null}
+                                  {spell.concentration ? <span className="cs-spell-badge cs-spell-badge--conc" title="Concentration">C</span> : null}
+                                  {spell.ritual ? <span className="cs-spell-badge cs-spell-badge--ritual" title="Ritual">R</span> : null}
+                                </span>
                                 {spell.save_hit ? <span className="cs-spell-tag">{spell.save_hit}</span> : null}
                                 <span className="cs-spell-chevron">{isExpanded ? '▲' : '▼'}</span>
                               </button>
@@ -702,8 +957,9 @@ export default function CharacterPanel({
                                     {spell.components ? <span className="cs-spell-meta"><span className="cs-spell-meta-key">Comp</span> {spell.components}</span> : null}
                                   </div>
                                   {spell.notes ? <div className="cs-spell-notes">{spell.notes}</div> : null}
-
-                                  {isUpcastTarget ? (
+                                  {!castable && casterType === 'prepared' ? (
+                                    <div className="cs-spell-not-prepared">Not prepared — cannot cast this rest</div>
+                                  ) : isUpcastTarget ? (
                                     <div className="cs-spell-upcast">
                                       <div className="cs-spell-upcast-label">Cast at level:</div>
                                       <div className="cs-spell-upcast-options">
@@ -712,12 +968,7 @@ export default function CharacterPanel({
                                             key={lvlOpt}
                                             type="button"
                                             className="cs-spell-upcast-btn"
-                                            onClick={() => {
-                                              markSlotUsed(String(lvlOpt))
-                                              onQuickAction?.({ type: 'cast', detail: spell.name })
-                                              setSpellUpcastOptions(null)
-                                              setExpandedSpell(null)
-                                            }}
+                                            onClick={() => withConcCheck(spell, () => doCast(spell, lvlOpt))}
                                           >
                                             {lvlOpt === spellUpcastOptions!.minLevel ? `Level ${lvlOpt}` : `Level ${lvlOpt} ↑`}
                                           </button>
@@ -732,13 +983,25 @@ export default function CharacterPanel({
                                       </div>
                                     </div>
                                   ) : (
-                                    <button
-                                      type="button"
-                                      className="cs-spell-cast-btn"
-                                      onClick={() => handleCastFromDetail(spell)}
-                                    >
-                                      {spell.level === 0 ? '✦ Cast Cantrip' : slotsAvail === 0 ? '✦ Cast (no slots)' : '✦ Cast'}
-                                    </button>
+                                    <div className="cs-spell-actions">
+                                      <button
+                                        type="button"
+                                        className="cs-spell-cast-btn"
+                                        onClick={() => handleCastFromDetail(spell)}
+                                      >
+                                        {spell.level === 0 ? '✦ Cast Cantrip' : slotsAvail === 0 ? '✦ Cast (no slots)' : '✦ Cast'}
+                                      </button>
+                                      {spell.ritual ? (
+                                        <button
+                                          type="button"
+                                          className="cs-spell-cast-btn cs-spell-cast-btn--ritual"
+                                          onClick={() => handleCastFromDetail(spell, true)}
+                                          title="No slot required — takes 10 extra minutes"
+                                        >
+                                          Ritual
+                                        </button>
+                                      ) : null}
+                                    </div>
                                   )}
                                 </div>
                               ) : null}
@@ -748,6 +1011,155 @@ export default function CharacterPanel({
                       </div>
                     )
                   })}
+
+                  {/* All Known Spells — collapsible management section */}
+                  {spellFilter !== 'ritual' ? (
+                    <div className="cs-known-section">
+                      <button
+                        type="button"
+                        className="cs-known-toggle"
+                        onClick={() => setShowAllKnown(v => !v)}
+                      >
+                        <span>All Known Spells ({entries.length})</span>
+                        <span className="cs-known-chevron">{showAllKnown ? '▲' : '▼'}</span>
+                      </button>
+                      {showAllKnown ? (
+                        <div className="cs-known-list">
+                          {knownLevels.map(lvl => (
+                            <div key={lvl} className="cs-known-level-group">
+                              <div className="cs-known-level-label">{levelLabel(lvl)}</div>
+                              {knownByLevel.get(lvl)!.map(spell => (
+                                <div key={spell.name} className="cs-known-row">
+                                  <span className="cs-known-name">{spell.name}</span>
+                                  {spell.concentration ? <span className="cs-spell-badge cs-spell-badge--conc" title="Concentration">C</span> : null}
+                                  {spell.ritual ? <span className="cs-spell-badge cs-spell-badge--ritual" title="Ritual">R</span> : null}
+                                  {lvl > 0 && casterType === 'prepared' ? (
+                                    <button
+                                      type="button"
+                                      className={`cs-prep-toggle ${spell.prepared === true ? 'cs-prep-toggle--prepared' : ''}`}
+                                      onClick={() => togglePrepared(spell.name, spell.prepared)}
+                                      title={spell.prepared === true ? 'Click to unprepare' : 'Click to prepare'}
+                                    >
+                                      {spell.prepared === true ? '◆ Prepared' : '◇ Prepare'}
+                                    </button>
+                                  ) : null}
+                                </div>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {/* Add spell — content browser */}
+                  <div className="cs-add-spell-section">
+                    {showAddSpell ? (() => {
+                      const q = addSpellName.toLowerCase()
+                      const existingNames = new Set(entries.map(e => e.name.toLowerCase()))
+                      // Spells from character's PDF (may not be in active list)
+                      const allBookEntries: SpellEntry[] = (() => {
+                        const book = Array.isArray(selected?.spellbook) ? selected!.spellbook : []
+                        const seen = new Set<string>()
+                        const out: SpellEntry[] = []
+                        let lvl = 1
+                        for (const e of book) {
+                          if (!e) continue
+                          if (e.header) lvl = parseLevelFromHeader(String(e.header))
+                          if (!e.name) continue
+                          const nm = String(e.name)
+                          if (!seen.has(nm)) {
+                            seen.add(nm)
+                            out.push({ name: nm, level: lvl, prepared: null, concentration: false, ritual: false })
+                          }
+                        }
+                        return out
+                      })()
+                      const sheetMatches = q
+                        ? allBookEntries.filter(e => e.name.toLowerCase().includes(q)).slice(0, 8)
+                        : []
+                      // Spells from session documents (text search for lines matching query)
+                      const docMatches: string[] = q && sessionDocContent
+                        ? Array.from(new Set(
+                            sessionDocContent.split('\n')
+                              .map(l => l.trim())
+                              .filter(l => l.length > 2 && l.length < 70 && l.toLowerCase().includes(q) && !existingNames.has(l.toLowerCase()))
+                          )).slice(0, 6)
+                        : []
+                      return (
+                        <div className="cs-content-browser">
+                          <div className="cs-content-browser-header">
+                            <input
+                              autoFocus
+                              className="cs-content-search"
+                              type="text"
+                              placeholder="Search your sheet & session docs…"
+                              value={addSpellName}
+                              onChange={e => setAddSpellName(e.target.value)}
+                            />
+                            <button type="button" className="cs-content-browser-close" onClick={() => { setShowAddSpell(false); setAddSpellName('') }}>✕</button>
+                          </div>
+                          {sheetMatches.length > 0 ? (
+                            <div className="cs-content-section">
+                              <div className="cs-content-section-label">From your character sheet</div>
+                              {sheetMatches.map(spell => (
+                                <button
+                                  key={spell.name}
+                                  type="button"
+                                  className="cs-content-result"
+                                  onClick={() => addSpellToBook(spell.name, spell.level)}
+                                >
+                                  <span className="cs-content-result-name">{spell.name}</span>
+                                  <span className="cs-content-result-meta">{levelLabel(spell.level)}</span>
+                                </button>
+                              ))}
+                            </div>
+                          ) : null}
+                          {docMatches.length > 0 ? (
+                            <div className="cs-content-section">
+                              <div className="cs-content-section-label">From session documents</div>
+                              {docMatches.map(name => (
+                                <button
+                                  key={name}
+                                  type="button"
+                                  className="cs-content-result"
+                                  onClick={() => addSpellToBook(name, addSpellLevel)}
+                                >
+                                  <span className="cs-content-result-name">{name}</span>
+                                  <span className="cs-content-result-meta cs-content-result-meta--doc">doc</span>
+                                </button>
+                              ))}
+                            </div>
+                          ) : null}
+                          {/* Manual add at bottom */}
+                          <div className="cs-content-manual">
+                            <select
+                              className="cs-add-spell-level"
+                              value={addSpellLevel}
+                              onChange={e => setAddSpellLevel(Number(e.target.value))}
+                            >
+                              <option value={0}>Cantrip</option>
+                              {[1,2,3,4,5,6,7,8,9].map(l => <option key={l} value={l}>Level {l}</option>)}
+                            </select>
+                            <button
+                              type="button"
+                              className="cs-add-spell-btn"
+                              disabled={!addSpellName.trim()}
+                              onClick={() => addSpellToBook()}
+                            >
+                              + Add {addSpellName.trim() ? `"${addSpellName.trim()}"` : 'spell'}
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })() : (
+                      <button
+                        type="button"
+                        className="cs-add-spell-trigger"
+                        onClick={() => setShowAddSpell(true)}
+                      >+ Add Spell</button>
+                    )}
+                  </div>
                 </div>
               )
             })() : null}
@@ -823,38 +1235,72 @@ export default function CharacterPanel({
                   </ul>
                 )}
                 <div className="cs-inv-add">
-                  <input
-                    className="cs-inv-add-input"
-                    type="text"
-                    placeholder="Add item…"
-                    value={addItemInput}
-                    onChange={e => setAddItemInput(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') {
+                  <div className="cs-inv-add-row">
+                    <input
+                      className="cs-inv-add-input"
+                      type="text"
+                      placeholder="Add item from sheet or session…"
+                      value={addItemInput}
+                      onChange={e => setAddItemInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          const val = addItemInput.trim()
+                          if (!val) return
+                          const next = [...effectiveInv, val]
+                          setInvLocal(next)
+                          pushSheetPatch({ inventory: next })
+                          setAddItemInput('')
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="cs-inv-add-btn"
+                      disabled={!addItemInput.trim()}
+                      onClick={() => {
                         const val = addItemInput.trim()
                         if (!val) return
                         const next = [...effectiveInv, val]
                         setInvLocal(next)
                         pushSheetPatch({ inventory: next })
                         setAddItemInput('')
-                      }
-                    }}
-                  />
-                  <button
-                    type="button"
-                    className="cs-inv-add-btn"
-                    disabled={!addItemInput.trim()}
-                    onClick={() => {
-                      const val = addItemInput.trim()
-                      if (!val) return
-                      const next = [...effectiveInv, val]
-                      setInvLocal(next)
-                      pushSheetPatch({ inventory: next })
-                      setAddItemInput('')
-                    }}
-                  >
-                    +
-                  </button>
+                      }}
+                    >
+                      +
+                    </button>
+                  </div>
+                  {/* Content suggestions from session documents */}
+                  {addItemInput.trim().length >= 2 && sessionDocContent ? (() => {
+                    const q = addItemInput.trim().toLowerCase()
+                    const currentSet = new Set(effectiveInv.map(i => i.toLowerCase()))
+                    const suggestions = Array.from(new Set(
+                      sessionDocContent.split('\n')
+                        .map(l => l.trim())
+                        .filter(l => l.length > 2 && l.length < 60 && l.toLowerCase().includes(q) && !currentSet.has(l.toLowerCase()))
+                    )).slice(0, 6)
+                    if (!suggestions.length) return null
+                    return (
+                      <div className="cs-content-section cs-inv-suggestions">
+                        <div className="cs-content-section-label">From session documents</div>
+                        {suggestions.map(item => (
+                          <button
+                            key={item}
+                            type="button"
+                            className="cs-content-result"
+                            onClick={() => {
+                              const next = [...effectiveInv, item]
+                              setInvLocal(next)
+                              pushSheetPatch({ inventory: next })
+                              setAddItemInput('')
+                            }}
+                          >
+                            <span className="cs-content-result-name">{item}</span>
+                            <span className="cs-content-result-meta cs-content-result-meta--doc">doc</span>
+                          </button>
+                        ))}
+                      </div>
+                    )
+                  })() : null}
                 </div>
               </div>
             ) : null}

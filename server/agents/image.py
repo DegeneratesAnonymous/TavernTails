@@ -71,30 +71,79 @@ def _prompt_hash(prompt: str, style: str) -> str:
     return hashlib.sha256(f"{style}:{prompt}".encode()).hexdigest()[:16]
 
 
-def _stub_image_url(prompt: str, style: str) -> str:
-    """Return a deterministic placeholder URL for the given prompt and style.
+def _pollinations_url(prompt: str, style: str) -> str:
+    """Pollinations.ai direct URL — no API key, generates real images."""
+    import urllib.parse
+    safe = urllib.parse.quote(prompt[:400], safe='')
+    portrait = style in ('portrait', 'vertical')
+    width, height = (512, 832) if portrait else (832, 512)
+    params = f"width={width}&height={height}&nologo=true&enhance=true&model=flux"
+    return f"https://image.pollinations.ai/prompt/{safe}?{params}"
 
-    A real implementation would call an image generation API here and return
-    the resulting URL.  Configure `TAVERNTAILS_IMAGE_PROVIDER` to swap in a
-    different backend without touching this router.
-    """
-    provider = os.environ.get("TAVERNTAILS_IMAGE_PROVIDER", "stub")
-    if provider != "stub":
-        # Future hook: call the configured provider.
-        # raise NotImplementedError(f"Provider {provider!r} not yet wired.")
-        pass
+
+def _steward_generate(prompt: str, style: str, session_id: str | None) -> str | None:
+    """Call Steward's ComfyUI image endpoint. Returns a local /api/image-file/... URL or None."""
+    steward_host = os.environ.get("STEWARD_HOST", "").rstrip("/")
+    if not steward_host:
+        return None
+    try:
+        import httpx, base64
+        portrait = style in ('portrait', 'vertical')
+        width, height = (512, 832) if portrait else (832, 512)
+        r = httpx.post(
+            f"{steward_host}/api/image/generate",
+            json={"prompt": prompt, "width": width, "height": height},
+            timeout=120.0,
+        )
+        if not r.is_success:
+            return None
+        data = r.json()
+        if not data.get("ok") or not data.get("image_b64"):
+            return None
+        img_bytes = base64.b64decode(data["image_b64"])
+        mime = data.get("mime", "image/png")
+        ext = "jpg" if "jpeg" in mime else "png"
+        img_id = _prompt_hash(prompt, style)
+        save_dir = _BASE / (session_id or "_unsaved") / "scene_images"
+        save_dir.mkdir(parents=True, exist_ok=True)
+        img_path = save_dir / f"{img_id}.{ext}"
+        img_path.write_bytes(img_bytes)
+        if session_id:
+            return f"/api/image-file/{session_id}/{img_id}.{ext}"
+        return f"/api/image-file/_unsaved/{img_id}.{ext}"
+    except Exception:
+        return None
+
+
+def _resolve_image_url(prompt: str, style: str, session_id: str | None) -> str:
+    """Resolve the best available image URL: Steward ComfyUI → Pollinations → stub."""
+    provider = os.environ.get("TAVERNTAILS_IMAGE_PROVIDER", "auto")
+    if provider == "stub":
+        slug = prompt.replace(" ", "_")[:60]
+        return f"https://placeholder.image/{style}/{slug}.png"
+    if provider in ("auto", "steward"):
+        local = _steward_generate(prompt, style, session_id)
+        if local:
+            return local
+    if provider in ("auto", "pollinations"):
+        return _pollinations_url(prompt, style)
     slug = prompt.replace(" ", "_")[:60]
     return f"https://placeholder.image/{style}/{slug}.png"
 
 
-def _make_entry(prompt: str, style: str, *, cached: bool = False) -> dict:
+def _stub_image_url(prompt: str, style: str) -> str:
+    return _resolve_image_url(prompt, style, None)
+
+
+def _make_entry(prompt: str, style: str, *, cached: bool = False, session_id: str | None = None) -> dict:
     img_id = _prompt_hash(prompt, style)
+    image_url = _resolve_image_url(prompt, style, session_id)
     return {
         "id": img_id,
         "prompt": prompt,
         "style": style,
-        "image_url": _stub_image_url(prompt, style),
-        "guidance": "Placeholder — wire TAVERNTAILS_IMAGE_PROVIDER to use a real art service.",
+        "image_url": image_url,
+        "guidance": "",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "cached": cached,
     }
@@ -134,16 +183,14 @@ def generate_image(payload: ImageRequest, current_user=Depends(get_current_user)
                 cached_entry["cached"] = True
                 return _entry_to_response(cached_entry)
 
-        new_entry = _make_entry(payload.prompt, payload.style, cached=False)
+        new_entry = _make_entry(payload.prompt, payload.style, cached=False, session_id=payload.session_id)
         gallery.append(new_entry)
-        # Evict oldest entries beyond the cap.
         if len(gallery) > _MAX_GALLERY:
             gallery = gallery[-_MAX_GALLERY:]
         _save_gallery(payload.session_id, gallery)
         return _entry_to_response(new_entry)
 
-    # No session — generate without caching.
-    return _entry_to_response(_make_entry(payload.prompt, payload.style))
+    return _entry_to_response(_make_entry(payload.prompt, payload.style, session_id=None))
 
 
 @router.get("/image/gallery/{session_id}", response_model=GalleryResponse)
@@ -166,4 +213,17 @@ def clear_gallery(session_id: str, current_user=Depends(get_current_user)) -> No
     path = _gallery_path(session_id)
     if path.exists():
         path.write_text("[]")
+
+
+@router.get("/api/image-file/{session_id}/{filename}")
+def serve_image_file(session_id: str, filename: str) -> "Response":
+    """Serve a locally generated scene image (produced by Steward's ComfyUI)."""
+    from fastapi.responses import FileResponse, Response as FResponse
+    safe_session = session_id.replace("..", "").replace("/", "")
+    safe_file = filename.replace("..", "").replace("/", "")
+    img_path = _BASE / safe_session / "scene_images" / safe_file
+    if not img_path.exists() or not img_path.is_file():
+        return FResponse(status_code=404)
+    mime = "image/jpeg" if safe_file.lower().endswith(".jpg") else "image/png"
+    return FileResponse(str(img_path), media_type=mime, headers={"Cache-Control": "max-age=86400"})
 
