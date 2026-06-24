@@ -69,12 +69,11 @@ export default function CharacterPanel({
   onQuickAction,
   onSheetUpdate,
 }: Props){
-  const [drawerKey, setDrawerKey] = useState<string | null>(null)
   const [sheetTab, setSheetTab] = useState<SheetTab | null>('skills')
   const containerRef = useRef<HTMLDivElement|null>(null)
   const [rollingCueId, setRollingCueId] = useState<string | null>(null)
   const [cueError, setCueError] = useState<string | null>(null)
-  const [castPickOpen, setCastPickOpen] = useState(false)
+
 
   // Local session-time overrides (reset when character changes)
   const prevIdRef = useRef<string | undefined>(undefined)
@@ -90,12 +89,10 @@ export default function CharacterPanel({
   const [expandedSpell, setExpandedSpell] = useState<string | null>(null)
   const [spellUpcastOptions, setSpellUpcastOptions] = useState<{spell: string; minLevel: number; options: number[]} | null>(null)
   // Upcast flow (from ✦ Cast picker — kept for weapon/top-level cast button)
-  const [castFlow, setCastFlow] = useState<{spell: string; minLevel: number; options: number[]} | null>(null)
   // Rest dialog
   const [restDialog, setRestDialog] = useState<'short' | 'long' | null>(null)
   const [shortRestInput, setShortRestInput] = useState('')
   // Saving indicator
-  const [saving, setSaving] = useState(false)
 
   const selected = useMemo(() => {
     if(!roster.length) return undefined
@@ -111,7 +108,6 @@ export default function CharacterPanel({
       setInvLocal(null)
       setHpEditOpen(false)
       setHpAdjInput('')
-      setCastFlow(null)
       setExpandedSpell(null)
       setSpellUpcastOptions(null)
       setRestDialog(null)
@@ -121,32 +117,20 @@ export default function CharacterPanel({
   }, [selected?.id])
 
   const effectiveHp = hpLocal ?? selected?.hp ?? { current: 0, max: 0 }
-  const effectiveSlots: Record<string, {max: number; used: number; level?: number}> =
-    slotsLocal ?? (selected?.spellSlots ?? {})
+  const effectiveSlots: Record<string, {max: number; used: number; level?: number}> = useMemo(
+    () => slotsLocal ?? (selected?.spellSlots ?? {}),
+    [slotsLocal, selected?.spellSlots]
+  )
   const effectiveInv: string[] = invLocal ?? (selected?.inventory ?? [])
-
-  // Map spell name (lowercase) → minimum slot level
-  const spellLevelMap = useMemo(() => {
-    const map: Record<string, number> = {}
-    for (const entry of (selected?.spellbook ?? [])) {
-      if (!entry?.name || !entry?.header) continue
-      const hdr = String(entry.header).toLowerCase()
-      const m = hdr.match(/(\d+)/)
-      if (hdr.includes('cantrip')) { map[String(entry.name).toLowerCase()] = 0; continue }
-      if (m) map[String(entry.name).toLowerCase()] = Number(m[1])
-    }
-    return map
-  }, [selected?.spellbook])
 
   const pushSheetPatch = useCallback((patch: Record<string, any>) => {
     if (!selected?.id) return
-    setSaving(true)
     apiFetch(`/characters/${selected.id}`, {
       method: 'PUT',
       body: JSON.stringify({ sheet_patch: patch }),
     }).then(() => {
       onSheetUpdate?.(selected.id, patch)
-    }).catch(() => {}).finally(() => setSaving(false))
+    }).catch(() => {})
   }, [selected?.id, onSheetUpdate])
 
   const applyHp = useCallback((next: {current: number; max: number; temp?: number}) => {

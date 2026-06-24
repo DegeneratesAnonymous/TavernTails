@@ -1,7 +1,6 @@
 """Narrative Agent: generates narration + prompt."""
 
 import json
-import os
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -110,11 +109,11 @@ def _build_director_system(
     lines.append("")
     lines.append("WRITING REQUIREMENTS (non-negotiable):")
     lines.append(f"  1. Open IN the scene at {loc_name} — no preamble, no setup sentence")
-    lines.append(f"  2. Include at least one physical sensory detail (what you see, smell, or hear right now)")
+    lines.append("  2. Include at least one physical sensory detail (what you see, smell, or hear right now)")
     if npc_name:
         lines.append(f"  3. Name {npc_name} directly and show their emotional state through action or dialogue")
-    lines.append(f"  4. Show the conflict through a concrete visible event or piece of evidence — not a mood")
-    lines.append(f"  5. Write exactly 3–5 sentences of present-tense narration")
+    lines.append("  4. Show the conflict through a concrete visible event or piece of evidence — not a mood")
+    lines.append("  5. Write exactly 3–5 sentences of present-tense narration")
     lines.append(f"  6. End with ONE player-facing question addressed to {player} by name")
     lines.append("")
     lines.append("FORBIDDEN — never write:")
@@ -174,6 +173,14 @@ def _parse_narrative_response(text: str, fallback_narrative: str, fallback_promp
             if isinstance(parsed, dict):
                 out_narr = parsed.get('narrative') or parsed.get('text') or narration
                 out_prompt = parsed.get('prompt') or fallback_prompt
+                citations = parsed.get('citations') or []
+                if citations:
+                    cit_parts = []
+                    for c in citations:
+                        if isinstance(c, dict) and c.get('source_id') and c.get('page') is not None:
+                            cit_parts.append(f"[{c['source_id']} p{c['page']}] {c.get('snippet', '')}".strip())
+                    if cit_parts:
+                        out_narr = f"{out_narr}\n\nCitations: {' | '.join(cit_parts)}"
                 return str(out_narr), str(out_prompt)
     except Exception:
         pass
@@ -184,7 +191,7 @@ def _parse_narrative_response(text: str, fallback_narrative: str, fallback_promp
 def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
     weather_desc = "crisp and clear" if payload.weather == "clear" else payload.weather
     player = payload.player or "the party"
-    default_prompt = f"What does {player} do?"
+    default_prompt = f"{player}: What do you do?"
 
     # Default narration used only when LLM is completely unavailable
     default_narration = (

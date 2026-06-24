@@ -1,7 +1,6 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react'
 import './GameplayLayout.css'
 import NarrativeView from './NarrativeView'
-import Chat from './Chat'
 import CharacterPanel, {CharacterSummary, SceneCue} from './CharacterPanel'
 import DocumentsPanel from './DocumentsPanel'
 import JournalPanel from './JournalPanel'
@@ -93,7 +92,7 @@ export default function GameplayLayout({
   const openDrawer = () => setDrawerOpen(true)
   const closeDrawer = () => setDrawerOpen(false)
 
-  const [rightTab, setRightTab] = useState<'chat' | 'character' | 'journal' | 'world'>('chat')
+  const [rightTab, setRightTab] = useState<'character' | 'journal' | 'world'>('character')
   const [drawerView, setDrawerView] = useState<'site' | 'panels' | 'party' | 'documents'>('panels')
   const [partySelectedId, setPartySelectedId] = useState<string | null>(null)
   const [showInviteForm, setShowInviteForm] = useState(false)
@@ -111,11 +110,8 @@ export default function GameplayLayout({
     onRefreshRoster?.()
   }, [onRefreshRoster])
 
-  const [composerInject, setComposerInject] = useState<string | null>(null)
   const handleQuickAction = useCallback((action: {type: string; detail?: string}) => {
     if (!action.detail) return
-    const tag = '@' + action.detail.replace(/\s+/g, '_') + ' '
-    setComposerInject(tag)
   }, [])
   const [sessionStarted, setSessionStarted] = useState(false)
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false)
@@ -993,15 +989,6 @@ export default function GameplayLayout({
               <button
                 type="button"
                 role="tab"
-                className={rightTab === 'chat' ? 'session-panel-tab active' : 'session-panel-tab'}
-                aria-selected={rightTab === 'chat'}
-                onClick={() => setRightTab('chat')}
-              >
-                Chat
-              </button>
-              <button
-                type="button"
-                role="tab"
                 className={rightTab === 'character' ? 'session-panel-tab active' : 'session-panel-tab'}
                 aria-selected={rightTab === 'character'}
                 onClick={() => setRightTab('character')}
@@ -1030,18 +1017,6 @@ export default function GameplayLayout({
             </div>
 
             <div className="session-panel-body" role="tabpanel">
-              {rightTab === 'chat' ? (
-                <div className="chat-dock" aria-label="Chat">
-                  <Chat
-                    sessionId={sessionId || undefined}
-                    variant="dock"
-                    composerInject={composerInject}
-                    onComposerInjectConsumed={() => setComposerInject(null)}
-                    character={playerStats ?? null}
-                  />
-                </div>
-              ) : null}
-
               {rightTab === 'character' ? (
                 <div className="player-sheet" aria-label="Your character sheet">
                   <div className="player-sheet-inner">
@@ -1079,7 +1054,6 @@ export default function GameplayLayout({
                       onGoToImport={onGoToImport}
                       onSheetUpdate={handleSheetUpdate}
                       onQuickAction={handleQuickAction}
-                      sessionId={sessionId || null}
                     />
                   </div>
                 </div>
