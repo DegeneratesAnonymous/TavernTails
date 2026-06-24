@@ -51,6 +51,8 @@ class SceneDirectorRequest(BaseModel):
     open_hooks: list[str] = Field(default_factory=list)
     recent_events: list[str] = Field(default_factory=list)
     world_context_block: str = Field(default="")
+    # Narrative Director guidance — overrides default pacing choices
+    director_guidance: dict[str, Any] | None = None
 
 
 class LocationBlueprint(BaseModel):
@@ -243,6 +245,31 @@ def direct_scene(req: SceneDirectorRequest) -> SceneDirectorOutput:
         ctx.append(f"Active factions: {', '.join(req.candidate_factions[:3])}")
     if req.world_context_block:
         ctx.append(req.world_context_block[:500])
+
+    # Inject Narrative Director guidance if provided
+    if req.director_guidance:
+        dg = req.director_guidance
+        director_lines = []
+        if dg.get("recommended_scene_type"):
+            director_lines.append(f"SCENE TYPE: {dg['recommended_scene_type']}")
+        if dg.get("scene_purpose"):
+            director_lines.append(f"SCENE PURPOSE: {dg['scene_purpose']}")
+        if dg.get("threads_to_advance"):
+            director_lines.append(f"ADVANCE THESE THREADS: {', '.join(dg['threads_to_advance'])}")
+        if dg.get("spotlight_target"):
+            director_lines.append(f"SPOTLIGHT PLAYER/NPC: {dg['spotlight_target']}")
+        if dg.get("recommended_consequence"):
+            director_lines.append(f"TRIGGER THIS CONSEQUENCE: {dg['recommended_consequence']}")
+        if dg.get("recommended_reveal"):
+            director_lines.append(f"REVEAL: {dg['recommended_reveal']}")
+        if dg.get("recommended_complication"):
+            director_lines.append(f"COMPLICATION: {dg['recommended_complication']}")
+        if dg.get("next_story_beat"):
+            director_lines.append(f"TARGET STORY BEAT: {dg['next_story_beat']}")
+        if dg.get("mystery_guidance"):
+            director_lines.append(f"MYSTERY GUIDANCE: {dg['mystery_guidance']}")
+        if director_lines:
+            ctx.append("NARRATIVE DIRECTOR GUIDANCE (mandatory):\n" + "\n".join(f"  — {l}" for l in director_lines))
 
     system = (
         "You are a tabletop RPG Scene Director. Your job: convert campaign context into ONE concrete, "

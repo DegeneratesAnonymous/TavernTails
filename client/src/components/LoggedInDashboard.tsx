@@ -1117,6 +1117,9 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
         if (bootData?.context_debug) {
           window.dispatchEvent(new CustomEvent('context:debug', { detail: bootData.context_debug }))
         }
+        if (bootData?.story_debug) {
+          window.dispatchEvent(new CustomEvent('story:debug', { detail: bootData.story_debug }))
+        }
       }).catch(() => {/* silent — WS will deliver the scene */})
     } catch (e: any) {
       alert(e?.message || 'Failed to start playing')

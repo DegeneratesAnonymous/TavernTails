@@ -7,6 +7,7 @@ import DocumentsPanel from './DocumentsPanel'
 import JournalPanel from './JournalPanel'
 import WorldPanel from './WorldPanel'
 import ContextDebugPanel from './ContextDebugPanel'
+import StoryDashboard, { StoryDashboardData } from './StoryDashboard'
 import { apiFetch, buildWsUrl } from '../api'
 import SiteMenu from './SiteMenu'
 import SiteNavMenu from './SiteNavMenu'
@@ -127,6 +128,8 @@ export default function GameplayLayout({
   const [npcSpotlight, setNpcSpotlight] = useState<Array<{name: string; initiative_hint?: string}>>([])
   const [contextDebug, setContextDebug] = useState<any | null>(null)
   const [showContextDebug, setShowContextDebug] = useState(false)
+  const [storyDebug, setStoryDebug] = useState<StoryDashboardData | null>(null)
+  const [showStoryDash, setShowStoryDash] = useState(false)
 
   useEffect(()=>{
     const handler = (event: Event) => {
@@ -137,6 +140,18 @@ export default function GameplayLayout({
     window.addEventListener('context:debug', handler)
     return () => { // @ts-ignore
       window.removeEventListener('context:debug', handler)
+    }
+  }, [])
+
+  useEffect(()=>{
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent).detail
+      if(detail) setStoryDebug(detail)
+    }
+    // @ts-ignore
+    window.addEventListener('story:debug', handler)
+    return () => { // @ts-ignore
+      window.removeEventListener('story:debug', handler)
     }
   }, [])
   useEffect(()=>{
@@ -954,6 +969,9 @@ export default function GameplayLayout({
                   if(data?.context_debug){
                     setContextDebug(data.context_debug)
                   }
+                  if(data?.story_debug){
+                    setStoryDebug(data.story_debug)
+                  }
                 }catch(err:any){ alert(err?.message || 'Failed to continue scene') }
               }}>Continue</button>
             </div>
@@ -1093,6 +1111,25 @@ export default function GameplayLayout({
             <ContextDebugPanel
               data={contextDebug}
               onClose={() => setShowContextDebug(false)}
+            />
+          ) : null}
+        </>
+      ) : null}
+
+      {/* Story Dashboard — dev mode only */}
+      {process.env.NODE_ENV === 'development' && storyDebug ? (
+        <>
+          <button
+            className="sd-trigger"
+            title="Story Dashboard"
+            onClick={() => setShowStoryDash(v => !v)}
+          >
+            {showStoryDash ? '✕' : '📖'}
+          </button>
+          {showStoryDash ? (
+            <StoryDashboard
+              data={storyDebug}
+              onClose={() => setShowStoryDash(false)}
             />
           ) : null}
         </>

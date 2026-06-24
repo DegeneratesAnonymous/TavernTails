@@ -28,6 +28,12 @@ from .scene_validator import (
 )
 from .visual_director import run_visual_pipeline
 from .visual_state import load_visual_state, save_visual_state
+from .story_state import (
+    load_story_state, save_story_state, update_state_after_scene,
+    sync_threads_from_entities, derive_campaign_dna, story_dashboard_payload,
+)
+from .narrative_director import direct_scene as narrative_direct_scene, DirectorOutput
+from .story_validator import validate_story_quality as validate_story_structure
 
 router = APIRouter(prefix="/sessions")
 
@@ -842,6 +848,23 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     # All known entity names for quality validator
     all_campaign_entities = list({*candidate_npcs, *candidate_locations, *candidate_threads})
 
+    # --- Narrative Director: determine story-level guidance for this scene ---
+    story_state = load_story_state(str(campaign_id)) if campaign_id else None
+    narrative_director_output: DirectorOutput | None = None
+    if story_state is not None:
+        try:
+            # Sync thread titles from campaign entities so health scoring is accurate
+            story_state = sync_threads_from_entities(story_state, mem_threads)
+            if not story_state.campaign_dna.themes:
+                story_state.campaign_dna = derive_campaign_dna(campaign_settings, campaign_variables)
+            narrative_director_output = narrative_direct_scene(
+                state=story_state,
+                player_name=player_name if players else "",
+                player_actions=[],
+            )
+        except Exception:
+            narrative_director_output = None
+
     # --- Step 2: Scene Director Agent — converts raw material into a concrete scene plan ---
     director_output: SceneDirectorOutput = scene_director_agent.direct_scene(SceneDirectorRequest(
         campaign_settings=campaign_settings,
@@ -858,6 +881,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         open_hooks=open_hooks[:4],
         recent_events=recent_events[:4],
         world_context_block=world_ctx.get('prompt_block') or '',
+        director_guidance=narrative_director_output.model_dump() if narrative_director_output else None,
     ))
 
     player_name = players[0] if players else 'the party'
@@ -1085,6 +1109,42 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     ready_path = folder / 'ready.json'
     ready_path.write_text(json.dumps({}))
 
+    # --- Story Validator + State Update ---
+    story_validator_result = None
+    story_debug: dict | None = None
+    if story_state is not None and narrative_director_output is not None:
+        try:
+            story_validator_result = validate_story_structure(
+                scene_text=scene.get('text', ''),
+                director=narrative_director_output,
+                state=story_state,
+                scene_type=narrative_director_output.recommended_scene_type,
+                npc_names=candidate_npcs[:10],
+                location_names=candidate_locations[:6],
+            )
+            story_state = update_state_after_scene(
+                state=story_state,
+                scene_type=narrative_director_output.recommended_scene_type,
+                scene_purpose=narrative_director_output.scene_purpose,
+                scene_id=scene.get('id', session_id),
+                location=loc_name,
+                npcs_featured=[n for n in candidate_npcs[:5] if n.lower() in scene.get('text', '').lower()],
+                threads_advanced=narrative_director_output.threads_to_advance,
+                threads_resolved=narrative_director_output.threads_to_resolve,
+                emotional_target=narrative_director_output.emotional_target,
+                director_tension_target=narrative_director_output.target_tension,
+                story_score=story_validator_result.score,
+                director_recommendation_followed=True,
+            )
+            save_story_state(story_state)
+            story_debug = {
+                'director': narrative_director_output.model_dump(),
+                'story_state': story_dashboard_payload(story_state),
+                'story_validator': story_validator_result.to_dict(),
+            }
+        except Exception:
+            pass
+
     scene_debug = {
         'storyboard_plot': plot_result.plot,
         'storyboard_hooks': plot_result.hooks,
@@ -1114,6 +1174,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         'npc_profiles': npc_profiles,
         'scene_debug': scene_debug,
         'context_debug': context_debug,
+        'story_debug': story_debug,
     }
 
 
@@ -1306,9 +1367,36 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             except Exception:
                 pass
 
+    # --- Narrative Director: scene-level story guidance ---
+    adv_story_state = load_story_state(str(campaign_id)) if campaign_id else None
+    adv_director_output: DirectorOutput | None = None
+    if adv_story_state is not None:
+        try:
+            adv_director_output = narrative_direct_scene(
+                state=adv_story_state,
+                player_name=adv_player_name,
+                player_actions=player_actions,
+            )
+        except Exception:
+            adv_director_output = None
+
     scene_summary = ' '.join(player_actions[:3]) if player_actions else 'The party deliberates their next move.'
     if world_context_block:
         scene_summary = f"{scene_summary}\n\n{world_context_block}"
+
+    # Inject director pacing guidance into narrative prompt
+    if adv_director_output:
+        director_lines = [f"[STORY DIRECTOR] Scene purpose: {adv_director_output.scene_purpose}",
+                          f"Scene type: {adv_director_output.recommended_scene_type}"]
+        if adv_director_output.threads_to_advance:
+            director_lines.append(f"Advance threads: {', '.join(adv_director_output.threads_to_advance)}")
+        if adv_director_output.recommended_consequence:
+            director_lines.append(f"Consequence to surface: {adv_director_output.recommended_consequence}")
+        if adv_director_output.spotlight_target:
+            director_lines.append(f"Spotlight: {adv_director_output.spotlight_target}")
+        if adv_director_output.next_story_beat:
+            director_lines.append(f"Target beat: {adv_director_output.next_story_beat}")
+        scene_summary = "\n".join(director_lines) + "\n\n" + scene_summary
 
     narrative = narrative_agent.generate_narrative(narrative_agent.NarrativeRequest(
         scene=scene_summary,
@@ -1413,12 +1501,46 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
 
     adv_context_debug = adv_context_packet.debug_payload() if adv_context_packet else None
 
+    # --- Story Validator + State Update (advance scene) ---
+    adv_story_debug: dict | None = None
+    if adv_story_state is not None and adv_director_output is not None:
+        try:
+            adv_story_result = validate_story_structure(
+                scene_text=new_scene.get('text', ''),
+                director=adv_director_output,
+                state=adv_story_state,
+                scene_type=adv_director_output.recommended_scene_type,
+            )
+            adv_story_state = update_state_after_scene(
+                state=adv_story_state,
+                scene_type=adv_director_output.recommended_scene_type,
+                scene_purpose=adv_director_output.scene_purpose,
+                scene_id=new_scene.get('id', session_id),
+                location=new_scene.get('title', ''),
+                npcs_featured=[],
+                threads_advanced=adv_director_output.threads_to_advance,
+                threads_resolved=adv_director_output.threads_to_resolve,
+                emotional_target=adv_director_output.emotional_target,
+                director_tension_target=adv_director_output.target_tension,
+                story_score=adv_story_result.score,
+                director_recommendation_followed=True,
+            )
+            save_story_state(adv_story_state)
+            adv_story_debug = {
+                'director': adv_director_output.model_dump(),
+                'story_state': story_dashboard_payload(adv_story_state),
+                'story_validator': adv_story_result.to_dict(),
+            }
+        except Exception:
+            pass
+
     return {
         'ok': True,
         'scene': new_scene,
         'dice_rolls': dice_rolls,
         'image_url': image_url,
         'context_debug': adv_context_debug,
+        'story_debug': adv_story_debug,
     }
 
 
