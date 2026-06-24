@@ -142,17 +142,13 @@ def test_generate_location_with_llm(client: TestClient, monkeypatch):
         "connections_to_factions": "Contested by the Scholar's Circle and the Undercity Thieves",
     }
 
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-fake-key")
-    sys.modules["openai"] = _make_fake_openai(location_payload)
+    monkeypatch.setattr("server.agents.generate.chat_complete", lambda msgs, **kw: json.dumps(location_payload))
 
-    try:
-        resp = client.post(
-            "/generate/location",
-            headers=headers,
-            json={"campaign_id": camp_id, "location_type": "dungeon", "mood": "eerie"},
-        )
-    finally:
-        sys.modules.pop("openai", None)
+    resp = client.post(
+        "/generate/location",
+        headers=headers,
+        json={"campaign_id": camp_id, "location_type": "dungeon", "mood": "eerie"},
+    )
 
     assert resp.status_code == 200, resp.text
     data = resp.json()
@@ -185,17 +181,13 @@ def test_generate_loot_with_llm(client: TestClient, monkeypatch):
         "total_value_gp": 650,
     }
 
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-fake-key")
-    sys.modules["openai"] = _make_fake_openai(loot_payload)
+    monkeypatch.setattr("server.agents.generate.chat_complete", lambda msgs, **kw: json.dumps(loot_payload))
 
-    try:
-        resp = client.post(
-            "/generate/loot",
-            headers=headers,
-            json={"campaign_id": camp_id, "challenge_rating": 8, "loot_type": "treasure"},
-        )
-    finally:
-        sys.modules.pop("openai", None)
+    resp = client.post(
+        "/generate/loot",
+        headers=headers,
+        json={"campaign_id": camp_id, "challenge_rating": 8, "loot_type": "treasure"},
+    )
 
     assert resp.status_code == 200, resp.text
     data = resp.json()

@@ -217,7 +217,8 @@ def generate_plot(payload: StoryboardPlotRequest) -> StoryboardPlotResponse:
             plot_parts.append(f"The {fname} casts a long shadow over events.")
     if not plot_parts:
         loc = candidate_locations[0] if candidate_locations else (world_ref or "the region")
-        plot_parts.append(f"In {loc}, something demands the party's immediate attention.")
+        flavor = f"{genre} world of {tone}" if tone and tone not in ("balanced", "moderate") else f"{genre} world"
+        plot_parts.append(f"In the {flavor}, {loc} demands the party's immediate attention.")
     if recent_events:
         plot_parts.append(recent_events[0][:120])
     plot = " ".join(plot_parts)

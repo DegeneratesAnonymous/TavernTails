@@ -57,6 +57,45 @@ class Roll(SQLModel, table=True):
     created_at: str | None = None
 
 
+class CampaignEntity(SQLModel, table=True):
+    id: str | None = Field(default=None, primary_key=True)
+    campaign_id: str = Field(foreign_key="campaign.id", index=True)
+    name: str
+    entity_type: str = Field(default="npc")
+    status: str = Field(default="active")
+    data: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    updated_at: str | None = None
+
+
+class CampaignHook(SQLModel, table=True):
+    id: str | None = Field(default=None, primary_key=True)
+    campaign_id: str = Field(foreign_key="campaign.id", index=True)
+    title: str
+    description: str | None = None
+    hook_type: str = Field(default="open")
+    priority: int = Field(default=0)
+    deadline: str | None = None
+    status: str = Field(default="active")
+
+
+class CampaignRelationship(SQLModel, table=True):
+    id: str | None = Field(default=None, primary_key=True)
+    campaign_id: str = Field(foreign_key="campaign.id", index=True)
+    source_entity_id: str
+    target_entity_id: str
+    relation_type: str | None = None
+    description: str | None = None
+
+
+class CampaignChangeLog(SQLModel, table=True):
+    id: str | None = Field(default=None, primary_key=True)
+    campaign_id: str = Field(foreign_key="campaign.id", index=True)
+    entity_id: str | None = None
+    summary: str | None = None
+    caused_by_player_action: bool = Field(default=False)
+    created_at: str | None = None
+
+
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
 
