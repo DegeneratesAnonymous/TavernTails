@@ -228,6 +228,7 @@
   display: flex;
   flex-direction: column;
   flex: 1;
+  position: relative;
 }
 
 .zork-suggestions{
@@ -688,6 +689,53 @@
 /* ── Context Debug Trigger (imported in ContextDebugPanel.css but placed here for layout) */
 /* The button is defined in ContextDebugPanel.css */
 
+/* ── Scene Generating Overlay ─────────────────────────────────────────── */
+.scene-generating-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: rgba(8, 8, 16, 0.82);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.scene-generating-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 32px 40px;
+  background: var(--tt-surface, #12121e);
+  border: 1px solid var(--tt-border, #2a2a3e);
+  border-radius: 12px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+  max-width: 320px;
+  text-align: center;
+}
+
+.scene-generating-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--tt-border, #2a2a3e);
+  border-top-color: var(--tt-gold, #f5c842);
+  border-radius: 50%;
+  animation: scene-spin 0.9s linear infinite;
+}
+
+@keyframes scene-spin {
+  to { transform: rotate(360deg); }
+}
+
+.scene-generating-label {
+  color: var(--tt-text, #cdd6f4);
+  font-size: 14px;
+  font-style: italic;
+  line-height: 1.5;
+}
+
 /* ── Player Action Area ──────────────────────────────────────────────── */
 .player-action-area {
   display: flex;
@@ -695,40 +743,70 @@
   border-top: 1px solid var(--tt-border, #2a2a3e);
   background: var(--tt-bg, #0d0d14);
   flex-shrink: 0;
-  max-height: 360px;
+  max-height: 320px;
 }
 
 .player-chat-wrap {
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  max-height: 300px;
+  max-height: 280px;
 }
 
-.player-ready-bar {
+/* ── Ready Banner ─────────────────────────────────────────────────────── */
+.ready-banner {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 8px 14px;
-  border-top: 1px solid var(--tt-border, #2a2a3e);
-  background: var(--tt-surface, #12121e);
+  justify-content: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: linear-gradient(135deg, rgba(245,200,66,0.08) 0%, rgba(245,200,66,0.04) 100%);
+  border-top: 2px solid rgba(245,200,66,0.35);
   flex-shrink: 0;
+  flex-wrap: wrap;
+  transition: opacity 0.2s;
 }
 
-.phase-label {
-  font-size: 12px;
+.ready-banner--waiting {
+  background: rgba(108,112,134,0.06);
+  border-top-color: rgba(108,112,134,0.2);
+}
+
+.ready-banner--hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ready-banner-text {
+  font-size: 13px;
+  color: var(--tt-muted, #6c7086);
   font-style: italic;
 }
 
-.phase-label--turn { color: var(--tt-gold, #f5c842); }
-.phase-label--waiting { color: var(--tt-muted, #6c7086); }
-.phase-label--advancing { color: var(--tt-accent, #89b4fa); }
+.btn-gold {
+  background: var(--tt-gold, #f5c842);
+  color: #0d0d14;
+  border: none;
+  font-weight: 700;
+  font-size: 13px;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition: background 0.15s, transform 0.1s;
+  flex-shrink: 0;
+}
 
-.ready-btn {
-  min-width: 120px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
+.btn-gold:hover:not(:disabled) {
+  background: #f7d060;
+  transform: translateY(-1px);
+}
+
+.btn-gold:disabled {
+  opacity: 0.5;
+  cursor: default;
+  transform: none;
 }
 
 .dice-rolls-bar {

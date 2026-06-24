@@ -130,6 +130,7 @@ export default function GameplayLayout({
 
   // Session round-flow state
   const [phase, setPhase] = useState<'player_turn' | 'advancing'>('player_turn')
+  const [phaseLabel, setPhaseLabel] = useState('')
   const [playerReady, setPlayerReady] = useState(false)
   const [diceRolls, setDiceRolls] = useState<Array<{type: string; skill?: string; reason?: string}>>([])
 
@@ -360,13 +361,17 @@ export default function GameplayLayout({
   const doAdvanceScene = useCallback(async () => {
     if (!sessionId) return
     setPhase('advancing')
+    setPhaseLabel('Analysing player actions…')
     setPlayerReady(false)
     setDiceRolls([])
+    const labelTimer = window.setTimeout(() => setPhaseLabel('Directing the scene…'), 8000)
+    const labelTimer2 = window.setTimeout(() => setPhaseLabel('Writing the narrative…'), 22000)
     try {
       const res = await apiFetch(`/sessions/${sessionId}/advance-scene`, { method: 'POST', body: JSON.stringify({}) })
-      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d?.detail || 'Failed to advance scene') }
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d?.detail || d?.error || 'Failed to advance scene') }
       const data = await res.json()
       if (data?.scene && typeof data.scene === 'object') {
+        setPhaseLabel('Scene ready!')
         window.dispatchEvent(new CustomEvent('narrative:scene', { detail: { scene: data.scene } }))
       }
       if (Array.isArray(data?.dice_rolls) && data.dice_rolls.length) {
@@ -377,7 +382,10 @@ export default function GameplayLayout({
     } catch (err: any) {
       alert(err?.message || 'Failed to advance scene')
     } finally {
+      window.clearTimeout(labelTimer)
+      window.clearTimeout(labelTimer2)
       setPhase('player_turn')
+      setPhaseLabel('')
     }
   }, [sessionId])
 
@@ -952,11 +960,15 @@ export default function GameplayLayout({
                         onClick={async () => {
                           setSettingsMenuOpen(false)
                           if (!sessionId) return alert('No active session')
+                          setPhase('advancing')
+                          setPhaseLabel('Regenerating scene…')
+                          const t1 = window.setTimeout(() => setPhaseLabel('Writing narrative…'), 10000)
                           try {
                             const res = await apiFetch('/narrative/regenerate', { method: 'POST', body: JSON.stringify({ session_id: sessionId }) })
-                            if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d?.detail || 'Failed') }
+                            if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d?.detail || d?.error || 'Failed to regenerate scene') }
                             const data = await res.json()
                             if (data?.narrative) {
+                              setPhaseLabel('Scene ready!')
                               window.dispatchEvent(new CustomEvent('narrative:scene', {
                                 detail: {
                                   scene: {
@@ -964,20 +976,21 @@ export default function GameplayLayout({
                                     title: 'Regenerated Scene',
                                     text: `${data.narrative}\n\n${data.prompt || ''}`.trim(),
                                     image: null,
-                                    choices: [
-                                      { id: 'investigate', label: 'Investigate the most immediate clue' },
-                                      { id: 'talk',        label: 'Talk to someone nearby' },
-                                      { id: 'press_on',   label: 'Press on toward the obvious destination' },
-                                      { id: 'plan',        label: 'Huddle and make a plan' },
-                                    ],
+                                    choices: [],
                                   }
                                 }
                               }))
                             }
-                          } catch (err: any) { alert(err?.message || 'Failed to regenerate scene') }
+                          } catch (err: any) {
+                            alert(err?.message || 'Failed to regenerate scene')
+                          } finally {
+                            window.clearTimeout(t1)
+                            setPhase('player_turn')
+                            setPhaseLabel('')
+                          }
                         }}
                       >
-                        🔄 Regenerate Scene
+                        {phase === 'advancing' ? '⏳ Regenerating…' : '🔄 Regenerate Scene'}
                       </button>
                     </div>
                   </>
@@ -1000,11 +1013,23 @@ export default function GameplayLayout({
           <div className="home-screen" aria-label="HomeScreen">
             <section className="zork-screen" aria-label="Main view screen">
               <div className="zork-screen-inner">
+                {/* Scene generation overlay */}
+                {phase === 'advancing' && (
+                  <div className="scene-generating-overlay" aria-live="polite" aria-label="Generating scene">
+                    <div className="scene-generating-card">
+                      <div className="scene-generating-spinner" aria-hidden="true" />
+                      <span className="scene-generating-label">
+                        {phaseLabel || 'Steward is preparing the next scene…'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 <section className="scene-area" aria-label="Scene view">
                   <NarrativeView sessionId={sessionId} />
                 </section>
 
-                {/* Player turn area: chat + ready button */}
+                {/* Chat dock — player message input */}
                 {sessionId && (
                   <section className="player-action-area" aria-label="Player actions">
                     {diceRolls.length > 0 && (
@@ -1019,40 +1044,44 @@ export default function GameplayLayout({
                     <div className="player-chat-wrap">
                       <Chat sessionId={sessionId} variant="dock" character={playerStats ?? null} />
                     </div>
-                    <div className="player-ready-bar">
-                      <span className={`phase-label phase-label--${phase === 'advancing' ? 'advancing' : playerReady ? 'waiting' : 'turn'}`}>
-                        {phase === 'advancing'
-                          ? 'Steward is weaving the next scene…'
-                          : playerReady
-                          ? 'Waiting for other players…'
-                          : 'Your turn — enter your actions above, then mark ready'}
-                      </span>
-                      <button
-                        className={`btn btn-sm ready-btn ${playerReady || phase === 'advancing' ? 'btn-secondary' : 'btn-primary'}`}
-                        disabled={playerReady || phase === 'advancing'}
-                        type="button"
-                        onClick={async () => {
-                          if (!sessionId || playerReady || phase === 'advancing') return
-                          setPlayerReady(true)
-                          try {
-                            const res = await apiFetch(`/sessions/${sessionId}/player-ready`, {
-                              method: 'POST',
-                              body: JSON.stringify({ done: true }),
-                            })
-                            if (!res.ok) throw new Error('Ready signal failed')
-                            const data = await res.json()
-                            if (data?.all_ready) {
-                              await doAdvanceScene()
-                            }
-                          } catch {
-                            setPlayerReady(false)
-                          }
-                        }}
-                      >
-                        {phase === 'advancing' ? 'Generating…' : playerReady ? 'Ready ✓' : "I'm Ready"}
-                      </button>
-                    </div>
                   </section>
+                )}
+
+                {/* Ready banner — clearly separated from chat, full-width below */}
+                {sessionId && (
+                  <div className={`ready-banner ${playerReady ? 'ready-banner--waiting' : ''} ${phase === 'advancing' ? 'ready-banner--hidden' : ''}`}
+                    aria-label="Player ready status"
+                  >
+                    <span className="ready-banner-text">
+                      {playerReady
+                        ? '⏳ Waiting for other players…'
+                        : 'When you\'ve entered all your actions above — '}
+                    </span>
+                    <button
+                      className={`btn ready-banner-btn ${playerReady ? 'btn-secondary' : 'btn-gold'}`}
+                      disabled={playerReady || phase === 'advancing'}
+                      type="button"
+                      onClick={async () => {
+                        if (!sessionId || playerReady || phase === 'advancing') return
+                        setPlayerReady(true)
+                        try {
+                          const res = await apiFetch(`/sessions/${sessionId}/player-ready`, {
+                            method: 'POST',
+                            body: JSON.stringify({ done: true }),
+                          })
+                          if (!res.ok) throw new Error('Ready signal failed')
+                          const data = await res.json()
+                          if (data?.all_ready) {
+                            await doAdvanceScene()
+                          }
+                        } catch {
+                          setPlayerReady(false)
+                        }
+                      }}
+                    >
+                      {playerReady ? 'Ready ✓' : "I'm Ready — Advance Story"}
+                    </button>
+                  </div>
                 )}
               </div>
             </section>
