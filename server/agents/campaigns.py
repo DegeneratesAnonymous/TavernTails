@@ -228,10 +228,43 @@ def update_campaign(campaign_id: str, req: CampaignUpdate, current_user=Depends(
 
 @router.delete('/{campaign_id}')
 def delete_campaign(campaign_id: str, current_user=Depends(get_current_user)):
+    import shutil
+    from pathlib import Path
+
     owner_id = _require_user_id(current_user)
+    camp = db.get_campaign_by_id(campaign_id)
+    if not camp or camp.owner_id != owner_id:
+        raise HTTPException(status_code=404, detail='Campaign not found or forbidden')
+
+    # Collect session IDs before deleting the campaign record
+    session_ids: List[str] = (camp.metadata_json or {}).get('sessions', [])
+
     ok = db.delete_campaign(campaign_id, owner_id)
     if not ok:
         raise HTTPException(status_code=404, detail='Campaign not found or forbidden')
+
+    # Delete session folders from disk
+    sessions_base = Path(sessions_agent.BASE)
+    for sid in session_ids:
+        folder = sessions_base / str(sid)
+        if folder.exists() and folder.is_dir():
+            try:
+                shutil.rmtree(folder)
+            except Exception:
+                pass
+
+    # Delete campaign-level file storage (story_state, etc.)
+    campaigns_base = Path(__file__).resolve().parents[1] / 'campaigns'
+    camp_dir = campaigns_base / campaign_id
+    if camp_dir.exists() and camp_dir.is_dir():
+        try:
+            shutil.rmtree(camp_dir)
+        except Exception:
+            pass
+
+    # Delete orphaned DB records tied to this campaign
+    db.delete_campaign_memory(campaign_id)
+
     return {'ok': True}
 
 
