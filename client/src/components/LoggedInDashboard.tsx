@@ -822,7 +822,11 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       return
     }
     const nextCampaign = campaigns.find(c => String(c.id) === String(activeCampaignId))
-    if(!nextCampaign) return
+    if(!nextCampaign) {
+      // Campaign no longer exists (e.g. was deleted) — clear stale session
+      setActiveSession(null)
+      return
+    }
     const sessionsList: Array<any> = nextCampaign.sessions || []
 
     // If activeSession already belongs to this campaign keep it — no thrash.
@@ -852,9 +856,10 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const handleSetActiveCampaignId = useCallback((id: string | null) => {
     // Only update the campaign ID. The useEffect above owns session alignment.
     setActiveCampaignId(id)
-    // Eagerly clear the session so stale sessions from the previous campaign
-    // are never briefly visible while the effect re-runs.
+    // Eagerly clear the session and character so stale state from the previous
+    // campaign is never briefly visible while the effect re-runs.
     setActiveSession(null)
+    setActiveCharacterId(null)
   }, [])
 
   useEffect(()=>{
@@ -1063,16 +1068,9 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
 
       if (!sessionId) throw new Error('No session available')
 
-      // Ensure we have a character selected and assigned.
+      // Use the already-selected character; don't silently auto-pick one —
+      // the GameplaySetupChecklist handles prompting when none is selected.
       let selectedId: number | null = activeCharacterId
-      if (selectedId === null && characters.length > 0) {
-        const first = characters[0]
-        const parsed = typeof first?.id === 'number' ? first.id : Number(first?.id)
-        if (Number.isFinite(parsed)) {
-          selectedId = parsed
-          setActiveCharacterId(parsed)
-        }
-      }
 
       if (selectedId === null && characters.length === 0) {
         // Create a lightweight demo character for a smooth first-play loop.
@@ -1157,7 +1155,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     characters,
     fetchCampaigns,
     fetchCharacters,
-    assignCharacterToSession,
+    updateCharacterCampaignAssociation,
     playerRunMode,
     startPlayBusy,
   ])
@@ -1166,9 +1164,13 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     if (typeof window === 'undefined') return
     if (activeCampaignId) {
       window.localStorage.setItem('tt:lastCampaignId', String(activeCampaignId))
+    } else {
+      window.localStorage.removeItem('tt:lastCampaignId')
     }
     if (activeSession) {
       window.localStorage.setItem('tt:lastSessionId', String(activeSession))
+    } else {
+      window.localStorage.removeItem('tt:lastSessionId')
     }
   }, [activeCampaignId, activeSession])
 

@@ -209,7 +209,7 @@ def _action_response_scene(
     action_count: int,
 ) -> dict:
     """Deterministic action-result narration when the LLM cannot produce prose."""
-    pc = player_name or "you"
+    _pc = player_name or "you"
     loc = location_name or "The Wayward Lantern Inn"
     action = (latest_action or "").strip()
     lower = action.lower()
@@ -233,13 +233,13 @@ def _action_response_scene(
         "cast" in lower and not any(word in lower for word in ("mage armor", "light"))
     ):
         body = (
-            f"Yungmin lowers the cracked lantern into the dim light and lets the spell settle over it. "
-            f"For a breath nothing answers; then a blue-white thread crawls along the torn harness leather, "
-            f"cold enough to pearl frost on the brass. Torven sees it too and stops talking.\n\n"
-            f"The magic is not strong, but it is deliberate. It clings to the cut edge of the leather, "
-            f"as if someone marked the wagon after the struggle rather than during it. The thread points toward "
-            f"the door, then fades whenever anyone steps too close.\n\n"
-            f"Torven whispers, \"That lantern belonged to Mara Vell. She drove the north road.\""
+            "Yungmin lowers the cracked lantern into the dim light and lets the spell settle over it. "
+            "For a breath nothing answers; then a blue-white thread crawls along the torn harness leather, "
+            "cold enough to pearl frost on the brass. Torven sees it too and stops talking.\n\n"
+            "The magic is not strong, but it is deliberate. It clings to the cut edge of the leather, "
+            "as if someone marked the wagon after the struggle rather than during it. The thread points toward "
+            "the door, then fades whenever anyone steps too close.\n\n"
+            "Torven whispers, \"That lantern belonged to Mara Vell. She drove the north road.\""
         )
         beat.update({
             "objective": "Trace the lantern's cold arcane residue toward the north road.",
@@ -252,11 +252,11 @@ def _action_response_scene(
         })
     elif any(word in lower for word in ("ask torven", "slow down", "owner", "owned", "last saw", "last seen")):
         body = (
-            f"Torven grips the edge of the table until his knuckles pale. Yungmin's calm question gives him "
-            f"something to hold onto, and the words come out in pieces: Mara Vell owned the lantern, Mara left "
-            f"before dawn, and her wagon returned at noon with no driver and no horses.\n\n"
-            f"He keeps glancing toward the kitchen corridor. When Yungmin asks when he last saw her, Torven says, "
-            f"\"At the north stable. She was arguing with someone in a gray cloak. I thought it was business.\""
+            "Torven grips the edge of the table until his knuckles pale. Yungmin's calm question gives him "
+            "something to hold onto, and the words come out in pieces: Mara Vell owned the lantern, Mara left "
+            "before dawn, and her wagon returned at noon with no driver and no horses.\n\n"
+            "He keeps glancing toward the kitchen corridor. When Yungmin asks when he last saw her, Torven says, "
+            "\"At the north stable. She was arguing with someone in a gray cloak. I thought it was business.\""
         )
         beat.update({
             "objective": "Find the gray-cloaked person who argued with Mara at the north stable.",
@@ -271,11 +271,11 @@ def _action_response_scene(
         word in lower for word in ("owl", "familiar", "roof", "rooftop")
     ):
         body = (
-            f"Yungmin lets the room move without moving with it. Most patrons stare at the lantern; one does not. "
-            f"A narrow-faced courier near the kitchen keeps his eyes on Torven's hands, then on the door, measuring "
-            f"distance rather than danger.\n\n"
-            f"When Yungmin's gaze catches him, the courier folds a receipt into his sleeve. The wax on it is red, "
-            f"split down the middle, and marked with a candle stamped in glass."
+            "Yungmin lets the room move without moving with it. Most patrons stare at the lantern; one does not. "
+            "A narrow-faced courier near the kitchen keeps his eyes on Torven's hands, then on the door, measuring "
+            "distance rather than danger.\n\n"
+            "When Yungmin's gaze catches him, the courier folds a receipt into his sleeve. The wax on it is red, "
+            "split down the middle, and marked with a candle stamped in glass."
         )
         beat.update({
             "objective": "Stop or follow the courier with the split red-wax receipt.",
@@ -292,10 +292,10 @@ def _action_response_scene(
         })
     elif any(word in lower for word in ("tracks", "threshold", "mud", "snow", "drag")):
         body = (
-            f"At the threshold, Yungmin finds that the mud tells a rougher story than Torven could. Wagon ruts stop too cleanly, "
-            f"as though the wheels were guided into place. Beside them, one set of bootprints digs deep at the heel, "
-            f"dragging weight toward the alley behind the inn.\n\n"
-            f"The snow there is peppered with black grit. It is not ash from the hearth; it smells faintly of bitter oil."
+            "At the threshold, Yungmin finds that the mud tells a rougher story than Torven could. Wagon ruts stop too cleanly, "
+            "as though the wheels were guided into place. Beside them, one set of bootprints digs deep at the heel, "
+            "dragging weight toward the alley behind the inn.\n\n"
+            "The snow there is peppered with black grit. It is not ash from the hearth; it smells faintly of bitter oil."
         )
         beat.update({
             "objective": "Follow the dragged bootprints and black grit behind the inn.",
@@ -308,10 +308,10 @@ def _action_response_scene(
         })
     elif any(word in lower for word in ("gawkers", "heard", "wagon", "bystanders")):
         body = (
-            f"Yungmin's voice cuts through the murmurs, but fear makes the room stubborn. A few patrons look away. "
-            f"One old washerwoman finally answers from behind her cup: she heard the wagon before she saw it.\n\n"
-            f"\"No horses,\" she says. \"Wheels turning anyway. Like something underneath was pulling it home.\" "
-            f"That earns a hard silence. Torven crosses himself without seeming to know he has done it."
+            "Yungmin's voice cuts through the murmurs, but fear makes the room stubborn. A few patrons look away. "
+            "One old washerwoman finally answers from behind her cup: she heard the wagon before she saw it.\n\n"
+            "\"No horses,\" she says. \"Wheels turning anyway. Like something underneath was pulling it home.\" "
+            "That earns a hard silence. Torven crosses himself without seeming to know he has done it."
         )
         beat.update({
             "objective": "Learn what pulled Mara's wagon back without horses.",
@@ -324,11 +324,11 @@ def _action_response_scene(
         })
     elif any(word in lower for word in ("harness", "wagon gear", "compare", "leather")):
         body = (
-            f"The harness leather does not match the inn's ordinary tack. Yungmin finds the difference by touch first: "
-            f"the cut edge is too smooth, sealed with something glossy and black. When held near the lantern, the resin "
-            f"softens and releases a smell like burnt cloves.\n\n"
-            f"Torven remembers that smell. \"The Glass Candle keeps ledgers with wax like that,\" he says. "
-            f"\"Collectors, not merchants. People pay them when they have no other choice.\""
+            "The harness leather does not match the inn's ordinary tack. Yungmin finds the difference by touch first: "
+            "the cut edge is too smooth, sealed with something glossy and black. When held near the lantern, the resin "
+            "softens and releases a smell like burnt cloves.\n\n"
+            "Torven remembers that smell. \"The Glass Candle keeps ledgers with wax like that,\" he says. "
+            "\"Collectors, not merchants. People pay them when they have no other choice.\""
         )
         beat.update({
             "objective": "Find out why the Glass Candle's resin is on Mara's harness.",
@@ -341,10 +341,10 @@ def _action_response_scene(
         })
     elif any(word in lower for word in ("enemies", "debts", "fake")):
         body = (
-            f"Torven looks down when Yungmin asks about debts. That is answer enough before he speaks. Mara borrowed "
-            f"coin from the Glass Candle after last winter ruined the north-road trade, but she had nearly paid it back.\n\n"
-            f"\"She would not fake this,\" he says. \"Not with her brother still waiting at the camp.\" "
-            f"The name lands heavily: a missing driver is one thing, a family hostage is another."
+            "Torven looks down when Yungmin asks about debts. That is answer enough before he speaks. Mara borrowed "
+            "coin from the Glass Candle after last winter ruined the north-road trade, but she had nearly paid it back.\n\n"
+            "\"She would not fake this,\" he says. \"Not with her brother still waiting at the camp.\" "
+            "The name lands heavily: a missing driver is one thing, a family hostage is another."
         )
         beat.update({
             "objective": "Protect Mara's brother and uncover the Glass Candle's leverage.",
@@ -359,10 +359,10 @@ def _action_response_scene(
         word in lower for word in ("owl", "familiar", "trail splits", "prints")
     ):
         body = (
-            f"The ward settles over Yungmin like a pane of invisible glass. Outside, the cold makes every sound sharper. "
-            f"The lantern shard twitches once in Yungmin's hand, answering the black grit in the snow.\n\n"
-            f"The trail leaves the inn by the alley, then bends toward the north road. Halfway there, a shutter closes "
-            f"on the second floor of the cooper's shop, though no lamp burns behind it."
+            "The ward settles over Yungmin like a pane of invisible glass. Outside, the cold makes every sound sharper. "
+            "The lantern shard twitches once in Yungmin's hand, answering the black grit in the snow.\n\n"
+            "The trail leaves the inn by the alley, then bends toward the north road. Halfway there, a shutter closes "
+            "on the second floor of the cooper's shop, though no lamp burns behind it."
         )
         beat.update({
             "objective": "Follow the north-road trail while watching the cooper's upper window.",
@@ -379,10 +379,10 @@ def _action_response_scene(
         })
     elif any(word in lower for word in ("owl", "familiar", "trail splits", "prints")):
         body = (
-            f"The owl climbs above the roofline and the world opens into angles: alley, stable, cooper's shop, north road. "
-            f"Through the familiar's eyes, Yungmin sees the prints split because two people split. One staggered toward "
-            f"the road. The other circled back toward the inn.\n\n"
-            f"On the roof of the cooper's shop, a gray scrap of cloak snaps on a nail."
+            "The owl climbs above the roofline and the world opens into angles: alley, stable, cooper's shop, north road. "
+            "Through the familiar's eyes, Yungmin sees the prints split because two people split. One staggered toward "
+            "the road. The other circled back toward the inn.\n\n"
+            "On the roof of the cooper's shop, a gray scrap of cloak snaps on a nail."
         )
         beat.update({
             "objective": "Choose between the wounded trail north and the watcher who circled back.",
@@ -395,10 +395,10 @@ def _action_response_scene(
         })
     elif any(word in lower for word in ("light", "lantern shard", "expose", "watching")):
         body = (
-            f"Light blooms from the lantern shard, not warm gold but a hard blue glare. The spell catches on the black resin "
-            f"and throws a second shadow where no body stands. For an instant the hidden watcher appears in outline: gray cloak, "
-            f"one hand wrapped in red cord, face turned toward Yungmin.\n\n"
-            f"Then the figure bolts across the roofline toward the north road, leaving the smell of burnt cloves behind."
+            "Light blooms from the lantern shard, not warm gold but a hard blue glare. The spell catches on the black resin "
+            "and throws a second shadow where no body stands. For an instant the hidden watcher appears in outline: gray cloak, "
+            "one hand wrapped in red cord, face turned toward Yungmin.\n\n"
+            "Then the figure bolts across the roofline toward the north road, leaving the smell of burnt cloves behind."
         )
         beat.update({
             "objective": "Catch the gray-cloaked watcher before they reach the north road.",
@@ -415,10 +415,10 @@ def _action_response_scene(
         })
     else:
         body = (
-            f"Yungmin's choice shifts the room from fear into motion. Torven watches the lantern instead of the crowd, "
-            f"and the nearest patrons begin remembering details they were too frightened to say aloud.\n\n"
-            f"The cracked brass gives another faint tick. Whatever happened to Mara Vell is close enough to leave signs, "
-            f"and fresh enough that someone is still trying to erase them."
+            "Yungmin's choice shifts the room from fear into motion. Torven watches the lantern instead of the crowd, "
+            "and the nearest patrons begin remembering details they were too frightened to say aloud.\n\n"
+            "The cracked brass gives another faint tick. Whatever happened to Mara Vell is close enough to leave signs, "
+            "and fresh enough that someone is still trying to erase them."
         )
 
     if action_count >= 8:
@@ -1972,7 +1972,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             "description": adv_context_packet.location.description,
             "atmosphere": adv_context_packet.location.atmosphere,
         })
-    if current_location_name and not any(l.get("name") == current_location_name for l in mem_loc_details):
+    if current_location_name and not any(loc_item.get("name") == current_location_name for loc_item in mem_loc_details):
         mem_loc_details.append({
             "name": current_location_name,
             "current_tension": "",
@@ -1995,7 +1995,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         plot_seed=scene_summary,
         candidate_npcs=[n.get("name", "") for n in mem_npc_details if n.get("name")][:6],
         candidate_npc_details=mem_npc_details[:6],
-        candidate_locations=[l.get("name", "") for l in mem_loc_details if l.get("name")][:4],
+        candidate_locations=[loc_item.get("name", "") for loc_item in mem_loc_details if loc_item.get("name")][:4],
         candidate_location_details=mem_loc_details[:4],
         candidate_factions=[],
         candidate_story_threads=candidate_threads[:4],
@@ -2063,7 +2063,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         conflict=adv_scene_director_output.central_conflict,
         campaign_entities=[
             *(n.get("name", "") for n in mem_npc_details if n.get("name")),
-            *(l.get("name", "") for l in mem_loc_details if l.get("name")),
+            *(loc_item.get("name", "") for loc_item in mem_loc_details if loc_item.get("name")),
             *candidate_threads,
         ],
     )

@@ -291,7 +291,7 @@ def _build_director_system(
             perspective = _CLASS_PERSPECTIVE.get(char_class.lower(), "")
             if perspective:
                 lines.append(f"  Class Lens: A {char_class} {perspective}.")
-                lines.append(f"    → Flavor your sensory details through this lens when possible.")
+                lines.append("    → Flavor your sensory details through this lens when possible.")
         backstory = (character_context.get("backstory") or "").strip()
         if backstory:
             # Truncate to ~300 chars for the prompt
@@ -495,7 +495,7 @@ def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
     best_score: ScoreResult | None = None
     feedback = payload.validator_feedback
 
-    for attempt in range(MAX_RETRIES + 1):
+    for _attempt in range(MAX_RETRIES + 1):
         messages = _build_messages(payload, weather_desc, player, feedback)
         text = chat_complete(
             messages,

@@ -344,6 +344,16 @@ def delete_campaign(campaign_id: str, owner_id: int) -> bool:
         return True
 
 
+def delete_campaign_memory(campaign_id: str) -> None:
+    """Remove all CampaignEntity, CampaignRelationship, CampaignHook, and CampaignChangeLog rows for a campaign."""
+    with Session(engine) as session:
+        session.exec(delete(CampaignChangeLog).where(CampaignChangeLog.campaign_id == campaign_id))
+        session.exec(delete(CampaignHook).where(CampaignHook.campaign_id == campaign_id))
+        session.exec(delete(CampaignRelationship).where(CampaignRelationship.campaign_id == campaign_id))
+        session.exec(delete(CampaignEntity).where(CampaignEntity.campaign_id == campaign_id))
+        session.commit()
+
+
 def purge_campaigns(owner_id: int, name_tokens: List[str] | None = None) -> int:
     tokens = [t.strip().lower() for t in (name_tokens or []) if t and t.strip()]
     with Session(engine) as session:
