@@ -269,6 +269,15 @@ export default function Chat({sessionId, variant = 'full', aboveComposer, curren
     return ()=>clearTimeout(timer)
   },[toolbarMessage])
 
+  useEffect(()=>{
+    const handler = (e: Event) => {
+      const action = (e as CustomEvent).detail?.action
+      if(typeof action === 'string' && action.trim()) setValue(action.trim())
+    }
+    window.addEventListener('narrative:suggest-action', handler)
+    return ()=>window.removeEventListener('narrative:suggest-action', handler)
+  }, [])
+
   async function sendToBackend(text: string){
     if(!sessionId){
       appendMessage({id:`warn-${Date.now()}`,who:'system',text:'Create or load a session to send messages.'})
@@ -587,7 +596,7 @@ export default function Chat({sessionId, variant = 'full', aboveComposer, curren
   },[sessionId, appendMessage, notifyMentions])
 
   return (
-    <div className={`chat-root ${variant === 'dock' ? 'chat-root--dock' : ''}`}>
+    <div className={`chat-root ${variant === 'dock' ? 'chat-root--dock' : ''} ${messages.length === 0 ? 'chat-root--empty' : ''}`}>
       <NpcSnapshotModal
         open={npcModalOpen}
         onCancel={() => {

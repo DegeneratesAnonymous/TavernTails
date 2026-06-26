@@ -122,6 +122,25 @@
   padding: 2px 0 12px;
 }
 
+.player-sheet .cs-root {
+  overflow-y: auto;
+}
+
+.player-sheet .cs-header,
+.player-sheet .cs-vitals,
+.player-sheet .cs-hp-bar-track,
+.player-sheet .cs-slots {
+  flex: 0 0 auto;
+}
+
+.player-sheet .cs-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: 0 8px;
+  backdrop-filter: blur(8px);
+}
+
 /* Header */
 .cs-header {
   display: grid;
@@ -368,6 +387,43 @@
   gap: 5px;
 }
 
+.cs-quick-section {
+  margin: 0 8px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(255,255,255,0.055);
+}
+
+.cs-quick-section-title,
+.cs-fullsheet-label {
+  color: rgba(255,255,255,0.46);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  margin-bottom: 7px;
+}
+
+.cs-quick-muted {
+  color: rgba(255,255,255,0.72);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.cs-quick-skills {
+  display: grid;
+  gap: 4px;
+}
+
+.cs-skill-item--quick {
+  background: rgba(0,0,0,0.18);
+}
+
+.cs-fullsheet-label {
+  margin: 6px 8px 0;
+}
+
 @media (min-width: 420px) {
   .cs-abilities {
     grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -504,7 +560,7 @@
 /* Tab strip */
 .cs-tabs {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 4px;
   margin-top: 2px;
 }
@@ -1700,7 +1756,7 @@
 @media (max-width: 600px) {
   /* Character tabs: full width, 44px tap target */
   .cs-tabs {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 2px;
     padding: 6px;
   }
@@ -1765,7 +1821,7 @@
 /* ── 430px and below ───────────────────────────────────────────────────── */
 @media (max-width: 430px) {
   .cs-tabs {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 1px;
   }
 
@@ -1779,4 +1835,119 @@
     grid-template-columns: repeat(3, 1fr);
     gap: 4px;
   }
+}
+
+/* ── Lore Tab ─────────────────────────────────────────────────────────────── */
+
+.cs-lore-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 4px 2px 24px;
+}
+
+.cs-lore-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cs-lore-section-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 4px;
+}
+
+.cs-lore-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(212, 175, 55, 0.85);
+}
+
+.cs-lore-label--pillars {
+  color: rgba(212, 175, 55, 0.85);
+}
+
+.cs-lore-hint {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  margin: 0;
+  line-height: 1.45;
+}
+
+.cs-lore-pillar-hint {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.35);
+  font-style: italic;
+}
+
+.cs-lore-textarea {
+  width: 100%;
+  min-height: 72px;
+  background: rgba(10, 6, 2, 0.6);
+  border: 1px solid rgba(212, 175, 55, 0.2);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 10px 12px;
+  resize: vertical;
+  font-family: inherit;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+
+.cs-lore-textarea:focus {
+  outline: none;
+  border-color: rgba(212, 175, 55, 0.5);
+  background: rgba(15, 9, 3, 0.8);
+}
+
+.cs-lore-textarea::placeholder {
+  color: rgba(255, 255, 255, 0.22);
+  font-style: italic;
+}
+
+.cs-lore-textarea--tall {
+  min-height: 130px;
+}
+
+.cs-lore-pillar {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 12px;
+  background: rgba(15, 9, 3, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+}
+
+.cs-lore-pillar-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.cs-lore-pillar .cs-lore-textarea {
+  min-height: 56px;
+  background: rgba(0, 0, 0, 0.3);
+  border-color: rgba(255, 255, 255, 0.08);
+  font-size: 11.5px;
+}
+
+.cs-lore-pillar .cs-lore-textarea:focus {
+  border-color: rgba(212, 175, 55, 0.4);
+}
+
+.cs-lore-footer {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.25);
+  text-align: center;
+  margin: 0;
+  padding-top: 4px;
 }

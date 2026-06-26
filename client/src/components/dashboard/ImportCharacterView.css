@@ -1,0 +1,71 @@
+.import-review-modal {
+  width: 760px;
+  max-width: min(96vw, 760px);
+  color: #211205;
+  background: #f5ead2;
+  border-color: rgba(93, 55, 12, 0.34);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.68);
+  --text: #211205;
+  --text-secondary: #5f513e;
+  --surface: #fff8e8;
+  --surface-muted: #ecd9b8;
+  --muted-surface: #fff4db;
+  --tt-border: rgba(93, 55, 12, 0.22);
+  --tt-border-strong: rgba(93, 55, 12, 0.42);
+  --input-bg: #fffdf5;
+  --input-text: #1c0d03;
+  --input-placeholder: rgba(73, 43, 10, 0.52);
+  --input-border: rgba(93, 55, 12, 0.34);
+  --input-focus-border: rgba(139, 74, 16, 0.68);
+  --input-focus-shadow: rgba(200, 148, 26, 0.22);
+}
+
+.import-review-modal .modal-header {
+  background: #ead7b3;
+  border-bottom-color: rgba(93, 55, 12, 0.24);
+}
+
+.import-review-modal .modal-title {
+  color: #1c0d03;
+}
+
+.import-review-modal .modal-body {
+  background: #f5ead2;
+}
+
+.import-review-modal .card {
+  color: #211205;
+  background: #fff4db !important;
+  border-color: rgba(93, 55, 12, 0.24);
+}
+
+.import-review-modal .muted {
+  color: #5f513e;
+}
+
+.import-review-modal .input,
+.import-review-modal input,
+.import-review-modal select,
+.import-review-modal textarea {
+  color: #1c0d03;
+  background: #fffdf5;
+  border-color: rgba(93, 55, 12, 0.34);
+}
+
+.import-review-modal .inline-alert {
+  color: #211205;
+  background: rgba(139, 74, 16, 0.08);
+  border-color: rgba(139, 74, 16, 0.28);
+}
+
+.import-review-modal .inline-alert-error {
+  color: #4d110d;
+  background: rgba(185, 51, 37, 0.10);
+  border-color: rgba(185, 51, 37, 0.34);
+}
+
+.import-review-modal .btn-quiet {
+  color: #2b1808;
+  background: rgba(93, 55, 12, 0.08);
+  border-color: rgba(93, 55, 12, 0.22);
+}

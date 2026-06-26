@@ -1,11 +1,40 @@
+/* ── Global scrollbar styling ────────────────────────────────────────────── */
+/* Webkit (Chrome/Edge/Safari) */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(245, 200, 66, 0.45);
+  border-radius: 4px;
+  border: 1px solid rgba(0,0,0,0.3);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(245, 200, 66, 0.7);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(245, 200, 66, 0.45) rgba(0, 0, 0, 0.25);
+}
+
 .dashboard-root {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
+  max-height: 100vh;
   width: 100%;
   padding: 0;
   gap: 0;
   box-sizing: border-box;
+  overflow: hidden;
 }
 
 /* ─── Top bar ─────────────────────────────────────── */
@@ -20,6 +49,23 @@
   background: var(--surface-dark);
   border-bottom: 1px solid var(--tt-border);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.dashboard-topbar--gameplay {
+  min-height: 30px;
+  padding: 4px 10px;
+  box-shadow: none;
+}
+
+.dashboard-topbar--gameplay .topbar-brand {
+  opacity: 0.42;
+  font-size: 0.86rem;
+  letter-spacing: 0.04em;
+}
+
+.dashboard-topbar--gameplay .topbar-icon-btn {
+  padding: 3px 6px;
+  font-size: 14px;
 }
 
 .topbar-right {
@@ -304,12 +350,19 @@
   flex-direction: column;
   min-height: 0;
   background: transparent;
-  padding: 32px;
+  padding: clamp(12px, 2vw, 32px);
   box-sizing: border-box;
+  overflow-y: auto;
+}
+
+/* Gameplay view needs the full viewport — no wasted padding or scroll */
+.dashboard-main.gameplay-mode {
+  padding: 0;
+  overflow: hidden;
 }
 
 .dashboard-panel {
-  padding: 32px;
+  padding: clamp(16px, 2vw, 32px);
   margin: 0;
   background: var(--surface-dark);
   border-radius: var(--radius);
@@ -570,19 +623,9 @@
   white-space: pre-wrap;
 }
 
-@media (max-width: 900px) {
-  .dashboard-main {
-    padding: 16px;
-  }
-}
-
 @media (max-width: 640px) {
-  .dashboard-main {
-    padding: 10px;
-  }
-
   .dashboard-panel {
-    padding: 16px;
+    padding: clamp(10px, 2vw, 16px);
     border-radius: 8px;
   }
 
@@ -621,12 +664,8 @@
 }
 
 @media (max-width: 400px) {
-  .dashboard-main {
-    padding: 8px;
-  }
-
   .dashboard-panel {
-    padding: 12px;
+    padding: clamp(8px, 2vw, 12px);
   }
 }
 

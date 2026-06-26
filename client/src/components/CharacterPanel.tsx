@@ -108,7 +108,16 @@ type Props = {
   sessionId?: string | null
 }
 
-type SheetTab = 'skills' | 'spells' | 'features' | 'inventory'
+type SheetTab = 'skills' | 'spells' | 'features' | 'inventory' | 'lore'
+
+type LoreData = {
+  backstory: string
+  personality_traits: string
+  ideals: string
+  bonds: string
+  flaws: string
+  appearance: string
+}
 
 export default function CharacterPanel({
   roster,
@@ -125,7 +134,7 @@ export default function CharacterPanel({
   onSheetUpdate,
   sessionId,
 }: Props){
-  const [sheetTab, setSheetTab] = useState<SheetTab | null>('skills')
+  const [sheetTab, setSheetTab] = useState<SheetTab | null>(null)
   const containerRef = useRef<HTMLDivElement|null>(null)
   const [rollingCueId, setRollingCueId] = useState<string | null>(null)
   const [cueError, setCueError] = useState<string | null>(null)
@@ -156,6 +165,10 @@ export default function CharacterPanel({
   // Rest dialog
   const [restDialog, setRestDialog] = useState<'short' | 'long' | null>(null)
   const [shortRestInput, setShortRestInput] = useState('')
+  // Lore tab state
+  const [loreData, setLoreData] = useState<LoreData | null>(null)
+  const [loreLoading, setLoreLoading] = useState(false)
+  const loreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const selected = useMemo(() => {
     if(!roster.length) return undefined
@@ -183,9 +196,41 @@ export default function CharacterPanel({
       setAddSpellLevel(1)
       setRestDialog(null)
       setShortRestInput('')
+      setLoreData(null)
+      setLoreLoading(false)
       prevIdRef.current = selected?.id
     }
   }, [selected?.id])
+
+  // Load lore data on demand when the Lore tab is opened
+  useEffect(() => {
+    if (sheetTab !== 'lore' || !selected?.id || loreData !== null || loreLoading) return
+    setLoreLoading(true)
+    apiFetch(`/characters/${selected.id}`)
+      .then(r => r.json())
+      .then((data: any) => {
+        const sheet = data?.sheet || {}
+        setLoreData({
+          backstory: String(sheet.backstory || ''),
+          personality_traits: String(sheet.personality_traits || ''),
+          ideals: String(sheet.ideals || ''),
+          bonds: String(sheet.bonds || ''),
+          flaws: String(sheet.flaws || ''),
+          appearance: String(sheet.appearance || ''),
+        })
+      })
+      .catch(() => {
+        setLoreData({ backstory: '', personality_traits: '', ideals: '', bonds: '', flaws: '', appearance: '' })
+      })
+      .finally(() => setLoreLoading(false))
+  }, [sheetTab, selected?.id, loreData, loreLoading])
+
+  const saveLoreField = (field: keyof LoreData, value: string) => {
+    if (loreTimerRef.current) clearTimeout(loreTimerRef.current)
+    loreTimerRef.current = setTimeout(() => {
+      pushSheetPatch({ [field]: value })
+    }, 1200)
+  }
 
   const effectiveHp = hpLocal ?? selected?.hp ?? { current: 0, max: 0 }
   const effectiveSlots: Record<string, {max: number; used: number; level?: number}> = (() => {
@@ -549,19 +594,29 @@ export default function CharacterPanel({
           </div>
         ) : null}
 
-        {/* ── Ability scores (always visible) ── */}
-        <div className="cs-abilities">
-          {abilities.map(row => (
-            <div key={row.key} className="cs-ability">
-              <span className="cs-ability-key">{row.key}</span>
-              <span className="cs-ability-mod">{row.modLabel}</span>
-              <span className="cs-ability-score">{row.score}</span>
-            </div>
-          ))}
-          {!abilities.length ? (
-            <div style={{gridColumn:'1/-1', fontSize:12, opacity:.5}}>No ability scores available</div>
-          ) : null}
+        <div className="cs-quick-section">
+          <div className="cs-quick-section-title">Conditions</div>
+          <div className="cs-quick-muted">
+            {concentratingOn ? `Concentrating on ${concentratingOn}` : showExhaustion ? `Exhaustion ${exhaustion}` : 'None'}
+          </div>
         </div>
+
+        {(selected?.skills || []).length > 0 ? (
+          <div className="cs-quick-section">
+            <div className="cs-quick-section-title">Relevant Skills</div>
+            <div className="cs-quick-skills">
+              {(selected?.skills || [])
+                .filter(s => /perception|investigation|arcana|insight|stealth|survival/i.test(s.name))
+                .slice(0, 5)
+                .map(s => (
+                  <div key={s.name} className="cs-skill-item cs-skill-item--quick">
+                    <span className="cs-skill-name">{s.name}</span>
+                    <span className="cs-skill-mod">{s.mod >= 0 ? '+' : ''}{s.mod}</span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        ) : null}
 
         {/* ── Quick Actions ── */}
         <div className="cs-actions">
@@ -655,14 +710,16 @@ export default function CharacterPanel({
           </div>
         ) : null}
 
-        {/* ── Tab navigation ── */}
+        {/* ── Full-sheet drawers ── */}
+        <div className="cs-fullsheet-label">Open Full Sheet</div>
         <div className="cs-tabs" role="tablist">
-          {(['skills', 'spells', 'features', 'inventory'] as SheetTab[]).map(tab => {
+          {(['skills', 'spells', 'features', 'inventory', 'lore'] as SheetTab[]).map(tab => {
             const counts: Record<SheetTab, number> = {
               skills: selected?.skills?.length ?? 0,
               spells: selected?.spells?.length ?? 0,
               features: (selected?.classFeatures?.length ?? 0) + (selected?.racialFeatures?.length ?? 0) + (selected?.otherFeatures?.length ?? 0) || (selected?.features?.length ?? 0),
               inventory: selected?.inventory?.length ?? 0,
+              lore: 0,
             }
             return (
               <button
@@ -1302,6 +1359,77 @@ export default function CharacterPanel({
                     )
                   })() : null}
                 </div>
+              </div>
+            ) : null}
+
+            {sheetTab === 'lore' ? (
+              <div className="cs-lore-wrapper">
+                {loreLoading ? (
+                  <div className="cs-empty">Loading…</div>
+                ) : loreData !== null ? (
+                  <>
+                    {/* Backstory */}
+                    <div className="cs-lore-section">
+                      <label className="cs-lore-label">Backstory</label>
+                      <p className="cs-lore-hint">Your character's history, motivations, and what shaped them. The AI Game Master uses this to create personal story hooks.</p>
+                      <textarea
+                        className="cs-lore-textarea cs-lore-textarea--tall"
+                        placeholder="Who are you? Where do you come from? What drove you to adventure? What do you regret?"
+                        value={loreData.backstory}
+                        onChange={e => {
+                          const val = e.target.value
+                          setLoreData(prev => prev ? { ...prev, backstory: val } : prev)
+                          saveLoreField('backstory', val)
+                        }}
+                      />
+                    </div>
+
+                    {/* Appearance */}
+                    <div className="cs-lore-section">
+                      <label className="cs-lore-label">Appearance</label>
+                      <textarea
+                        className="cs-lore-textarea"
+                        placeholder="Physical description — age, build, notable features, how others perceive you at first glance…"
+                        value={loreData.appearance}
+                        onChange={e => {
+                          const val = e.target.value
+                          setLoreData(prev => prev ? { ...prev, appearance: val } : prev)
+                          saveLoreField('appearance', val)
+                        }}
+                      />
+                    </div>
+
+                    {/* Character Pillars */}
+                    <div className="cs-lore-section">
+                      <div className="cs-lore-section-header">
+                        <span className="cs-lore-label cs-lore-label--pillars">Character Pillars</span>
+                        <span className="cs-lore-pillar-hint">Used by the AI to create personal stakes and moral dilemmas</span>
+                      </div>
+                      {([
+                        { key: 'personality_traits' as const, label: 'Personality Traits', placeholder: 'How does your character act, speak, and move through the world day to day?' },
+                        { key: 'ideals' as const, label: 'Ideals', placeholder: 'What principle or belief does your character hold above all else?' },
+                        { key: 'bonds' as const, label: 'Bonds', placeholder: 'Who or what does your character love, owe, or feel responsible for?' },
+                        { key: 'flaws' as const, label: 'Flaws', placeholder: 'What weakness, fear, or vice might betray your character at the worst moment?' },
+                      ]).map(({ key, label, placeholder }) => (
+                        <div key={key} className="cs-lore-pillar">
+                          <label className="cs-lore-pillar-label">{label}</label>
+                          <textarea
+                            className="cs-lore-textarea"
+                            placeholder={placeholder}
+                            value={loreData[key]}
+                            onChange={e => {
+                              const val = e.target.value
+                              setLoreData(prev => prev ? { ...prev, [key]: val } : prev)
+                              saveLoreField(key, val)
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+
+                    <p className="cs-lore-footer">Changes save automatically · Used by the AI Game Master for richer, more personal storytelling</p>
+                  </>
+                ) : null}
               </div>
             ) : null}
 

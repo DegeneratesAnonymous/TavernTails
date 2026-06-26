@@ -45,18 +45,23 @@ def chat_complete(
     max_tokens = max_tokens or int(os.environ.get("OPENAI_MAX_TOKENS", "500"))
     temperature = temperature if temperature is not None else float(os.environ.get("OPENAI_TEMPERATURE", "0.7"))
 
-    # ── 1. Steward AI proxy (exclusive when configured) ────────────────────
-    # When STEWARD_HOST is set, ALL AI calls route through Steward's model
-    # router. No fallback to direct Ollama or OpenAI — Steward owns routing,
-    # node selection, and model choice.
+    # ── 1. Steward AI proxy (preferred when configured) ────────────────────
+    # When STEWARD_HOST is set, try Steward's model router first.
+    # If Steward returns an error (500, timeout) we fall through to direct
+    # Ollama so TavernTails can still generate content when Steward's
+    # configured creative model isn't installed on the available nodes.
     steward_host = os.environ.get("STEWARD_HOST", "").rstrip("/")
     if steward_host:
         scope = task_scope or os.environ.get("STEWARD_TASK_SCOPE", "creative_story")
+        # Cap Steward at 110s — routes to PC's qwen3:14b (warm ~40s, cold ~100s).
+        # 110s covers cold-start (model load ~48s + generation ~50s = ~100s).
+        # Falls through to direct PC Ollama only if Steward itself is unreachable.
+        steward_attempt_timeout = min(float(timeout), 110.0)
         try:
-            with httpx.Client(timeout=timeout) as client:
+            with httpx.Client(timeout=steward_attempt_timeout) as client:
                 r = client.post(
                     f"{steward_host}/api/games/taverntails/ai",
-                    json={"messages": messages, "task_scope": scope, "max_tokens": max_tokens},
+                    json={"messages": messages, "task_scope": scope, "max_tokens": max_tokens, "timeout": int(min(timeout, 90))},
                 )
                 r.raise_for_status()
                 data = r.json()
@@ -65,13 +70,17 @@ def chat_complete(
                     return (choices[0].get("message") or {}).get("content") or None
         except Exception:
             pass
-        # Steward is configured — do not fall through to other providers.
-        return None
+        # Steward failed — fall through to direct Ollama as backup.
 
-    # ── 2. Direct Ollama (standalone mode, no STEWARD_HOST) ────────────────
+    # ── 2. Direct Ollama ────────────────────────────────────────────────────
+    # Used both as a standalone provider (no STEWARD_HOST) and as the fallback
+    # when Steward's model isn't available on the current nodes.
+    # Cap at 40s so total (Steward attempt + Ollama) stays under the 150s proxy limit.
     ollama_host = os.environ.get("OLLAMA_HOST", "").rstrip("/")
     if ollama_host:
         model = os.environ.get("OLLAMA_MODEL", "qwen3:4b")
+        # With Steward capped at 30s, allow up to 60s for direct Ollama (model may need loading).
+        ollama_timeout = min(float(timeout), 60.0) if steward_host else float(timeout)
         result = _call_openai_compat(
             base_url=f"{ollama_host}/v1",
             api_key="ollama",
@@ -79,7 +88,7 @@ def chat_complete(
             messages=messages,
             max_tokens=max_tokens,
             temperature=temperature,
-            timeout=timeout,
+            timeout=ollama_timeout,
         )
         if result is not None:
             return result

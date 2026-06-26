@@ -10,6 +10,7 @@
 .narrative-view {
   display: flex;
   flex-direction: column;
+  align-items: center;
   /* Takes up available space in .scene-area; height is fixed by .narrative-scene */
 }
 
@@ -18,8 +19,9 @@
 .narrative-scene {
   /* Tall enough to show significant art above the text card.
      Constrained so chat input stays visible without scrolling. */
-  height: min(480px, 56vh);
-  min-height: 260px;
+  width: 100%;
+  height: min(430px, 47vh);
+  min-height: 300px;
   flex-shrink: 0;
   position: relative;
   border-radius: 12px;
@@ -29,8 +31,8 @@
 }
 
 .narrative-scene--no-image {
-  height: min(200px, 22vh);
-  min-height: 120px;
+  height: min(410px, 45vh);
+  min-height: 280px;
 }
 
 /* 1080p image — displayed smaller than native so it looks crisp */
@@ -118,66 +120,491 @@
   left: 0;
   right: 0;
   z-index: 2;
-  padding: 0 16px 14px;
-  max-height: 62%;
+  height: 78%;
+  padding: 18px 22px 20px;
+  box-sizing: border-box;
+  max-height: 78%;
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
 }
 
 /* ── Narrative card ─────────────────────────────────────────────────── */
 
 .narrative-card {
   width: 100%;
+  max-width: 820px;
   max-height: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 
-/* Chapter / time eyebrow */
-.narrative-eyebrow {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--tt-gold, #f5c842);
-  opacity: 0.8;
-  margin-bottom: 6px;
-  text-shadow: 0 1px 6px rgba(0,0,0,0.8);
+/* ── Book-style chapter header ─────────────────────────────────────── */
+.narrative-chapter-header {
+  margin-bottom: 5px;
 }
 
-/* ❖ decorative divider */
+.narrative-chapter-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--tt-gold, #f5c842);
+  opacity: 0.6;
+  margin-bottom: 4px;
+  text-shadow: 0 1px 6px rgba(0,0,0,0.9);
+}
+
+.narrative-chapter-location {
+  font-size: clamp(1.35rem, 2.2vw, 2rem);
+  font-weight: 700;
+  color: rgba(255,255,255,0.95);
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  text-shadow: 0 2px 12px rgba(0,0,0,0.9);
+}
+
+/* ❖ ❖ ❖ decorative divider */
 .narrative-divider {
   color: var(--tt-gold, #f5c842);
-  opacity: 0.4;
-  font-size: 0.85rem;
-  letter-spacing: 0.5em;
-  padding-left: 0.5em;
-  margin: 0 0 10px 0;
-  text-shadow: 0 0 12px rgba(245,200,66,0.4);
+  opacity: 0.35;
+  font-size: 0.75rem;
+  letter-spacing: 0.7em;
+  padding-left: 0.7em;
+  margin: 7px 0 8px;
+  text-align: left;
+  text-shadow: 0 0 10px rgba(245,200,66,0.3);
 }
 
 .narrative-text {
   margin: 0;
   white-space: pre-wrap;
-  line-height: 1.65;
-  font-size: 0.97rem;
+  line-height: 1.72;
+  font-size: clamp(1rem, 1.15vw, 1.12rem);
   color: rgba(255,255,255,0.92);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   text-shadow: 0 1px 8px rgba(0,0,0,0.7);
 }
 
+.session-mode-read .narrative-view,
+.focus-mode .narrative-view {
+  align-items: stretch;
+}
+
+.session-mode-read .narrative-scene,
+.focus-mode .narrative-scene {
+  height: auto;
+  min-height: 0;
+  max-width: 960px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  background: rgba(10,8,5,0.86);
+}
+
+.session-mode-read .narrative-scene img,
+.focus-mode .narrative-scene img {
+  flex: 0 0 auto;
+  height: min(310px, 34vh);
+  object-position: center 34%;
+}
+
+.session-mode-read .narrative-scene--no-image,
+.focus-mode .narrative-scene--no-image {
+  min-height: 0;
+}
+
+.session-mode-read .narrative-image-placeholder,
+.focus-mode .narrative-image-placeholder {
+  height: min(240px, 28vh);
+}
+
+.session-mode-read .narrative-scene::after,
+.focus-mode .narrative-scene::after {
+  display: none;
+}
+
+.session-mode-read .scene-location-chip,
+.focus-mode .scene-location-chip {
+  top: 12px;
+  left: 12px;
+}
+
+.session-mode-read .narrative-overlay,
+.focus-mode .narrative-overlay {
+  position: relative;
+  inset: auto;
+  height: auto;
+  z-index: 2;
+  padding: 20px 26px 24px;
+  max-height: none;
+  display: block;
+  background:
+    linear-gradient(to bottom, rgba(0,0,0,0.34), rgba(0,0,0,0)),
+    rgba(9,7,4,0.92);
+}
+
+.session-mode-read .narrative-card,
+.focus-mode .narrative-card {
+  max-width: 760px;
+  margin: 0 auto;
+  max-height: none;
+  overflow: visible;
+}
+
+.session-mode-read .narrative-text,
+.focus-mode .narrative-text {
+  font-size: 1.04rem;
+  line-height: 1.78;
+  text-shadow: none;
+}
+
+.session-mode-read .narrative-chapter-eyebrow,
+.session-mode-read .narrative-chapter-location,
+.session-mode-read .narrative-divider,
+.session-mode-read .narrative-player-prompt,
+.focus-mode .narrative-chapter-eyebrow,
+.focus-mode .narrative-chapter-location,
+.focus-mode .narrative-divider,
+.focus-mode .narrative-player-prompt {
+  text-shadow: none;
+}
+
+.session-mode-play .narrative-card {
+  max-width: 780px;
+}
+
+.session-mode-play .narrative-view {
+  align-items: stretch;
+}
+
+.session-mode-play .narrative-scene {
+  height: auto;
+  min-height: min(560px, 58vh);
+  display: flex;
+  flex-direction: column;
+}
+
+.session-mode-play .narrative-scene img {
+  flex: 0 0 auto;
+  height: clamp(132px, 19vh, 210px);
+  object-position: center 32%;
+}
+
+.session-mode-play .narrative-scene::after {
+  display: none;
+}
+
+.session-mode-play .narrative-overlay {
+  position: relative;
+  inset: auto;
+  height: auto;
+  max-height: none;
+  padding: 18px 22px 20px;
+  background:
+    linear-gradient(to bottom, rgba(0,0,0,0.08), transparent 60%),
+    rgba(8,6,4,0.68);
+}
+
+.session-mode-play .narrative-card {
+  max-width: 900px;
+  max-height: none;
+  overflow: visible;
+}
+
+.session-mode-play .narrative-text {
+  font-size: clamp(15px, 1vw, 17px);
+  line-height: 1.68;
+  letter-spacing: 0.01em;
+}
+
+.book-read-view {
+  width: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 12px;
+}
+
+.book-spread {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  width: min(1180px, 100%);
+  margin: 0 auto;
+}
+
+.book-spread--single {
+  grid-template-columns: minmax(0, min(620px, 100%));
+  justify-content: center;
+}
+
+.book-page {
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: 8px;
+  border: 1px solid rgba(245,200,66,0.18);
+  background:
+    linear-gradient(90deg, rgba(245,200,66,0.05), transparent 7%, transparent 93%, rgba(245,200,66,0.04)),
+    radial-gradient(circle at 20% 0%, rgba(245,200,66,0.08), transparent 32%),
+    rgba(20,15,9,0.96);
+  box-shadow: 0 18px 70px rgba(0,0,0,0.38);
+  overflow: hidden;
+}
+
+.book-page-image {
+  flex: 0 0 auto;
+  height: min(230px, 28vh);
+  width: 100%;
+  object-fit: cover;
+  object-position: center 34%;
+  opacity: 0.9;
+}
+
+.book-page-content {
+  min-height: 0;
+  flex: 1;
+  padding: 26px 34px 38px;
+  overflow: hidden;
+}
+
+.session-mode-read .book-page-content,
+.focus-mode .book-page-content {
+  overflow: hidden;
+}
+
+.book-page-eyebrow {
+  color: rgba(245,200,66,0.72);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.book-page-title {
+  margin: 0;
+  color: rgba(255,255,255,0.94);
+  font-size: clamp(1.75rem, 2vw, 2.45rem);
+  line-height: 1.12;
+}
+
+.book-page-divider {
+  color: rgba(245,200,66,0.34);
+  font-size: 0.72rem;
+  letter-spacing: 0.72em;
+  padding-left: 0.72em;
+  margin: 14px 0 18px;
+}
+
+.book-page-prose {
+  margin: 0;
+  color: rgba(255,255,255,0.88);
+  white-space: pre-wrap;
+  font-size: clamp(17px, 1.08vw, 19px);
+  line-height: 1.76;
+  font-family: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+}
+
+.book-page-prose--opening::first-letter {
+  float: left;
+  color: rgba(245,200,66,0.8);
+  font-size: 3.4em;
+  line-height: 0.84;
+  padding: 8px 7px 0 0;
+}
+
+.book-page-prompt {
+  margin-top: 22px;
+  padding: 13px 15px;
+  border-left: 3px solid rgba(245,200,66,0.5);
+  background: rgba(0,0,0,0.2);
+  color: rgba(245,200,66,0.94);
+  font-size: 1rem;
+  font-style: italic;
+  line-height: 1.5;
+}
+
+.book-page-actions {
+  margin-top: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.book-page-actions-label {
+  flex: 1 0 100%;
+  color: rgba(255,255,255,0.42);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.book-action-chip {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(245,200,66,0.25);
+  background: rgba(245,200,66,0.07);
+  color: rgba(245,200,66,0.9);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.book-page-number {
+  position: absolute;
+  right: 18px;
+  bottom: 12px;
+  color: rgba(245,200,66,0.42);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.book-page-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  color: rgba(255,255,255,0.52);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.book-page-controls button {
+  min-height: 32px;
+  padding: 6px 12px;
+  border-radius: 7px;
+  border: 1px solid rgba(245,200,66,0.18);
+  background: rgba(245,200,66,0.055);
+  color: rgba(245,200,66,0.86);
+}
+
+.book-page-controls button:disabled {
+  opacity: 0.35;
+}
+
+/* ── Entity name hover tooltips ─────────────────────────────────────────── */
+.entity-mention {
+  color: rgba(245,200,66,0.85);
+  border-bottom: 1px dotted rgba(245,200,66,0.5);
+  cursor: help;
+  position: relative;
+  display: inline;
+  white-space: nowrap;
+}
+
+.entity-tooltip {
+  display: none;
+  position: absolute;
+  z-index: 200;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 160px;
+  max-width: 260px;
+  background: rgba(14,14,18,0.97);
+  border: 1px solid rgba(245,200,66,0.3);
+  border-radius: 10px;
+  padding: 10px 12px;
+  pointer-events: none;
+  white-space: normal;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.65);
+  text-align: left;
+  font-family: inherit;
+  text-shadow: none;
+}
+
+.entity-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: rgba(245,200,66,0.3);
+}
+
+.entity-mention:hover .entity-tooltip {
+  display: block;
+}
+
+.entity-tooltip-name {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: rgba(245,200,66,0.95);
+  margin-bottom: 4px;
+  letter-spacing: 0.02em;
+}
+
+.entity-tooltip-role {
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.55);
+  font-style: italic;
+  margin-bottom: 4px;
+}
+
+.entity-tooltip-desc {
+  font-size: 0.8rem;
+  color: rgba(255,255,255,0.8);
+  line-height: 1.45;
+}
+
 /* Player-facing prompt — gold italic, separated from narration */
 .narrative-player-prompt {
-  margin-top: 12px;
-  padding: 10px 14px;
+  margin-top: 14px;
+  padding: 11px 14px;
   border-left: 3px solid rgba(245,200,66,0.5);
   background: rgba(0,0,0,0.3);
   border-radius: 0 6px 6px 0;
-  font-size: 0.92rem;
+  font-size: 0.96rem;
   font-style: italic;
   color: rgba(245,200,66,0.95);
   line-height: 1.5;
   text-shadow: 0 1px 6px rgba(0,0,0,0.7);
+}
+
+.narrative-suggestions-block {
+  margin-top: 12px;
+}
+
+.narrative-suggestions-label {
+  color: rgba(255,255,255,0.48);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 7px;
+}
+
+/* Suggested action chips — quick-pick prompts from Narrative Composer */
+.narrative-suggested-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.narrative-action-chip {
+  display: inline-block;
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1px solid rgba(245,200,66,0.35);
+  background: rgba(0,0,0,0.35);
+  color: rgba(245,200,66,0.85);
+  font-size: 0.78rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.6);
+}
+
+.narrative-action-chip:hover {
+  background: rgba(245,200,66,0.15);
+  border-color: rgba(245,200,66,0.7);
+  color: rgba(245,200,66,1);
 }
 
 /* Citations */
@@ -256,23 +683,7 @@
 
 /* ── Visual state dev chip ────────────────────────────────────────────── */
 
-.narrative-visual-meta {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 10;
-  background: rgba(0,0,0,0.65);
-  color: rgba(255,255,255,0.75);
-  font-size: 10px;
-  font-family: monospace;
-  padding: 4px 8px;
-  border-radius: 4px;
-  pointer-events: none;
-  max-width: 200px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+.narrative-visual-meta { display: none; }
 
 /* ── Mobile ≤600px ────────────────────────────────────────────────────── */
 
@@ -303,5 +714,25 @@
   .narrative-choices {
     flex-direction: column;
     gap: 5px;
+  }
+}
+
+@media (max-width: 860px) {
+  .book-spread {
+    grid-template-columns: 1fr;
+    width: min(640px, 100%);
+  }
+
+  .book-spread .book-page:nth-child(2) {
+    display: none;
+  }
+
+  .book-page-content {
+    padding: 22px 22px 34px;
+  }
+
+  .book-page-prose {
+    font-size: 16px;
+    line-height: 1.7;
   }
 }

@@ -12,6 +12,15 @@
   display: none;
 }
 
+.chat-root--dock.chat-root--empty .chat-messages-wrapper,
+.chat-root--dock .chat-empty-state {
+  display: none;
+}
+
+.chat-root--dock .chat-composer-wrap {
+  border-top: 0;
+}
+
 /* ── Toolbar ─────────────────────────────────────────────────────────────── */
 .chat-toolbar {
   flex-shrink: 0;

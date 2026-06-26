@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react'
 
-import { apiFetch, API_BASE, buildApiUrl } from '../../api'
+import { apiFetch, API_BASE } from '../../api'
 import PageHeader from '../ui/PageHeader'
 import Modal from '../ui/Modal'
 import SourceRef from '../ui/SourceRef'
+import './ImportCharacterView.css'
 
 // Known TTRPG systems available for the game-system selector.
 // Listing these names in a UI dropdown is purely referential – the same as
@@ -87,7 +88,7 @@ export default function ImportCharacterView({
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [messageKind, setMessageKind] = useState<'ok' | 'error'>('ok')
-  const [autoAssignToSession, setAutoAssignToSession] = useState(true)
+  const [autoAssignToSession, setAutoAssignToSession] = useState(false)
 
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [confirmBusy, setConfirmBusy] = useState(false)
@@ -117,7 +118,7 @@ export default function ImportCharacterView({
     const hasPath = (path: string) => Boolean(backendPaths && Object.prototype.hasOwnProperty.call(backendPaths, path))
     return {
       importJson: hasPath('/characters/import/preview') || hasPath('/characters/import') || hasPath('/characters/import/file'),
-      importPdf: hasPath('/characters/import/pdf/preview') || hasPath('/characters/import/pdf'),
+      importPdf: backendPaths === null || hasPath('/characters/import/pdf/preview') || hasPath('/characters/import/pdf'),
     }
   }, [backendPaths])
 
@@ -198,12 +199,14 @@ export default function ImportCharacterView({
       setBackendChecked(false)
       setBackendCheckError(null)
       try {
-        const res = await fetch(buildApiUrl('/openapi.json'), { method: 'GET' })
+        const res = await apiFetch('/characters/import/systems', { method: 'GET' })
         if (!res.ok) throw new Error(`Backend returned ${res.status}`)
-        const data = await res.json().catch(() => null)
-        const paths = data?.paths && typeof data.paths === 'object' ? data.paths : null
+        await res.json().catch(() => null)
         if (!canceled) {
-          setBackendPaths(paths)
+          setBackendPaths({
+            '/characters/import/pdf/preview': true,
+            '/characters/import/pdf': true,
+          })
           setBackendChecked(true)
         }
       } catch (e: any) {
@@ -479,11 +482,11 @@ export default function ImportCharacterView({
     setPdfClassName('')
     await onRefreshCharacters()
 
-    // If auto-assign is enabled and session is active, assign but still go to Manage Characters.
+    // Only bind an import to gameplay when the player explicitly opts in.
     if (activeSessionId && characterId !== null && autoAssignToSession) {
       onSetActiveCharacterId(characterId)
       await onAssignCharacterToSession(characterId)
-      showMessage('ok', `Character ${verb} and assigned to active session.`)
+      showMessage('ok', `Character ${verb} and assigned to the active session.`)
       // Do NOT auto-navigate to gameplay; bring user to Manage characters so they can see the list.
       if (typeof onDone === 'function') {
         onDone()
@@ -503,6 +506,7 @@ export default function ImportCharacterView({
       <Modal
         open={confirmOpen}
         title="Review Import"
+        className="import-review-modal"
         onClose={() => {
           if (confirmBusy) return
           resetConfirmState()
@@ -933,7 +937,7 @@ export default function ImportCharacterView({
               onChange={(e) => setAutoAssignToSession(e.target.checked)}
               disabled={!activeSessionId}
             />
-            <span className="muted">Auto-select for active session</span>
+            <span className="muted">Assign imported character to active session</span>
           </label>
         </div>
 
@@ -1066,7 +1070,7 @@ export default function ImportCharacterView({
         ) : null}
 
         <div className="muted" style={{ fontSize: 12 }}>
-          Tip: Select a session in Gameplay first if you want one-click auto-select.
+          Tip: assigning an import changes the active character for the current session and remembers that campaign for the character.
         </div>
       </div>
     </section>

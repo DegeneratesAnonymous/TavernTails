@@ -1,0 +1,164 @@
+.daylog-root {
+  flex: 0 0 auto;
+  min-height: 150px;
+  max-height: clamp(170px, 23vh, 250px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(245,200,66,0.14);
+  border-radius: 8px;
+  background: rgba(8, 8, 10, 0.58);
+  overflow: hidden;
+  margin: 6px 0;
+}
+
+.daylog-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  background: rgba(0,0,0,0.22);
+}
+
+.daylog-tabs {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.daylog-tab {
+  flex: 1;
+  min-height: 28px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px;
+  background: rgba(255,255,255,0.035);
+  color: rgba(255,255,255,0.48);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.daylog-tab.active {
+  border-color: rgba(245,200,66,0.24);
+  background: rgba(245,200,66,0.09);
+  color: rgba(245,200,66,0.9);
+}
+
+.daylog-title {
+  color: rgba(245,200,66,0.86);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.daylog-subtitle {
+  margin-top: 1px;
+  color: rgba(255,255,255,0.42);
+  font-size: 11px;
+}
+
+.daylog-refresh {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.7);
+}
+
+.daylog-feed {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 7px 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.daylog-entry {
+  border-left: 2px solid rgba(255,255,255,0.18);
+  padding: 6px 8px;
+  border-radius: 0 6px 6px 0;
+  background: rgba(255,255,255,0.025);
+}
+
+.daylog-entry--narration,
+.daylog-entry--narrative-scene {
+  border-left-color: rgba(245,200,66,0.55);
+}
+
+.daylog-entry--player_action {
+  border-left-color: rgba(137,180,250,0.65);
+  background: rgba(137,180,250,0.045);
+}
+
+.daylog-entry--roll {
+  border-left-color: rgba(203,166,247,0.7);
+  background: rgba(203,166,247,0.045);
+}
+
+.daylog-entry-meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: rgba(255,255,255,0.42);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.daylog-entry-meta time {
+  color: rgba(255,255,255,0.34);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.daylog-note-btn {
+  margin-left: auto;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(245,200,66,0.18);
+  background: rgba(245,200,66,0.06);
+  color: rgba(245,200,66,0.78);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.daylog-entry-text {
+  margin-top: 4px;
+  white-space: pre-wrap;
+  color: rgba(255,255,255,0.78);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.daylog-entry--narration .daylog-entry-text,
+.daylog-entry--narrative-scene .daylog-entry-text {
+  color: rgba(255,255,255,0.86);
+}
+
+.daylog-empty {
+  margin: auto;
+  color: rgba(255,255,255,0.35);
+  font-size: 12px;
+  font-style: italic;
+}
+
+@media (max-height: 820px) {
+  .daylog-root {
+    min-height: 128px;
+    max-height: 160px;
+  }
+  .daylog-entry-text {
+    font-size: 11.5px;
+    line-height: 1.38;
+  }
+}

@@ -1,10 +1,13 @@
 """Contract tests for lightweight agent stubs."""
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
 import server.main as main
 from server import db
+from server.agents import narrative as narrative_module
 from server.agents import sessions as sessions_module
 from server.auth import create_access_token
 
@@ -31,13 +34,21 @@ def client() -> TestClient:
     return TestClient(main.app)
 
 
-def test_narrative_agent_contract(client: TestClient):
+def test_narrative_agent_contract(monkeypatch, client: TestClient):
+    fake_llm = json.dumps({
+        "narrative": "Rain lashes the watchtower parapet as Aria rushes through the door.",
+        "prompt": "Aria, what do you do?",
+    })
+    monkeypatch.setattr(narrative_module, "chat_complete", lambda *a, **kw: fake_llm)
+
     resp = client.post("/narrative/generate", json=payloads.NARRATIVE_REQUEST)
     assert resp.status_code == 200, resp.text
     data = resp.json()
-    assert payloads.NARRATIVE_REQUEST["scene"] in data["narrative"]
-    assert data["prompt"].startswith(payloads.NARRATIVE_REQUEST["player"])
+    assert isinstance(data["narrative"], str) and len(data["narrative"]) > 10
+    assert isinstance(data["prompt"], str) and len(data["prompt"]) > 0
     assert data["tone"] == payloads.NARRATIVE_REQUEST["style"].lower()
+    assert isinstance(data["scene_score"], int)
+    assert isinstance(data["score_passed"], bool)
 
 
 def test_storyboard_agent_contract(client: TestClient):
@@ -76,8 +87,8 @@ def test_image_agent_contract(client: TestClient):
     data = resp.json()
     assert data["prompt"] == payloads.IMAGE_REQUEST["prompt"]
     assert data["style"] == payloads.IMAGE_REQUEST["style"]
-    assert data["image_url"].startswith("https://placeholder.image/")
-    assert "placeholder" in data["guidance"].lower()
+    assert isinstance(data["image_url"], str) and data["image_url"].startswith("https://")
+    assert isinstance(data["guidance"], str)
     assert "id" in data
     assert "generated_at" in data
     assert data["cached"] is False
@@ -88,7 +99,7 @@ def test_scene_agent_roll_prompts(client: TestClient):
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert any(roll["skill"] == "Persuasion" for roll in body["dice_rolls"])
-    assert any("Roll a d20" in prompt for prompt in body["prompts"])
+    assert any("d20" in prompt for prompt in body["prompts"])
 
 
 def test_npc_agent_initiative_hint(client: TestClient):

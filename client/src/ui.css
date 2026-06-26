@@ -63,7 +63,7 @@
 }
 
 .card-pad {
-  padding: 16px;
+  padding: clamp(10px, 1.5vw, 16px);
 }
 
 /* ── Gold divider ornament ── */

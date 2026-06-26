@@ -1,9 +1,10 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react'
 import './GameplayLayout.css'
-import NarrativeView from './NarrativeView'
+import NarrativeView, { EntityHint } from './NarrativeView'
 import CharacterPanel, {CharacterSummary, SceneCue} from './CharacterPanel'
 import DocumentsPanel from './DocumentsPanel'
 import JournalPanel from './JournalPanel'
+import SessionDayLog from './SessionDayLog'
 import WorldPanel from './WorldPanel'
 import ContextDebugPanel from './ContextDebugPanel'
 import StoryDashboard, { StoryDashboardData } from './StoryDashboard'
@@ -94,6 +95,9 @@ export default function GameplayLayout({
   const closeDrawer = () => setDrawerOpen(false)
 
   const [rightTab, setRightTab] = useState<'character' | 'journal' | 'world'>('character')
+  const [sessionMode, setSessionMode] = useState<'read' | 'play' | 'world'>('play')
+  const [focusMode, setFocusMode] = useState(false)
+  const [mobileTab, setMobileTab] = useState<'story' | 'resolution' | 'action' | 'character' | 'world'>('story')
   const [drawerView, setDrawerView] = useState<'site' | 'panels' | 'party' | 'documents'>('panels')
   const [partySelectedId, setPartySelectedId] = useState<string | null>(null)
   const [showInviteForm, setShowInviteForm] = useState(false)
@@ -128,6 +132,10 @@ export default function GameplayLayout({
   const [storyDebug, setStoryDebug] = useState<StoryDashboardData | null>(null)
   const [showStoryDash, setShowStoryDash] = useState(false)
   const [sceneQuality, setSceneQuality] = useState<{score: number; passed: boolean; detail: any} | null>(null)
+  const [actionDraft, setActionDraft] = useState<string | null>(null)
+  const [experienceMode, setExperienceMode] = useState<string>('quiet_scene')
+  const [memoryUpdates, setMemoryUpdates] = useState<any | null>(null)
+  const [worldClock, setWorldClock] = useState<Record<string, any>>({})
 
   // Live situation context (populated from scene data)
   const [situation, setSituation] = useState<{
@@ -138,8 +146,19 @@ export default function GameplayLayout({
     threat?: string
     threads?: string[]
     stakes?: string
+    hooks?: string[]         // "The World Moves" legacy field
+    worldMoves?: string[]    // preferred: scene world_moves
+    visibleClues?: string[]
+    currentObjective?: string
+    activeThread?: string
+    knownDanger?: string
+    timePressure?: string
+    storyThreads?: Array<{title?: string; status?: string; last_update?: string}>
+    relationshipsChanged?: any[]
   }>({})
-  const [situationOpen, setSituationOpen] = useState(true)
+  const [situationOpen, setSituationOpen] = useState(false)
+  const [worldMovesOpen, setWorldMovesOpen] = useState(false)
+  const [rollToolsOpen, setRollToolsOpen] = useState(false)
 
   // Session round-flow state
   const [phase, setPhase] = useState<'player_turn' | 'advancing'>('player_turn')
@@ -232,6 +251,21 @@ export default function GameplayLayout({
   },[])
 
   useEffect(()=>{
+    const handler = (event: Event)=>{
+      const action = String((event as CustomEvent).detail?.action || '').trim()
+      if(!action) return
+      setActionDraft(action)
+    }
+    window.addEventListener('narrative:suggest-action', handler)
+    return ()=>window.removeEventListener('narrative:suggest-action', handler)
+  },[])
+
+  useEffect(() => {
+    if (sessionMode === 'world') setRightTab('journal')
+    if (sessionMode === 'play') setRightTab('character')
+  }, [sessionMode])
+
+  useEffect(()=>{
     if(!sessionId){
       setTurnState({order: [], active: null})
       setSceneCues([])
@@ -267,9 +301,18 @@ export default function GameplayLayout({
         }
         if(data?.type === 'beyond20.roll'){
           setRemoteRoll({by: data.by, total: data.total, expression: data.expression})
+          window.dispatchEvent(new CustomEvent('rolls:result', { detail: data }))
           if(data?.by){
             window.dispatchEvent(new CustomEvent('session:waiting',{detail:{player: data.by, reason: 'beyond20', expiresMs: 6000}}))
           }
+        }
+        if(data?.type === 'rolls.result'){
+          const res = data?.result || {}
+          setRemoteRoll({by: res.by, total: res.total, expression: res.expression})
+          window.dispatchEvent(new CustomEvent('rolls:result', { detail: data }))
+        }
+        if(data?.type === 'chat.message'){
+          window.dispatchEvent(new CustomEvent('chat:message', { detail: data.message }))
         }
         if(data?.type === 'scene.cues'){
           const dice: any[] = Array.isArray(data?.dice_rolls) ? data.dice_rolls : []
@@ -391,8 +434,15 @@ export default function GameplayLayout({
         setDiceRolls(data.dice_rolls)
       }
       if (data?.context_debug) setContextDebug(data.context_debug)
+      if (data?.simulation_debug) setContextDebug((prev: any) => ({ ...(prev || {}), simulation: data.simulation_debug }))
       if (data?.story_debug) setStoryDebug(data.story_debug)
-      if (data?.scene_debug?.scene_score !== undefined) {
+      if (data?.simulation_debug?.scene_validator?.score !== undefined) {
+        setSceneQuality({
+          score: data.simulation_debug.scene_validator.score,
+          passed: data.simulation_debug.scene_validator.score >= 75,
+          detail: { failed_checks: data.simulation_debug.scene_validator.issues || [] },
+        })
+      } else if (data?.scene_debug?.scene_score !== undefined) {
         setSceneQuality({
           score: data.scene_debug.scene_score,
           passed: data.scene_debug.scene_score_passed,
@@ -437,14 +487,34 @@ export default function GameplayLayout({
     const handler = (event: Event) => {
       const s = (event as CustomEvent).detail as any
       if (!s) return
+      const clock = s.world_clock || {}
+      const currentSituation = s.current_situation || {}
+      // Prefer world_moves (new field); fall back to hooks (legacy)
+      const cleanList = (items: any[]) => items.map(item => String(item || '').trim()).filter(Boolean)
+      const sceneWorldMoves = cleanList(Array.isArray(s.world_moves) ? s.world_moves : [])
+      const hookMoves = cleanList(Array.isArray(s.hooks) ? s.hooks : [])
+      const worldMoves = sceneWorldMoves.length > 0 ? sceneWorldMoves : hookMoves
+      setWorldClock(clock)
+      setExperienceMode(s.experience_mode || 'quiet_scene')
+      setMemoryUpdates(s.memory_updates || null)
+      if(Array.isArray(s.dice_rolls) && s.dice_rolls.length) setDiceRolls(s.dice_rolls)
       setSituation({
-        location: s.visual_state?.location_name || s.location || '',
-        weather: s.weather || '',
-        timeOfDay: s.time_of_day || '',
-        mood: s.visual_state?.mood || '',
-        threat: s.visual_state?.threat_level || '',
+        location: s.visual_state?.location_name || s.location || s.image?.location || '',
+        weather: clock.weather || s.weather || '',
+        timeOfDay: clock.time_block || s.time_of_day || '',
+        mood: currentSituation.current_mood || s.visual_state?.mood || '',
+        threat: currentSituation.current_threat || clock.threat_level || s.visual_state?.threat_level || '',
         threads: Array.isArray(s.active_threads) ? s.active_threads : [],
-        stakes: s.immediate_stakes || '',
+        stakes: currentSituation.immediate_stakes || s.immediate_stakes || '',
+        hooks: hookMoves,
+        worldMoves,
+        visibleClues: Array.isArray(currentSituation.visible_clues) ? currentSituation.visible_clues : (Array.isArray(s.visible_clues) ? s.visible_clues : []),
+        currentObjective: currentSituation.current_objective || s.current_objective || '',
+        activeThread: currentSituation.active_thread || s.active_thread || '',
+        knownDanger: currentSituation.known_danger || '',
+        timePressure: currentSituation.time_pressure || '',
+        storyThreads: Array.isArray(s.story_threads) ? s.story_threads : [],
+        relationshipsChanged: Array.isArray(s.relationships_changed) ? s.relationships_changed : [],
       })
     }
     // @ts-ignore
@@ -534,6 +604,8 @@ export default function GameplayLayout({
     return ()=>window.clearInterval(id)
   }, [banners.length])
   const activeBanner = banners[bannerIndex % (banners.length || 1)]
+  const formatClockPart = (value: any) => String(value || '').replace(/_/g, ' ')
+  const experienceLabel = experienceMode.replace(/_/g, ' ')
   const selectedCharacter = useMemo(() => {
     if(!roster.length) return undefined
     if(!selectedCharId) return roster[0]
@@ -541,6 +613,23 @@ export default function GameplayLayout({
   }, [roster, selectedCharId])
 
   const playerStats = selectedCharacter
+  const observedSummary = (situation.visibleClues || []).slice(0, 3).join(', ')
+  const currentRisk = situation.timePressure || situation.knownDanger || situation.stakes || ''
+  const situationPreview = [
+    situation.currentObjective || situation.activeThread || null,
+    situation.stakes ? `Stakes: ${situation.stakes}` : null,
+  ].filter(Boolean).join(' • ')
+  const worldMovesPreview = (
+    situation.worldMoves && situation.worldMoves.length > 0
+      ? situation.worldMoves[0]
+      : (situation.hooks || [])[0]
+  ) || ''
+  const encounterActive = /combat|encounter|imminent|danger/i.test(experienceMode)
+    || Boolean(situation.threat && !/safe|quiet|none/i.test(situation.threat))
+    || npcSpotlight.length > 0
+    || sceneCues.length > 0
+  const playerInitiativeMod = Math.floor(((Number(playerStats?.stats?.dex) || 10) - 10) / 2)
+  const resolutionOptions = suggestions.slice(0, 5)
 
   const partyRoster = useMemo((): CharacterSummary[] => {
     const members = Array.isArray(partyData?.members) ? partyData.members : []
@@ -627,6 +716,34 @@ export default function GameplayLayout({
       })
       .filter(Boolean) as CharacterSummary[]
   }, [partyData, currentUserEmail, currentUsername])
+
+  // Entity hints for NarrativeView — character names/roles the player can hover to recall.
+  const entityHints = useMemo((): EntityHint[] => {
+    const hints: EntityHint[] = []
+    // Other party members (PCs)
+    for (const c of partyRoster) {
+      if (!c.name) continue
+      hints.push({
+        name: c.name,
+        role: [c.class_name, c.level ? `Lv.${c.level}` : ''].filter(Boolean).join(' ') || 'Party member',
+      })
+    }
+    // NPCs present in the session
+    for (const npc of (Array.isArray(partyData?.npcs) ? partyData.npcs : [])) {
+      if (!npc?.name) continue
+      hints.push({
+        name: String(npc.name),
+        role: npc.role ?? npc.type ?? 'NPC',
+        description: npc.description ?? npc.notes ?? undefined,
+      })
+    }
+    // NPC spotlight (from live scene analysis)
+    for (const n of npcSpotlight) {
+      if (!n.name || hints.some(h => h.name.toLowerCase() === n.name.toLowerCase())) continue
+      hints.push({ name: n.name, role: 'NPC' })
+    }
+    return hints
+  }, [partyRoster, partyData, npcSpotlight])
 
   useEffect(() => {
     // Keep the party selection valid as the remote party changes.
@@ -760,7 +877,7 @@ export default function GameplayLayout({
 
   return (
     <div
-      className={`gameplay-root ${drawerOpen ? 'drawer-open' : ''}`}
+      className={`gameplay-root session-mode-${sessionMode} mobile-tab-${mobileTab} ${focusMode ? 'focus-mode' : ''} ${drawerOpen ? 'drawer-open' : ''}`}
       style={{ ['--drawer-width' as any]: `${drawerWidth}px` }}
     >
       <div className={`drawer-scrim ${drawerOpen ? 'visible' : ''}`} onClick={closeDrawer} aria-hidden={!drawerOpen} />
@@ -924,26 +1041,82 @@ export default function GameplayLayout({
       <main className="gameplay-main">
         <section className="session-banner" aria-live="polite">
           <div className="session-banner-row">
-            <div style={{ minWidth: 0 }}>
+            <div className="session-banner-main">
               <div className="session-banner-title">{activeCampaign?.name || activeBanner?.title}</div>
-              <div className="session-banner-subtitle">
+              <div className="session-world-line">
                 {sessionStarted ? (
                   <span className="session-banner-context">
-                    <span className="sbc-item sbc-status">In Play</span>
+                    {worldClock.campaign_day ? (
+                      <span>Day {worldClock.campaign_day}</span>
+                    ) : null}
                     {situation.timeOfDay ? (
-                      <span className="sbc-item">{situation.timeOfDay.charAt(0).toUpperCase() + situation.timeOfDay.slice(1)}</span>
+                      <span>{situation.timeOfDay.charAt(0).toUpperCase() + situation.timeOfDay.slice(1)}</span>
                     ) : null}
                     {situation.weather ? (
-                      <span className="sbc-item">{situation.weather}</span>
+                      <span>{situation.weather}</span>
                     ) : null}
-                    {situation.location ? (
-                      <span className="sbc-item sbc-location">⬡ {situation.location}</span>
+                    {worldClock.wind_direction ? (
+                      <span>{`Wind ${String(worldClock.wind_direction).toUpperCase()}${worldClock.wind_strength ? ` ${formatClockPart(worldClock.wind_strength)}` : ''}`}</span>
+                    ) : null}
+                    {worldClock.moon_phase ? (
+                      <span>{formatClockPart(worldClock.moon_phase)}</span>
                     ) : null}
                   </span>
                 ) : 'Not started yet'}
               </div>
+              <div className="session-location-line">
+                {sessionStarted ? (
+                  <>
+                    {situation.location ? (
+                      <span>{situation.location}</span>
+                    ) : null}
+                    {situation.activeThread ? (
+                      <span>Thread: {situation.activeThread}</span>
+                    ) : null}
+                    {situation.threat ? (
+                      <span className="session-threat-text">Threat: {situation.threat}</span>
+                    ) : null}
+                  </>
+                ) : activeBanner?.subtitle}
+              </div>
             </div>
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div className="session-banner-controls">
+              <div className="session-mode-switch" role="tablist" aria-label="Session view mode">
+                {(['read', 'play', 'world'] as const).map(mode => (
+                  <button
+                    key={mode}
+                    type="button"
+                    role="tab"
+                    className={`session-mode-btn ${sessionMode === mode ? 'active' : ''}`}
+                    aria-selected={sessionMode === mode}
+                    onClick={() => {
+                      setSessionMode(mode)
+                      if (mode === 'world') setRightTab('journal')
+                      if (mode === 'read') setRightTab('character')
+                      setMobileTab(mode === 'world' ? 'world' : 'story')
+                    }}
+                  >
+                    {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                  </button>
+                ))}
+              </div>
+              <button
+                className={`session-focus-btn ${focusMode ? 'active' : ''}`}
+                type="button"
+                onClick={() => {
+                  setFocusMode(v => {
+                    const next = !v
+                    if (next) {
+                      setSessionMode('play')
+                      setMobileTab('story')
+                    }
+                    return next
+                  })
+                }}
+                aria-pressed={focusMode}
+              >
+                Focus
+              </button>
               <button
                 className={`notification-bell ${notificationsPending ? 'notification-bell--pending' : ''}`}
                 type="button"
@@ -956,7 +1129,7 @@ export default function GameplayLayout({
               </button>
               <div style={{ position: 'relative' }}>
                 <button
-                  className="btn btn-secondary btn-sm"
+                  className="session-settings-btn"
                   type="button"
                   onClick={() => setSettingsMenuOpen((v) => !v)}
                   aria-label="Session settings"
@@ -1020,16 +1193,24 @@ export default function GameplayLayout({
                           setPhaseLabel('Regenerating scene…')
                           const t1 = window.setTimeout(() => setPhaseLabel('Writing narrative…'), 10000)
                           try {
-                            const res = await apiFetch('/narrative/regenerate', { method: 'POST', body: JSON.stringify({ session_id: sessionId }) })
+                            const res = await apiFetch('/narrative/regenerate', {
+                              method: 'POST',
+                              body: JSON.stringify({ session_id: sessionId, player: playerStats?.name || undefined })
+                            })
                             if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d?.detail || d?.error || 'Failed to regenerate scene') }
                             const data = await res.json()
                             if (data?.narrative) {
                               setPhaseLabel('Scene ready!')
+                              // Reload from scene.json so we get the full scene with location/image
+                              const sceneRes = await apiFetch(`/sessions/${sessionId}/file/scene.json`).catch(() => null)
+                              const sceneData = sceneRes?.ok ? await sceneRes.json().catch(() => null) : null
                               window.dispatchEvent(new CustomEvent('narrative:scene', {
                                 detail: {
-                                  scene: {
+                                  scene: sceneData ?? {
                                     id: `regen-${Date.now()}`,
-                                    title: 'Regenerated Scene',
+                                    title: situation.location || 'Scene',
+                                    narrative_body: data.narrative,
+                                    player_prompt: data.prompt || '',
                                     text: `${data.narrative}\n\n${data.prompt || ''}`.trim(),
                                     image: null,
                                     choices: [],
@@ -1094,8 +1275,9 @@ export default function GameplayLayout({
           </div>
         </section>
         <section className="gameplay-body" aria-label="HomeScreen">
+          <div className="session-workspace-row">
           <div className="home-screen" aria-label="HomeScreen">
-            <section className="zork-screen" aria-label="Main view screen">
+            <section className={`zork-screen experience-mode-${experienceMode}`} aria-label="Main view screen">
               <div className="zork-screen-inner">
                 {/* Scene generation overlay */}
                 {phase === 'advancing' && (
@@ -1111,10 +1293,16 @@ export default function GameplayLayout({
 
                 {/* Scrollable narrative + situation area */}
                 <section className="scene-area" aria-label="Scene view">
-                  <NarrativeView sessionId={sessionId} />
+                  <NarrativeView
+                    sessionId={sessionId}
+                    entities={entityHints}
+                    presentationMode={sessionMode}
+                    focusMode={focusMode}
+                    onExitRead={() => setSessionMode('play')}
+                  />
 
                   {/* Situation strip — current context at a glance */}
-                  {(situation.location || situation.mood || (situation.threads && situation.threads.length > 0)) && (
+                  {(situation.location || situation.mood || situation.currentObjective || (situation.threads && situation.threads.length > 0)) && (
                     <div className="situation-strip">
                       <button
                         className="situation-strip-toggle"
@@ -1122,12 +1310,18 @@ export default function GameplayLayout({
                         onClick={() => setSituationOpen(v => !v)}
                         aria-expanded={situationOpen}
                       >
-                        <span className="situation-strip-title">Current Situation</span>
+                        <span className="situation-strip-title">
+                          Current Situation
+                          {!situationOpen && situationPreview ? (
+                            <span className="situation-strip-preview"> — {situationPreview}</span>
+                          ) : null}
+                        </span>
                         <span className="situation-strip-chevron">{situationOpen ? '▲' : '▼'}</span>
                       </button>
 
                       {situationOpen && (
                         <div className="situation-strip-body">
+                          <div className="experience-mode-label">{experienceLabel}</div>
                           <div className="situation-grid">
                             {situation.location ? (
                               <div className="situation-item">
@@ -1160,20 +1354,70 @@ export default function GameplayLayout({
                               </div>
                             ) : null}
                           </div>
+                          {situation.currentObjective ? (
+                            <div className="situation-stakes">
+                              <span className="situation-label">Current Objective</span>
+                              <span className="situation-stakes-text">{situation.currentObjective}</span>
+                            </div>
+                          ) : null}
                           {situation.stakes ? (
                             <div className="situation-stakes">
-                              <span className="situation-label">Stakes</span>
+                              <span className="situation-label">Immediate Stakes</span>
                               <span className="situation-stakes-text">{situation.stakes}</span>
+                            </div>
+                          ) : null}
+                          {situation.knownDanger ? (
+                            <div className="situation-stakes">
+                              <span className="situation-label">Known Danger</span>
+                              <span className="situation-stakes-text">{situation.knownDanger}</span>
+                            </div>
+                          ) : null}
+                          {situation.timePressure ? (
+                            <div className="situation-stakes">
+                              <span className="situation-label">Time Pressure</span>
+                              <span className="situation-stakes-text">{situation.timePressure}</span>
+                            </div>
+                          ) : null}
+                          {situation.visibleClues && situation.visibleClues.length > 0 ? (
+                            <div className="situation-threads">
+                              <span className="situation-label">Observed Details</span>
+                              <ul className="situation-thread-list">
+                                {situation.visibleClues.slice(0, 4).map((c, i) => (
+                                  <li key={i} className="situation-thread-item">
+                                    <span className="situation-thread-dot" />
+                                    {c}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
+                          {situation.activeThread ? (
+                            <div className="situation-stakes">
+                              <span className="situation-label">Active Thread</span>
+                              <span className="situation-stakes-text">{situation.activeThread}</span>
                             </div>
                           ) : null}
                           {situation.threads && situation.threads.length > 0 ? (
                             <div className="situation-threads">
-                              <span className="situation-label">Active Threads</span>
+                              <span className="situation-label">Story Threads</span>
                               <ul className="situation-thread-list">
-                                {situation.threads.slice(0, 5).map((t, i) => (
+                                {situation.threads.slice(0, 4).map((t, i) => (
                                   <li key={i} className="situation-thread-item">
                                     <span className="situation-thread-dot" />
                                     {t}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
+                          {situation.relationshipsChanged && situation.relationshipsChanged.length > 0 ? (
+                            <div className="situation-threads">
+                              <span className="situation-label">Relationships</span>
+                              <ul className="situation-thread-list">
+                                {situation.relationshipsChanged.slice(0, 3).map((item, i) => (
+                                  <li key={i} className="situation-thread-item">
+                                    <span className="situation-thread-dot" />
+                                    {typeof item === 'string' ? item : (item?.name || item?.summary || JSON.stringify(item))}
                                   </li>
                                 ))}
                               </ul>
@@ -1183,34 +1427,152 @@ export default function GameplayLayout({
                       )}
                     </div>
                   )}
-                </section>
 
-                {/* Chat dock — player message input */}
-                {sessionId && (
-                  <section className="player-action-area" aria-label="Player actions">
-                    {/* Action prompt label */}
-                    <div className="player-action-prompt">
-                      <span className="player-action-prompt-text">
-                        {playerStats?.name
-                          ? `What does ${playerStats.name} do?`
-                          : 'What do you do?'}
-                      </span>
+                  {/* Meanwhile — living-world events happening outside the immediate scene */}
+                  {((situation.worldMoves && situation.worldMoves.length > 0) || (situation.hooks && situation.hooks.length > 0)) && (
+                    <div className="world-moves-strip">
+                      <button
+                        className="world-moves-toggle"
+                        onClick={() => setWorldMovesOpen(o => !o)}
+                        aria-expanded={worldMovesOpen}
+                        type="button"
+                      >
+                        <span className="world-moves-title">
+                          Meanwhile
+                          {!worldMovesOpen && worldMovesPreview ? (
+                            <span className="world-moves-preview"> — {worldMovesPreview}</span>
+                          ) : null}
+                        </span>
+                        <span className="world-moves-chevron">{worldMovesOpen ? '▲' : '▼'}</span>
+                      </button>
+                      {worldMovesOpen && (
+                        <ul className="world-moves-list">
+                          {(situation.worldMoves && situation.worldMoves.length > 0
+                            ? situation.worldMoves
+                            : situation.hooks || []
+                          ).map((item, i) => (
+                            <li key={i} className="world-moves-item">
+                              <span className="world-moves-dot" />
+                              {item}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
+                  )}
 
-                    {diceRolls.length > 0 && (
-                      <div className="dice-rolls-bar" aria-label="Pending dice rolls">
-                        <span className="dice-rolls-label">Dice rolls this round:</span>
-                        {diceRolls.map((roll, i) => (
-                          <span key={i} className="dice-roll-chip">{roll.type}{roll.skill ? ` (${roll.skill})` : ''}</span>
-                        ))}
-                        <button className="btn btn-quiet btn-sm" onClick={() => setDiceRolls([])}>✕</button>
+                  <aside className="resolution-panel" aria-label="Resolution panel">
+                    <div className="resolution-panel-header">
+                      <div>
+                        <span className="resolution-panel-kicker">Resolution</span>
+                        <strong>
+                          {diceRolls.length > 0
+                            ? `${diceRolls.length} check${diceRolls.length === 1 ? '' : 's'} pending`
+                            : encounterActive
+                            ? 'Encounter state'
+                            : 'Scene state'}
+                        </strong>
                       </div>
-                    )}
-                    <div className="player-chat-wrap">
-                      <Chat sessionId={sessionId} variant="dock" character={playerStats ?? null} />
+                      {diceRolls.length > 0 ? (
+                        <button className="resolution-dismiss" type="button" onClick={() => setDiceRolls([])}>
+                          Clear
+                        </button>
+                      ) : null}
                     </div>
-                  </section>
-                )}
+
+                    {remoteRoll ? (
+                      <section className="resolution-section resolution-roll-result" aria-live="polite">
+                        <span className="resolution-section-label">{remoteRoll.expression || 'Roll result'}</span>
+                        <div className="resolution-roll-total">{remoteRoll.total ?? '—'}</div>
+                        {remoteRoll.by ? <div className="resolution-roll-by">{remoteRoll.by}</div> : null}
+                      </section>
+                    ) : null}
+
+                    {diceRolls.length > 0 ? (
+                      <section className="resolution-section">
+                        <span className="resolution-section-label">Pending checks</span>
+                        <div className="resolution-check-list">
+                          {diceRolls.slice(0, 5).map((roll, i) => (
+                            <button
+                              key={i}
+                              type="button"
+                              className="resolution-check-card"
+                              onClick={() => setActionDraft(`/roll 1d20 ${roll.skill || roll.type || ''}`.trim())}
+                            >
+                              <span>{roll.skill || roll.type || 'Roll'}</span>
+                              {roll.reason ? <strong>{roll.reason}</strong> : null}
+                            </button>
+                          ))}
+                        </div>
+                      </section>
+                    ) : null}
+
+                    {encounterActive ? (
+                      <section className="resolution-section">
+                        <span className="resolution-section-label">Turn state</span>
+                        <div className="resolution-row">
+                          <span>Active</span>
+                          <strong>{turnState.active || waitingDisplay || 'No active turn yet'}</strong>
+                        </div>
+                        {playerStats ? (
+                          <div className="resolution-row">
+                            <span>{playerStats.name}</span>
+                            <strong>Initiative {playerInitiativeMod >= 0 ? '+' : ''}{playerInitiativeMod}</strong>
+                          </div>
+                        ) : null}
+                        {npcSpotlight.slice(0, 4).map((npc, i) => (
+                          <div key={`${npc.name}-${i}`} className="resolution-row">
+                            <span>{npc.name}</span>
+                            <strong>{npc.initiative_hint || 'watching'}</strong>
+                          </div>
+                        ))}
+                      </section>
+                    ) : null}
+
+                    {situation.visibleClues && situation.visibleClues.length > 0 ? (
+                      <section className="resolution-section">
+                        <span className="resolution-section-label">Investigation leads</span>
+                        <div className="resolution-lead-list">
+                          {situation.visibleClues.slice(0, 4).map((lead, i) => (
+                            <button
+                              key={i}
+                              type="button"
+                              className="resolution-lead"
+                              onClick={() => setActionDraft(`I examine ${lead}`)}
+                            >
+                              {lead}
+                            </button>
+                          ))}
+                        </div>
+                      </section>
+                    ) : null}
+
+                    {resolutionOptions.length > 0 ? (
+                      <section className="resolution-section">
+                        <span className="resolution-section-label">Approaches</span>
+                        <div className="resolution-option-list">
+                          {resolutionOptions.map((option, i) => (
+                            <button
+                              key={`${option}-${i}`}
+                              type="button"
+                              className="resolution-option"
+                              onClick={() => setActionDraft(option)}
+                            >
+                              {option}
+                            </button>
+                          ))}
+                        </div>
+                      </section>
+                    ) : null}
+
+                    {!remoteRoll && diceRolls.length === 0 && !encounterActive && !observedSummary && resolutionOptions.length === 0 ? (
+                      <section className="resolution-section resolution-empty">
+                        <span className="resolution-section-label">No check required</span>
+                        <p>Describe what {playerStats?.name || 'the character'} does next. TavernTails will call for resolution when the fiction needs it.</p>
+                      </section>
+                    ) : null}
+                  </aside>
+                </section>
 
               </div>
             </section>
@@ -1235,7 +1597,7 @@ export default function GameplayLayout({
                 aria-selected={rightTab === 'journal'}
                 onClick={() => setRightTab('journal')}
               >
-                Journal
+                Archive
               </button>
               <button
                 type="button"
@@ -1292,14 +1654,199 @@ export default function GameplayLayout({
               ) : null}
 
               {rightTab === 'journal' ? (
-                <JournalPanel sessionId={sessionId || null} />
+                <div className="world-archive-stack">
+                  <JournalPanel sessionId={sessionId || null} memoryUpdates={memoryUpdates} />
+                  <SessionDayLog sessionId={sessionId || null} />
+                </div>
               ) : null}
 
               {rightTab === 'world' ? (
-                <WorldPanel campaignId={activeCampaignId} />
+                <WorldPanel
+                  campaignId={activeCampaignId}
+                  situation={situation}
+                  worldClock={worldClock}
+                  memoryUpdates={memoryUpdates}
+                />
               ) : null}
             </div>
           </aside>
+
+          <aside className="world-character-panel" aria-label="World character panel">
+            <div className="player-sheet" aria-label="Your character sheet">
+              <div className="player-sheet-inner">
+                <CharacterPanel
+                  title="Your character"
+                  roster={playerStats ? [playerStats] : []}
+                  selectedId={playerStats ? String(playerStats.id) : null}
+                  showRoster={false}
+                  sceneCues={sceneCues}
+                  npcSpotlight={npcSpotlight}
+                  onCueRoll={triggerCueRoll}
+                  onGoToCharacters={onGoToCharacters}
+                  onGoToImport={onGoToImport}
+                  onSheetUpdate={handleSheetUpdate}
+                  onQuickAction={handleQuickAction}
+                />
+              </div>
+            </div>
+          </aside>
+          </div>
+
+          {sessionId && (
+            <section className="player-action-area action-console" aria-label="Action Console">
+              {(situation.currentObjective || observedSummary || currentRisk) ? (
+                <div
+                  className="scene-summary-strip"
+                  aria-label="Scene summary"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSituationOpen(v => !v)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      setSituationOpen(v => !v)
+                    }
+                  }}
+                >
+                  {situation.currentObjective ? (
+                    <div className="scene-summary-item">
+                      <span>Objective</span>
+                      <strong>{situation.currentObjective}</strong>
+                    </div>
+                  ) : null}
+                  {observedSummary ? (
+                    <div className="scene-summary-item">
+                      <span>Observed</span>
+                      <strong>{observedSummary}</strong>
+                    </div>
+                  ) : null}
+                  {currentRisk ? (
+                    <div className="scene-summary-item scene-summary-item--risk">
+                      <span>Risk</span>
+                      <strong>{currentRisk}</strong>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              <div className="action-console-header">
+                <div>
+                  <div className="player-action-prompt-text">
+                    {playerStats?.name
+                      ? `What does ${playerStats.name} do?`
+                      : 'What do you do?'}
+                  </div>
+                  <div className="action-console-subtitle">Describe an action, roll dice, use a skill, cast a spell, or reference someone with @.</div>
+                </div>
+                {remoteRoll ? (
+                  <div className="dice-result-card" aria-live="polite">
+                    <span className="dice-result-label">{remoteRoll.expression || 'Roll'}</span>
+                    <span className="dice-result-total">{remoteRoll.total ?? '—'}</span>
+                    {remoteRoll.by ? <span className="dice-result-by">{remoteRoll.by}</span> : null}
+                  </div>
+                ) : null}
+              </div>
+
+              {diceRolls.length > 0 && (
+                <div className="pending-roll-tray" aria-label="Pending dice rolls">
+                  <span className="pending-roll-title">{diceRolls.length > 1 ? 'Pending Rolls' : 'Pending Roll'}</span>
+                  <div className="pending-roll-cards">
+                    {diceRolls.slice(0, 3).map((roll, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        className="pending-roll-card"
+                        onClick={() => setActionDraft(`/roll 1d20 ${roll.skill || roll.type || ''}`.trim())}
+                      >
+                        <span>{roll.skill || roll.type || 'Roll'}</span>
+                        {roll.reason ? <strong>{roll.reason}</strong> : null}
+                      </button>
+                    ))}
+                  </div>
+                  <button className="pending-roll-dismiss" type="button" onClick={() => setDiceRolls([])}>Dismiss</button>
+                </div>
+              )}
+
+              <div className="action-console-tools">
+                <div className="action-tool-menu">
+                  <button
+                    type="button"
+                    className="action-tool-primary"
+                    aria-haspopup="menu"
+                    aria-expanded={rollToolsOpen}
+                    onClick={() => setRollToolsOpen(v => !v)}
+                  >
+                    Roll Dice
+                  </button>
+                  {rollToolsOpen ? (
+                    <div className="action-tool-popover" role="menu">
+                      {[
+                        ['Roll d20', '/roll 1d20'],
+                        ['Roll d12', '/roll 1d12'],
+                        ['Roll d10', '/roll 1d10'],
+                        ['Roll d8', '/roll 1d8'],
+                        ['Roll d6', '/roll 1d6'],
+                        ['Roll d4', '/roll 1d4'],
+                        ['Use skill', '@Perception'],
+                        ['Cast spell', 'I cast '],
+                        ['Use item', 'I use '],
+                        ['Reference NPC', '@'],
+                      ].map(([label, draft]) => (
+                        <button
+                          key={label}
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            setActionDraft(draft)
+                            setRollToolsOpen(false)
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="player-chat-wrap">
+                <Chat
+                  sessionId={sessionId}
+                  variant="dock"
+                  character={playerStats ?? null}
+                  composerInject={actionDraft}
+                  onComposerInjectConsumed={() => setActionDraft(null)}
+                />
+              </div>
+            </section>
+          )}
+          <nav className="mobile-session-nav" aria-label="Session sections">
+            {([
+              ['story', 'Story'],
+              ['resolution', 'Resolve'],
+              ['action', 'Action'],
+              ['character', 'Character'],
+              ['world', 'World'],
+            ] as const).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                className={`mobile-session-nav-btn ${mobileTab === key ? 'active' : ''}`}
+                onClick={() => {
+                  setMobileTab(key)
+                  if (key === 'world') {
+                    setSessionMode('world')
+                    setRightTab('journal')
+                    return
+                  }
+                  if (sessionMode === 'world') setSessionMode('play')
+                  if (key === 'character') setRightTab('character')
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
         </section>
       </main>
 

@@ -63,3 +63,21 @@ def test_clear_character_assignment():
     assert payload["ok"] is True
     assert payload["character_id"] is None
     assert payload["character_name"] is None
+
+
+def test_session_player_names_fall_back_to_meta_character_name():
+    owner = "char-meta-name@example.com"
+    _ensure_user(owner)
+    sid, _meta = sessions_module.create_session_folder("Meta Character Session", owner)
+    folder = sessions_module.BASE / sid
+    meta_path = folder / "meta.json"
+    meta = {
+        "id": sid,
+        "name": "Meta Character Session",
+        "owner": owner,
+        "members": [{"email": owner, "character_id": 123, "role": "owner", "character_name": "Yungmin"}],
+    }
+    meta_path.write_text(__import__("json").dumps(meta))
+    (folder / "pcs.json").write_text("[]")
+
+    assert sessions_module._session_player_names(folder, meta) == ["Yungmin"]

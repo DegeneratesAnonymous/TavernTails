@@ -10,6 +10,79 @@
   overflow: hidden;
 }
 
+.wp-section {
+  flex: 0 0 auto;
+  margin: 12px;
+  padding: 12px;
+  border: 1px solid rgba(200,148,26,0.16);
+  border-radius: 8px;
+  background: rgba(0,0,0,0.18);
+}
+
+.wp-heading {
+  margin-bottom: 8px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent, #c8941a);
+}
+
+.wp-location {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text-primary, #e8d5b0);
+}
+
+.wp-clock {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.wp-clock span {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(200,148,26,0.12);
+  color: rgba(232,213,176,0.78);
+  font-size: 11px;
+  text-transform: capitalize;
+}
+
+.wp-section p {
+  margin: 0 0 8px;
+  color: rgba(232,213,176,0.82);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.wp-section p:last-child {
+  margin-bottom: 0;
+}
+
+.wp-emphasis {
+  color: rgba(245,200,66,0.86) !important;
+  font-style: italic;
+}
+
+.wp-section .wp-list {
+  width: auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border-right: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.wp-section .wp-list li {
+  color: rgba(232,213,176,0.78);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 /* ─── Top toolbar ─── */
 .wp-toolbar {
   display: flex;
@@ -537,10 +610,11 @@
   text-align: center;
 }
 
-/* Scrollbar */
-.wp-root *::-webkit-scrollbar { width: 4px; }
-.wp-root *::-webkit-scrollbar-track { background: transparent; }
-.wp-root *::-webkit-scrollbar-thumb { background: rgba(200,148,26,0.2); border-radius: 2px; }
+/* Scrollbar — inherits global style from LoggedInDashboard.css; override sizes here */
+.wp-root *::-webkit-scrollbar { width: 7px; height: 7px; }
+.wp-root *::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); border-radius: 4px; }
+.wp-root *::-webkit-scrollbar-thumb { background: rgba(245,200,66,0.45); border-radius: 4px; border: 1px solid rgba(0,0,0,0.3); }
+.wp-root *::-webkit-scrollbar-thumb:hover { background: rgba(245,200,66,0.7); }
 
 /* ── Mobile ≤600px ─────────────────────────────────────────────────────── */
 @media (max-width: 600px) {

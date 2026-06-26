@@ -9,7 +9,9 @@ from fastapi.testclient import TestClient
 
 import server.main as main
 from server import db
+from server.agents import simulation as simulation_agent
 from server.agents import sessions as sessions_module
+from server.agents.scene_validator import validate_scene_quality
 from server.auth import create_access_token
 
 
@@ -100,6 +102,55 @@ def test_start_session_creates_opening_scene():
     assert scene_path.exists()
     parsed = json.loads(scene_path.read_text())
     assert parsed["id"] == "opening"
+    assert isinstance(parsed["current_situation"], dict)
+    assert parsed["current_situation"]["current_objective"]
+    assert "[Character:" not in parsed["current_situation"]["current_objective"]
+    assert isinstance(parsed["world_moves"], list)
+    assert len(parsed["world_moves"]) >= 2
+    assert parsed["experience_mode"]
+
+
+def test_scene_presentation_repairs_generic_prompt_for_active_player():
+    scene = {
+        "narrative_body": "Torvin drops a cracked lantern on the table.",
+        "player_prompt": "What does the party do?",
+        "active_player": "Arin Quickstep",
+        "location": "The Wayward Lantern Inn",
+    }
+
+    normalized = simulation_agent.normalize_scene_presentation(
+        scene,
+        simulation_agent.default_world_state(),
+        {},
+    )
+
+    assert normalized["player_prompt"] == "What does Arin Quickstep do?"
+    assert normalized["text"].endswith("What does Arin Quickstep do?")
+
+
+def test_scene_validator_rejects_placeholder_narrative():
+    score, issues = validate_scene_quality(
+        "At The Wayward Lantern Inn, the moment holds — waiting for what comes next.\n\nWhat does Yungmin do?",
+        location_name="The Wayward Lantern Inn",
+        player_name="Yungmin",
+    )
+
+    assert score == 0
+    assert any("Placeholder narrative" in issue for issue in issues)
+
+
+def test_action_response_scene_uses_latest_action():
+    response = sessions_module._action_response_scene(
+        player_name="Yungmin",
+        location_name="The Wayward Lantern Inn",
+        latest_action="I cast Detect Magic on the cracked lantern.",
+        action_count=1,
+    )
+
+    assert "Yungmin" in response["narrative"]
+    assert "blue-white thread" in response["narrative"]
+    assert "arcane" in response["objective"].lower()
+    assert response["suggested_actions"]
 
 
 def test_start_session_player_run_skips_ai():
@@ -221,6 +272,52 @@ def test_advance_scene_creates_new_scene():
     scene_path = Path(sessions_module.BASE) / sid / "scene.json"
     parsed = json.loads(scene_path.read_text())
     assert parsed["id"].startswith("scene-")
+    assert parsed["scene_templates"]
+    assert parsed["simulation_delta"]["time_changes"]
+    assert isinstance(parsed["current_situation"], dict)
+    assert parsed["current_situation"]["current_objective"]
+    assert "[Character:" not in parsed["current_situation"]["current_objective"]
+    assert isinstance(parsed["world_clock"], dict)
+    assert parsed["world_clock"]["campaign_day"] >= 1
+    assert parsed["experience_mode"]
+    assert isinstance(parsed["memory_updates"], dict)
+    assert isinstance(parsed["image"], dict)
+
+    folder = Path(sessions_module.BASE) / sid
+    assert (folder / "world_state.json").exists()
+    assert (folder / "last_simulation_delta.json").exists()
+    assert (folder / "last_memory_delta.json").exists()
+    assert (folder / "canon_memory.json").exists()
+
+    world_state = json.loads((folder / "world_state.json").read_text())
+    assert world_state["campaign_day"] >= 1
+    assert world_state["time_of_day"]
+    assert world_state["weather"]
+
+
+def test_advance_scene_active_lock_returns_generation_status():
+    client = _client()
+    owner = "advance-scene-lock-owner@example.com"
+    _ensure_user(owner)
+    sid, _ = sessions_module.create_session_folder("Advance Scene Lock Test", owner)
+    headers = {"Authorization": f"Bearer {create_access_token(owner)}"}
+
+    folder = Path(sessions_module.BASE) / sid
+    active_lock = {
+        "generation_id": "existing-generation",
+        "session_id": sid,
+        "status": "running",
+        "started_at": "2099-01-01T00:00:00+00:00",
+        "expires_at": "2099-01-01T00:10:00+00:00",
+    }
+    (folder / "advance_scene_lock.json").write_text(json.dumps(active_lock))
+
+    resp = client.post(f"/sessions/{sid}/advance-scene", headers=headers, json={})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["ok"] is False
+    assert body["generation"]["generation_id"] == "existing-generation"
+    assert body["status"] == "running"
 
 
 def test_advance_scene_player_run_mode_rejected():

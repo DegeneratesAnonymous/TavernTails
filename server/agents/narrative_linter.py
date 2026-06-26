@@ -13,39 +13,64 @@ from dataclasses import dataclass, field
 # ---------------------------------------------------------------------------
 
 BANNED_GENERIC: list[str] = [
+    # Genre labels
     "heroic fantasy",
     "epic fantasy",
     "high fantasy",
     "dark fantasy world",
     "dark-fantasy",
     "fantasy world",
+    "in the fantasy world",
+    "fantasy world of",
+    "in a fantasy",
+    # Vague threat clichés
     "mysterious threat",
+    "a mysterious threat",
     "a disturbance",
     "urgent request",
-    "the region demands attention",
-    "demands the party",
-    "demands your attention",
-    "choices matter",
-    "outcomes stay flexible",
     "danger looms",
-    "the world is dangerous",
-    "personal stakes",
-    "the adventure begins",
-    "a figure approaches",
-    "a nearby figure",
-    "an old acquaintance",
-    "the party must",
     "a dark force",
     "evil is stirring",
-    "disturbing the peace",
     "something stirs",
     "something is wrong",
     "something is amiss",
     "unrest grows",
     "threatens the peace",
+    "disturbing the peace",
+    # Region/demand abstractions
+    "the region demands",
+    "demands the party",
+    "demands your attention",
+    "demands attention",
+    # Routine clichés
     "broken the routine",
     "routine of the inn",
     "routine of the",
+    # Party references
+    "the party must",
+    "the party needs",
+    "the party should",
+    # Unnamed NPC patterns
+    "a figure approaches",
+    "a figure nearby",
+    "a nearby figure",
+    "a stranger approaches",
+    "someone nearby",
+    "an old acquaintance",
+    "a cloaked figure",
+    "a hooded figure",
+    # Adventure/story clichés
+    "the adventure begins",
+    "the world is dangerous",
+    "personal stakes",
+    # Opening sentence red flags
+    "the scene unfolds",
+    "scene unfolds before you",
+    "unfolds before you",
+    # Greeting clichés
+    "hello traveler",
+    "welcome traveler",
+    "we need help",
 ]
 
 BANNED_META: list[str] = [
@@ -60,6 +85,13 @@ BANNED_META: list[str] = [
     "this campaign",
     "in the world of",
     "in this setting",
+    # Debug labels in prose
+    "atmosphere:",
+    "stakes:",
+    "mood:",
+    "threat:",
+    "quest:",
+    "objective:",
 ]
 
 BANNED_ABSTRACT_STAKES: list[str] = [
@@ -71,8 +103,11 @@ BANNED_ABSTRACT_STAKES: list[str] = [
     "something must be done",
     "if nothing is done",
     "if no one acts",
+    "if no one acts, the situation will worsen",
     "the situation grows",
     "tensions are rising",
+    "choices matter",
+    "outcomes stay flexible",
 ]
 
 # Words that indicate sensory grounding
@@ -93,6 +128,7 @@ _VISIBLE_EVENTS: list[str] = [
     "breaks", "shatters", "explodes", "crashes", "tumbles", "lunges",
     "drags", "sprints", "staggers", "leaps", "clutches", "hurls", "spills",
     "bleeds", "coughs", "stumbles", "charges", "fires", "swings",
+    "shoves", "slaps", "tears", "knocks", "yanks", "kicks", "stabs",
 ]
 
 # Non-NPC words that look like proper nouns

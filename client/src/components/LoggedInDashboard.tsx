@@ -44,8 +44,14 @@ type NotificationItem = {
   actionData?: Record<string, any>
 }
 
+const PERSISTENT_VIEWS = new Set(['gameplay', 'home', 'campaign-setup', 'view-characters', 'account', 'admin', 'documents', 'explore', 'guides'])
+
 const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
-  const [view, setView] = useState<string>('home');
+  const [view, setView] = useState<string>(() => {
+    if (typeof window === 'undefined') return 'home'
+    const saved = window.localStorage.getItem('tt:view')
+    return (saved && PERSISTENT_VIEWS.has(saved)) ? saved : 'home'
+  });
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [contactModalOpen, setContactModalOpen] = useState(false)
   const [blockReportModalOpen, setBlockReportModalOpen] = useState(false)
@@ -56,9 +62,15 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [moderationSearchBusy, setModerationSearchBusy] = useState(false)
   const [importInitialMode, setImportInitialMode] = useState<'pdf' | 'beyond20' | null>(null)
   const [campaigns, setCampaigns] = useState<Array<any>>([])
-  const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null)
+  const [activeCampaignId, setActiveCampaignId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null
+    return window.localStorage.getItem('tt:lastCampaignId') || null
+  })
   const [sessionMetaById, setSessionMetaById] = useState<Record<string, any>>({})
-  const [activeSession, setActiveSession] = useState<string | null>(null)
+  const [activeSession, setActiveSession] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null
+    return window.localStorage.getItem('tt:lastSessionId') || null
+  })
   const [settingsSession, setSettingsSession] = useState<string| null>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [createCampaignBusy, setCreateCampaignBusy] = useState(false)
@@ -1091,8 +1103,20 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
         }
       }
 
-      if (selectedId !== null) {
-        await assignCharacterToSession(selectedId)
+      if (selectedId !== null && sessionId) {
+        // Use sessionId directly to avoid the stale activeSession closure — React state
+        // updates are async so activeSession may still be null when this runs after
+        // setActiveSession(sid) above.
+        try {
+          await apiFetch(`/sessions/${sessionId}/character`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ character_id: selectedId }),
+          })
+        } catch (_e) { /* non-fatal */ }
+        if (cid) {
+          await updateCharacterCampaignAssociation(selectedId, cid).catch(() => {})
+        }
       }
 
       // Navigate to gameplay immediately — don't block on bootstrap.
@@ -1148,6 +1172,13 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     }
   }, [activeCampaignId, activeSession])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (PERSISTENT_VIEWS.has(view)) {
+      window.localStorage.setItem('tt:view', view)
+    }
+  }, [view])
+
   const lastSessionLabel = useMemo(() => {
     if (!activeSession) return null
     return sessionMetaById[activeSession]?.name || activeSession
@@ -1174,7 +1205,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   return (
     <div className="dashboard-root">
       {/* Global top bar */}
-      <header className="dashboard-topbar">
+      <header className={`dashboard-topbar${view === 'gameplay' ? ' dashboard-topbar--gameplay' : ''}`}>
         <button
           className="drawer-toggle"
           type="button"
@@ -1185,7 +1216,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
           <span className="drawer-toggle-icon" />
           <span className="drawer-toggle-icon" />
         </button>
-        <span className="topbar-brand">TavernTails</span>
+        {view !== 'gameplay' ? <span className="topbar-brand">TavernTails</span> : null}
         <div className="topbar-right">
           <ThemeToggle />
           <button
@@ -1238,7 +1269,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
           <button className="btn-logout" onClick={onLogout}>Sign out</button>
         </div>
       </aside>
-      <main className="dashboard-main">
+      <main className={`dashboard-main${view === 'gameplay' ? ' gameplay-mode' : ''}`}>
         {view === 'gameplay' && (
           <section className="gameplay-panel">
             <div className="gameplay-content">

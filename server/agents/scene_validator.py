@@ -22,6 +22,9 @@ FORBIDDEN_PHRASES: list[str] = [
     "the stakes are personal",
     "adventure begins",
     "paths branch ahead",
+    "moment holds",
+    "waiting for what comes next",
+    "at here",
     "genre",
     "campaign",
     "you see a",
@@ -105,6 +108,8 @@ def validate_scene_quality(
     score = 0
     issues: list[str] = []
     tl = narrative_text.lower()
+    if "moment holds" in tl or "waiting for what comes next" in tl or "at here" in tl:
+        return 0, ["Placeholder narrative returned instead of playable scene content"]
 
     # --- Positive criteria ---
 
@@ -215,6 +220,38 @@ def build_retry_feedback(issues: list[str], score: int, location_name: str, npc_
     return "\n".join(lines)
 
 
+_FALLBACK_FORBIDDEN = [
+    "fantasy world", "dark-fantasy", "dark fantasy", "heroic fantasy",
+    "the region demands", "demands the party", "the party",
+    "genre", "campaign", "adventure begins",
+    "[simulation state]",
+    "i kneel",
+    "i ask",
+    "i scan",
+    "i quietly",
+    "i tell",
+    "i compare",
+    "i prepare",
+    "i send",
+    "i turn",
+    "[character:",  # unresolved template token from a weak LLM generation
+]
+
+
+def _sdd_field_clean(text: str) -> str:
+    """Return text if clean, empty string if it contains forbidden abstract phrases."""
+    if not text:
+        return ""
+    if "\n" in text:
+        return ""
+    tl = text.lower()
+    if text.strip().startswith("{") or text.strip().startswith("[") or "campaign_day" in tl or "elapsed_minutes" in tl:
+        return ""
+    if any(p in tl for p in _FALLBACK_FORBIDDEN):
+        return ""
+    return text
+
+
 def build_fallback_scene(
     location_name: str,
     npc_name: str,
@@ -224,25 +261,76 @@ def build_fallback_scene(
     central_conflict: str,
     immediate_stakes: str,
     sensory_detail: str = "",
+    campaign_name: str = "",
 ) -> str:
     """Return a quality-guaranteed opening scene from template + Scene Director data.
 
     Used when two Narrative Agent attempts both score below MINIMUM_SCORE.
+    Template follows the Golden Scene Rule: named location, sensory detail, visible event,
+    named NPC entering through action, specific problem, concrete stakes, player-facing decision.
     """
-    loc = location_name or "the tavern"
-    npc = npc_name or "A figure nearby"
-    pc = player_name or "You"
-    sensory = sensory_detail or "The air is cold and still."
-    incident = inciting_incident or "Something has gone wrong."
-    conflict = central_conflict or "The situation is dangerous."
-    stakes = immediate_stakes or "Time is running out."
-    state = emotional_state or "urgent and pale"
+    loc = location_name or "the inn"
+    # Fallback NPC must be named — never "A figure nearby"
+    npc = npc_name if npc_name else "Torven"
+    pc = player_name or "you"
+    state = emotional_state or "out of breath, eyes wide"
+
+    # Clean forbidden phrases from all input fields before embedding in prose
+    inciting_incident = _sdd_field_clean(inciting_incident)
+    central_conflict = _sdd_field_clean(central_conflict)
+    immediate_stakes = _sdd_field_clean(immediate_stakes)
+
+    # Derive sensory atmosphere from campaign name keywords when no explicit detail is given
+    if not sensory_detail and campaign_name:
+        name_lower = campaign_name.lower()
+        if any(w in name_lower for w in ("winter", "howl", "frost", "cold", "snow", "blizzard", "ice")):
+            sensory_detail = f"The wind howls through the shutters and frost creeps along the windowpanes"
+        elif any(w in name_lower for w in ("dark", "shadow", "night", "midnight", "dusk", "black")):
+            sensory_detail = "The torchlight gutters in the draft, casting lurching shadows across the walls"
+        elif any(w in name_lower for w in ("fire", "flame", "ember", "ash", "burn")):
+            sensory_detail = "Smoke stings the eyes and the air tastes of char"
+        elif any(w in name_lower for w in ("storm", "thunder", "rain", "flood", "tempest")):
+            sensory_detail = "Rain hammers against the shutters and the floor planks are slick with mud"
+    sensory = sensory_detail or "Cold air bites through the cracks in the shutters."
+
+    def _cap(s: str) -> str:
+        """Capitalize only the first character, preserving proper nouns in the rest."""
+        return s[0].upper() + s[1:] if s else s
+
+    # Inciting incident should be a concrete event, not a vague description
+    if inciting_incident and len(inciting_incident) > 10:
+        incident_line = _cap(inciting_incident.rstrip("."))
+    else:
+        incident_line = f"Something has gone very wrong at {loc}"
+
+    # Conflict as physical evidence, not summary
+    if central_conflict and len(central_conflict) > 10:
+        conflict_evidence = _cap(central_conflict.rstrip("."))
+    else:
+        conflict_evidence = f"The trouble that brought {npc} here is not finished"
+
+    # Stakes must name who suffers — strip abstract "if nothing is done" framing
+    if immediate_stakes and len(immediate_stakes) > 10:
+        stakes_text = immediate_stakes.strip().rstrip(".")
+        for prefix in ("if no one acts,", "if nothing is done:", "if nothing changes,"):
+            if stakes_text.lower().startswith(prefix):
+                stakes_text = stakes_text[len(prefix):].strip()
+        stakes_line = _cap(stakes_text)
+    else:
+        stakes_line = "What happens next will be hard to undo"
+
+    evidence_object = "a cracked lantern wrapped in a torn strip of harness leather"
+    if any(w in (campaign_name or "").lower() for w in ("winter", "frost", "ice", "snow")):
+        evidence_object = "a frozen lantern with dark wool caught in its hinge"
+    elif any(w in (campaign_name or "").lower() for w in ("fire", "ember", "ash", "burn")):
+        evidence_object = "a scorched ledger page curled around a brass token"
+    elif any(w in (campaign_name or "").lower() for w in ("storm", "rain", "flood")):
+        evidence_object = "a waterlogged dispatch tube sealed with split red wax"
 
     return (
-        f"At {loc}, {sensory}\n\n"
-        f"{npc} pushes through the crowd toward {pc}, {state}.\n\n"
-        f"\"{incident}\"\n\n"
-        f"{conflict}\n\n"
-        f"If nothing is done: {stakes}\n\n"
-        f"What does {pc} do?"
+        f"{sensory.rstrip('.')} at {loc}; every table goes quiet as the door bangs open.\n\n"
+        f"{npc} stumbles inside, {state}, and drops {evidence_object} where {pc} can see it.\n\n"
+        f'"{incident_line}," {npc} says, voice low enough that the nearest patrons lean in. '
+        f'"This was not supposed to come back without its owner."\n\n'
+        f"{conflict_evidence}. {stakes_line}, and the room is already deciding who will risk being seen helping."
     )

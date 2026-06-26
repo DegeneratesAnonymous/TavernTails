@@ -84,6 +84,8 @@ class SceneDirectorOutput(BaseModel):
     possible_actions: list[str] = Field(default_factory=list)
     visual_prompt_elements: list[str] = Field(default_factory=list)
     continuity_notes: list[str] = Field(default_factory=list)
+    threads_to_advance: list[str] = Field(default_factory=list)
+    world_moves: list[str] = Field(default_factory=list)
     source: str = "llm"  # "llm" | "deterministic"
 
 
@@ -107,27 +109,60 @@ def _deterministic_director(req: SceneDirectorRequest) -> SceneDirectorOutput:
     hook = req.open_hooks[0] if req.open_hooks else ""
     recent = req.recent_events[0] if req.recent_events else ""
     conflict_source = thread or hook or recent or (req.plot_seed[:150] if req.plot_seed else "")
-    conflict = conflict_source or f"Something urgent has drawn attention in {loc_name}."
-    inciting = hook or thread or f"A disturbance has broken the routine of {loc_name}."
+    conflict = conflict_source or f"Something has gone wrong at {loc_name} and word is spreading fast."
+
+    # Derive a concrete inciting incident — never vague "disturbance" language
+    if hook:
+        inciting = hook
+    elif thread:
+        inciting = f"{thread} has reached a breaking point."
+    elif recent:
+        inciting = recent
+    else:
+        inciting = f"The door to {loc_name} has just slammed open."
 
     # NPC detail from campaign memory if available
     npc_detail = {}
     if req.candidate_npc_details:
         npc_detail = req.candidate_npc_details[0]
     emotional_state = npc_detail.get("emotional_state") or "visibly shaken"
-    npc_goal = npc_detail.get("goal") or "find help immediately"
-    npc_knows = npc_detail.get("next_action") or conflict_source[:80] or "something terrible has happened"
+    npc_goal = npc_detail.get("goal") or "find someone who can help"
+    npc_knows = npc_detail.get("next_action") or conflict_source[:80] or "what happened — and who is responsible"
 
     loc_detail = {}
     if req.candidate_location_details:
         loc_detail = req.candidate_location_details[0]
     tension = loc_detail.get("current_tension") or ""
     sensory = [
-        "The air carries the smell of hearth smoke and damp stone.",
-        "Voices drop to a murmur as you enter.",
+        "The air smells of hearth smoke and damp stone.",
+        "Voices fall quiet as the door opens.",
     ]
     if tension:
         sensory.append(tension[:80])
+
+    # Specific stakes — name who suffers and by when
+    if req.candidate_story_threads:
+        stakes_who = npc_name or "the people involved"
+        stakes = f"{stakes_who} cannot wait past tonight — what happens next will set what comes after."
+    else:
+        stakes = f"Every hour without an answer makes {npc_name or 'the situation'} harder to resolve."
+
+    # World moves — living-world events happening outside the immediate scene
+    world_moves: list[str] = []
+    if req.candidate_story_threads:
+        world_moves.append(f"{req.candidate_story_threads[0]} is still unresolved.")
+    if req.recent_events:
+        world_moves.append(req.recent_events[0])
+    if loc_detail.get("current_tension"):
+        world_moves.append(loc_detail["current_tension"][:80])
+    if req.open_hooks and len(req.open_hooks) > 1:
+        world_moves.append(req.open_hooks[1])
+    # Fallback world moves that imply tension without being generic
+    if not world_moves:
+        world_moves = [
+            f"The road to {loc_name} has been quieter than usual.",
+            "Someone left in a hurry before you arrived.",
+        ]
 
     visual_elements = [
         f"{genre} illustration style",
@@ -154,15 +189,16 @@ def _deterministic_director(req: SceneDirectorRequest) -> SceneDirectorOutput:
         secondary_entities=req.candidate_npcs[1:3],
         central_conflict=conflict[:250],
         inciting_incident=inciting[:200],
-        why_player_is_involved=f"{player_name} is already here and cannot ignore what unfolds.",
-        immediate_stakes="If no one acts, the situation will worsen within hours.",
+        why_player_is_involved=f"{player_name} is here and cannot ignore what is unfolding in front of them.",
+        immediate_stakes=stakes,
         visual_prompt_elements=visual_elements,
         possible_actions=[
-            "Approach and ask what happened",
-            "Investigate the area for clues",
-            "Speak to bystanders",
-            "Prepare for a potential confrontation",
+            f"Ask {npc_name or 'someone'} what happened",
+            "Examine the object everyone is avoiding",
+            "Watch who reacts strangely",
+            "Search the nearest exit for tracks",
         ],
+        world_moves=world_moves[:4],
         source="deterministic",
     )
 
@@ -177,7 +213,8 @@ _SCHEMA = (
     '"primary_npc":{"name":"","role":"","current_emotional_state":"","what_they_want":"","what_they_know":""},'
     '"secondary_entities":[],"central_conflict":"","inciting_incident":"","why_player_is_involved":"",'
     '"immediate_stakes":"","hidden_pressure":"","player_visible_clues":[],'
-    '"possible_actions":[],"visual_prompt_elements":[],"continuity_notes":[]}'
+    '"possible_actions":[],"visual_prompt_elements":[],"continuity_notes":[],'
+    '"world_moves":["living-world event 1","living-world event 2","living-world event 3"]}'
 )
 
 
@@ -275,15 +312,19 @@ def direct_scene(req: SceneDirectorRequest) -> SceneDirectorOutput:
         f"  — location.name: a SPECIFIC named place from the context (or invent one that fits {genre})\n"
         f"  — primary_npc.name: a SPECIFIC named character — not 'a stranger' or 'a mysterious figure'\n"
         "  — central_conflict: a visible, immediate situation — not a vague mood\n"
-        "  — inciting_incident: what physically happens in the opening moments\n"
+        "  — inciting_incident: what physically happens in the opening moments — a strong verb required\n"
         f"  — why_player_is_involved: personal, professional, or accidental reason {player_name} cannot ignore this\n"
-        "  — immediate_stakes: WHO suffers, WHAT is lost, BY WHEN — specific consequences\n"
+        "  — immediate_stakes: WHO suffers, WHAT is lost, BY WHEN — name the person and the deadline\n"
         "  — sensory_details: what you see, hear, or smell RIGHT NOW — physical and grounded\n"
-        "  — visual_prompt_elements: 3–5 items for image generation (location + NPC + mood + key visual)\n\n"
+        "  — visual_prompt_elements: 3–5 items for image generation (location + NPC + mood + key visual)\n"
+        "  — world_moves: 2–4 living-world events happening OUTSIDE the immediate scene — "
+        "subtle signals of a world in motion (not generic atmosphere, not duplicates of the main conflict)\n\n"
         "CONTENT PRIORITY ORDER:\n"
         "  1. Active story threads  2. Open hooks  3. NPC goals  4. Faction plans  5. Location tensions  6. Invent only if nothing else exists\n\n"
         "FORBIDDEN — never write:\n"
         + "\n".join(f"  — \"{p}\"" for p in FORBIDDEN_GENERIC)
+        + "\n  — 'if no one acts' or 'the situation will worsen' — stakes must be concrete, not conditional warnings"
+        + "\n  — 'a disturbance' — name the specific event"
         + "\n\nReturn ONLY valid JSON — no markdown fences, no preamble, no commentary:\n"
         + _SCHEMA
     )
@@ -328,6 +369,7 @@ def direct_scene(req: SceneDirectorRequest) -> SceneDirectorOutput:
                     possible_actions=[str(a) for a in (data.get("possible_actions") or [])],
                     visual_prompt_elements=[str(v) for v in (data.get("visual_prompt_elements") or [])],
                     continuity_notes=[str(n) for n in (data.get("continuity_notes") or [])],
+                    world_moves=[str(w) for w in (data.get("world_moves") or [])],
                     source="llm",
                 )
     except Exception:

@@ -93,7 +93,8 @@ def test_content_advance_persists_next_scene():
     scene_path = Path(sessions_module.BASE) / sid / "scene.json"
     parsed = json.loads(scene_path.read_text())
     assert parsed["id"].startswith("scene-")
-    assert "Investigate" in parsed["text"] or "investigate" in parsed["text"].lower()
+    # The deterministic narration prefix for the "investigate" choice is always present
+    assert "You follow the strongest lead" in parsed["text"]
 
 
 def test_player_run_mode_bootstrap_skips_ai():

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, model_validator
+from sqlmodel import Session, select
 
 from .. import db
 from ..auth import get_current_user
@@ -12,10 +13,12 @@ from ..realtime import broadcaster
 from ..storage import documents as doc_storage
 from . import image as image_agent
 from . import narrative as narrative_agent
+from . import narrative_composer as narrative_composer_agent
 from . import notes as notes_agent
 from . import npc as npc_agent
 from . import scene as scene_agent
 from . import scene_director as scene_director_agent
+from . import simulation as simulation_agent
 from . import storyboard as storyboard_agent
 from . import suggestions as suggestions_agent
 from .entity_schemas import EntityAssociation, PlayerEntityCard
@@ -69,6 +72,366 @@ def is_player_run_mode(session_id: str) -> bool:
 BASE.mkdir(exist_ok=True)
 
 _doc_store = doc_storage.get_document_store()
+
+
+def _session_player_names(folder: Path, meta: dict) -> list[str]:
+    names: list[str] = []
+    try:
+        pcs_path = folder / 'pcs.json'
+        if pcs_path.exists():
+            pcs_raw = json.loads(pcs_path.read_text()) or []
+            for pc in pcs_raw:
+                if not isinstance(pc, dict):
+                    continue
+                name = str(pc.get('name') or pc.get('character_name') or '').strip()
+                if name and name not in names:
+                    names.append(name)
+    except Exception:
+        pass
+    for member in meta.get('members', []) or []:
+        if not isinstance(member, dict):
+            continue
+        name = str(member.get('character_name') or '').strip()
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
+def _load_story_entries(folder: Path) -> list[dict]:
+    story_path = folder / "story.json"
+    try:
+        cur = json.loads(story_path.read_text()) if story_path.exists() else []
+    except Exception:
+        cur = []
+    if isinstance(cur, list):
+        return [entry for entry in cur if isinstance(entry, dict)]
+    if isinstance(cur, dict):
+        return [cur]
+    return []
+
+
+def _story_last_timestamp(entries: list[dict]) -> datetime | None:
+    latest: datetime | None = None
+    for entry in entries:
+        if entry.get("type") not in ("narration", "narrative.scene"):
+            continue
+        raw = entry.get("ts")
+        if not isinstance(raw, str) or not raw:
+            continue
+        try:
+            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except Exception:
+            continue
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        if latest is None or parsed > latest:
+            latest = parsed
+    return latest
+
+
+def _story_roll_entries_since(campaign_id: str | None, by: str | None, since: datetime | None) -> list[dict]:
+    if not campaign_id:
+        return []
+    entries: list[dict] = []
+    try:
+        with Session(db.engine) as session:
+            stmt = select(db.Roll).where(db.Roll.campaign_id == str(campaign_id))
+            if by:
+                stmt = stmt.where(db.Roll.by == by)
+            rolls = list(session.exec(stmt).all())
+    except Exception:
+        return []
+    for roll in rolls:
+        created_raw = roll.created_at or ""
+        try:
+            created = datetime.fromisoformat(created_raw.replace("Z", "+00:00"))
+        except Exception:
+            created = None
+        if created and created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        if since and created and created <= since:
+            continue
+        total = int(roll.total or 0)
+        expression = roll.expression or "roll"
+        dice = ", ".join(str(v) for v in (roll.rolls or []))
+        detail = f"{expression}"
+        if dice:
+            detail += f" [{dice}]"
+        if roll.mod:
+            detail += f" {'+' if roll.mod > 0 else ''}{roll.mod}"
+        entries.append({
+            "type": "roll",
+            "ts": created.isoformat() if created else datetime.now(timezone.utc).isoformat(),
+            "text": f"{roll.by or 'Player'} rolled {detail}: {total}.",
+            "roll": {
+                "expression": expression,
+                "rolls": roll.rolls or [],
+                "mod": roll.mod,
+                "total": total,
+                "by": roll.by,
+            },
+        })
+    return sorted(entries, key=lambda e: str(e.get("ts") or ""))
+
+
+def _story_action_entries_since(messages: list, since: datetime | None) -> list[dict]:
+    entries: list[dict] = []
+    for msg in messages:
+        if getattr(msg, "role", "player") in ("gm", "narrator", "system"):
+            continue
+        created = getattr(msg, "created_at", None)
+        if created and created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        if since and created and created <= since:
+            continue
+        text = (getattr(msg, "message", "") or "").strip()
+        if not text:
+            continue
+        sender = getattr(msg, "sender_name", None) or "Player"
+        entries.append({
+            "type": "player_action",
+            "ts": created.isoformat() if created else datetime.now(timezone.utc).isoformat(),
+            "text": f"{sender}: {text}",
+            "message_id": getattr(msg, "id", None),
+        })
+    return entries
+
+
+def _write_story_entries(folder: Path, entries: list[dict]) -> None:
+    simulation_agent.atomic_write_json(folder / "story.json", entries)
+
+
+def _action_response_scene(
+    *,
+    player_name: str,
+    location_name: str,
+    latest_action: str,
+    action_count: int,
+) -> dict:
+    """Deterministic action-result narration when the LLM cannot produce prose."""
+    pc = player_name or "you"
+    loc = location_name or "The Wayward Lantern Inn"
+    action = (latest_action or "").strip()
+    lower = action.lower()
+
+    beat = {
+        "objective": f"Follow the lantern evidence from {loc} before the trail goes cold.",
+        "stakes": "Every delay gives whoever abandoned the wagon more time to hide the next clue.",
+        "clues": [
+            "The lantern was returned without its owner.",
+            "The harness leather was cut cleanly, not torn by panic.",
+            "Someone in the inn knows more than they have admitted.",
+        ],
+        "moves": [
+            f"Outside {loc}, the road traffic thins as people start avoiding the inn.",
+            "A rumor is already spreading that the wagon came back wrong.",
+        ],
+        "actions": ["Question Torven", "Inspect the lantern", "Search outside", "Watch the room"],
+    }
+
+    if any(word in lower for word in ("detect magic", "arcana")) or (
+        "cast" in lower and not any(word in lower for word in ("mage armor", "light"))
+    ):
+        body = (
+            f"Yungmin lowers the cracked lantern into the dim light and lets the spell settle over it. "
+            f"For a breath nothing answers; then a blue-white thread crawls along the torn harness leather, "
+            f"cold enough to pearl frost on the brass. Torven sees it too and stops talking.\n\n"
+            f"The magic is not strong, but it is deliberate. It clings to the cut edge of the leather, "
+            f"as if someone marked the wagon after the struggle rather than during it. The thread points toward "
+            f"the door, then fades whenever anyone steps too close.\n\n"
+            f"Torven whispers, \"That lantern belonged to Mara Vell. She drove the north road.\""
+        )
+        beat.update({
+            "objective": "Trace the lantern's cold arcane residue toward the north road.",
+            "clues": [
+                "Cold blue residue clings to the harness leather.",
+                "The leather was cut before the lantern was returned.",
+                "The missing owner is Mara Vell, a north-road wagon driver.",
+            ],
+            "actions": ["Ask about Mara Vell", "Follow the magical residue", "Check the doorway", "Identify the spell"],
+        })
+    elif any(word in lower for word in ("ask torven", "slow down", "owner", "owned", "last saw", "last seen")):
+        body = (
+            f"Torven grips the edge of the table until his knuckles pale. Yungmin's calm question gives him "
+            f"something to hold onto, and the words come out in pieces: Mara Vell owned the lantern, Mara left "
+            f"before dawn, and her wagon returned at noon with no driver and no horses.\n\n"
+            f"He keeps glancing toward the kitchen corridor. When Yungmin asks when he last saw her, Torven says, "
+            f"\"At the north stable. She was arguing with someone in a gray cloak. I thought it was business.\""
+        )
+        beat.update({
+            "objective": "Find the gray-cloaked person who argued with Mara at the north stable.",
+            "clues": [
+                "Mara Vell vanished from the north stable before dawn.",
+                "Her wagon returned without driver or horses.",
+                "A gray-cloaked person argued with Mara before she left.",
+            ],
+            "actions": ["Search the north stable", "Press Torven on the argument", "Watch the kitchen corridor", "Ask who wears gray locally"],
+        })
+    elif any(word in lower for word in ("scan", "reacting", "common room", "watch")) and not any(
+        word in lower for word in ("owl", "familiar", "roof", "rooftop")
+    ):
+        body = (
+            f"Yungmin lets the room move without moving with it. Most patrons stare at the lantern; one does not. "
+            f"A narrow-faced courier near the kitchen keeps his eyes on Torven's hands, then on the door, measuring "
+            f"distance rather than danger.\n\n"
+            f"When Yungmin's gaze catches him, the courier folds a receipt into his sleeve. The wax on it is red, "
+            f"split down the middle, and marked with a candle stamped in glass."
+        )
+        beat.update({
+            "objective": "Stop or follow the courier with the split red-wax receipt.",
+            "clues": [
+                "A courier by the kitchen is watching Torven too closely.",
+                "The courier hides a receipt sealed with split red wax.",
+                "The seal shows a candle stamped in glass.",
+            ],
+            "moves": [
+                "The courier starts angling toward the kitchen exit.",
+                "Two patrons pretend not to notice the red-wax seal.",
+            ],
+            "actions": ["Intercept the courier", "Follow quietly", "Call out the seal", "Ask Torven about the Glass Candle"],
+        })
+    elif any(word in lower for word in ("tracks", "threshold", "mud", "snow", "drag")):
+        body = (
+            f"At the threshold, Yungmin finds that the mud tells a rougher story than Torven could. Wagon ruts stop too cleanly, "
+            f"as though the wheels were guided into place. Beside them, one set of bootprints digs deep at the heel, "
+            f"dragging weight toward the alley behind the inn.\n\n"
+            f"The snow there is peppered with black grit. It is not ash from the hearth; it smells faintly of bitter oil."
+        )
+        beat.update({
+            "objective": "Follow the dragged bootprints and black grit behind the inn.",
+            "clues": [
+                "The wagon was guided into place rather than abandoned in panic.",
+                "Dragged bootprints lead toward the alley.",
+                "Black oily grit marks the snow.",
+            ],
+            "actions": ["Follow the bootprints", "Collect the black grit", "Check the alley", "Look for wagon handlers"],
+        })
+    elif any(word in lower for word in ("gawkers", "heard", "wagon", "bystanders")):
+        body = (
+            f"Yungmin's voice cuts through the murmurs, but fear makes the room stubborn. A few patrons look away. "
+            f"One old washerwoman finally answers from behind her cup: she heard the wagon before she saw it.\n\n"
+            f"\"No horses,\" she says. \"Wheels turning anyway. Like something underneath was pulling it home.\" "
+            f"That earns a hard silence. Torven crosses himself without seeming to know he has done it."
+        )
+        beat.update({
+            "objective": "Learn what pulled Mara's wagon back without horses.",
+            "clues": [
+                "A witness heard the wagon arrive with no horses.",
+                "The wheels turned as if pulled from beneath.",
+                "Several patrons are afraid to speak openly.",
+            ],
+            "actions": ["Question the washerwoman", "Inspect under the wagon", "Reassure the room", "Ask who saw the wheels"],
+        })
+    elif any(word in lower for word in ("harness", "wagon gear", "compare", "leather")):
+        body = (
+            f"The harness leather does not match the inn's ordinary tack. Yungmin finds the difference by touch first: "
+            f"the cut edge is too smooth, sealed with something glossy and black. When held near the lantern, the resin "
+            f"softens and releases a smell like burnt cloves.\n\n"
+            f"Torven remembers that smell. \"The Glass Candle keeps ledgers with wax like that,\" he says. "
+            f"\"Collectors, not merchants. People pay them when they have no other choice.\""
+        )
+        beat.update({
+            "objective": "Find out why the Glass Candle's resin is on Mara's harness.",
+            "clues": [
+                "The harness leather was sealed with black resin.",
+                "The resin smells like burnt cloves.",
+                "Torven connects the resin to the Glass Candle collectors.",
+            ],
+            "actions": ["Ask about the Glass Candle", "Track the resin scent", "Search for collectors", "Test the resin magically"],
+        })
+    elif any(word in lower for word in ("enemies", "debts", "fake")):
+        body = (
+            f"Torven looks down when Yungmin asks about debts. That is answer enough before he speaks. Mara borrowed "
+            f"coin from the Glass Candle after last winter ruined the north-road trade, but she had nearly paid it back.\n\n"
+            f"\"She would not fake this,\" he says. \"Not with her brother still waiting at the camp.\" "
+            f"The name lands heavily: a missing driver is one thing, a family hostage is another."
+        )
+        beat.update({
+            "objective": "Protect Mara's brother and uncover the Glass Candle's leverage.",
+            "clues": [
+                "Mara owed money to the Glass Candle.",
+                "She had nearly paid the debt back.",
+                "Mara's brother is waiting at the camp and may be leverage.",
+            ],
+            "actions": ["Go to the camp", "Find Glass Candle records", "Ask Torven about the brother", "Prepare for an ambush"],
+        })
+    elif any(word in lower for word in ("mage armor", "follow", "outside", "freshest")) and not any(
+        word in lower for word in ("owl", "familiar", "trail splits", "prints")
+    ):
+        body = (
+            f"The ward settles over Yungmin like a pane of invisible glass. Outside, the cold makes every sound sharper. "
+            f"The lantern shard twitches once in Yungmin's hand, answering the black grit in the snow.\n\n"
+            f"The trail leaves the inn by the alley, then bends toward the north road. Halfway there, a shutter closes "
+            f"on the second floor of the cooper's shop, though no lamp burns behind it."
+        )
+        beat.update({
+            "objective": "Follow the north-road trail while watching the cooper's upper window.",
+            "clues": [
+                "The lantern shard reacts to black grit in the snow.",
+                "The trail bends toward the north road.",
+                "Someone watches from the cooper's upper floor.",
+            ],
+            "moves": [
+                "A shutter closes above the cooper's shop.",
+                "The north road grows quieter as Yungmin approaches.",
+            ],
+            "actions": ["Investigate the shutter", "Continue along the trail", "Send a familiar ahead", "Hide and watch"],
+        })
+    elif any(word in lower for word in ("owl", "familiar", "trail splits", "prints")):
+        body = (
+            f"The owl climbs above the roofline and the world opens into angles: alley, stable, cooper's shop, north road. "
+            f"Through the familiar's eyes, Yungmin sees the prints split because two people split. One staggered toward "
+            f"the road. The other circled back toward the inn.\n\n"
+            f"On the roof of the cooper's shop, a gray scrap of cloak snaps on a nail."
+        )
+        beat.update({
+            "objective": "Choose between the wounded trail north and the watcher who circled back.",
+            "clues": [
+                "Two people split from the alley trail.",
+                "One staggered north; one circled back toward the inn.",
+                "A gray cloak scrap is caught on the cooper's roof.",
+            ],
+            "actions": ["Retrieve the cloak scrap", "Follow the north trail", "Circle back to the inn", "Use the owl to watch both paths"],
+        })
+    elif any(word in lower for word in ("light", "lantern shard", "expose", "watching")):
+        body = (
+            f"Light blooms from the lantern shard, not warm gold but a hard blue glare. The spell catches on the black resin "
+            f"and throws a second shadow where no body stands. For an instant the hidden watcher appears in outline: gray cloak, "
+            f"one hand wrapped in red cord, face turned toward Yungmin.\n\n"
+            f"Then the figure bolts across the roofline toward the north road, leaving the smell of burnt cloves behind."
+        )
+        beat.update({
+            "objective": "Catch the gray-cloaked watcher before they reach the north road.",
+            "clues": [
+                "The lantern shard exposes an invisible or hidden watcher.",
+                "The watcher wears gray and red cord.",
+                "Burnt-clove resin links the watcher to the Glass Candle.",
+            ],
+            "moves": [
+                "The watcher flees across the roofline.",
+                "People inside the inn finally realize Yungmin has found a real trail.",
+            ],
+            "actions": ["Pursue across the roofs", "Mark the watcher with magic", "Warn Torven", "Cut them off at the road"],
+        })
+    else:
+        body = (
+            f"Yungmin's choice shifts the room from fear into motion. Torven watches the lantern instead of the crowd, "
+            f"and the nearest patrons begin remembering details they were too frightened to say aloud.\n\n"
+            f"The cracked brass gives another faint tick. Whatever happened to Mara Vell is close enough to leave signs, "
+            f"and fresh enough that someone is still trying to erase them."
+        )
+
+    if action_count >= 8:
+        beat["stakes"] = "The watcher is moving now; if Yungmin waits, the trail will leave the inn district entirely."
+
+    return {
+        "narrative": body,
+        "objective": beat["objective"],
+        "stakes": beat["stakes"],
+        "clues": beat["clues"],
+        "world_moves": beat["moves"][:4],
+        "suggested_actions": beat["actions"][:5],
+    }
 
 
 def _identifier_for_user(user) -> str:
@@ -143,6 +506,10 @@ def create_session_folder(name: str, owner_email: str, invites=None, campaign_id
             {'id': 'press_on', 'label': 'Press forward decisively'},
         ],
     }))
+    simulation_agent.atomic_write_json(folder / 'world_state.json', simulation_agent.default_world_state())
+    simulation_agent.atomic_write_json(folder / 'persistent_npcs.json', [])
+    simulation_agent.atomic_write_json(folder / 'locations_dynamic.json', [])
+    simulation_agent.atomic_write_json(folder / 'canon_memory.json', [])
 
     # Default documents:
     # - Some are player-visible (shared)
@@ -596,12 +963,14 @@ async def bootstrap_session(session_id: str, payload: BootstrapRequest, current_
         'id': 'opening',
         'title': f"{session_name} — Opening Scene",
         'image': None,
-        'text': f"{narrative.narrative}\n\n{narrative.prompt}",
+        'narrative_body': narrative.narrative,
+        'player_prompt': narrative.prompt,
+        'text': f"{narrative.narrative}\n\n{narrative.prompt}",  # kept for compat
         'choices': [
-            {'id': 'investigate', 'label': 'Investigate the most immediate clue'},
-            {'id': 'talk', 'label': 'Talk to someone nearby'},
-            {'id': 'press_on', 'label': 'Press on toward the obvious destination'},
-            {'id': 'plan', 'label': 'Huddle and make a plan'},
+            {'id': 'talk_torven', 'label': 'Question Torven about the lantern'},
+            {'id': 'inspect_lantern', 'label': 'Examine the torn harness leather'},
+            {'id': 'search_doorway', 'label': 'Search the doorway for tracks'},
+            {'id': 'watch_patrons', 'label': 'Watch which patrons react strangely'},
         ],
     }
 
@@ -609,12 +978,7 @@ async def bootstrap_session(session_id: str, payload: BootstrapRequest, current_
 
     # append a log entry for history
     story_path = folder / 'story.json'
-    try:
-        cur = json.loads(story_path.read_text()) if story_path.exists() else []
-    except Exception:
-        cur = []
-    if not isinstance(cur, list):
-        cur = [cur]
+    cur = _load_story_entries(folder)
     cur.append({
         'type': 'narration',
         'ts': datetime.now(timezone.utc).isoformat(),
@@ -699,19 +1063,46 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         return {'ok': True, 'scene': scene}
 
     # --- Step 1: Storyboard Agent ---
-    players: list[str] = []
+    players: list[str] = _session_player_names(folder, meta)
+
+    # --- Extract character sheet context for narrative personalization ---
+    character_context: dict | None = None
     try:
-        pcs_file = folder / 'pcs.json'
-        if pcs_file.exists():
-            pcs = json.loads(pcs_file.read_text()) or []
-            players = [str(p.get('name') or p.get('character_name') or '') for p in pcs if p]
-            players = [n for n in players if n]
+        for member in meta.get('members', []) or []:
+            char_id = member.get('character_id')
+            if char_id:
+                ch = db.get_character_by_id(int(char_id))
+                if ch:
+                    sheet = ch.sheet or {}
+                    character_context = {
+                        'name': ch.name or '',
+                        'class_name': ch.class_name or '',
+                        'level': ch.level or 1,
+                        'race': sheet.get('ancestry') or sheet.get('race') or sheet.get('lineage') or '',
+                        'backstory': sheet.get('backstory') or '',
+                        'personality_traits': sheet.get('personality_traits') or '',
+                        'ideals': sheet.get('ideals') or '',
+                        'bonds': sheet.get('bonds') or '',
+                        'flaws': sheet.get('flaws') or '',
+                        'appearance': sheet.get('appearance') or '',
+                    }
+                    # Add non-empty fields as a campaign doc so Storyboard can use them
+                    ctx_lines = [f"[Character: {ch.name}]"]
+                    if ch.class_name:
+                        ctx_lines.append(f"Class: {ch.class_name} Level {ch.level}")
+                    if character_context['race']:
+                        ctx_lines.append(f"Race: {character_context['race']}")
+                    if character_context['backstory']:
+                        ctx_lines.append(f"Backstory: {character_context['backstory'][:400]}")
+                    if character_context['bonds']:
+                        ctx_lines.append(f"Bonds: {character_context['bonds'][:150]}")
+                    if character_context['flaws']:
+                        ctx_lines.append(f"Flaws: {character_context['flaws'][:120]}")
+                    if len(ctx_lines) > 1:
+                        character_context['_doc_block'] = '\n'.join(ctx_lines)
+                    break  # Use the first (owner) character
     except Exception:
-        players = []
-    for member in meta.get('members', []) or []:
-        name = member.get('character_name') or member.get('email') or ''
-        if name and name not in players:
-            players.append(name)
+        character_context = None
 
     campaign_settings: dict = {}
     campaign_variables: dict = {}
@@ -737,6 +1128,10 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
                     campaign_docs.append(content)
         except Exception:
             pass
+
+    # Inject character context into campaign_docs so Storyboard can build personal hooks
+    if character_context and character_context.get('_doc_block'):
+        campaign_docs.insert(0, character_context['_doc_block'])
 
     # Derive narrative style: campaign_variables.narrative_style →
     # campaign_settings.tone → request payload style → default 'balanced'
@@ -914,6 +1309,15 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     loc_name = director_output.location.name or ''
     npc_name = director_output.primary_npc.name or ''
 
+    # --- Step 2b: Narrative Composer — plans the scene experience before prose is written ---
+    director_data_dict = director_output.model_dump()
+    composer_output = narrative_composer_agent.compose_scene(
+        scene_director_data=director_data_dict,
+        player_name=player_name,
+        scene_type=director_output.scene_type or "opening",
+    )
+    composer_data_dict = composer_output.model_dump()
+
     # --- Step 3: Narrative Agent — first attempt ---
     narrative = narrative_agent.generate_narrative(narrative_agent.NarrativeRequest(
         scene=plot_result.plot,
@@ -921,7 +1325,10 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         style=derived_style,
         weather=weather,
         time_of_day=time_of_day,
-        scene_director_data=director_output.model_dump(),
+        scene_director_data=director_data_dict,
+        composer_data=composer_data_dict,
+        is_opening_scene=True,
+        character_context=character_context,
     ))
 
     # --- Step 3b: Quality validation + retry/fallback ---
@@ -945,8 +1352,11 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
             style=derived_style,
             weather=weather,
             time_of_day=time_of_day,
-            scene_director_data=director_output.model_dump(),
+            scene_director_data=director_data_dict,
+            composer_data=composer_data_dict,
             validator_feedback=feedback,
+            is_opening_scene=True,
+            character_context=character_context,
         ))
         quality_score, quality_issues = validate_scene_quality(
             narrative_text=f"{narrative.narrative}\n\n{narrative.prompt}",
@@ -969,6 +1379,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
             central_conflict=director_output.central_conflict,
             immediate_stakes=director_output.immediate_stakes,
             sensory_detail=sensory,
+            campaign_name=session_name,
         )
         narrative = narrative_agent.NarrativeResponse(
             narrative=fallback_text,
@@ -985,24 +1396,50 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         ]
     else:
         choices = [
-            {'id': 'investigate', 'label': 'Investigate the most immediate clue'},
-            {'id': 'talk', 'label': 'Talk to someone nearby'},
-            {'id': 'press_on', 'label': 'Press on toward the obvious destination'},
-            {'id': 'plan', 'label': 'Huddle and make a plan'},
+            {'id': 'talk_torven', 'label': 'Question Torven about the lantern'},
+            {'id': 'inspect_lantern', 'label': 'Examine the torn harness leather'},
+            {'id': 'search_doorway', 'label': 'Search the doorway for tracks'},
+            {'id': 'watch_patrons', 'label': 'Watch which patrons react strangely'},
         ]
+
+    # Merge world moves: prefer Composer output (richer), fall back to Scene Director
+    scene_world_moves = (
+        composer_output.world_moves
+        or director_output.world_moves
+        or plot_result.hooks
+        or []
+    )
 
     scene = {
         'id': 'opening',
         'title': director_output.scene_title or f"{session_name} — Opening Scene",
         'image': None,
-        'text': f"{narrative.narrative}\n\n{narrative.prompt}",
+        'narrative_body': narrative.narrative,
+        'player_prompt': narrative.prompt,
+        'text': f"{narrative.narrative}\n\n{narrative.prompt}",  # kept for compat
         'choices': choices,
         'hooks': plot_result.hooks,
+        'world_moves': scene_world_moves[:4],
+        'active_player': player_name,
         'location': loc_name,
         'weather': weather,
         'time_of_day': time_of_day,
         'immediate_stakes': director_output.immediate_stakes or '',
         'active_threads': director_output.threads_to_advance or [],
+        'visible_clues': director_output.player_visible_clues[:4] or [],
+        'current_objective': (
+            director_output.central_conflict[:120]
+            if director_output.central_conflict
+            else ''
+        ),
+        'active_thread': (
+            director_output.threads_to_advance[0]
+            if director_output.threads_to_advance
+            else ''
+        ),
+        'suggested_actions': (narrative.suggested_actions or composer_output.suggested_actions or [])[:4],
+        # Persisted for regeneration — gives /narrative/regenerate the full structured brief
+        'scene_director_data': director_data_dict,
     }
     (folder / 'scene.json').write_text(json.dumps(scene))
 
@@ -1040,12 +1477,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         pass
 
     story_path = folder / 'story.json'
-    try:
-        cur = json.loads(story_path.read_text()) if story_path.exists() else []
-    except Exception:
-        cur = []
-    if not isinstance(cur, list):
-        cur = [cur]
+    cur = _load_story_entries(folder)
     cur.append({'type': 'narration', 'ts': datetime.now(timezone.utc).isoformat(), 'text': scene['text']})
     story_path.write_text(json.dumps(cur))
 
@@ -1060,6 +1492,36 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         dice_rolls = [r.model_dump() for r in cues.dice_rolls]
     except Exception:
         pass
+
+    opening_world_state = simulation_agent.load_world_state(folder)
+    opening_world_state["weather"] = weather
+    opening_delta = {
+        "time_changes": [],
+        "weather_changes": [],
+        "npc_movements": [],
+        "faction_advances": [],
+        "rumors_spread": [],
+        "quest_updates": [],
+        "threat_updates": [],
+        "relationship_changes": [],
+        "consequences_triggered": [],
+    }
+    scene = simulation_agent.normalize_scene_presentation(scene, opening_world_state, opening_delta)
+    opening_memory_delta = simulation_agent.build_memory_delta(scene, opening_world_state, opening_delta)
+    scene.update(simulation_agent.build_structured_scene_fields(
+        scene,
+        opening_world_state,
+        opening_delta,
+        opening_memory_delta,
+        ["Campaign Opening"],
+        dice_rolls=dice_rolls,
+    ))
+    simulation_agent.atomic_write_json(folder / 'world_state.json', opening_world_state)
+    simulation_agent.seed_persistent_npcs(folder, scene)
+    simulation_agent.seed_location_state(folder, scene, opening_world_state)
+    simulation_agent.atomic_write_json(folder / 'last_memory_delta.json', opening_memory_delta)
+    simulation_agent.append_canon_memory(folder, scene.get('id', 'opening'), opening_memory_delta)
+    simulation_agent.atomic_write_json(folder / 'scene.json', scene)
 
     # --- Step 6: NPC Manager — enrich profiles from Scene Director data ---
     npc_profiles: list[dict] = []
@@ -1278,6 +1740,7 @@ class AdvanceSceneRequest(BaseModel):
     style: str | None = None
     weather: str | None = None
     time_of_day: str | None = None
+    developer_mode: bool = False
 
 
 @router.post('/{session_id}/advance-scene')
@@ -1305,12 +1768,32 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         raise HTTPException(status_code=403, detail='Not a member of this session')
 
     style = payload.style or 'balanced'
-    weather = payload.weather or 'clear'
-    time_of_day = payload.time_of_day or 'day'
     campaign_id = meta.get('campaign_id')
+    campaign_settings: dict = {}
+    campaign_variables: dict = {}
+    if campaign_id:
+        try:
+            campaign = db.get_campaign_by_id(str(campaign_id))
+            if campaign and isinstance(campaign.metadata_json, dict):
+                campaign_settings = campaign.metadata_json.get('settings') or {}
+                if not isinstance(campaign_settings, dict):
+                    campaign_settings = {}
+                campaign_variables = campaign.metadata_json.get('variables') or {}
+                if not isinstance(campaign_variables, dict):
+                    campaign_variables = {}
+        except Exception:
+            pass
 
     if is_player_run_mode(session_id):
         raise HTTPException(status_code=400, detail='advance-scene is not available in player-run mode')
+
+    owns_generation, generation_lock = simulation_agent.acquire_scene_lock(folder, session_id)
+    if not owns_generation:
+        return {
+            'ok': False,
+            'generation': generation_lock,
+            'status': generation_lock.get('status') or 'running',
+        }
 
     # --- Step 2: Collect recent player chat and analyse for dice rolls ---
     recent_messages = db.list_chat_messages(session_id=session_id, limit=20)
@@ -1321,10 +1804,12 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
 
     # Load current scene for context
     scene_text = ''
+    previous_scene: dict = {}
     try:
         scene_path = folder / 'scene.json'
         if scene_path.exists():
-            scene_text = json.loads(scene_path.read_text()).get('text', '')
+            previous_scene = json.loads(scene_path.read_text())
+            scene_text = previous_scene.get('text', '')
     except Exception:
         pass
 
@@ -1363,20 +1848,45 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
     except Exception:
         pass
 
-    # --- Step 4: Context Orchestrator + Narrative Agent ---
+    # --- Time Resolver + World Tick Engine ---
+    world_state_before = simulation_agent.load_world_state(folder)
+    simulation_agent.seed_persistent_npcs(folder, previous_scene)
+    simulation_agent.seed_location_state(folder, previous_scene, world_state_before)
+    time_result = simulation_agent.resolve_time(world_state_before, player_actions)
+    world_state, simulation_delta, tick_policies = simulation_agent.tick_world(
+        folder,
+        world_state_before,
+        time_result,
+        player_actions,
+    )
+    if payload.weather:
+        world_state["weather"] = payload.weather
+    if payload.time_of_day:
+        world_state["time_of_day"] = payload.time_of_day
+    weather = str(world_state.get("weather") or "clear")
+    time_of_day = str(world_state.get("time_of_day") or "day")
+    persistent_npcs = simulation_agent.seed_persistent_npcs(folder, previous_scene)
+    simulation_agent.seed_location_state(folder, previous_scene, world_state)
+    selected_templates = simulation_agent.select_scene_templates(player_actions, time_result, simulation_delta)
+
+    # --- Step 4: Context Orchestrator + Scene Template Selector + Narrative Agent ---
     adv_context_packet = None
     world_context_block = ""
-    adv_player_name = "the party"
+    session_players = _session_player_names(folder, meta)
+    adv_player_name = session_players[0] if session_players else "the party"
 
-    # Resolve player name from session PC list for richer context
-    try:
-        pcs_path = folder / 'pcs.json'
-        if pcs_path.exists():
-            pcs_raw = json.loads(pcs_path.read_text()) or []
-            if pcs_raw:
-                adv_player_name = str(pcs_raw[0].get('name') or pcs_raw[0].get('character_name') or 'the party')
-    except Exception:
-        pass
+    current_location_name = (
+        previous_scene.get('location')
+        or ((previous_scene.get('scene_director_data') or {}).get('location') or {}).get('name')
+        or ((previous_scene.get('visual_state') or {}).get('location_name'))
+        or ''
+    )
+    simulation_context_block = simulation_agent.orchestrated_simulation_context(
+        world_state,
+        simulation_delta,
+        location_name=current_location_name,
+        npcs=persistent_npcs,
+    )
 
     if campaign_id:
         try:
@@ -1401,6 +1911,9 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             except Exception:
                 pass
 
+    world_context_parts = [part for part in (simulation_context_block, world_context_block) if part]
+    world_context_block = "\n\n".join(world_context_parts)
+
     # --- Narrative Director: scene-level story guidance ---
     adv_story_state = load_story_state(str(campaign_id)) if campaign_id else None
     adv_director_output: DirectorOutput | None = None
@@ -1418,19 +1931,95 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
     if world_context_block:
         scene_summary = f"{scene_summary}\n\n{world_context_block}"
 
-    # Inject director pacing guidance into narrative prompt
-    if adv_director_output:
-        director_lines = [f"[STORY DIRECTOR] Scene purpose: {adv_director_output.scene_purpose}",
-                          f"Scene type: {adv_director_output.recommended_scene_type}"]
-        if adv_director_output.threads_to_advance:
-            director_lines.append(f"Advance threads: {', '.join(adv_director_output.threads_to_advance)}")
-        if adv_director_output.recommended_consequence:
-            director_lines.append(f"Consequence to surface: {adv_director_output.recommended_consequence}")
-        if adv_director_output.spotlight_target:
-            director_lines.append(f"Spotlight: {adv_director_output.spotlight_target}")
-        if adv_director_output.next_story_beat:
-            director_lines.append(f"Target beat: {adv_director_output.next_story_beat}")
-        scene_summary = "\n".join(director_lines) + "\n\n" + scene_summary
+    director_guidance = simulation_agent.build_director_guidance(
+        adv_director_output.model_dump() if adv_director_output else None,
+        selected_templates,
+        simulation_delta,
+        world_state,
+    )
+
+    mem_npc_details = []
+    if adv_context_packet:
+        mem_npc_details = [
+            {
+                "name": n.name,
+                "goal": n.goal,
+                "emotional_state": n.current_emotional_state,
+                "next_action": n.likely_next_action,
+                "faction": n.faction,
+                "known_information": n.known_information,
+            }
+            for n in adv_context_packet.active_npcs
+        ]
+    if not mem_npc_details:
+        mem_npc_details = [
+            {
+                "name": n.get("name"),
+                "goal": n.get("immediate_goal") or n.get("current_task"),
+                "emotional_state": n.get("current_mood"),
+                "next_action": n.get("current_task"),
+                "faction": n.get("role"),
+                "known_information": n.get("knowledge") or [],
+            }
+            for n in persistent_npcs if n.get("name")
+        ]
+
+    mem_loc_details = []
+    if adv_context_packet and adv_context_packet.location.name:
+        mem_loc_details.append({
+            "name": adv_context_packet.location.name,
+            "current_tension": (adv_context_packet.location.current_tensions or [""])[0],
+            "description": adv_context_packet.location.description,
+            "atmosphere": adv_context_packet.location.atmosphere,
+        })
+    if current_location_name and not any(l.get("name") == current_location_name for l in mem_loc_details):
+        mem_loc_details.append({
+            "name": current_location_name,
+            "current_tension": "",
+            "description": "",
+            "atmosphere": f"{weather}, {time_of_day}",
+        })
+
+    candidate_threads = []
+    if adv_context_packet:
+        candidate_threads = [
+            t.current_state or t.title
+            for t in adv_context_packet.story_threads
+            if t.current_state or t.title
+        ]
+
+    adv_scene_director_output: SceneDirectorOutput = scene_director_agent.direct_scene(SceneDirectorRequest(
+        campaign_settings=campaign_settings,
+        campaign_variables=campaign_variables,
+        players=[adv_player_name] if adv_player_name else [],
+        plot_seed=scene_summary,
+        candidate_npcs=[n.get("name", "") for n in mem_npc_details if n.get("name")][:6],
+        candidate_npc_details=mem_npc_details[:6],
+        candidate_locations=[l.get("name", "") for l in mem_loc_details if l.get("name")][:4],
+        candidate_location_details=mem_loc_details[:4],
+        candidate_factions=[],
+        candidate_story_threads=candidate_threads[:4],
+        candidate_thread_details=[],
+        open_hooks=[],
+        recent_events=[
+            item if isinstance(item, str) else json.dumps(item, sort_keys=True)
+            for key, values in simulation_delta.items()
+            if key != "time_changes"
+            for item in values[:2]
+        ][:4],
+        world_context_block=world_context_block,
+        director_guidance=director_guidance,
+    ))
+    if selected_templates:
+        adv_scene_director_output.scene_type = " + ".join(selected_templates)
+
+    adv_director_data = adv_scene_director_output.model_dump()
+    adv_composer_output = narrative_composer_agent.compose_scene(
+        scene_director_data=adv_director_data,
+        player_name=adv_player_name,
+        scene_type=adv_scene_director_output.scene_type or selected_templates[0],
+    )
+    adv_composer_data = adv_composer_output.model_dump()
 
     narrative = narrative_agent.generate_narrative(narrative_agent.NarrativeRequest(
         scene=scene_summary,
@@ -1438,38 +2027,165 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         style=style,
         weather=weather,
         time_of_day=time_of_day,
+        scene_director_data=adv_director_data,
+        composer_data=adv_composer_data,
         player_actions=player_actions,
     ))
+    action_response: dict | None = None
+    narrative_fallback_used = bool((getattr(narrative, 'score_detail', {}) or {}).get('fallback_used'))
+    if player_actions and narrative_fallback_used:
+        action_response = _action_response_scene(
+            player_name=adv_player_name,
+            location_name=adv_scene_director_output.location.name or current_location_name or "The Wayward Lantern Inn",
+            latest_action=player_actions[-1],
+            action_count=len(player_actions),
+        )
+        narrative = narrative_agent.NarrativeResponse(
+            narrative=action_response["narrative"],
+            prompt=f"What does {adv_player_name} do?",
+            tone=style,
+            scene_score=85,
+            score_passed=True,
+            score_detail={"deterministic_action_response": True},
+            suggested_actions=action_response["suggested_actions"],
+            world_moves=action_response["world_moves"],
+        )
+        adv_scene_director_output.central_conflict = action_response["objective"]
+        adv_scene_director_output.immediate_stakes = action_response["stakes"]
+        adv_scene_director_output.player_visible_clues = action_response["clues"]
+        adv_director_data = adv_scene_director_output.model_dump()
+
+    quality_score, quality_issues = validate_scene_quality(
+        narrative_text=f"{narrative.narrative}\n\n{narrative.prompt}",
+        location_name=adv_scene_director_output.location.name,
+        npc_name=adv_scene_director_output.primary_npc.name,
+        player_name=adv_player_name,
+        conflict=adv_scene_director_output.central_conflict,
+        campaign_entities=[
+            *(n.get("name", "") for n in mem_npc_details if n.get("name")),
+            *(l.get("name", "") for l in mem_loc_details if l.get("name")),
+            *candidate_threads,
+        ],
+    )
+    retry_used = False
+    fallback_used = False
+    if action_response:
+        quality_score = max(quality_score, 85)
+        quality_issues = []
+    if quality_score < MINIMUM_SCORE:
+        retry_used = True
+        feedback = build_retry_feedback(
+            quality_issues,
+            quality_score,
+            adv_scene_director_output.location.name,
+            adv_scene_director_output.primary_npc.name,
+            adv_player_name,
+        )
+        narrative = narrative_agent.generate_narrative(narrative_agent.NarrativeRequest(
+            scene=scene_summary,
+            player=adv_player_name,
+            style=style,
+            weather=weather,
+            time_of_day=time_of_day,
+            scene_director_data=adv_director_data,
+            composer_data=adv_composer_data,
+            validator_feedback=feedback,
+            player_actions=player_actions,
+        ))
+        quality_score, quality_issues = validate_scene_quality(
+            narrative_text=f"{narrative.narrative}\n\n{narrative.prompt}",
+            location_name=adv_scene_director_output.location.name,
+            npc_name=adv_scene_director_output.primary_npc.name,
+            player_name=adv_player_name,
+            conflict=adv_scene_director_output.central_conflict,
+        )
+
+    if quality_score < MINIMUM_SCORE:
+        fallback_used = True
+        fallback_text = build_fallback_scene(
+            location_name=adv_scene_director_output.location.name or current_location_name or 'the current location',
+            npc_name=adv_scene_director_output.primary_npc.name,
+            player_name=adv_player_name,
+            emotional_state=adv_scene_director_output.primary_npc.current_emotional_state or 'urgent',
+            inciting_incident=adv_scene_director_output.inciting_incident or adv_scene_director_output.central_conflict,
+            central_conflict=adv_scene_director_output.central_conflict,
+            immediate_stakes=adv_scene_director_output.immediate_stakes,
+            sensory_detail=(adv_scene_director_output.location.sensory_details[:1] or [''])[0],
+            campaign_name=meta.get('name') or session_id,
+        )
+        narrative = narrative_agent.NarrativeResponse(
+            narrative=fallback_text,
+            prompt=f"What does {adv_player_name} do?",
+            tone=style,
+        )
 
     now = datetime.now(timezone.utc)
     scene_index = f"scene-{uuid.uuid4().hex[:8]}"
+    adv_suggested_actions = narrative.suggested_actions or adv_composer_output.suggested_actions or adv_scene_director_output.possible_actions or [
+        'Investigate the most immediate clue',
+        'Talk to someone nearby',
+        'Press on toward the obvious destination',
+        'Make a plan',
+    ]
     new_scene = {
         'id': scene_index,
         'title': f"Scene — {now.strftime('%Y-%m-%d %H:%M')} UTC",
         'image': None,
-        'text': f"{narrative.narrative}\n\n{narrative.prompt}",
+        'narrative_body': narrative.narrative,
+        'player_prompt': narrative.prompt,
+        'text': f"{narrative.narrative}\n\n{narrative.prompt}",  # kept for compat
         'choices': [
-            {'id': 'investigate', 'label': 'Investigate the most immediate clue'},
-            {'id': 'talk', 'label': 'Talk to someone nearby'},
-            {'id': 'press_on', 'label': 'Press on toward the obvious destination'},
-            {'id': 'plan', 'label': 'Huddle and make a plan'},
+            {'id': f'action_{i}', 'label': a}
+            for i, a in enumerate(adv_suggested_actions[:4])
         ],
+        'suggested_actions': adv_suggested_actions[:4],
+        'world_moves': (
+            narrative.world_moves
+            or adv_composer_output.world_moves
+            or adv_scene_director_output.world_moves
+            or []
+        )[:4],
+        'active_player': adv_player_name,
+        'location': adv_scene_director_output.location.name or current_location_name,
+        'weather': weather,
+        'time_of_day': time_of_day,
+        'time_block': world_state.get('time_block'),
+        'campaign_day': world_state.get('campaign_day'),
+        'immediate_stakes': adv_scene_director_output.immediate_stakes or '',
+        'active_threads': adv_scene_director_output.threads_to_advance or [],
+        'visible_clues': adv_scene_director_output.player_visible_clues[:4] or [],
+        'current_objective': adv_scene_director_output.central_conflict[:120] if adv_scene_director_output.central_conflict else '',
+        'scene_templates': selected_templates,
+        'scene_director_data': adv_director_data,
+        'composer_data': adv_composer_data,
+        'simulation_delta': simulation_delta,
     }
+
+    post_scene_dice_rolls: list[dict] = []
+    try:
+        post_cues = await scene_agent.analyze_scene(scene_agent.SceneAnalysisRequest(
+            scene=new_scene['text'],
+            actions=[c.get('label', '') for c in new_scene.get('choices', []) if isinstance(c, dict)],
+            session_id=session_id,
+        ))
+        post_scene_dice_rolls = [r.model_dump() for r in post_cues.dice_rolls]
+    except Exception:
+        pass
 
     # --- Visual Director: determine atmosphere + image refresh decision ---
     image_url = None
     prev_vs = load_visual_state(session_id)
 
     # Extract location hint from previous scene.json if available
-    adv_loc_name = ""
-    adv_loc_type = ""
+    adv_loc_name = adv_scene_director_output.location.name or ""
+    adv_loc_type = adv_scene_director_output.location.type or ""
     try:
         prev_scene_raw = folder / 'scene.json'
         if prev_scene_raw.exists():
             prev_scene_data = json.loads(prev_scene_raw.read_text())
             prev_vs_data = prev_scene_data.get('visual_state') or {}
-            adv_loc_name = prev_vs_data.get('location_name', '')
-            adv_loc_type = prev_vs_data.get('location_type', '')
+            adv_loc_name = adv_loc_name or prev_vs_data.get('location_name', '')
+            adv_loc_type = adv_loc_type or prev_vs_data.get('location_type', '')
     except Exception:
         pass
 
@@ -1511,21 +2227,41 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         except Exception:
             pass
 
-    (folder / 'scene.json').write_text(json.dumps(new_scene))
+    new_scene = simulation_agent.normalize_scene_presentation(new_scene, world_state, simulation_delta)
+    memory_delta = simulation_agent.build_memory_delta(new_scene, world_state, simulation_delta)
+    new_scene.update(simulation_agent.build_structured_scene_fields(
+        new_scene,
+        world_state,
+        simulation_delta,
+        memory_delta,
+        selected_templates,
+        dice_rolls=post_scene_dice_rolls,
+    ))
+    simulation_agent.atomic_write_json(folder / 'world_state.json', world_state)
+    simulation_agent.seed_persistent_npcs(folder, new_scene)
+    simulation_agent.seed_location_state(folder, new_scene, world_state)
+    simulation_agent.atomic_write_json(folder / 'last_simulation_delta.json', simulation_delta)
+    simulation_agent.atomic_write_json(folder / 'last_memory_delta.json', memory_delta)
+    simulation_agent.append_canon_memory(folder, scene_index, memory_delta)
+    simulation_agent.atomic_write_json(folder / 'scene.json', new_scene)
 
-    story_path = folder / 'story.json'
-    try:
-        cur = json.loads(story_path.read_text()) if story_path.exists() else []
-    except Exception:
-        cur = []
-    if not isinstance(cur, list):
-        cur = [cur]
-    cur.append({'type': 'narration', 'ts': now.isoformat(), 'text': new_scene['text']})
-    story_path.write_text(json.dumps(cur))
+    cur = _load_story_entries(folder)
+    last_story_ts = _story_last_timestamp(cur)
+    cur.extend(_story_action_entries_since(recent_messages, last_story_ts))
+    cur.append({
+        'type': 'narration',
+        'ts': now.isoformat(),
+        'text': new_scene['text'],
+        'scene_id': scene_index,
+        'campaign_day': new_scene.get('campaign_day'),
+        'time_block': new_scene.get('time_block'),
+    })
+    cur = sorted(cur, key=lambda e: str(e.get('ts') or ''))
+    _write_story_entries(folder, cur)
 
     # Reset player-ready state for the next round
     ready_path = folder / 'ready.json'
-    ready_path.write_text(json.dumps({}))
+    simulation_agent.atomic_write_json(ready_path, {})
 
     # --- Step 5: Broadcast the new scene ---
     await broadcaster.broadcast_json(session_id, {
@@ -1569,13 +2305,54 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         except Exception:
             pass
 
+    generation_lock = simulation_agent.complete_scene_lock(folder, generation_lock, "complete")
+
+    simulation_debug = {
+        'generation': generation_lock,
+        'time_resolver': time_result,
+        'world_tick_results': {
+            'policies': tick_policies,
+            'world_state': world_state,
+        },
+        'simulation_delta': simulation_delta,
+        'selected_template': selected_templates,
+        'narrative_director': director_guidance,
+        'scene_director': adv_director_data,
+        'narrative_composer': adv_composer_data,
+        'narrative_writer': {
+            'narrative': narrative.narrative,
+            'prompt': narrative.prompt,
+            'scene_score': narrative.scene_score,
+            'score_passed': narrative.score_passed,
+        },
+        'scene_validator': {
+            'score': quality_score,
+            'issues': quality_issues,
+            'retry_used': retry_used,
+            'fallback_used': fallback_used,
+        },
+        'memory_delta': memory_delta,
+        'context_retrieved': adv_context_debug,
+    }
+
     return {
         'ok': True,
+        'generation': generation_lock,
         'scene': new_scene,
         'dice_rolls': dice_rolls,
+        'pre_scene_dice_rolls': dice_rolls,
+        'post_scene_dice_rolls': post_scene_dice_rolls,
         'image_url': image_url,
         'context_debug': adv_context_debug,
         'story_debug': adv_story_debug,
+        'simulation_debug': simulation_debug if payload.developer_mode else {
+            'generation': generation_lock,
+            'time_resolver': time_result,
+            'simulation_delta': simulation_delta,
+            'selected_template': selected_templates,
+            'scene_validator': simulation_debug['scene_validator'],
+            'memory_delta': memory_delta,
+        },
     }
 
 
