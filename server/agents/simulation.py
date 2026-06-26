@@ -420,7 +420,7 @@ def seed_persistent_npcs(folder: Path, scene: dict[str, Any]) -> list[dict[str, 
 
 def seed_location_state(folder: Path, scene: dict[str, Any], world_state: dict[str, Any]) -> list[dict[str, Any]]:
     locations = _load_list(folder, "locations_dynamic.json")
-    by_name = {str(l.get("name", "")).lower(): l for l in locations}
+    by_name = {str(loc_item.get("name", "")).lower(): loc_item for loc_item in locations}
     sd = scene.get("scene_director_data") or {}
     loc = sd.get("location") or {}
     name = str(scene.get("location") or loc.get("name") or "").strip()
