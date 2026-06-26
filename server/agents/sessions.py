@@ -209,7 +209,7 @@ def _action_response_scene(
     action_count: int,
 ) -> dict:
     """Deterministic action-result narration when the LLM cannot produce prose."""
-    pc = player_name or "you"
+    _pc = player_name or "you"
     loc = location_name or "The Wayward Lantern Inn"
     action = (latest_action or "").strip()
     lower = action.lower()
@@ -1972,7 +1972,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             "description": adv_context_packet.location.description,
             "atmosphere": adv_context_packet.location.atmosphere,
         })
-    if current_location_name and not any(l.get("name") == current_location_name for l in mem_loc_details):
+    if current_location_name and not any(loc_item.get("name") == current_location_name for loc_item in mem_loc_details):
         mem_loc_details.append({
             "name": current_location_name,
             "current_tension": "",
@@ -1995,7 +1995,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         plot_seed=scene_summary,
         candidate_npcs=[n.get("name", "") for n in mem_npc_details if n.get("name")][:6],
         candidate_npc_details=mem_npc_details[:6],
-        candidate_locations=[l.get("name", "") for l in mem_loc_details if l.get("name")][:4],
+        candidate_locations=[loc_item.get("name", "") for loc_item in mem_loc_details if loc_item.get("name")][:4],
         candidate_location_details=mem_loc_details[:4],
         candidate_factions=[],
         candidate_story_threads=candidate_threads[:4],
@@ -2063,7 +2063,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         conflict=adv_scene_director_output.central_conflict,
         campaign_entities=[
             *(n.get("name", "") for n in mem_npc_details if n.get("name")),
-            *(l.get("name", "") for l in mem_loc_details if l.get("name")),
+            *(loc_item.get("name", "") for loc_item in mem_loc_details if loc_item.get("name")),
             *candidate_threads,
         ],
     )

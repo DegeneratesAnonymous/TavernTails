@@ -495,7 +495,7 @@ def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
     best_score: ScoreResult | None = None
     feedback = payload.validator_feedback
 
-    for attempt in range(MAX_RETRIES + 1):
+    for _attempt in range(MAX_RETRIES + 1):
         messages = _build_messages(payload, weather_desc, player, feedback)
         text = chat_complete(
             messages,

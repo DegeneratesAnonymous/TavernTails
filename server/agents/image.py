@@ -218,7 +218,7 @@ def clear_gallery(session_id: str, current_user=Depends(get_current_user)) -> No
 
 
 @router.get("/api/image-file/{session_id}/{filename}")
-def serve_image_file(session_id: str, filename: str) -> Response:
+def serve_image_file(session_id: str, filename: str):
     """Serve a locally generated scene image (produced by Steward's ComfyUI)."""
     from fastapi.responses import FileResponse
     from fastapi.responses import Response as FResponse
