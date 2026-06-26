@@ -83,7 +83,7 @@ def _deterministic_composer(sd: dict, player_name: str) -> NarrativeComposerOutp
     vivid_image = sensory[0] if sensory else f"Every eye in {loc_name} turns toward the door."
     dramatic_question = conflict or f"What has happened at {loc_name}?"
     memorable_object = clues[0] if clues else ""
-    specific_stakes = stakes or f"What unfolds here will not be easily undone."
+    specific_stakes = stakes or "What unfolds here will not be easily undone."
     unanswered_question = (
         f"What caused {conflict[:80]}?" if conflict
         else f"What brought this trouble to {loc_name}?"

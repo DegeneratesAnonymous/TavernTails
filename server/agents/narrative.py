@@ -291,7 +291,7 @@ def _build_director_system(
             perspective = _CLASS_PERSPECTIVE.get(char_class.lower(), "")
             if perspective:
                 lines.append(f"  Class Lens: A {char_class} {perspective}.")
-                lines.append(f"    → Flavor your sensory details through this lens when possible.")
+                lines.append("    → Flavor your sensory details through this lens when possible.")
         backstory = (character_context.get("backstory") or "").strip()
         if backstory:
             # Truncate to ~300 chars for the prompt

@@ -9,8 +9,8 @@ from fastapi.testclient import TestClient
 
 import server.main as main
 from server import db
-from server.agents import simulation as simulation_agent
 from server.agents import sessions as sessions_module
+from server.agents import simulation as simulation_agent
 from server.agents.scene_validator import validate_scene_quality
 from server.auth import create_access_token
 

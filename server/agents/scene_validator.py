@@ -284,7 +284,7 @@ def build_fallback_scene(
     if not sensory_detail and campaign_name:
         name_lower = campaign_name.lower()
         if any(w in name_lower for w in ("winter", "howl", "frost", "cold", "snow", "blizzard", "ice")):
-            sensory_detail = f"The wind howls through the shutters and frost creeps along the windowpanes"
+            sensory_detail = "The wind howls through the shutters and frost creeps along the windowpanes"
         elif any(w in name_lower for w in ("dark", "shadow", "night", "midnight", "dusk", "black")):
             sensory_detail = "The torchlight gutters in the draft, casting lurching shadows across the walls"
         elif any(w in name_lower for w in ("fire", "flame", "ember", "ash", "burn")):

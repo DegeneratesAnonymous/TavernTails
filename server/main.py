@@ -14,6 +14,7 @@ from .agents import references as references_router
 from .agents import srd as srd_router
 from .agents import ws as ws_router
 from .agents.admin import router as admin_router
+from .agents.campaign_memory import router as campaign_memory_router
 from .agents.campaigns import router as campaigns_router
 from .agents.characters import router as characters_router
 from .agents.chat import router as chat_router
@@ -34,7 +35,6 @@ from .agents.storyboard import router as storyboard_router
 from .agents.suggestions import router as suggestions_router
 from .agents.support import router as support_router
 from .agents.turns import router as turns_router
-from .agents.campaign_memory import router as campaign_memory_router
 from .agents.users import router as users_router
 
 # Simple request logging to make activity visible in the console
