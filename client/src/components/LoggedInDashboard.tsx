@@ -1156,6 +1156,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     fetchCampaigns,
     fetchCharacters,
     assignCharacterToSession,
+    updateCharacterCampaignAssociation,
     playerRunMode,
     startPlayBusy,
   ])
