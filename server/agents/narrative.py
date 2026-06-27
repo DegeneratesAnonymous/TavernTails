@@ -51,6 +51,10 @@ class NarrativeRequest(BaseModel):
         default=None,
         description="Character sheet context: class, race, level, backstory, personality pillars. Used to personalize narrative.",
     )
+    campaign_contract: dict | None = Field(
+        default=None,
+        description="Persistent Campaign Contract; provides canon, creativity, tone, backstory, UI, and validator policy.",
+    )
 
 
 class NarrativeResponse(BaseModel):
@@ -94,6 +98,9 @@ _CLASS_PERSPECTIVE: dict[str, str] = {
 }
 
 _FORBIDDEN_NARRATIVE = [
+    # Specific recycled tavern names from LLM training data — absolutely forbidden
+    "wayward lantern inn", "wayward lantern", "rusty flagon", "prancing pony",
+    "golden goblet", "silver tankard", "the traveler's rest", "the drunken sailor",
     # Genre labels — never describe the setting type
     "heroic fantasy", "high fantasy", "dark fantasy", "dark-fantasy",
     "epic fantasy", "fantasy world", "fantasy setting", "genre",
@@ -200,6 +207,7 @@ def _build_director_system(
     composer: dict | None = None,
     is_opening: bool = False,
     character_context: dict | None = None,
+    campaign_contract: dict | None = None,
 ) -> str:
     """Build a directive system prompt from Scene Director JSON + optional Composer brief."""
     sd = _clean_sdd(sd)  # strip forbidden abstract phrases before building prompt
@@ -247,6 +255,27 @@ def _build_director_system(
         lines.append(f"  Clues visible to player: {'; '.join(clues[:3])}")
     if secondary:
         lines.append(f"  Also present: {', '.join(secondary[:3])}")
+
+    if campaign_contract:
+        contract_text = str(campaign_contract.get("agent_output_contract") or "").strip()
+        validator_policy = campaign_contract.get("validator_policy") or {}
+        backstory_policy = campaign_contract.get("backstory_policy") or {}
+        lines.append("")
+        lines.append("═══ CAMPAIGN OUTPUT CONTRACT — MANDATORY ═══")
+        if contract_text:
+            lines.append(contract_text[:2200])
+        lines.append(
+            "Validator expectations: "
+            f"multiple approaches={validator_policy.get('require_multiple_approaches', True)}, "
+            f"concrete clues={validator_policy.get('require_concrete_clues', False)}, "
+            f"preserve unanswered questions={validator_policy.get('preserve_unanswered_questions', False)}"
+        )
+        lines.append(
+            "Backstory policy: "
+            f"frequency={backstory_policy.get('usage_frequency', 'low')}, "
+            f"style={backstory_policy.get('integration_style', 'subtle')}, "
+            f"major changes={backstory_policy.get('player_control', 'ask_before_major_changes')}"
+        )
 
     # Inject Composer brief when available — the richest creative direction
     if composer:
@@ -367,6 +396,7 @@ def _build_generic_system(
     time_of_day: str,
     validator_feedback: str | None,
     player_actions: list[str] | None = None,
+    campaign_contract: dict | None = None,
 ) -> str:
     """Fallback system prompt when no Scene Director data is available."""
     tone = STYLE_TONES.get(style.lower(), STYLE_TONES["balanced"])
@@ -381,6 +411,12 @@ def _build_generic_system(
         lines.append("═══ WHAT THE PLAYERS JUST DID ═══")
         for i, act in enumerate(player_actions[:6], 1):
             lines.append(f"  {i}. {act}")
+        lines.append("")
+
+    if campaign_contract:
+        contract_text = str(campaign_contract.get("agent_output_contract") or "").strip()
+        lines.append("═══ CAMPAIGN OUTPUT CONTRACT — MANDATORY ═══")
+        lines.append(contract_text[:2200] if contract_text else "Obey campaign tone, canon, agency, safety, and backstory policies.")
         lines.append("")
         lines.append(f"  Open by narrating the outcome in third-person past tense using {player}'s name.")
         lines.append("  Show consequences, world reactions, and the physical details they can act on next.")
@@ -440,6 +476,7 @@ def _build_messages(payload: NarrativeRequest, weather_desc: str, player: str, f
             composer=payload.composer_data,
             is_opening=payload.is_opening_scene,
             character_context=payload.character_context,
+            campaign_contract=payload.campaign_contract,
         )
         sd = payload.scene_director_data
         loc = (sd.get("location") or {}).get("name") or ""
@@ -458,6 +495,7 @@ def _build_messages(payload: NarrativeRequest, weather_desc: str, player: str, f
         system = _build_generic_system(
             player, payload.style, weather_desc, payload.time_of_day,
             feedback, player_actions=payload.player_actions or [],
+            campaign_contract=payload.campaign_contract,
         )
         user_content = payload.scene or ""
 
@@ -889,7 +927,7 @@ def regenerate_narrative(payload: RegenerateRequest, current_user=Depends(get_cu
         sd_npc = (scene_director_data.get("primary_npc") or {})
         sd_sensory = (sd_loc.get("sensory_details") or [])
         write_narrative = build_fallback_scene(
-            location_name=sd_loc.get("name") or loc or "the inn",
+            location_name=sd_loc.get("name") or loc or "the location",
             npc_name=sd_npc.get("name") or (npc_names_list[0] if npc_names_list else ""),
             player_name=player,
             emotional_state=sd_npc.get("current_emotional_state") or "out of breath, eyes wide",

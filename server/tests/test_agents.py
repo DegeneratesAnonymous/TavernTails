@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 import server.main as main
 from server import db
 from server.agents import narrative as narrative_module
+from server.agents import scene_director as scene_director_module
 from server.agents import sessions as sessions_module
 from server.auth import create_access_token
 
@@ -100,6 +101,43 @@ def test_scene_agent_roll_prompts(client: TestClient):
     body = resp.json()
     assert any(roll["skill"] == "Persuasion" for roll in body["dice_rolls"])
     assert any("d20" in prompt for prompt in body["prompts"])
+
+
+def test_scene_director_rejects_unsupported_tavern_default(monkeypatch):
+    fake_llm = json.dumps({
+        "scene_title": "Opening — The Copper Lantern Inn",
+        "scene_type": "opening",
+        "location": {"name": "The Copper Lantern Inn", "type": "tavern", "sensory_details": ["Hearth smoke"]},
+        "primary_npc": {"name": "Innkeeper Tor", "role": "innkeeper", "current_emotional_state": "worried", "what_they_want": "help", "what_they_know": "something happened"},
+        "central_conflict": "A tavern rumor begins.",
+        "inciting_incident": "The tavern door opens.",
+        "why_player_is_involved": "The party is nearby.",
+        "immediate_stakes": "The rumor spreads by nightfall.",
+        "player_visible_clues": [],
+        "possible_actions": ["Question the innkeeper"],
+        "visual_prompt_elements": ["tavern common room"],
+        "continuity_notes": [],
+        "world_moves": [],
+    })
+    monkeypatch.setattr(scene_director_module, "chat_complete", lambda *a, **kw: fake_llm)
+
+    out = scene_director_module.direct_scene(scene_director_module.SceneDirectorRequest(
+        campaign_settings={
+            "genre": "sci-fi mystery",
+            "world_name": "Glass Harbor",
+            "setting_summary": "An orbital trade station full of sabotage and faction intrigue.",
+        },
+        campaign_contract={
+            "campaign_name": "Stars Over Glass Harbor",
+            "campaign_pitch": "A political sci-fi mystery on an orbital harbor.",
+        },
+        players=["Yungmin"],
+        plot_seed="Missing diplomats and smuggler codes threaten the station.",
+    ))
+
+    assert out.location.name == "Glass Harbor"
+    assert "tavern" not in out.location.name.lower()
+    assert out.source == "deterministic_guard"
 
 
 def test_npc_agent_initiative_hint(client: TestClient):

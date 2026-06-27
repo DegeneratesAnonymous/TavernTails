@@ -198,6 +198,75 @@ def validate_scene_quality(
     return max(0, min(100, score)), issues
 
 
+def validate_campaign_expectations(
+    narrative_text: str,
+    campaign_contract: dict | None = None,
+    *,
+    invented_entities: list[str] | None = None,
+) -> dict:
+    """Validate a scene against the persistent Campaign Contract.
+
+    This augments the generic quality score with campaign-specific expectations:
+    canon strictness, mystery pacing, agency, tone, and backstory boundaries.
+    """
+    contract = campaign_contract or {}
+    policy = contract.get("validator_policy") or {}
+    canon = contract.get("canon_policy") or {}
+    backstory = contract.get("backstory_policy") or {}
+    text = narrative_text or ""
+    lower = text.lower()
+    failed: list[str] = []
+    canon_violations: list[str] = []
+    backstory_violations: list[str] = []
+    agency_issues: list[str] = []
+    tone_issues: list[str] = []
+
+    if policy.get("reject_single_solution", True):
+        forced_phrases = ["must go", "must follow", "must ask", "only way", "no choice", "have to obey"]
+        if any(p in lower for p in forced_phrases):
+            agency_issues.append("single_solution")
+
+    if policy.get("require_concrete_clues"):
+        clue_words = ["clue", "mark", "track", "receipt", "letter", "symbol", "stain", "footprint", "witness", "record"]
+        if not any(w in lower for w in clue_words):
+            failed.append("missing_concrete_clue")
+
+    if policy.get("preserve_unanswered_questions"):
+        reveal_phrases = ["the truth is", "it was all", "the real culprit is", "the central mystery is solved"]
+        if any(p in lower for p in reveal_phrases):
+            failed.append("premature_central_reveal")
+
+    if canon.get("mode") == "strict_canon" and policy.get("flag_major_inventions", True):
+        invented = [e for e in (invented_entities or []) if e]
+        if invented:
+            canon_violations.append(f"strict_canon_invention_requires_approval: {', '.join(invented[:5])}")
+        major_words = ["new kingdom", "new god", "ancient empire", "forgotten pantheon", "secret faction"]
+        if any(w in lower for w in major_words):
+            canon_violations.append("strict_canon_major_lore_invention")
+
+    protect_family = backstory.get("allow_family_danger") is False or backstory.get("protect_family_content") is True
+    if protect_family and any(p in lower for p in ("your mother is in danger", "your father is in danger", "your family will die", "sibling hostage", "mother is murdered", "father is murdered")):
+        backstory_violations.append("family_danger_requires_permission")
+    if backstory.get("allow_secret_reveals") == "with_setup" and any(p in lower for p in ("your secret is revealed", "everyone learns your secret")):
+        backstory_violations.append("secret_reveal_requires_setup")
+
+    rating = (contract.get("safety_policy") or {}).get("content_rating")
+    if rating == "family" and any(p in lower for p in ("gore", "entrails", "explicit torture")):
+        tone_issues.append("Family content rating conflicts with graphic violence.")
+
+    failed_expectations = failed + agency_issues + canon_violations + backstory_violations + tone_issues
+    score = max(0, 100 - (15 * len(failed_expectations)))
+    return {
+        "score": score,
+        "failed_expectations": failed_expectations,
+        "canon_violations": canon_violations,
+        "backstory_boundary_violations": backstory_violations,
+        "agency_issues": agency_issues,
+        "tone_issues": tone_issues,
+        "recommended_fix": "Revise the scene to obey the campaign contract." if failed_expectations else "",
+    }
+
+
 def build_retry_feedback(issues: list[str], score: int, location_name: str, npc_name: str, player_name: str) -> str:
     """Format validator feedback for the Narrative Agent retry prompt."""
     lines = [
@@ -269,9 +338,9 @@ def build_fallback_scene(
     Template follows the Golden Scene Rule: named location, sensory detail, visible event,
     named NPC entering through action, specific problem, concrete stakes, player-facing decision.
     """
-    loc = location_name or "the inn"
-    # Fallback NPC must be named — never "A figure nearby"
-    npc = npc_name if npc_name else "Torven"
+    loc = location_name or "the current location"
+    # Fallback NPC must be named, but must not drag old canned content into new campaigns.
+    npc = npc_name if npc_name else "Mira Vale"
     pc = player_name or "you"
     state = emotional_state or "out of breath, eyes wide"
 
@@ -319,18 +388,18 @@ def build_fallback_scene(
     else:
         stakes_line = "What happens next will be hard to undo"
 
-    evidence_object = "a cracked lantern wrapped in a torn strip of harness leather"
+    evidence_object = "a sealed packet marked with a symbol no one nearby wants to explain"
     if any(w in (campaign_name or "").lower() for w in ("winter", "frost", "ice", "snow")):
-        evidence_object = "a frozen lantern with dark wool caught in its hinge"
+        evidence_object = "a frost-stiff packet wrapped around a shard of dark glass"
     elif any(w in (campaign_name or "").lower() for w in ("fire", "ember", "ash", "burn")):
         evidence_object = "a scorched ledger page curled around a brass token"
     elif any(w in (campaign_name or "").lower() for w in ("storm", "rain", "flood")):
         evidence_object = "a waterlogged dispatch tube sealed with split red wax"
 
     return (
-        f"{sensory.rstrip('.')} at {loc}; every table goes quiet as the door bangs open.\n\n"
-        f"{npc} stumbles inside, {state}, and drops {evidence_object} where {pc} can see it.\n\n"
-        f'"{incident_line}," {npc} says, voice low enough that the nearest patrons lean in. '
-        f'"This was not supposed to come back without its owner."\n\n'
-        f"{conflict_evidence}. {stakes_line}, and the room is already deciding who will risk being seen helping."
+        f"{sensory.rstrip('.')} at {loc}; conversation falters as attention turns toward the same point of trouble.\n\n"
+        f"{npc} arrives {state}, and sets down {evidence_object} where {pc} can see it.\n\n"
+        f'"{incident_line}," {npc} says, voice low enough that the nearest witnesses lean in. '
+        f'"This was not supposed to reach us like this."\n\n'
+        f"{conflict_evidence}. {stakes_line}, and everyone nearby is already deciding who will risk being seen helping."
     )

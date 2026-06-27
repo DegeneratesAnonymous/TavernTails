@@ -333,6 +333,23 @@ def set_campaign_variables(campaign_id: str, owner_id: int, variables: Dict[str,
         return camp
 
 
+def set_campaign_metadata_keys(campaign_id: str, owner_id: int, values: Dict[str, Any]) -> Campaign | None:
+    """Merge top-level campaign metadata keys without requiring a schema migration."""
+    with Session(engine) as session:
+        stmt = select(Campaign).where(Campaign.id == campaign_id, Campaign.owner_id == owner_id)
+        camp = session.exec(stmt).first()
+        if not camp:
+            return None
+        meta = dict(camp.metadata_json or {})
+        for key, value in values.items():
+            meta[key] = value
+        camp.metadata_json = meta
+        session.add(camp)
+        session.commit()
+        session.refresh(camp)
+        return camp
+
+
 def delete_campaign(campaign_id: str, owner_id: int) -> bool:
     with Session(engine) as session:
         stmt = select(Campaign).where(Campaign.id == campaign_id, Campaign.owner_id == owner_id)

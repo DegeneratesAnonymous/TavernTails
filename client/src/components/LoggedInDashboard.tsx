@@ -261,6 +261,12 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     return (activeCampaign?.sessions || [])
   }, [activeCampaign])
 
+  const activeSessionForCampaign = useMemo(() => {
+    if (!activeSession) return null
+    const belongs = activeCampaignSessions.some((s) => String(s.id) === String(activeSession))
+    return belongs ? activeSession : null
+  }, [activeSession, activeCampaignSessions])
+
   const characterRoster: CharacterSummary[] = useMemo(() => {
     const toNum = (value: any): number | null => {
       const parsed = typeof value === 'number' ? value : Number(value)
@@ -1277,7 +1283,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             <div className="gameplay-content">
               <div className="gameplay-stage">
                 <GameplayLayout
-                  sessionId={activeSession}
+                  sessionId={activeSessionForCampaign}
                   roster={characterRoster}
                   selectedCharId={activeCharacterId === null ? null : String(activeCharacterId)}
                   currentUserEmail={profile?.email || null}
@@ -2361,7 +2367,9 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
         {view === 'campaign-creation-wizard' && (
           <CampaignCreationWizard
             onDone={() => setView('campaign-setup')}
-            onCampaignCreated={async (campaignId) => {
+            onCampaignCreated={async (campaignId, sessionId) => {
+              setActiveSession(sessionId ? String(sessionId) : null)
+              setActiveCharacterId(null)
               await fetchCampaigns()
               setActiveCampaignId(campaignId)
               setView('campaign-setup')

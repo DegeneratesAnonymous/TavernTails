@@ -184,7 +184,7 @@ def compose_scene(
         "  — NPCs must be named. Never 'a figure', 'a stranger', 'someone nearby'.\n"
         "  — Stakes must name a specific person and a concrete deadline.\n"
         "  — World moves must imply tension, opportunity, or consequence — not generic atmosphere.\n"
-        "  — suggested_actions must be verb+target ('Inspect the cracked lantern', not just 'Inspect').\n"
+        "  — suggested_actions must be verb+target ('Inspect the marked object', not just 'Inspect').\n"
         "  — memorable_object must be something the player can touch, examine, or take.\n\n"
         f"Return ONLY valid JSON:\n{_COMPOSER_SCHEMA}"
     )

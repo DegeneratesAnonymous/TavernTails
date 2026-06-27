@@ -164,6 +164,7 @@ export default function NarrativeView({sessionId, showChoicesInScene = false, en
 
   useEffect(()=>{
     let mounted = true
+    setScene(null)
     const token = localStorage.getItem('access_token')
     const headers: any = { 'Content-Type': 'application/json' }
     if(token) headers['Authorization'] = `Bearer ${token}`
@@ -339,6 +340,33 @@ export default function NarrativeView({sessionId, showChoicesInScene = false, en
     setBookPage(p => delta < 0 ? Math.min(maxBookPage, p + 1) : Math.max(0, p - 1))
   }
 
+  // ── Opening placeholder state ───────────────────────────────────────────
+  // Before the first advance-scene runs, scene.id === 'opening' and there's no
+  // narrative_body. Show prominent approach selection cards instead of empty prose.
+  const isOpeningPlaceholder = scene.id === 'opening' && !scene.narrative_body && hasChoices
+  if (isOpeningPlaceholder && presentationMode !== 'read') {
+    return (
+      <div className="opening-approach-view">
+        <div className="opening-approach-star" aria-hidden="true">✦</div>
+        <h2 className="opening-approach-title">Your adventure begins.</h2>
+        <p className="opening-approach-subtitle">Choose an approach to set the tone of your opening scene.</p>
+        <div className="opening-approach-cards">
+          {scene.choices.map(c => (
+            <button
+              key={c.id}
+              type="button"
+              className="opening-approach-card"
+              onClick={() => window.dispatchEvent(new CustomEvent('narrative:start-approach', { detail: { label: c.label, id: c.id } }))}
+            >
+              <span className="opening-approach-card-label">{c.label}</span>
+            </button>
+          ))}
+        </div>
+        <p className="opening-approach-hint">Or describe your own approach in the message box below.</p>
+      </div>
+    )
+  }
+
   if (presentationMode === 'read') {
     const chapterTitle = locationLabel || chapterLabel || 'Current Scene'
     return (
@@ -443,6 +471,28 @@ export default function NarrativeView({sessionId, showChoicesInScene = false, en
             <div className="narrative-divider" aria-hidden="true">❖ ❖ ❖</div>
 
             <p className="narrative-text">{annotatedNarration}</p>
+
+            {playerPrompt ? (
+              <div className="narrative-player-prompt">{playerPrompt}</div>
+            ) : null}
+
+            {scene.suggested_actions && scene.suggested_actions.length > 0 ? (
+              <div className="narrative-suggestions-block">
+                <div className="narrative-suggestions-label">You could...</div>
+                <div className="narrative-suggested-actions">
+                  {scene.suggested_actions.slice(0, 5).map((action, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      className="narrative-action-chip"
+                      onClick={() => window.dispatchEvent(new CustomEvent('narrative:suggest-action', { detail: { action } }))}
+                    >
+                      {action}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             {parsed.citations && parsed.citations.length > 0 ? (
               <div className="narrative-citations">

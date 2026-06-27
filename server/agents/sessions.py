@@ -29,8 +29,20 @@ from .scene_validator import (
     MINIMUM_SCORE,
     build_fallback_scene,
     build_retry_feedback,
+    validate_campaign_expectations,
     validate_scene_quality,
 )
+from .campaign_interpretation import build_full_contract_package
+from .situation_classifier import classify_situation, REQUIRES_CONTRACT
+from .content_bundles import build_content_bundle
+from .memory_extractor import extract_memory
+from .canon_manager import (
+    load_canon_index,
+    save_canon_index,
+    apply_memory_delta,
+    validate_canon,
+)
+from .ui_payload_builder import build_ui_payload as build_full_ui_payload
 from .story_state import (
     derive_campaign_dna,
     load_story_state,
@@ -72,6 +84,63 @@ def is_player_run_mode(session_id: str) -> bool:
 BASE.mkdir(exist_ok=True)
 
 _doc_store = doc_storage.get_document_store()
+
+
+def _campaign_package_from_metadata(campaign, *, character_context: dict | None = None) -> tuple[dict, list[dict], list[dict], dict]:
+    """Return (contract, backstory_profiles, backstory_hooks, session_zero).
+
+    If a campaign has no persisted contract yet, generate and persist one from
+    existing metadata. When a character sheet backstory is present, fold it into
+    the package as player-canon story fuel.
+    """
+    if not campaign:
+        return {}, [], [], {}
+    meta = dict(campaign.metadata_json or {})
+    backstories = list(meta.get("player_backstories") or [])
+    if character_context and (character_context.get("backstory") or "").strip():
+        char_id = str(character_context.get("id") or character_context.get("character_id") or character_context.get("name") or "")
+        if not any(str(item.get("character_id") or item.get("name") or "") == char_id for item in backstories if isinstance(item, dict)):
+            backstories.append({
+                "character_id": char_id,
+                "character_name": character_context.get("name") or "",
+                "backstory": character_context.get("backstory") or "",
+            })
+    if meta.get("campaign_contract") and backstories == list(meta.get("player_backstories") or []):
+        return (
+            meta.get("campaign_contract") or {},
+            list(meta.get("backstory_profiles") or []),
+            list(meta.get("backstory_hooks") or []),
+            meta.get("session_zero") or {},
+        )
+    package = build_full_contract_package(
+        campaign_id=str(campaign.id),
+        campaign_name=campaign.name,
+        description=campaign.description or "",
+        settings=meta.get("settings") or {},
+        variables=meta.get("variables") or {},
+        docs=meta.get("imported_lore") or [],
+        backstories=backstories,
+    )
+    try:
+        db.set_campaign_metadata_keys(str(campaign.id), int(campaign.owner_id), {
+            "player_backstories": backstories,
+            "campaign_interpretation": package.get("campaign_interpretation", {}),
+            "campaign_contract": package.get("campaign_contract", {}),
+            "backstory_profiles": package.get("backstory_profiles", []),
+            "backstory_hooks": package.get("backstory_hooks", []),
+            "backstory_thread_links": package.get("backstory_thread_links", []),
+            "backstory_spotlight": package.get("backstory_spotlight", []),
+            "session_zero": package.get("session_zero", {}),
+            "campaign_contract_debug": package.get("debug", {}),
+        })
+    except Exception:
+        pass
+    return (
+        package.get("campaign_contract", {}),
+        package.get("backstory_profiles", []),
+        package.get("backstory_hooks", []),
+        package.get("session_zero", {}),
+    )
 
 
 def _session_player_names(folder: Path, meta: dict) -> list[str]:
@@ -209,228 +278,88 @@ def _action_response_scene(
     action_count: int,
 ) -> dict:
     """Deterministic action-result narration when the LLM cannot produce prose."""
-    _pc = player_name or "you"
-    loc = location_name or "The Wayward Lantern Inn"
+    pc = player_name or "you"
+    loc = location_name or "the current location"
     action = (latest_action or "").strip()
     lower = action.lower()
 
-    beat = {
-        "objective": f"Follow the lantern evidence from {loc} before the trail goes cold.",
-        "stakes": "Every delay gives whoever abandoned the wagon more time to hide the next clue.",
-        "clues": [
-            "The lantern was returned without its owner.",
-            "The harness leather was cut cleanly, not torn by panic.",
-            "Someone in the inn knows more than they have admitted.",
-        ],
-        "moves": [
-            f"Outside {loc}, the road traffic thins as people start avoiding the inn.",
-            "A rumor is already spreading that the wagon came back wrong.",
-        ],
-        "actions": ["Question Torven", "Inspect the lantern", "Search outside", "Watch the room"],
-    }
+    objective = f"Turn {action[:80] or 'the latest move'} into a concrete advantage at {loc}."
+    stakes = "The situation is still moving; delay will let someone else define what this moment means."
+    clues = [
+        "One nearby detail does not match the explanation people are giving.",
+        "Someone present reacts before they can hide it.",
+        f"{pc}'s action changes what is safe to ask or attempt next.",
+    ]
+    moves = [
+        f"Pressure around {loc} increases as word of the disturbance spreads.",
+        "Someone with private knowledge adjusts their plan.",
+    ]
+    actions = [
+        "Press the person who reacted first",
+        "Examine the detail that does not fit",
+        "Move to a better position",
+        "Ask what everyone is avoiding",
+    ]
 
-    if any(word in lower for word in ("detect magic", "arcana")) or (
+    if any(word in lower for word in ("detect magic", "arcana", "ritual", "spell")) or (
         "cast" in lower and not any(word in lower for word in ("mage armor", "light"))
     ):
         body = (
-            "Yungmin lowers the cracked lantern into the dim light and lets the spell settle over it. "
-            "For a breath nothing answers; then a blue-white thread crawls along the torn harness leather, "
-            "cold enough to pearl frost on the brass. Torven sees it too and stops talking.\n\n"
-            "The magic is not strong, but it is deliberate. It clings to the cut edge of the leather, "
-            "as if someone marked the wagon after the struggle rather than during it. The thread points toward "
-            "the door, then fades whenever anyone steps too close.\n\n"
-            "Torven whispers, \"That lantern belonged to Mara Vell. She drove the north road.\""
+            f"{pc} lets the working settle over {loc}. The first answer is not light or sound, but a pressure "
+            "behind the eyes, as if the place is remembering a shape it was forced to hold.\n\n"
+            "A faint trace gathers around the most handled surface nearby. It is not enough to explain the whole "
+            "danger, but it proves the trouble was deliberate, recent, and touched by someone who expected not to be noticed."
         )
-        beat.update({
-            "objective": "Trace the lantern's cold arcane residue toward the north road.",
-            "clues": [
-                "Cold blue residue clings to the harness leather.",
-                "The leather was cut before the lantern was returned.",
-                "The missing owner is Mara Vell, a north-road wagon driver.",
-            ],
-            "actions": ["Ask about Mara Vell", "Follow the magical residue", "Check the doorway", "Identify the spell"],
-        })
-    elif any(word in lower for word in ("ask torven", "slow down", "owner", "owned", "last saw", "last seen")):
+        objective = "Follow the fresh magical trace before it fades or is hidden."
+        clues = ["A recent magical trace is present.", "The effect was deliberate.", "Someone expected the sign to be overlooked."]
+        actions = ["Follow the trace", "Identify the magic", "Ask who handled the marked object", "Shield the area from interference"]
+    elif any(word in lower for word in ("ask", "question", "talk", "press", "persuade")):
         body = (
-            "Torven grips the edge of the table until his knuckles pale. Yungmin's calm question gives him "
-            "something to hold onto, and the words come out in pieces: Mara Vell owned the lantern, Mara left "
-            "before dawn, and her wagon returned at noon with no driver and no horses.\n\n"
-            "He keeps glancing toward the kitchen corridor. When Yungmin asks when he last saw her, Torven says, "
-            "\"At the north stable. She was arguing with someone in a gray cloak. I thought it was business.\""
+            f"{pc}'s question lands harder than expected. The first answer is too quick, too polished, and the second "
+            "comes only after an uncomfortable silence.\n\n"
+            "The useful part is not the words. It is the glance that follows them: toward a person, door, object, or route "
+            "that everyone else has been carefully pretending is ordinary."
         )
-        beat.update({
-            "objective": "Find the gray-cloaked person who argued with Mara at the north stable.",
-            "clues": [
-                "Mara Vell vanished from the north stable before dawn.",
-                "Her wagon returned without driver or horses.",
-                "A gray-cloaked person argued with Mara before she left.",
-            ],
-            "actions": ["Search the north stable", "Press Torven on the argument", "Watch the kitchen corridor", "Ask who wears gray locally"],
-        })
-    elif any(word in lower for word in ("scan", "reacting", "common room", "watch")) and not any(
-        word in lower for word in ("owl", "familiar", "roof", "rooftop")
-    ):
+        objective = "Use the nervous glance to identify who or what is being protected."
+        clues = ["The first answer is rehearsed.", "A nervous glance points toward a hidden priority.", "Someone is withholding the useful part of the truth."]
+        actions = ["Follow the glance", "Ask a sharper follow-up", "Separate the nervous witness", "Offer protection for honesty"]
+    elif any(word in lower for word in ("search", "inspect", "examine", "investigate", "track", "look")):
         body = (
-            "Yungmin lets the room move without moving with it. Most patrons stare at the lantern; one does not. "
-            "A narrow-faced courier near the kitchen keeps his eyes on Torven's hands, then on the door, measuring "
-            "distance rather than danger.\n\n"
-            "When Yungmin's gaze catches him, the courier folds a receipt into his sleeve. The wax on it is red, "
-            "split down the middle, and marked with a candle stamped in glass."
+            f"{pc} slows down and lets the scene become physical: scuffs, dust, disturbed edges, a mark where a hand rested "
+            "too long. The obvious story starts to separate from the real one.\n\n"
+            "The clearest sign is small, but fresh. It points away from the center of attention and toward the route someone "
+            "used when they thought no one would be looking."
         )
-        beat.update({
-            "objective": "Stop or follow the courier with the split red-wax receipt.",
-            "clues": [
-                "A courier by the kitchen is watching Torven too closely.",
-                "The courier hides a receipt sealed with split red wax.",
-                "The seal shows a candle stamped in glass.",
-            ],
-            "moves": [
-                "The courier starts angling toward the kitchen exit.",
-                "Two patrons pretend not to notice the red-wax seal.",
-            ],
-            "actions": ["Intercept the courier", "Follow quietly", "Call out the seal", "Ask Torven about the Glass Candle"],
-        })
-    elif any(word in lower for word in ("tracks", "threshold", "mud", "snow", "drag")):
+        objective = "Follow the fresh sign before the trail is disturbed."
+        clues = ["The obvious story is incomplete.", "A fresh physical sign points away from the center of attention.", "Someone used a less visible route."]
+        actions = ["Follow the sign", "Preserve the evidence", "Compare it to nearby surfaces", "Ask who had access"]
+    elif any(word in lower for word in ("watch", "scan", "observe", "listen")):
         body = (
-            "At the threshold, Yungmin finds that the mud tells a rougher story than Torven could. Wagon ruts stop too cleanly, "
-            "as though the wheels were guided into place. Beside them, one set of bootprints digs deep at the heel, "
-            "dragging weight toward the alley behind the inn.\n\n"
-            "The snow there is peppered with black grit. It is not ash from the hearth; it smells faintly of bitter oil."
+            f"{pc} waits instead of filling the silence. That patience catches what movement would have missed: one person "
+            "reacts to the wrong detail, and another notices that reaction before looking away.\n\n"
+            "The room has a pattern now. Fear near the center, calculation near the edge, and a narrow gap where someone may slip out."
         )
-        beat.update({
-            "objective": "Follow the dragged bootprints and black grit behind the inn.",
-            "clues": [
-                "The wagon was guided into place rather than abandoned in panic.",
-                "Dragged bootprints lead toward the alley.",
-                "Black oily grit marks the snow.",
-            ],
-            "actions": ["Follow the bootprints", "Collect the black grit", "Check the alley", "Look for wagon handlers"],
-        })
-    elif any(word in lower for word in ("gawkers", "heard", "wagon", "bystanders")):
-        body = (
-            "Yungmin's voice cuts through the murmurs, but fear makes the room stubborn. A few patrons look away. "
-            "One old washerwoman finally answers from behind her cup: she heard the wagon before she saw it.\n\n"
-            "\"No horses,\" she says. \"Wheels turning anyway. Like something underneath was pulling it home.\" "
-            "That earns a hard silence. Torven crosses himself without seeming to know he has done it."
-        )
-        beat.update({
-            "objective": "Learn what pulled Mara's wagon back without horses.",
-            "clues": [
-                "A witness heard the wagon arrive with no horses.",
-                "The wheels turned as if pulled from beneath.",
-                "Several patrons are afraid to speak openly.",
-            ],
-            "actions": ["Question the washerwoman", "Inspect under the wagon", "Reassure the room", "Ask who saw the wheels"],
-        })
-    elif any(word in lower for word in ("harness", "wagon gear", "compare", "leather")):
-        body = (
-            "The harness leather does not match the inn's ordinary tack. Yungmin finds the difference by touch first: "
-            "the cut edge is too smooth, sealed with something glossy and black. When held near the lantern, the resin "
-            "softens and releases a smell like burnt cloves.\n\n"
-            "Torven remembers that smell. \"The Glass Candle keeps ledgers with wax like that,\" he says. "
-            "\"Collectors, not merchants. People pay them when they have no other choice.\""
-        )
-        beat.update({
-            "objective": "Find out why the Glass Candle's resin is on Mara's harness.",
-            "clues": [
-                "The harness leather was sealed with black resin.",
-                "The resin smells like burnt cloves.",
-                "Torven connects the resin to the Glass Candle collectors.",
-            ],
-            "actions": ["Ask about the Glass Candle", "Track the resin scent", "Search for collectors", "Test the resin magically"],
-        })
-    elif any(word in lower for word in ("enemies", "debts", "fake")):
-        body = (
-            "Torven looks down when Yungmin asks about debts. That is answer enough before he speaks. Mara borrowed "
-            "coin from the Glass Candle after last winter ruined the north-road trade, but she had nearly paid it back.\n\n"
-            "\"She would not fake this,\" he says. \"Not with her brother still waiting at the camp.\" "
-            "The name lands heavily: a missing driver is one thing, a family hostage is another."
-        )
-        beat.update({
-            "objective": "Protect Mara's brother and uncover the Glass Candle's leverage.",
-            "clues": [
-                "Mara owed money to the Glass Candle.",
-                "She had nearly paid the debt back.",
-                "Mara's brother is waiting at the camp and may be leverage.",
-            ],
-            "actions": ["Go to the camp", "Find Glass Candle records", "Ask Torven about the brother", "Prepare for an ambush"],
-        })
-    elif any(word in lower for word in ("mage armor", "follow", "outside", "freshest")) and not any(
-        word in lower for word in ("owl", "familiar", "trail splits", "prints")
-    ):
-        body = (
-            "The ward settles over Yungmin like a pane of invisible glass. Outside, the cold makes every sound sharper. "
-            "The lantern shard twitches once in Yungmin's hand, answering the black grit in the snow.\n\n"
-            "The trail leaves the inn by the alley, then bends toward the north road. Halfway there, a shutter closes "
-            "on the second floor of the cooper's shop, though no lamp burns behind it."
-        )
-        beat.update({
-            "objective": "Follow the north-road trail while watching the cooper's upper window.",
-            "clues": [
-                "The lantern shard reacts to black grit in the snow.",
-                "The trail bends toward the north road.",
-                "Someone watches from the cooper's upper floor.",
-            ],
-            "moves": [
-                "A shutter closes above the cooper's shop.",
-                "The north road grows quieter as Yungmin approaches.",
-            ],
-            "actions": ["Investigate the shutter", "Continue along the trail", "Send a familiar ahead", "Hide and watch"],
-        })
-    elif any(word in lower for word in ("owl", "familiar", "trail splits", "prints")):
-        body = (
-            "The owl climbs above the roofline and the world opens into angles: alley, stable, cooper's shop, north road. "
-            "Through the familiar's eyes, Yungmin sees the prints split because two people split. One staggered toward "
-            "the road. The other circled back toward the inn.\n\n"
-            "On the roof of the cooper's shop, a gray scrap of cloak snaps on a nail."
-        )
-        beat.update({
-            "objective": "Choose between the wounded trail north and the watcher who circled back.",
-            "clues": [
-                "Two people split from the alley trail.",
-                "One staggered north; one circled back toward the inn.",
-                "A gray cloak scrap is caught on the cooper's roof.",
-            ],
-            "actions": ["Retrieve the cloak scrap", "Follow the north trail", "Circle back to the inn", "Use the owl to watch both paths"],
-        })
-    elif any(word in lower for word in ("light", "lantern shard", "expose", "watching")):
-        body = (
-            "Light blooms from the lantern shard, not warm gold but a hard blue glare. The spell catches on the black resin "
-            "and throws a second shadow where no body stands. For an instant the hidden watcher appears in outline: gray cloak, "
-            "one hand wrapped in red cord, face turned toward Yungmin.\n\n"
-            "Then the figure bolts across the roofline toward the north road, leaving the smell of burnt cloves behind."
-        )
-        beat.update({
-            "objective": "Catch the gray-cloaked watcher before they reach the north road.",
-            "clues": [
-                "The lantern shard exposes an invisible or hidden watcher.",
-                "The watcher wears gray and red cord.",
-                "Burnt-clove resin links the watcher to the Glass Candle.",
-            ],
-            "moves": [
-                "The watcher flees across the roofline.",
-                "People inside the inn finally realize Yungmin has found a real trail.",
-            ],
-            "actions": ["Pursue across the roofs", "Mark the watcher with magic", "Warn Torven", "Cut them off at the road"],
-        })
+        objective = "Decide whether to confront the reaction or quietly follow the person trying to leave."
+        clues = ["One person reacts to the wrong detail.", "Another person notices and looks away.", "Someone may be preparing to leave."]
+        actions = ["Confront the first reaction", "Follow the person near the edge", "Signal an ally", "Block the quiet exit"]
     else:
         body = (
-            "Yungmin's choice shifts the room from fear into motion. Torven watches the lantern instead of the crowd, "
-            "and the nearest patrons begin remembering details they were too frightened to say aloud.\n\n"
-            "The cracked brass gives another faint tick. Whatever happened to Mara Vell is close enough to leave signs, "
-            "and fresh enough that someone is still trying to erase them."
+            f"{pc}'s choice changes the tempo at {loc}. A few people adjust around it, and that adjustment reveals more "
+            "than cooperation would have.\n\n"
+            "The situation has not resolved, but it has narrowed. There is now a person to press, a sign to follow, and a cost "
+            "to waiting too long."
         )
 
     if action_count >= 8:
-        beat["stakes"] = "The watcher is moving now; if Yungmin waits, the trail will leave the inn district entirely."
+        stakes = f"The longer {pc} waits, the more the trail spreads beyond easy reach."
 
     return {
         "narrative": body,
-        "objective": beat["objective"],
-        "stakes": beat["stakes"],
-        "clues": beat["clues"],
-        "world_moves": beat["moves"][:4],
-        "suggested_actions": beat["actions"][:5],
+        "objective": objective,
+        "stakes": stakes,
+        "clues": clues,
+        "world_moves": moves[:4],
+        "suggested_actions": actions[:5],
     }
 
 
@@ -950,7 +879,53 @@ async def bootstrap_session(session_id: str, payload: BootstrapRequest, current_
         (folder / 'scene.json').write_text(json.dumps(scene))
         return {'ok': True, 'scene': scene}
 
-    scene_seed = f"the first scene of the campaign '{session_name}', as the party arrives and the hook is revealed"
+    # Load campaign settings so the seed can match the genre
+    _boot_campaign_settings: dict = {}
+    _boot_campaign_contract: dict = {}
+    _boot_campaign_id = meta.get('campaign_id')
+    if _boot_campaign_id:
+        try:
+            _boot_campaign = db.get_campaign_by_id(str(_boot_campaign_id))
+            if _boot_campaign and isinstance(_boot_campaign.metadata_json, dict):
+                _boot_campaign_settings = _boot_campaign.metadata_json.get('settings') or {}
+                _boot_campaign_contract, _, _, _ = _campaign_package_from_metadata(_boot_campaign)
+        except Exception:
+            pass
+
+    # Generate a starter seed so the LLM is constrained to a non-tavern location
+    _boot_seed_rc: dict = {}
+    _has_boot_location_context = bool(
+        (_boot_campaign_settings or {}).get("setting_summary")
+        or (_boot_campaign_contract.get("campaign_dna") or {}).get("setting_summary")
+    )
+    if not _has_boot_location_context:
+        try:
+            _boot_seed_rc = build_content_bundle(
+                situation_type="campaign_opening",
+                scene_director_output={},
+                world_state={},
+                campaign_contract=_boot_campaign_contract,
+                freshness_context={"scene_count": 0},
+                campaign_settings=_boot_campaign_settings,
+            ).get("required_content") or {}
+        except Exception:
+            pass
+
+    if _boot_seed_rc.get("generated_by") == "starter_seed":
+        _s_loc = _boot_seed_rc.get("starting_location") or ""
+        _s_npc = _boot_seed_rc.get("named_npc_or_visible_threat") or ""
+        _s_event = _boot_seed_rc.get("inciting_event") or ""
+        _s_stakes = _boot_seed_rc.get("specific_stakes") or ""
+        scene_seed = (
+            f"The campaign '{session_name}' opens at {_s_loc}. "
+            f"{_s_event}. "
+            f"{_s_npc} is present. "
+            f"Stakes: {_s_stakes}. "
+            f"Do NOT set this scene in a tavern or inn."
+        )
+    else:
+        scene_seed = f"the first scene of the campaign '{session_name}', as the party arrives and the hook is revealed — NOT in a tavern or inn"
+
     narrative = narrative_agent.generate_narrative(narrative_agent.NarrativeRequest(
         scene=scene_seed,
         player='party',
@@ -967,10 +942,10 @@ async def bootstrap_session(session_id: str, payload: BootstrapRequest, current_
         'player_prompt': narrative.prompt,
         'text': f"{narrative.narrative}\n\n{narrative.prompt}",  # kept for compat
         'choices': [
-            {'id': 'talk_torven', 'label': 'Question Torven about the lantern'},
-            {'id': 'inspect_lantern', 'label': 'Examine the torn harness leather'},
-            {'id': 'search_doorway', 'label': 'Search the doorway for tracks'},
-            {'id': 'watch_patrons', 'label': 'Watch which patrons react strangely'},
+            {'id': 'ask_contact', 'label': 'Ask the nearest contact what they know'},
+            {'id': 'study_trouble', 'label': 'Study the most obvious sign of trouble'},
+            {'id': 'watch_reactions', 'label': 'Watch who reacts strangely'},
+            {'id': 'secure_position', 'label': 'Look for a safer angle before acting'},
         ],
     }
 
@@ -1075,6 +1050,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
                 if ch:
                     sheet = ch.sheet or {}
                     character_context = {
+                        'id': ch.id,
                         'name': ch.name or '',
                         'class_name': ch.class_name or '',
                         'level': ch.level or 1,
@@ -1106,6 +1082,10 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
 
     campaign_settings: dict = {}
     campaign_variables: dict = {}
+    campaign_contract: dict = {}
+    backstory_profiles: list[dict] = []
+    backstory_hooks: list[dict] = []
+    session_zero_summary: dict = {}
     campaign_docs: list[str] = []
     campaign_id = meta.get('campaign_id')
     if campaign_id:
@@ -1118,6 +1098,10 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
                 campaign_variables = campaign.metadata_json.get('variables') or {}
                 if not isinstance(campaign_variables, dict):
                     campaign_variables = {}
+                campaign_contract, backstory_profiles, backstory_hooks, session_zero_summary = _campaign_package_from_metadata(
+                    campaign,
+                    character_context=character_context,
+                )
         except Exception:
             pass
         try:
@@ -1132,6 +1116,8 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     # Inject character context into campaign_docs so Storyboard can build personal hooks
     if character_context and character_context.get('_doc_block'):
         campaign_docs.insert(0, character_context['_doc_block'])
+    if campaign_contract.get("agent_output_contract"):
+        campaign_docs.insert(0, "[Campaign Contract]\n" + campaign_contract["agent_output_contract"])
 
     # Derive narrative style: campaign_variables.narrative_style →
     # campaign_settings.tone → request payload style → default 'balanced'
@@ -1220,6 +1206,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     import concurrent.futures as _cf
 
     _loop = asyncio.get_event_loop()
+    player_name = players[0] if players else 'the party'
 
     def _run_storyboard():
         return storyboard_agent.generate_plot(storyboard_agent.StoryboardPlotRequest(
@@ -1278,7 +1265,14 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     mem_event_texts = [c.get('summary', '') for c in mem_changes if c.get('summary')]
 
     candidate_npcs = (mem_npc_names or plot_result.candidate_npcs)
-    candidate_locations = (mem_loc_names or plot_result.candidate_locations)
+    # Filter tavern defaults from storyboard-generated location candidates — the
+    # Storyboard LLM may invent a tavern for new campaigns with no context,
+    # and those names must not reach the Scene Director or the _has_location_context check.
+    _tavern_words = {"tavern", "inn", "alehouse", "flagon", "tankard", "wayward", "lantern"}
+    candidate_locations = [
+        loc for loc in (mem_loc_names or plot_result.candidate_locations)
+        if not any(w in loc.lower() for w in _tavern_words)
+    ]
     candidate_threads = (mem_thread_texts or plot_result.candidate_story_threads)
     open_hooks = (mem_hook_texts or plot_result.open_hooks)
     recent_events = (mem_event_texts or plot_result.recent_events)
@@ -1286,12 +1280,54 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     # All known entity names for quality validator
     all_campaign_entities = list({*candidate_npcs, *candidate_locations, *candidate_threads})
 
+    # --- Step 2: Opening seed injection (first scene, no prior location context) ---
+    # Pre-generate a structured seed so the Scene Director LLM is not free to default
+    # to a tavern when the plot seed and candidate lists are empty.
+    _bootstrap_guidance = narrative_director_output.model_dump() if narrative_director_output else {}
+    _bootstrap_plot_seed = plot_result.plot
+    # Only treat "real" campaign context as location context — NOT storyboard-generated
+    # candidate_locations, which are LLM outputs that default to taverns for new campaigns.
+    _has_location_context = bool(
+        (campaign_settings or {}).get("setting_summary")
+        or (campaign_contract.get("campaign_dna") or {}).get("setting_summary")
+        or campaign_contract.get("player_canon")
+    )
+    if not _has_location_context:
+        try:
+            _bootstrap_seed_rc = build_content_bundle(
+                situation_type="campaign_opening",
+                scene_director_output={},
+                world_state={},
+                campaign_contract=campaign_contract,
+                freshness_context={"scene_count": 0},
+                campaign_settings=campaign_settings,
+            ).get("required_content") or {}
+            if _bootstrap_seed_rc and _bootstrap_seed_rc.get("generated_by") == "starter_seed":
+                if _bootstrap_seed_rc.get("starting_location"):
+                    _bootstrap_guidance["required_opening_location"] = _bootstrap_seed_rc["starting_location"]
+                if _bootstrap_seed_rc.get("named_npc_or_visible_threat"):
+                    _bootstrap_guidance["required_opening_npc"] = _bootstrap_seed_rc["named_npc_or_visible_threat"]
+                if _bootstrap_seed_rc.get("inciting_event"):
+                    _bootstrap_guidance["required_opening_event"] = _bootstrap_seed_rc["inciting_event"]
+                if _bootstrap_seed_rc.get("specific_stakes"):
+                    _bootstrap_guidance["required_opening_stakes"] = _bootstrap_seed_rc["specific_stakes"]
+                if _bootstrap_seed_rc.get("player_decision"):
+                    _bootstrap_guidance["required_opening_decision"] = _bootstrap_seed_rc["player_decision"]
+                _seed_summary = (
+                    f"Opening location: {_bootstrap_seed_rc.get('starting_location', '')}. "
+                    f"Inciting event: {_bootstrap_seed_rc.get('inciting_event', '')}. "
+                    f"NPC: {_bootstrap_seed_rc.get('named_npc_or_visible_threat', '')}."
+                )
+                _bootstrap_plot_seed = f"{_seed_summary}\n\n{_bootstrap_plot_seed}" if _bootstrap_plot_seed else _seed_summary
+        except Exception:
+            pass
+
     # --- Step 2: Scene Director Agent — converts raw material into a concrete scene plan ---
     director_output: SceneDirectorOutput = scene_director_agent.direct_scene(SceneDirectorRequest(
         campaign_settings=campaign_settings,
         campaign_variables=campaign_variables,
         players=players,
-        plot_seed=plot_result.plot,
+        plot_seed=_bootstrap_plot_seed,
         candidate_npcs=candidate_npcs[:6],
         candidate_npc_details=mem_npc_details[:6],
         candidate_locations=candidate_locations[:4],
@@ -1302,15 +1338,48 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         open_hooks=open_hooks[:4],
         recent_events=recent_events[:4],
         world_context_block=world_ctx.get('prompt_block') or '',
-        director_guidance=narrative_director_output.model_dump() if narrative_director_output else None,
+        director_guidance=_bootstrap_guidance or None,
+        campaign_contract=campaign_contract,
     ))
 
-    player_name = players[0] if players else 'the party'
     loc_name = director_output.location.name or ''
     npc_name = director_output.primary_npc.name or ''
 
-    # --- Step 2b: Narrative Composer — plans the scene experience before prose is written ---
+    # --- Deterministic override for opening scenes (start_session path) ---
+    # If the seed was generated and the Scene Director LLM still produced a tavern/generic
+    # location, forcibly patch the director data before Composer + Narrative Writer run.
+    # Instruction-following alone is not reliable enough — this is a hard code-level guard.
     director_data_dict = director_output.model_dump()
+    if not _has_location_context and '_bootstrap_seed_rc' in dir():
+        _bsrc = locals().get('_bootstrap_seed_rc') or {}
+        if _bsrc.get("generated_by") == "starter_seed":
+            from .content_bundles import _looks_like_tavern_default
+            _seed_loc = _bsrc.get("starting_location") or ""
+            _seed_npc = _bsrc.get("named_npc_or_visible_threat") or ""
+            _seed_event = _bsrc.get("inciting_event") or ""
+            _seed_stakes = _bsrc.get("specific_stakes") or ""
+            if _seed_loc:
+                if not loc_name or _looks_like_tavern_default(loc_name):
+                    director_data_dict["location"]["name"] = _seed_loc
+                    loc_name = _seed_loc
+            if _seed_npc:
+                _llm_npc = (director_data_dict.get("primary_npc") or {}).get("name") or ""
+                if not _llm_npc or _looks_like_tavern_default(_llm_npc) or _llm_npc.lower() in (
+                    "a stranger", "a mysterious figure", "the barkeep", "innkeeper", "the innkeeper"
+                ):
+                    director_data_dict["primary_npc"]["name"] = _seed_npc
+                    npc_name = _seed_npc
+            if _seed_event and not director_data_dict.get("inciting_incident"):
+                director_data_dict["inciting_incident"] = _seed_event
+            if _seed_stakes and not director_data_dict.get("immediate_stakes"):
+                director_data_dict["immediate_stakes"] = _seed_stakes
+            # Also patch the plot_seed so the Narrative Writer prose is anchored correctly
+            _bootstrap_plot_seed = (
+                f"Opening location: {_seed_loc}. "
+                f"Inciting event: {_seed_event}. "
+                f"NPC: {_seed_npc}. "
+                f"Stakes: {_seed_stakes}.\n\n" + (_bootstrap_plot_seed or "")
+            ).strip()
     composer_output = narrative_composer_agent.compose_scene(
         scene_director_data=director_data_dict,
         player_name=player_name,
@@ -1320,7 +1389,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
 
     # --- Step 3: Narrative Agent — first attempt ---
     narrative = narrative_agent.generate_narrative(narrative_agent.NarrativeRequest(
-        scene=plot_result.plot,
+        scene=_bootstrap_plot_seed or plot_result.plot,
         player=player_name,
         style=derived_style,
         weather=weather,
@@ -1329,6 +1398,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         composer_data=composer_data_dict,
         is_opening_scene=True,
         character_context=character_context,
+        campaign_contract=campaign_contract,
     ))
 
     # --- Step 3b: Quality validation + retry/fallback ---
@@ -1340,12 +1410,24 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         conflict=director_output.central_conflict,
         campaign_entities=all_campaign_entities,
     )
+    contract_validator = validate_campaign_expectations(
+        narrative_text=f"{narrative.narrative}\n\n{narrative.prompt}",
+        campaign_contract=campaign_contract,
+    )
     retry_used = False
     fallback_used = False
+    contract_minimum = int((campaign_contract.get("validator_policy") or {}).get("minimum_scene_score") or MINIMUM_SCORE) if campaign_contract else MINIMUM_SCORE
+    minimum_score = max(MINIMUM_SCORE, contract_minimum)
 
-    if quality_score < MINIMUM_SCORE:
+    if quality_score < minimum_score or contract_validator.get("failed_expectations"):
         retry_used = True
-        feedback = build_retry_feedback(quality_issues, quality_score, loc_name, npc_name, player_name)
+        feedback = build_retry_feedback(
+            quality_issues + list(contract_validator.get("failed_expectations", [])),
+            quality_score,
+            loc_name,
+            npc_name,
+            player_name,
+        )
         narrative = narrative_agent.generate_narrative(narrative_agent.NarrativeRequest(
             scene=plot_result.plot,
             player=player_name,
@@ -1357,6 +1439,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
             validator_feedback=feedback,
             is_opening_scene=True,
             character_context=character_context,
+            campaign_contract=campaign_contract,
         ))
         quality_score, quality_issues = validate_scene_quality(
             narrative_text=f"{narrative.narrative}\n\n{narrative.prompt}",
@@ -1366,8 +1449,12 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
             conflict=director_output.central_conflict,
             campaign_entities=all_campaign_entities,
         )
+        contract_validator = validate_campaign_expectations(
+            narrative_text=f"{narrative.narrative}\n\n{narrative.prompt}",
+            campaign_contract=campaign_contract,
+        )
 
-    if quality_score < MINIMUM_SCORE:
+    if quality_score < minimum_score:
         fallback_used = True
         sensory = (director_output.location.sensory_details[:1] or [''])[0]
         fallback_text = build_fallback_scene(
@@ -1396,10 +1483,10 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         ]
     else:
         choices = [
-            {'id': 'talk_torven', 'label': 'Question Torven about the lantern'},
-            {'id': 'inspect_lantern', 'label': 'Examine the torn harness leather'},
-            {'id': 'search_doorway', 'label': 'Search the doorway for tracks'},
-            {'id': 'watch_patrons', 'label': 'Watch which patrons react strangely'},
+            {'id': 'ask_contact', 'label': f"Ask {npc_name or 'the nearest contact'} what they know"},
+            {'id': 'study_trouble', 'label': 'Study the most obvious sign of trouble'},
+            {'id': 'watch_reactions', 'label': 'Watch who reacts strangely'},
+            {'id': 'secure_position', 'label': 'Look for a safer angle before acting'},
         ]
 
     # Merge world moves: prefer Composer output (richer), fall back to Scene Director
@@ -1440,6 +1527,13 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         'suggested_actions': (narrative.suggested_actions or composer_output.suggested_actions or [])[:4],
         # Persisted for regeneration — gives /narrative/regenerate the full structured brief
         'scene_director_data': director_data_dict,
+        'campaign_contract': {
+            'contract_version': campaign_contract.get('contract_version'),
+            'canon_policy': campaign_contract.get('canon_policy', {}),
+            'ui_policy': campaign_contract.get('ui_policy', {}),
+            'validator_policy': campaign_contract.get('validator_policy', {}),
+        } if campaign_contract else {},
+        'ui_policy': campaign_contract.get('ui_policy', {}) if campaign_contract else {},
     }
     (folder / 'scene.json').write_text(json.dumps(scene))
 
@@ -1657,6 +1751,16 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         'scene_score': narrative.scene_score,
         'scene_score_passed': narrative.score_passed,
         'scene_score_detail': narrative.score_detail,
+        'campaign_contract': {
+            'canon_policy': campaign_contract.get('canon_policy', {}),
+            'ai_creativity_policy': campaign_contract.get('ai_creativity_policy', {}),
+            'backstory_policy': campaign_contract.get('backstory_policy', {}),
+            'ui_policy': campaign_contract.get('ui_policy', {}),
+        } if campaign_contract else {},
+        'contract_validator': contract_validator,
+        'backstory_profiles': backstory_profiles,
+        'backstory_hooks': backstory_hooks,
+        'session_zero': session_zero_summary,
     }
 
     context_debug = context_packet.debug_payload() if context_packet else None
@@ -1741,6 +1845,7 @@ class AdvanceSceneRequest(BaseModel):
     weather: str | None = None
     time_of_day: str | None = None
     developer_mode: bool = False
+    opening_approach: str | None = None
 
 
 @router.post('/{session_id}/advance-scene')
@@ -1771,6 +1876,10 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
     campaign_id = meta.get('campaign_id')
     campaign_settings: dict = {}
     campaign_variables: dict = {}
+    campaign_contract: dict = {}
+    backstory_profiles: list[dict] = []
+    backstory_hooks: list[dict] = []
+    session_zero_summary: dict = {}
     if campaign_id:
         try:
             campaign = db.get_campaign_by_id(str(campaign_id))
@@ -1781,6 +1890,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
                 campaign_variables = campaign.metadata_json.get('variables') or {}
                 if not isinstance(campaign_variables, dict):
                     campaign_variables = {}
+                campaign_contract, backstory_profiles, backstory_hooks, session_zero_summary = _campaign_package_from_metadata(campaign)
         except Exception:
             pass
 
@@ -1801,6 +1911,10 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         m.message for m in recent_messages
         if m.role not in ('gm', 'narrator', 'system') and m.message
     ]
+    # Opening approach from the pre-first-scene selection UI — used when there
+    # are no chat messages yet so the LLM has context for the scene tone.
+    if not player_actions and payload.opening_approach:
+        player_actions = [payload.opening_approach]
 
     # Load current scene for context
     scene_text = ''
@@ -1868,6 +1982,37 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
     persistent_npcs = simulation_agent.seed_persistent_npcs(folder, previous_scene)
     simulation_agent.seed_location_state(folder, previous_scene, world_state)
     selected_templates = simulation_agent.select_scene_templates(player_actions, time_result, simulation_delta)
+
+    # --- Step 4a: Situation Classifier ---
+    adv_experience_mode = str((simulation_delta or {}).get("experience_mode") or "")
+    # Derive an approximate scene count from whether a *real* previous scene exists.
+    # The initial scene.json is a placeholder (id='opening', no narrative_body) and
+    # must NOT count as a prior scene — otherwise scene_count=1 and the campaign_opening
+    # classifier never fires, so the tavern-avoidance seed injection never runs.
+    _adv_prior_scene_text = previous_scene.get("text") or ""
+    _adv_prior_is_placeholder = (
+        previous_scene.get("id") == "opening"
+        and not previous_scene.get("narrative_body")
+        and (
+            not _adv_prior_scene_text
+            or _adv_prior_scene_text.startswith("Your adventure is about to begin")
+        )
+    )
+    _adv_prior_scene_exists = bool(
+        (previous_scene.get("id") or previous_scene.get("text"))
+        and not _adv_prior_is_placeholder
+    )
+    adv_scene_count = 0 if not _adv_prior_scene_exists else 1
+    adv_situation = classify_situation(
+        player_actions=player_actions,
+        previous_scene=previous_scene if _adv_prior_scene_exists else None,
+        world_state=world_state,
+        simulation_delta=simulation_delta,
+        experience_mode=adv_experience_mode,
+        director_scene_type=selected_templates[0] if selected_templates else "",
+        scene_count=adv_scene_count,
+    )
+    adv_situation_type: str = adv_situation["situation_type"]
 
     # --- Step 4: Context Orchestrator + Scene Template Selector + Narrative Agent ---
     adv_context_packet = None
@@ -1937,6 +2082,64 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         simulation_delta,
         world_state,
     )
+
+    # --- Step 4b: Pre-generate opening seed for first scene ---
+    # For campaign openings with no prior context, generate the starter seed NOW —
+    # before the Scene Director LLM runs — and inject it as hard constraints.
+    # Without this, the LLM defaults to a tavern because the plot_seed is empty.
+    adv_opening_seed: dict = {}
+    if adv_situation_type == "campaign_opening" and adv_scene_count == 0:
+        # Only seed if the campaign has no location context of its own
+        contract_has_location = bool(
+            campaign_contract and (
+                (campaign_contract.get("campaign_dna") or {}).get("setting_summary")
+                or campaign_contract.get("player_canon")
+            )
+        )
+        if not contract_has_location:
+            adv_opening_seed = build_content_bundle(
+                situation_type="campaign_opening",
+                scene_director_output={},
+                world_state=world_state,
+                campaign_contract=campaign_contract,
+                freshness_context={"scene_count": 0},
+                campaign_settings=campaign_settings,
+            ).get("required_content") or {}
+        else:
+            # Campaign has lore — generate seed to derive location type but use
+            # contract's setting summary rather than a random seed location
+            setting_summary = (campaign_contract.get("campaign_dna") or {}).get("setting_summary") or ""
+            if setting_summary:
+                adv_opening_seed = {
+                    "required_location_constraint": setting_summary[:200],
+                    "generated_by": "contract_setting",
+                }
+
+        # Inject seed as hard director_guidance constraints so the LLM is bound
+        if adv_opening_seed and adv_opening_seed.get("generated_by") != "contract_setting":
+            loc = adv_opening_seed.get("starting_location") or ""
+            npc = adv_opening_seed.get("named_npc_or_visible_threat") or ""
+            event = adv_opening_seed.get("inciting_event") or ""
+            stakes = adv_opening_seed.get("specific_stakes") or ""
+            decision = adv_opening_seed.get("player_decision") or ""
+            if loc:
+                director_guidance["required_opening_location"] = loc
+            if npc:
+                director_guidance["required_opening_npc"] = npc
+            if event:
+                director_guidance["required_opening_event"] = event
+            if stakes:
+                director_guidance["required_opening_stakes"] = stakes
+            if decision:
+                director_guidance["required_opening_decision"] = decision
+            # Strengthen the plot_seed so the LLM has rich context
+            seed_summary = f"Opening location: {loc}. Inciting event: {event}. NPC: {npc}. Stakes: {stakes}."
+            if scene_summary and "deliberates" not in scene_summary:
+                scene_summary = f"{seed_summary}\n\n{scene_summary}"
+            else:
+                scene_summary = seed_summary
+        elif adv_opening_seed.get("required_location_constraint"):
+            director_guidance["required_opening_location_context"] = adv_opening_seed["required_location_constraint"]
 
     mem_npc_details = []
     if adv_context_packet:
@@ -2009,11 +2212,63 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         ][:4],
         world_context_block=world_context_block,
         director_guidance=director_guidance,
+        campaign_contract=campaign_contract,
     ))
     if selected_templates:
         adv_scene_director_output.scene_type = " + ".join(selected_templates)
 
     adv_director_data = adv_scene_director_output.model_dump()
+
+    # --- Step 4c: Content Bundle + Situation Validation ---
+    adv_content_bundle: dict = {}
+    adv_situation_validated = True
+    if adv_situation.get("requires_content_contract"):
+        adv_freshness_context = {
+            "scene_count": adv_scene_count,
+            "recent_location_types": [],
+            "recent_opening_events": [],
+        }
+        adv_content_bundle = build_content_bundle(
+            situation_type=adv_situation_type,
+            scene_director_output=adv_director_data,
+            world_state=world_state,
+            campaign_contract=campaign_contract,
+            previous_scene=previous_scene,
+            freshness_context=adv_freshness_context,
+            campaign_settings=campaign_settings,
+        )
+        adv_situation_validated = adv_content_bundle.get("validated", True)
+
+        # --- Deterministic override: if the seed replaced a tavern default,
+        # patch adv_director_data NOW so the Composer and Narrative Writer use
+        # the seed's content rather than whatever the LLM Scene Director produced.
+        # This is a hard override — LLM instruction-following is unreliable here.
+        _rc = adv_content_bundle.get("required_content") or {}
+        if _rc.get("generated_by") == "starter_seed":
+            seed_loc = _rc.get("starting_location") or ""
+            seed_npc = _rc.get("named_npc_or_visible_threat") or ""
+            seed_event = _rc.get("inciting_event") or ""
+            seed_stakes = _rc.get("specific_stakes") or ""
+            if seed_loc and adv_director_data.get("location"):
+                adv_director_data["location"]["name"] = seed_loc
+            if seed_npc and adv_director_data.get("primary_npc"):
+                # Only override if the LLM produced a tavern/generic name
+                from .content_bundles import _looks_like_tavern_default
+                llm_npc = (adv_director_data.get("primary_npc") or {}).get("name") or ""
+                if not llm_npc or _looks_like_tavern_default(llm_npc) or llm_npc.lower() in ("a stranger", "a mysterious figure", "the barkeep", "innkeeper"):
+                    adv_director_data["primary_npc"]["name"] = seed_npc
+            if seed_event and not adv_director_data.get("inciting_incident"):
+                adv_director_data["inciting_incident"] = seed_event
+            if seed_stakes and not adv_director_data.get("immediate_stakes"):
+                adv_director_data["immediate_stakes"] = seed_stakes
+            # Rebuild the scene_summary so the narrative writer also gets the correct location
+            scene_summary = (
+                f"Opening location: {seed_loc}. "
+                f"Inciting event: {seed_event}. "
+                f"NPC: {seed_npc}. "
+                f"Stakes: {seed_stakes}.\n\n" + scene_summary
+            ).strip()
+
     adv_composer_output = narrative_composer_agent.compose_scene(
         scene_director_data=adv_director_data,
         player_name=adv_player_name,
@@ -2030,13 +2285,14 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         scene_director_data=adv_director_data,
         composer_data=adv_composer_data,
         player_actions=player_actions,
+        campaign_contract=campaign_contract,
     ))
     action_response: dict | None = None
     narrative_fallback_used = bool((getattr(narrative, 'score_detail', {}) or {}).get('fallback_used'))
     if player_actions and narrative_fallback_used:
         action_response = _action_response_scene(
             player_name=adv_player_name,
-            location_name=adv_scene_director_output.location.name or current_location_name or "The Wayward Lantern Inn",
+            location_name=adv_scene_director_output.location.name or current_location_name or "the current location",
             latest_action=player_actions[-1],
             action_count=len(player_actions),
         )
@@ -2067,15 +2323,22 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             *candidate_threads,
         ],
     )
+    contract_validator = validate_campaign_expectations(
+        narrative_text=f"{narrative.narrative}\n\n{narrative.prompt}",
+        campaign_contract=campaign_contract,
+    )
     retry_used = False
     fallback_used = False
+    contract_minimum = int((campaign_contract.get("validator_policy") or {}).get("minimum_scene_score") or MINIMUM_SCORE) if campaign_contract else MINIMUM_SCORE
+    minimum_score = max(MINIMUM_SCORE, contract_minimum)
     if action_response:
         quality_score = max(quality_score, 85)
         quality_issues = []
-    if quality_score < MINIMUM_SCORE:
+        contract_validator = {"score": 100, "failed_expectations": [], "canon_violations": [], "backstory_boundary_violations": [], "agency_issues": [], "tone_issues": [], "recommended_fix": ""}
+    if quality_score < minimum_score or contract_validator.get("failed_expectations"):
         retry_used = True
         feedback = build_retry_feedback(
-            quality_issues,
+            quality_issues + list(contract_validator.get("failed_expectations", [])),
             quality_score,
             adv_scene_director_output.location.name,
             adv_scene_director_output.primary_npc.name,
@@ -2091,6 +2354,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             composer_data=adv_composer_data,
             validator_feedback=feedback,
             player_actions=player_actions,
+            campaign_contract=campaign_contract,
         ))
         quality_score, quality_issues = validate_scene_quality(
             narrative_text=f"{narrative.narrative}\n\n{narrative.prompt}",
@@ -2099,8 +2363,12 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             player_name=adv_player_name,
             conflict=adv_scene_director_output.central_conflict,
         )
+        contract_validator = validate_campaign_expectations(
+            narrative_text=f"{narrative.narrative}\n\n{narrative.prompt}",
+            campaign_contract=campaign_contract,
+        )
 
-    if quality_score < MINIMUM_SCORE:
+    if quality_score < minimum_score:
         fallback_used = True
         fallback_text = build_fallback_scene(
             location_name=adv_scene_director_output.location.name or current_location_name or 'the current location',
@@ -2156,9 +2424,20 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         'visible_clues': adv_scene_director_output.player_visible_clues[:4] or [],
         'current_objective': adv_scene_director_output.central_conflict[:120] if adv_scene_director_output.central_conflict else '',
         'scene_templates': selected_templates,
+        'situation_type': adv_situation_type,
+        'situation_classification': adv_situation,
+        'content_bundle': adv_content_bundle,
+        'ui_payload': adv_content_bundle.get('ui_payload', {}),
         'scene_director_data': adv_director_data,
         'composer_data': adv_composer_data,
         'simulation_delta': simulation_delta,
+        'campaign_contract': {
+            'contract_version': campaign_contract.get('contract_version'),
+            'canon_policy': campaign_contract.get('canon_policy', {}),
+            'ui_policy': campaign_contract.get('ui_policy', {}),
+            'validator_policy': campaign_contract.get('validator_policy', {}),
+        } if campaign_contract else {},
+        'ui_policy': campaign_contract.get('ui_policy', {}) if campaign_contract else {},
     }
 
     post_scene_dice_rolls: list[dict] = []
@@ -2228,7 +2507,56 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             pass
 
     new_scene = simulation_agent.normalize_scene_presentation(new_scene, world_state, simulation_delta)
-    memory_delta = simulation_agent.build_memory_delta(new_scene, world_state, simulation_delta)
+
+    # --- Memory Extractor ---
+    memory_delta = extract_memory(
+        scene=new_scene,
+        world_state=world_state,
+        simulation_delta=simulation_delta,
+        content_bundle=adv_content_bundle or None,
+        campaign_contract=campaign_contract,
+        previous_scene=previous_scene,
+    )
+
+    # --- Canon Manager ---
+    try:
+        canon_index = load_canon_index(folder)
+        canon_changes = apply_memory_delta(
+            canon_index,
+            memory_delta,
+            scene_id=scene_index,
+            campaign_contract=campaign_contract,
+        )
+        canon_validation = validate_canon(
+            new_scene.get("narrative_body") or new_scene.get("text") or "",
+            canon_index,
+            campaign_contract,
+        )
+        save_canon_index(folder, canon_index)
+    except Exception:
+        canon_changes = {}
+        canon_validation = {"valid": True, "score": 100, "issues": []}
+
+    # --- Full UI Payload ---
+    _adv_debug_mode = bool((payload.__dict__ if hasattr(payload, '__dict__') else {}).get("debug") or False)
+    try:
+        full_ui_payload = build_full_ui_payload(
+            scene=new_scene,
+            content_bundle=adv_content_bundle or {},
+            memory_delta=memory_delta,
+            world_state=world_state,
+            simulation_delta=simulation_delta,
+            campaign_contract=campaign_contract,
+            player_stats=None,
+            turn_state={},
+            dice_rolls=post_scene_dice_rolls,
+            debug_mode=False,
+        )
+        new_scene["full_ui_payload"] = full_ui_payload
+        new_scene["canon_validation"] = canon_validation
+    except Exception:
+        full_ui_payload = {}
+
     new_scene.update(simulation_agent.build_structured_scene_fields(
         new_scene,
         world_state,
@@ -2330,8 +2658,24 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             'issues': quality_issues,
             'retry_used': retry_used,
             'fallback_used': fallback_used,
+            'contract_validator': contract_validator,
         },
+        'campaign_contract': {
+            'canon_policy': campaign_contract.get('canon_policy', {}),
+            'ai_creativity_policy': campaign_contract.get('ai_creativity_policy', {}),
+            'backstory_policy': campaign_contract.get('backstory_policy', {}),
+            'ui_policy': campaign_contract.get('ui_policy', {}),
+        } if campaign_contract else {},
+        'backstory_profiles': backstory_profiles,
+        'backstory_hooks': backstory_hooks,
+        'session_zero': session_zero_summary,
         'memory_delta': memory_delta,
+        'situation_type': adv_situation_type,
+        'situation_classification': adv_situation,
+        'content_bundle': adv_content_bundle,
+        'canon_changes': canon_changes,
+        'canon_validation': canon_validation,
+        'ui_payload': full_ui_payload,
         'context_retrieved': adv_context_debug,
     }
 
@@ -2343,6 +2687,10 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         'pre_scene_dice_rolls': dice_rolls,
         'post_scene_dice_rolls': post_scene_dice_rolls,
         'image_url': image_url,
+        'ui_payload': full_ui_payload,
+        'situation_type': adv_situation_type,
+        'situation_classification': adv_situation,
+        'canon_validation': canon_validation,
         'context_debug': adv_context_debug,
         'story_debug': adv_story_debug,
         'simulation_debug': simulation_debug if payload.developer_mode else {

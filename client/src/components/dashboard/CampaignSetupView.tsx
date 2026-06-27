@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { apiFetch } from '../../api'
 import PageHeader from '../ui/PageHeader'
 import Toast from '../ui/Toast'
+import CampaignSetupWizard from './CampaignSetupWizard'
 
 const SettingsIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="btn-icon">
@@ -220,7 +221,7 @@ export default function CampaignSetupView({
   showAdminControls = false,
   onDeleteTestCampaigns,
 }: Props) {
-  const [viewMode, setViewMode] = useState<'list' | 'settings' | 'documents' | 'players'>('list')
+  const [viewMode, setViewMode] = useState<'list' | 'settings' | 'documents' | 'players' | 'wizard'>('list')
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
 
@@ -475,11 +476,13 @@ export default function CampaignSetupView({
         ? 'Settings'
         : viewMode === 'documents'
         ? 'Documents'
+        : viewMode === 'wizard'
+        ? 'Session Zero'
         : 'Players'
     return `Manage Campaigns: ${base} — ${suffix}`
   }, [activeCampaignId, activeCampaign?.name, viewMode])
 
-  const openCampaignView = (campaignId: string, mode: 'settings' | 'documents' | 'players') => {
+  const openCampaignView = (campaignId: string, mode: 'settings' | 'documents' | 'players' | 'wizard') => {
     onSelectCampaign(campaignId)
     setViewMode(mode)
   }
@@ -703,6 +706,9 @@ export default function CampaignSetupView({
                 <button className="btn btn-secondary btn-sm btn-icon-only" type="button" onClick={() => openCampaignView(String(campaign.id), 'players')} title="Players" aria-label="Players">
                   <PlayersIcon />
                 </button>
+                <button className="btn btn-secondary btn-sm" type="button" onClick={() => openCampaignView(String(campaign.id), 'wizard')} title="Session Zero" aria-label="Session Zero">
+                  Session Zero
+                </button>
               </>
             ) : null}
           </div>
@@ -774,16 +780,23 @@ export default function CampaignSetupView({
                 <button className="btn btn-secondary btn-sm" type="button" onClick={() => setViewMode('list')}>
                   ← Back to campaigns
                 </button>
-                {onPlay && activeCampaignId ? (
-                  <button
-                    className="btn btn-sm"
-                    type="button"
-                    disabled={Boolean(playBusy)}
-                    onClick={() => onPlay(activeCampaignId)}
-                  >
-                    {playBusy ? 'Starting…' : 'Start Session'}
-                  </button>
-                ) : null}
+                <div className="row-wrap" style={{ gap: 8 }}>
+                  {activeCampaignId ? (
+                    <button className="btn btn-secondary btn-sm" type="button" onClick={() => setViewMode('wizard')}>
+                      Session Zero
+                    </button>
+                  ) : null}
+                  {onPlay && activeCampaignId ? (
+                    <button
+                      className="btn btn-sm"
+                      type="button"
+                      disabled={Boolean(playBusy)}
+                      onClick={() => onPlay(activeCampaignId)}
+                    >
+                      {playBusy ? 'Starting…' : 'Start Session'}
+                    </button>
+                  ) : null}
+                </div>
               </div>
 
               <div className="card card-pad">
@@ -1230,6 +1243,17 @@ export default function CampaignSetupView({
                 )}
               </div>
             </>
+          ) : null}
+
+          {viewMode === 'wizard' ? (
+            <CampaignSetupWizard
+              activeCampaignId={activeCampaignId}
+              activeCampaign={activeCampaign}
+              onCampaignUpdated={onCampaignUpdated}
+              onPlay={onPlay ? () => onPlay(activeCampaignId || undefined) : () => {}}
+              playBusy={playBusy}
+              onClose={() => setViewMode('settings')}
+            />
           ) : null}
         </div>
       )}

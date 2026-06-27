@@ -13,6 +13,17 @@ from dataclasses import dataclass, field
 # ---------------------------------------------------------------------------
 
 BANNED_GENERIC: list[str] = [
+    # Specific tavern default names — these are recycled LLM training-data fixtures
+    # and must never appear in generated content for new campaigns
+    "wayward lantern inn",
+    "wayward lantern",
+    "rusty flagon",
+    "prancing pony",
+    "golden goblet",
+    "silver tankard",
+    "the drunken sailor",
+    "the dragon's den",
+    "the traveler's rest",
     # Genre labels
     "heroic fantasy",
     "epic fantasy",
@@ -204,7 +215,9 @@ def score_scene(text: str, title: str = "", threshold: int = 75) -> ScoreResult:
             result.failed_checks.append(f"Abstract stakes: '{phrase}'")
 
     # ── Named location +10 ───────────────────────────────────────────────
-    location_types = r'\b(inn|tavern|market|tower|dungeon|forest|road|village|city|bridge|cellar|hall|keep|temple|harbor|street|alley|plaza|gate|ruins|manor|warehouse|docks|cave|mine|camp|barracks|shrine|library|bathhouse|harbor|wharf|rooftop)\b'
+    # "inn" and "tavern" deliberately excluded — they're the LLM default and should
+    # not receive a +10 bonus that makes tavern scenes score higher than alternatives
+    location_types = r'\b(market|tower|dungeon|forest|road|village|city|bridge|cellar|hall|keep|temple|harbor|street|alley|plaza|gate|ruins|manor|warehouse|docks|cave|mine|camp|barracks|shrine|library|bathhouse|wharf|rooftop|fort|vein|junction|estate|ford|hold|outpost|crossroads|docks)\b'
     if re.search(location_types, lower_text):
         score += 10
         result.has_location = True

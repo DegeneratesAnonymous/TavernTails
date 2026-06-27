@@ -320,14 +320,30 @@ def build_image_prompt_from_visual_state(
     """
     parts: list[str] = []
 
+    genre_text = " ".join([
+        vs.location_name or "",
+        vs.location_type or "",
+        vs.region or "",
+        vs.dominant_theme or "",
+        " ".join(vs.environmental_details or []),
+    ]).lower()
+    if any(w in genre_text for w in ("sci-fi", "science fiction", "star", "space", "orbital", "station", "ship", "cyberpunk")):
+        genre_style = "cinematic science fiction"
+    elif any(w in genre_text for w in ("modern", "noir", "city", "detective")):
+        genre_style = "cinematic modern mystery"
+    elif any(w in genre_text for w in ("horror", "cosmic", "dread")):
+        genre_style = "atmospheric horror"
+    else:
+        genre_style = "dark fantasy"
+
     # Style header
-    style_header = "Dark atmospheric fantasy environment art"
+    style_header = f"Dark atmospheric {genre_style} environment art"
     if vs.visual_type == "campaign_cover":
-        style_header = "Epic dark fantasy campaign cover art, environmental panorama"
+        style_header = f"Epic {genre_style} campaign cover art, environmental panorama"
     elif vs.visual_type == "regional_mood":
-        style_header = "Dark fantasy regional environment illustration"
+        style_header = f"{genre_style.title()} regional environment illustration"
     elif vs.visual_type == "event_splash":
-        style_header = "Dramatic dark fantasy event splash illustration"
+        style_header = f"Dramatic {genre_style} event splash illustration"
     parts.append(style_header)
 
     # Location

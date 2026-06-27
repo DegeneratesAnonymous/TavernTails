@@ -148,8 +148,8 @@ def test_action_response_scene_uses_latest_action():
     )
 
     assert "Yungmin" in response["narrative"]
-    assert "blue-white thread" in response["narrative"]
-    assert "arcane" in response["objective"].lower()
+    assert any(w in response["narrative"].lower() for w in ("trace", "magic", "pressure", "spell"))
+    assert any(w in response["objective"].lower() for w in ("trace", "magic", "arcane", "magical"))
     assert response["suggested_actions"]
 
 

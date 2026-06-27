@@ -7,8 +7,136 @@ from pydantic import BaseModel, ConfigDict, Field
 from .. import db
 from ..auth import get_current_user
 from . import sessions as sessions_agent
+from .campaign_interpretation import build_full_contract_package
 
 router = APIRouter(prefix="/campaigns", tags=["campaigns"])
+
+# ---------------------------------------------------------------------------
+# Campaign seed templates — curated starting points
+# ---------------------------------------------------------------------------
+
+CAMPAIGN_SEEDS: list[dict[str, Any]] = [
+    {
+        "id": "frozen-wilderness-mystery",
+        "title": "Frozen Wilderness Mystery",
+        "tagline": "Something beneath the ice should have stayed buried.",
+        "genre": "fantasy",
+        "tone": "dark mystery",
+        "themes": ["isolation", "buried history", "survival"],
+        "pacing": "slow",
+        "narrative_style": "gritty",
+        "content_rating": "pg-13",
+        "setting_summary": "A remote frontier where winter never truly ends. Villages are cut off by snowfall, supplies dwindle, and something old has begun moving under the glacier.",
+        "creation_posture": "guided_builder",
+        "primary_pillars": ["survival", "investigation"],
+        "emoji": "🧊",
+    },
+    {
+        "id": "desert-survival-intrigue",
+        "title": "Desert Survival Intrigue",
+        "tagline": "Water is power. Power corrupts. The desert remembers.",
+        "genre": "fantasy",
+        "tone": "political thriller",
+        "themes": ["scarcity", "trust", "power"],
+        "pacing": "moderate",
+        "narrative_style": "gritty",
+        "content_rating": "pg-13",
+        "setting_summary": "An arid wasteland where factions fight to control the last water sources. Ancient ruins hold secrets that could end the conflict — or ignite a war.",
+        "creation_posture": "guided_builder",
+        "primary_pillars": ["survival", "social"],
+        "emoji": "🏜️",
+    },
+    {
+        "id": "city-of-masks",
+        "title": "City of Masks",
+        "tagline": "Everyone wears a face that isn't theirs.",
+        "genre": "fantasy",
+        "tone": "political intrigue",
+        "themes": ["deception", "identity", "power"],
+        "pacing": "slow",
+        "narrative_style": "intimate",
+        "content_rating": "pg-13",
+        "setting_summary": "A labyrinthine city-state where social rank is literally masked and identity can be bought, stolen, or lost. The wrong face in the wrong quarter gets you killed.",
+        "creation_posture": "guided_builder",
+        "primary_pillars": ["social", "investigation"],
+        "emoji": "🎭",
+    },
+    {
+        "id": "haunted-frontier",
+        "title": "Haunted Frontier",
+        "tagline": "The settlers came west. Something was already waiting.",
+        "genre": "horror",
+        "tone": "gothic horror",
+        "themes": ["fear", "isolation", "hubris"],
+        "pacing": "moderate",
+        "narrative_style": "gritty",
+        "content_rating": "mature",
+        "setting_summary": "A frontier colony built on cursed ground. Settlers disappear at night. The local garrison is too afraid to investigate. The players have no choice.",
+        "creation_posture": "guided_builder",
+        "primary_pillars": ["investigation", "survival"],
+        "emoji": "👻",
+    },
+    {
+        "id": "monster-hunt-road",
+        "title": "Monster-Hunt Road Campaign",
+        "tagline": "The road never ends. Neither does the work.",
+        "genre": "fantasy",
+        "tone": "gritty heroism",
+        "themes": ["duty", "consequence", "the cost of violence"],
+        "pacing": "fast",
+        "narrative_style": "epic",
+        "content_rating": "pg-13",
+        "setting_summary": "A continent-spanning hunting expedition following the trail of a creature that leaves devastation behind. Each town has its own story. Each kill has a cost.",
+        "creation_posture": "player_fast_start",
+        "primary_pillars": ["combat", "exploration"],
+        "emoji": "🗡️",
+    },
+    {
+        "id": "political-court",
+        "title": "Political Court Campaign",
+        "tagline": "The throne is a trap. Everyone wants to see you fall.",
+        "genre": "fantasy",
+        "tone": "political drama",
+        "themes": ["ambition", "betrayal", "loyalty"],
+        "pacing": "slow",
+        "narrative_style": "intimate",
+        "content_rating": "pg-13",
+        "setting_summary": "The players are newly elevated to court — by accident, appointment, or coercion. Factions circle. Alliances shift weekly. One wrong word rewrites everything.",
+        "creation_posture": "guided_builder",
+        "primary_pillars": ["social", "investigation"],
+        "emoji": "👑",
+    },
+    {
+        "id": "cozy-village-mystery",
+        "title": "Cozy Village Mystery",
+        "tagline": "Something terrible happened here once. It's about to happen again.",
+        "genre": "mystery",
+        "tone": "cozy mystery",
+        "themes": ["community", "secrets", "the past"],
+        "pacing": "slow",
+        "narrative_style": "lighthearted",
+        "content_rating": "pg-13",
+        "setting_summary": "A quiet village with a troubled history. The locals are warm and welcoming until questions start being asked. Then they get very quiet.",
+        "creation_posture": "guided_builder",
+        "primary_pillars": ["investigation", "social"],
+        "emoji": "🏡",
+    },
+    {
+        "id": "dungeon-below",
+        "title": "Dungeon Below the Old Keep",
+        "tagline": "It was sealed for a reason. You opened it anyway.",
+        "genre": "fantasy",
+        "tone": "classic dungeon crawl",
+        "themes": ["greed", "discovery", "danger"],
+        "pacing": "fast",
+        "narrative_style": "epic",
+        "content_rating": "pg-13",
+        "setting_summary": "A crumbling keep with a dungeon that goes deeper than any map shows. Each level has its own ecology, its own story, and its own reasons to turn back.",
+        "creation_posture": "player_fast_start",
+        "primary_pillars": ["combat", "exploration"],
+        "emoji": "🏰",
+    },
+]
 
 
 class CampaignSettings(BaseModel):
@@ -93,6 +221,11 @@ class CampaignCreate(BaseModel):
     description: str | None = ""
     invites: list[str] | None = None
     create_session: bool | None = True
+    creation_posture: str | None = None
+    seed_id: str | None = None
+    preferences: dict[str, Any] | None = None
+    player_backstories: list[dict[str, Any]] | None = None
+    imported_lore_summary: str | None = None
 
 
 class CampaignUpdate(BaseModel):
@@ -105,6 +238,52 @@ class GMAssignment(BaseModel):
     gm_user_id: int | None = None  # None or user ID for player GM, treated as "AI" if None
 
 
+def _contract_package_for_campaign(
+    camp,
+    *,
+    settings: dict[str, Any] | None = None,
+    variables: dict[str, Any] | None = None,
+    docs: list[str] | None = None,
+    backstories: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    meta = dict(getattr(camp, "metadata_json", None) or {})
+    merged_settings = dict(settings if settings is not None else (meta.get("settings") or {}))
+    merged_variables = dict(variables if variables is not None else (meta.get("variables") or {}))
+    merged_docs = list(docs if docs is not None else (meta.get("imported_lore") or []))
+    merged_backstories = list(backstories if backstories is not None else (meta.get("player_backstories") or []))
+    description = (getattr(camp, "description", "") or "")
+    return build_full_contract_package(
+        campaign_id=str(camp.id),
+        campaign_name=camp.name,
+        description=description,
+        settings=merged_settings,
+        variables=merged_variables,
+        docs=merged_docs,
+        backstories=merged_backstories,
+    )
+
+
+def _persist_contract_package(campaign_id: str, owner_id: int, package: dict[str, Any], *, confirmed: bool | None = None):
+    values = {
+        "campaign_interpretation": package.get("campaign_interpretation", {}),
+        "campaign_contract": package.get("campaign_contract", {}),
+        "backstory_profiles": package.get("backstory_profiles", []),
+        "backstory_hooks": package.get("backstory_hooks", []),
+        "backstory_thread_links": package.get("backstory_thread_links", []),
+        "backstory_spotlight": package.get("backstory_spotlight", []),
+        "session_zero": package.get("session_zero", {}),
+        "campaign_contract_debug": package.get("debug", {}),
+    }
+    if confirmed is not None:
+        values["session_zero_confirmed"] = bool(confirmed)
+    return db.set_campaign_metadata_keys(campaign_id, owner_id, values)
+
+
+@router.get('/seeds', summary='Return curated campaign seed templates')
+def list_campaign_seeds():
+    return {'seeds': CAMPAIGN_SEEDS}
+
+
 @router.post('', status_code=201)
 def create_campaign(req: CampaignCreate, current_user=Depends(get_current_user)):
     owner_id = _require_user_id(current_user)
@@ -112,6 +291,41 @@ def create_campaign(req: CampaignCreate, current_user=Depends(get_current_user))
     campaign_id = camp.id
     if campaign_id is None:
         raise HTTPException(status_code=500, detail='Failed to create campaign')
+    try:
+        # Merge seed defaults under explicit preferences so caller can always override
+        seed_defaults: dict[str, Any] = {}
+        if req.seed_id:
+            seed = next((s for s in CAMPAIGN_SEEDS if s["id"] == req.seed_id), None)
+            if seed:
+                seed_defaults = {
+                    "genre": seed.get("genre", "fantasy"),
+                    "tone": seed.get("tone", "balanced"),
+                    "setting_summary": seed.get("setting_summary", ""),
+                    "creation_posture": seed.get("creation_posture", "guided_builder"),
+                }
+        initial_settings = {**seed_defaults, **dict(req.preferences or {})}
+        posture = req.creation_posture or initial_settings.get("creation_posture") or seed_defaults.get("creation_posture")
+        if posture:
+            initial_settings["creation_posture"] = posture
+        imported_lore = [req.imported_lore_summary] if req.imported_lore_summary else []
+        package = _contract_package_for_campaign(
+            camp,
+            settings=initial_settings,
+            docs=imported_lore,
+            backstories=req.player_backstories or [],
+        )
+        updated = db.set_campaign_metadata_keys(campaign_id, owner_id, {
+            "settings": initial_settings,
+            "imported_lore": imported_lore,
+            "player_backstories": req.player_backstories or [],
+        })
+        if updated:
+            camp = updated
+        refreshed = _persist_contract_package(campaign_id, owner_id, package, confirmed=False)
+        if refreshed:
+            camp = refreshed
+    except Exception:
+        pass
     # Optionally create an initial linked session and persist that link to campaign.metadata
     created_session = None
     try:
@@ -320,9 +534,113 @@ def put_campaign_settings(
     updated = db.set_campaign_settings(campaign_id, owner_id, settings.model_dump())
     if not updated:
         raise HTTPException(status_code=404, detail='Campaign not found or forbidden')
+    try:
+        package = _contract_package_for_campaign(updated)
+        refreshed = _persist_contract_package(campaign_id, owner_id, package, confirmed=False)
+        if refreshed:
+            updated = refreshed
+    except Exception:
+        pass
     meta = updated.metadata_json or {}
     out = meta.get('settings') if isinstance(meta, dict) else {}
-    return {'settings': out if isinstance(out, dict) else {}}
+    return {
+        'settings': out if isinstance(out, dict) else {},
+        'campaign_interpretation': meta.get('campaign_interpretation') if isinstance(meta, dict) else None,
+        'campaign_contract': meta.get('campaign_contract') if isinstance(meta, dict) else None,
+        'session_zero': meta.get('session_zero') if isinstance(meta, dict) else None,
+    }
+
+
+@router.get('/{campaign_id}/contract', response_model=Dict[str, Any])
+def get_campaign_contract(campaign_id: str, current_user=Depends(get_current_user)):
+    user_id = _require_user_id(current_user)
+    c = db.get_campaign_by_id(campaign_id)
+    if not c:
+        raise HTTPException(status_code=404, detail='Campaign not found')
+    if c.owner_id != user_id and c.gm_user_id != user_id:
+        raise HTTPException(status_code=403, detail='Forbidden')
+    meta = c.metadata_json or {}
+    return {
+        'campaign_interpretation': meta.get('campaign_interpretation', {}),
+        'campaign_contract': meta.get('campaign_contract', {}),
+        'backstory_profiles': meta.get('backstory_profiles', []),
+        'backstory_hooks': meta.get('backstory_hooks', []),
+        'backstory_thread_links': meta.get('backstory_thread_links', []),
+        'backstory_spotlight': meta.get('backstory_spotlight', []),
+        'session_zero': meta.get('session_zero', {}),
+        'confirmed': bool(meta.get('session_zero_confirmed', False)),
+    }
+
+
+@router.get('/{campaign_id}/session-zero', response_model=Dict[str, Any])
+def get_session_zero(campaign_id: str, current_user=Depends(get_current_user)):
+    data = get_campaign_contract(campaign_id, current_user)
+    return {
+        'session_zero': data.get('session_zero') or {},
+        'campaign_interpretation': data.get('campaign_interpretation') or {},
+        'campaign_contract': data.get('campaign_contract') or {},
+        'confirmed': data.get('confirmed', False),
+    }
+
+
+@router.post('/{campaign_id}/interpretation/regenerate', response_model=Dict[str, Any])
+def regenerate_campaign_interpretation(campaign_id: str, current_user=Depends(get_current_user)):
+    owner_id = _require_user_id(current_user)
+    c = db.get_campaign_by_id(campaign_id)
+    if not c:
+        raise HTTPException(status_code=404, detail='Campaign not found')
+    if c.owner_id != owner_id:
+        raise HTTPException(status_code=403, detail='Forbidden')
+    package = _contract_package_for_campaign(c)
+    updated = _persist_contract_package(campaign_id, owner_id, package, confirmed=False)
+    if not updated:
+        raise HTTPException(status_code=404, detail='Campaign not found or forbidden')
+    meta = updated.metadata_json or {}
+    return {
+        'campaign_interpretation': meta.get('campaign_interpretation', {}),
+        'campaign_contract': meta.get('campaign_contract', {}),
+        'session_zero': meta.get('session_zero', {}),
+        'confirmed': False,
+    }
+
+
+@router.post('/{campaign_id}/contract/confirm', response_model=Dict[str, Any])
+def confirm_campaign_contract(campaign_id: str, current_user=Depends(get_current_user)):
+    owner_id = _require_user_id(current_user)
+    c = db.get_campaign_by_id(campaign_id)
+    if not c:
+        raise HTTPException(status_code=404, detail='Campaign not found')
+    if c.owner_id != owner_id:
+        raise HTTPException(status_code=403, detail='Forbidden')
+    meta = c.metadata_json or {}
+    if not meta.get('campaign_contract'):
+        package = _contract_package_for_campaign(c)
+        updated = _persist_contract_package(campaign_id, owner_id, package, confirmed=True)
+    else:
+        updated = db.set_campaign_metadata_keys(campaign_id, owner_id, {'session_zero_confirmed': True})
+    if not updated:
+        raise HTTPException(status_code=404, detail='Campaign not found or forbidden')
+    return {'ok': True, 'confirmed': True, 'campaign_contract': (updated.metadata_json or {}).get('campaign_contract', {})}
+
+
+@router.get('/{campaign_id}/contract/debug', response_model=Dict[str, Any])
+def get_campaign_contract_debug(campaign_id: str, current_user=Depends(get_current_user)):
+    user_id = _require_user_id(current_user)
+    c = db.get_campaign_by_id(campaign_id)
+    if not c:
+        raise HTTPException(status_code=404, detail='Campaign not found')
+    if c.owner_id != user_id and c.gm_user_id != user_id:
+        raise HTTPException(status_code=403, detail='Forbidden')
+    meta = c.metadata_json or {}
+    return {
+        'user_input': {
+            'settings': meta.get('settings', {}),
+            'variables': meta.get('variables', {}),
+            'imported_lore': meta.get('imported_lore', []),
+            'player_backstories': meta.get('player_backstories', []),
+        },
+        **(meta.get('campaign_contract_debug') or {}),
+    }
 
 
 @router.put('/{campaign_id}/gm')
@@ -660,6 +978,18 @@ def put_campaign_variables(
     updated = db.set_campaign_variables(campaign_id, owner_id, variables.model_dump())
     if not updated:
         raise HTTPException(status_code=404, detail='Campaign not found or forbidden')
+    try:
+        package = _contract_package_for_campaign(updated)
+        refreshed = _persist_contract_package(campaign_id, owner_id, package, confirmed=False)
+        if refreshed:
+            updated = refreshed
+    except Exception:
+        pass
     meta = updated.metadata_json or {}
     out = meta.get('variables') if isinstance(meta, dict) else {}
-    return {'variables': out if isinstance(out, dict) else {}}
+    return {
+        'variables': out if isinstance(out, dict) else {},
+        'campaign_interpretation': meta.get('campaign_interpretation') if isinstance(meta, dict) else None,
+        'campaign_contract': meta.get('campaign_contract') if isinstance(meta, dict) else None,
+        'session_zero': meta.get('session_zero') if isinstance(meta, dict) else None,
+    }

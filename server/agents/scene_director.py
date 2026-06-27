@@ -53,6 +53,7 @@ class SceneDirectorRequest(BaseModel):
     world_context_block: str = Field(default="")
     # Narrative Director guidance — overrides default pacing choices
     director_guidance: dict[str, Any] | None = None
+    campaign_contract: dict[str, Any] | None = None
 
 
 class LocationBlueprint(BaseModel):
@@ -100,16 +101,28 @@ def _deterministic_director(req: SceneDirectorRequest) -> SceneDirectorOutput:
     tone = (req.campaign_settings.get("tone")
             or req.campaign_variables.get("narrative_style")
             or "gritty")
+    world_name = str(req.campaign_settings.get("world_name") or "").strip()
+    setting_summary = str(req.campaign_settings.get("setting_summary") or "").strip()
+    contract = req.campaign_contract or {}
+    campaign_pitch = str(contract.get("campaign_pitch") or "").strip()
+    campaign_name = str(contract.get("campaign_name") or "").strip()
 
-    loc_name = req.candidate_locations[0] if req.candidate_locations else "The Wayward Lantern Inn"
-    npc_name = req.candidate_npcs[0] if req.candidate_npcs else ""
+    location_candidates = [
+        loc for loc in req.candidate_locations
+        if not (_is_tavernish(loc) and not _campaign_allows_tavern(req))
+    ]
+    loc_name = location_candidates[0] if location_candidates else (
+        world_name
+        or _location_from_text(campaign_name or campaign_pitch or setting_summary, genre)
+    )
+    npc_name = req.candidate_npcs[0] if req.candidate_npcs else _contact_from_text(campaign_name or setting_summary, genre)
 
     # Prefer active thread over hook over plot seed for conflict text
     thread = req.candidate_story_threads[0] if req.candidate_story_threads else ""
     hook = req.open_hooks[0] if req.open_hooks else ""
     recent = req.recent_events[0] if req.recent_events else ""
-    conflict_source = thread or hook or recent or (req.plot_seed[:150] if req.plot_seed else "")
-    conflict = conflict_source or f"Something has gone wrong at {loc_name} and word is spreading fast."
+    conflict_source = thread or hook or recent or (req.plot_seed[:180] if req.plot_seed else "") or campaign_pitch or setting_summary
+    conflict = conflict_source or f"A pressure point in {loc_name} has become impossible to ignore."
 
     # Derive a concrete inciting incident — never vague "disturbance" language
     if hook:
@@ -119,7 +132,7 @@ def _deterministic_director(req: SceneDirectorRequest) -> SceneDirectorOutput:
     elif recent:
         inciting = recent
     else:
-        inciting = f"The door to {loc_name} has just slammed open."
+        inciting = _inciting_from_context(loc_name, campaign_name or setting_summary, genre)
 
     # NPC detail from campaign memory if available
     npc_detail = {}
@@ -133,10 +146,7 @@ def _deterministic_director(req: SceneDirectorRequest) -> SceneDirectorOutput:
     if req.candidate_location_details:
         loc_detail = req.candidate_location_details[0]
     tension = loc_detail.get("current_tension") or ""
-    sensory = [
-        "The air smells of hearth smoke and damp stone.",
-        "Voices fall quiet as the door opens.",
-    ]
+    sensory = _sensory_from_context(loc_name, campaign_name or setting_summary, genre, tone)
     if tension:
         sensory.append(tension[:80])
 
@@ -145,7 +155,7 @@ def _deterministic_director(req: SceneDirectorRequest) -> SceneDirectorOutput:
         stakes_who = npc_name or "the people involved"
         stakes = f"{stakes_who} cannot wait past tonight — what happens next will set what comes after."
     else:
-        stakes = f"Every hour without an answer makes {npc_name or 'the situation'} harder to resolve."
+        stakes = f"Every delay gives the forces moving through {loc_name} more time to shape what happens next."
 
     # World moves — living-world events happening outside the immediate scene
     world_moves: list[str] = []
@@ -160,8 +170,8 @@ def _deterministic_director(req: SceneDirectorRequest) -> SceneDirectorOutput:
     # Fallback world moves that imply tension without being generic
     if not world_moves:
         world_moves = [
-            f"The road to {loc_name} has been quieter than usual.",
-            "Someone left in a hurry before you arrived.",
+            f"Rumors are already changing how people move through {loc_name}.",
+            "Someone with a stake in this moment is acting elsewhere right now.",
         ]
 
     visual_elements = [
@@ -193,14 +203,120 @@ def _deterministic_director(req: SceneDirectorRequest) -> SceneDirectorOutput:
         immediate_stakes=stakes,
         visual_prompt_elements=visual_elements,
         possible_actions=[
-            f"Ask {npc_name or 'someone'} what happened",
-            "Examine the object everyone is avoiding",
+            f"Ask {npc_name} what they know",
+            "Study the most obvious sign of trouble",
             "Watch who reacts strangely",
-            "Search the nearest exit for tracks",
+            "Look for a safer angle before acting",
         ],
         world_moves=world_moves[:4],
         source="deterministic",
     )
+
+
+def _location_from_text(text: str, genre: str) -> str:
+    hay = (text or "").lower()
+    if any(w in hay for w in ("ship", "station", "star", "void", "orbit", "alien")):
+        return "The Docking Concourse"
+    if any(w in hay for w in ("court", "crown", "throne", "noble", "palace")):
+        return "The Outer Court"
+    if any(w in hay for w in ("academy", "wizard", "arcane", "ritual", "spell")):
+        return "The Old Academy Gate"
+    if any(w in hay for w in ("forest", "wild", "woods", "grove")):
+        return "The Watchwood Edge"
+    if any(w in hay for w in ("ruin", "tomb", "crypt", "catacomb")):
+        return "The Broken Threshold"
+    if any(w in hay for w in ("city", "street", "guild", "market")):
+        return "The Market Ward"
+    if any(w in (genre or "").lower() for w in ("horror", "mystery")):
+        return "The Rain-dark Crossing"
+    return "The First Crossroads"
+
+
+def _contact_from_text(text: str, genre: str) -> str:
+    hay = (text or "").lower()
+    if any(w in hay for w in ("academy", "wizard", "arcane", "ritual")):
+        return "Archivist Sera"
+    if any(w in hay for w in ("court", "crown", "throne", "noble")):
+        return "Envoy Marrec"
+    if any(w in hay for w in ("ship", "station", "star", "alien")):
+        return "Quartermaster Vale"
+    if any(w in hay for w in ("forest", "wild", "woods")):
+        return "Ranger Elian"
+    if "horror" in (genre or "").lower():
+        return "Keeper Rook"
+    return "Mira Vale"
+
+
+def _inciting_from_context(location: str, text: str, genre: str) -> str:
+    hay = (text or "").lower()
+    if any(w in hay for w in ("mystery", "missing", "vanished", "secret")):
+        return f"At {location}, a missing piece of the truth has just surfaced in public view."
+    if any(w in hay for w in ("war", "siege", "battle", "invasion")):
+        return f"At {location}, the first visible consequence of the coming conflict arrives ahead of the soldiers."
+    if any(w in hay for w in ("survival", "winter", "storm", "scarcity")):
+        return f"At {location}, supplies, weather, and fear collide at the worst possible hour."
+    if "horror" in (genre or "").lower():
+        return f"At {location}, something ordinary behaves in a way no one can explain."
+    return f"At {location}, a local problem becomes urgent enough that waiting is no longer neutral."
+
+
+def _sensory_from_context(location: str, text: str, genre: str, tone: str) -> list[str]:
+    hay = " ".join([text or "", genre or "", tone or ""]).lower()
+    if any(w in hay for w in ("winter", "frost", "snow", "ice")):
+        return ["Cold air scrapes across exposed skin.", f"Frost has gathered along the edges of {location}."]
+    if any(w in hay for w in ("storm", "rain", "sea", "flood")):
+        return ["Rain ticks against every hard surface.", f"The ground around {location} shines with wet reflections."]
+    if any(w in hay for w in ("desert", "ash", "sun", "sand")):
+        return ["Dry grit catches in the throat.", f"Heat presses the color out of {location}."]
+    if any(w in hay for w in ("horror", "grim", "dark")):
+        return ["The air feels too still.", f"Every sound in {location} seems to arrive a heartbeat late."]
+    return ["The air is tense with held breath.", f"Small details around {location} suddenly feel important."]
+
+
+def _campaign_allows_tavern(req: SceneDirectorRequest) -> bool:
+    contract = req.campaign_contract or {}
+    hay = " ".join([
+        str(req.campaign_settings.get("world_name") or ""),
+        str(req.campaign_settings.get("setting_summary") or ""),
+        str(req.campaign_settings.get("starting_location") or ""),
+        str(req.campaign_variables.get("starting_location") or ""),
+        str(contract.get("campaign_name") or ""),
+        str(contract.get("campaign_pitch") or ""),
+        str((contract.get("campaign_dna") or {}).get("starting_promise") or ""),
+        str(req.plot_seed or ""),
+    ]).lower()
+    return any(w in hay for w in ("tavern", " inn", "inn ", "alehouse", "pub", "taproom"))
+
+
+def _is_tavernish(value: str) -> bool:
+    lowered = (value or "").lower()
+    return any(w in lowered for w in ("tavern", " inn", "alehouse", "flagon", "tankard", "taproom", "wayward", "lantern inn"))
+
+
+def _guard_against_unsupported_tavern(req: SceneDirectorRequest, out: SceneDirectorOutput) -> SceneDirectorOutput:
+    loc = out.location.name or ""
+    if not _is_tavernish(loc) or _campaign_allows_tavern(req):
+        return out
+    guarded = _deterministic_director(SceneDirectorRequest(
+        campaign_settings=req.campaign_settings,
+        campaign_variables=req.campaign_variables,
+        players=req.players,
+        plot_seed=req.plot_seed,
+        candidate_npcs=req.candidate_npcs,
+        candidate_npc_details=req.candidate_npc_details,
+        candidate_locations=[],
+        candidate_location_details=[],
+        candidate_factions=req.candidate_factions,
+        candidate_story_threads=req.candidate_story_threads,
+        candidate_thread_details=req.candidate_thread_details,
+        open_hooks=req.open_hooks,
+        recent_events=req.recent_events,
+        world_context_block=req.world_context_block,
+        director_guidance=req.director_guidance,
+        campaign_contract=req.campaign_contract,
+    ))
+    guarded.source = "deterministic_guard"
+    return guarded
 
 
 # ---------------------------------------------------------------------------
@@ -279,6 +395,19 @@ def direct_scene(req: SceneDirectorRequest) -> SceneDirectorOutput:
         ctx.append(f"Active factions: {', '.join(req.candidate_factions[:3])}")
     if req.world_context_block:
         ctx.append(req.world_context_block[:500])
+    if req.campaign_contract:
+        contract_text = str(req.campaign_contract.get("agent_output_contract") or "").strip()
+        canon = req.campaign_contract.get("canon_policy") or {}
+        creativity = req.campaign_contract.get("ai_creativity_policy") or {}
+        ui_policy = req.campaign_contract.get("ui_policy") or {}
+        if contract_text:
+            ctx.append("CAMPAIGN CONTRACT (mandatory operating agreement):\n" + contract_text[:1600])
+        ctx.append(
+            "CONTRACT POLICIES:\n"
+            f"  — Canon mode: {canon.get('mode', 'guided_canon')} / major invention: {canon.get('major_invention', 'ask_first')}\n"
+            f"  — AI creativity: {creativity.get('level', 'balanced')} / new elements per scene: {creativity.get('new_elements_per_scene', 2)}\n"
+            f"  — UI emphasis: {', '.join((ui_policy.get('primary_widgets') or [])[:6])}"
+        )
 
     # Inject Narrative Director guidance if provided
     if req.director_guidance:
@@ -302,6 +431,27 @@ def direct_scene(req: SceneDirectorRequest) -> SceneDirectorOutput:
             director_lines.append(f"TARGET STORY BEAT: {dg['next_story_beat']}")
         if dg.get("mystery_guidance"):
             director_lines.append(f"MYSTERY GUIDANCE: {dg['mystery_guidance']}")
+
+        # Hard opening constraints — pre-generated seed that must be used exactly
+        opening_lines = []
+        if dg.get("required_opening_location"):
+            opening_lines.append(f"REQUIRED LOCATION (use this exactly): {dg['required_opening_location']}")
+        if dg.get("required_opening_npc"):
+            opening_lines.append(f"REQUIRED NPC (use this exactly): {dg['required_opening_npc']}")
+        if dg.get("required_opening_event"):
+            opening_lines.append(f"REQUIRED INCITING EVENT (use this exactly): {dg['required_opening_event']}")
+        if dg.get("required_opening_stakes"):
+            opening_lines.append(f"REQUIRED STAKES (use this exactly): {dg['required_opening_stakes']}")
+        if dg.get("required_opening_decision"):
+            opening_lines.append(f"REQUIRED PLAYER DECISION (use this exactly): {dg['required_opening_decision']}")
+        if dg.get("required_opening_location_context"):
+            opening_lines.append(f"REQUIRED SETTING CONTEXT: {dg['required_opening_location_context']}")
+        if opening_lines:
+            ctx.append(
+                "OPENING SCENE CONSTRAINTS (mandatory — do not substitute, override, or ignore these):\n"
+                + "\n".join(f"  — {item}" for item in opening_lines)
+            )
+
         if director_lines:
             ctx.append("NARRATIVE DIRECTOR GUIDANCE (mandatory):\n" + "\n".join(f"  — {item}" for item in director_lines))
 
@@ -309,8 +459,8 @@ def direct_scene(req: SceneDirectorRequest) -> SceneDirectorOutput:
         "You are a tabletop RPG Scene Director. Your job: convert campaign context into ONE concrete, "
         "immediately playable opening scene. Every field must be specific and grounded.\n\n"
         "REQUIREMENTS (non-negotiable):\n"
-        f"  — location.name: a SPECIFIC named place from the context (or invent one that fits {genre})\n"
-        f"  — primary_npc.name: a SPECIFIC named character — not 'a stranger' or 'a mysterious figure'\n"
+        f"  — location.name: use the REQUIRED LOCATION from the opening constraints if provided; otherwise a SPECIFIC named place that fits {genre} — NEVER a tavern, inn, alehouse, or pub unless the campaign explicitly demands it\n"
+        f"  — primary_npc.name: use the REQUIRED NPC from the opening constraints if provided; otherwise a SPECIFIC named character — not 'a stranger' or 'a mysterious figure'\n"
         "  — central_conflict: a visible, immediate situation — not a vague mood\n"
         "  — inciting_incident: what physically happens in the opening moments — a strong verb required\n"
         f"  — why_player_is_involved: personal, professional, or accidental reason {player_name} cannot ignore this\n"
@@ -321,10 +471,16 @@ def direct_scene(req: SceneDirectorRequest) -> SceneDirectorOutput:
         "subtle signals of a world in motion (not generic atmosphere, not duplicates of the main conflict)\n\n"
         "CONTENT PRIORITY ORDER:\n"
         "  1. Active story threads  2. Open hooks  3. NPC goals  4. Faction plans  5. Location tensions  6. Invent only if nothing else exists\n\n"
+        "CAMPAIGN CONTRACT RULES:\n"
+        "  — Obey the campaign contract if provided. It outranks generic genre assumptions.\n"
+        "  — For strict canon, do not invent major factions, gods, cities, cosmology, or history; use provisional minor entities only.\n"
+        "  — For mystery campaigns, preserve unanswered questions and create concrete clues.\n"
+        "  — For high-agency campaigns, include multiple plausible approaches.\n\n"
         "FORBIDDEN — never write:\n"
         + "\n".join(f"  — \"{p}\"" for p in FORBIDDEN_GENERIC)
         + "\n  — 'if no one acts' or 'the situation will worsen' — stakes must be concrete, not conditional warnings"
         + "\n  — 'a disturbance' — name the specific event"
+        + "\n  — tavern or inn as the default invented location when no tavern context exists"
         + "\n\nReturn ONLY valid JSON — no markdown fences, no preamble, no commentary:\n"
         + _SCHEMA
     )
@@ -344,7 +500,7 @@ def direct_scene(req: SceneDirectorRequest) -> SceneDirectorOutput:
                 data = json.loads(raw[start:end])
                 loc = data.get("location") or {}
                 npc = data.get("primary_npc") or {}
-                return SceneDirectorOutput(
+                output = SceneDirectorOutput(
                     scene_title=str(data.get("scene_title") or ""),
                     scene_type=str(data.get("scene_type") or "opening"),
                     location=LocationBlueprint(
@@ -372,10 +528,11 @@ def direct_scene(req: SceneDirectorRequest) -> SceneDirectorOutput:
                     world_moves=[str(w) for w in (data.get("world_moves") or [])],
                     source="llm",
                 )
+                return _guard_against_unsupported_tavern(req, output)
     except Exception:
         pass
 
-    return _deterministic_director(req)
+    return _guard_against_unsupported_tavern(req, _deterministic_director(req))
 
 
 def build_image_prompt(sd: SceneDirectorOutput, style: str = "realistic", weather: str = "clear", time_of_day: str = "day") -> str:

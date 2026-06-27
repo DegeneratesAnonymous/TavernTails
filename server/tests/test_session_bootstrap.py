@@ -118,6 +118,48 @@ def test_player_run_mode_bootstrap_skips_ai():
     assert "Player-run mode" in scene["text"]
 
 
+def test_start_session_uses_campaign_contract_not_wayward_lantern_fallback():
+    client = _client()
+    owner = "bootstrap-contract-start@example.com"
+    _ensure_user(owner)
+    user = db.get_user_by_identifier(owner)
+    assert user and user.id is not None
+
+    campaign = db.create_campaign(
+        owner_id=user.id,
+        name="Stars Over Glass Harbor",
+        description="A political sci-fi mystery about smugglers, missing diplomats, and an orbital harbor.",
+    )
+    assert campaign.id is not None
+    db.set_campaign_settings(campaign.id, user.id, {
+        "genre": "sci-fi mystery",
+        "tone": "political thriller",
+        "setting_summary": "Glass Harbor is an orbital trade station full of sabotage and faction intrigue.",
+        "world_name": "Glass Harbor",
+        "ruleset": "starfinder",
+        "starting_level": 3,
+        "creation_posture": "guided_builder",
+    })
+    sid, _meta = sessions_module.create_session_folder(campaign.name, owner, campaign_id=campaign.id)
+
+    token = create_access_token(owner)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    resp = client.post(f"/sessions/{sid}/start", headers=headers, json={})
+    assert resp.status_code == 200, resp.text
+    scene = resp.json()["scene"]
+    scene_blob = json.dumps(scene).lower()
+
+    assert scene["location"] == "Glass Harbor"
+    assert "glass harbor" in scene_blob
+    assert "wayward" not in scene_blob
+    assert "torven" not in scene_blob
+    assert "mara vell" not in scene_blob
+    assert "cracked lantern" not in scene_blob
+    assert "harness leather" not in scene_blob
+    assert "fantasy environment art" not in scene_blob
+
+
 def test_player_run_mode_content_advance_skips_ai():
     client = _client()
     owner = "advance-player-run@example.com"

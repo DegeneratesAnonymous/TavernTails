@@ -97,7 +97,7 @@ export default function GameplayLayout({
   const [rightTab, setRightTab] = useState<'character' | 'journal' | 'world'>('character')
   const [sessionMode, setSessionMode] = useState<'read' | 'play' | 'world'>('play')
   const [focusMode, setFocusMode] = useState(false)
-  const [mobileTab, setMobileTab] = useState<'story' | 'resolution' | 'action' | 'character' | 'world'>('story')
+  const [mobileTab, setMobileTab] = useState<'story' | 'action' | 'character' | 'journal' | 'world'>('story')
   const [drawerView, setDrawerView] = useState<'site' | 'panels' | 'party' | 'documents'>('panels')
   const [partySelectedId, setPartySelectedId] = useState<string | null>(null)
   const [showInviteForm, setShowInviteForm] = useState(false)
@@ -156,6 +156,20 @@ export default function GameplayLayout({
     storyThreads?: Array<{title?: string; status?: string; last_update?: string}>
     relationshipsChanged?: any[]
   }>({})
+
+  // Situation-aware UI payload (from content bundle)
+  const [uiPayload, setUiPayload] = useState<Record<string, any>>({})
+  const [situationType, setSituationType] = useState<string>('')
+  const [resolutionState, setResolutionState] = useState<string>('idle')
+
+  // Developer debug overlay
+  const [debugPayload, setDebugPayload] = useState<Record<string, any>>({})
+  const [showDebugOverlay, setShowDebugOverlay] = useState(false)
+
+  // Read Mode drawers
+  const [readLeftOpen, setReadLeftOpen] = useState(false)
+  const [readRightOpen, setReadRightOpen] = useState(false)
+
   const [situationOpen, setSituationOpen] = useState(false)
   const [worldMovesOpen, setWorldMovesOpen] = useState(false)
   const [rollToolsOpen, setRollToolsOpen] = useState(false)
@@ -414,7 +428,7 @@ export default function GameplayLayout({
     }
   },[sessionId, suggestions, campaignTitle])
 
-  const doAdvanceScene = useCallback(async () => {
+  const doAdvanceScene = useCallback(async (openingApproach?: string) => {
     if (!sessionId) return
     setPhase('advancing')
     setPhaseLabel('Analysing player actions…')
@@ -423,7 +437,9 @@ export default function GameplayLayout({
     const labelTimer = window.setTimeout(() => setPhaseLabel('Directing the scene…'), 8000)
     const labelTimer2 = window.setTimeout(() => setPhaseLabel('Writing the narrative…'), 22000)
     try {
-      const res = await apiFetch(`/sessions/${sessionId}/advance-scene`, { method: 'POST', body: JSON.stringify({}) })
+      const body: Record<string, unknown> = {}
+      if (openingApproach) body.opening_approach = openingApproach
+      const res = await apiFetch(`/sessions/${sessionId}/advance-scene`, { method: 'POST', body: JSON.stringify(body) })
       if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d?.detail || d?.error || 'Failed to advance scene') }
       const data = await res.json()
       if (data?.scene && typeof data.scene === 'object') {
@@ -436,6 +452,24 @@ export default function GameplayLayout({
       if (data?.context_debug) setContextDebug(data.context_debug)
       if (data?.simulation_debug) setContextDebug((prev: any) => ({ ...(prev || {}), simulation: data.simulation_debug }))
       if (data?.story_debug) setStoryDebug(data.story_debug)
+      // Capture full debug payload for developer overlay
+      if (data?.simulation_debug || data?.ui_payload || data?.situation_type) {
+        setDebugPayload({
+          campaign_contract: data?.simulation_debug?.campaign_contract || {},
+          world_tick: data?.simulation_debug?.time_resolver || {},
+          simulation_delta: data?.simulation_debug?.simulation_delta || {},
+          situation_type: data?.situation_type || '',
+          situation_classification: data?.situation_classification || {},
+          content_bundle: data?.simulation_debug?.content_bundle || {},
+          situation_validation: data?.simulation_debug?.content_bundle?.validation_result || {},
+          director_output: data?.simulation_debug?.director_guidance || {},
+          narrative_validation: data?.simulation_debug?.scene_validator || {},
+          memory_delta: data?.simulation_debug?.memory_delta || {},
+          canon_changes: data?.simulation_debug?.canon_changes || {},
+          canon_validation: data?.canon_validation || {},
+          ui_payload: data?.ui_payload || {},
+        })
+      }
       if (data?.simulation_debug?.scene_validator?.score !== undefined) {
         setSceneQuality({
           score: data.simulation_debug.scene_validator.score,
@@ -458,6 +492,20 @@ export default function GameplayLayout({
       setPhaseLabel('')
     }
   }, [sessionId])
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const label = String((event as CustomEvent).detail?.label || '').trim()
+      if (!label) return
+      doAdvanceScene(label)
+    }
+    // @ts-ignore
+    window.addEventListener('narrative:start-approach', handler)
+    return () => {
+      // @ts-ignore
+      window.removeEventListener('narrative:start-approach', handler)
+    }
+  }, [doAdvanceScene])
 
   const triggerCueRoll = React.useCallback(async (cue: SceneCue) => {
     if(!sessionId) throw new Error('Session not active')
@@ -498,6 +546,12 @@ export default function GameplayLayout({
       setExperienceMode(s.experience_mode || 'quiet_scene')
       setMemoryUpdates(s.memory_updates || null)
       if(Array.isArray(s.dice_rolls) && s.dice_rolls.length) setDiceRolls(s.dice_rolls)
+      if (s.ui_payload && typeof s.ui_payload === 'object') setUiPayload(s.ui_payload)
+      if (s.full_ui_payload && typeof s.full_ui_payload === 'object') {
+        const rp = s.full_ui_payload.resolution_panel || {}
+        if (rp.state) setResolutionState(rp.state)
+      }
+      if (s.situation_type) setSituationType(s.situation_type)
       setSituation({
         location: s.visual_state?.location_name || s.location || s.image?.location || '',
         weather: clock.weather || s.weather || '',
@@ -1118,6 +1172,15 @@ export default function GameplayLayout({
                 Focus
               </button>
               <button
+                className={`session-debug-btn ${showDebugOverlay ? 'active' : ''}`}
+                type="button"
+                onClick={() => setShowDebugOverlay(v => !v)}
+                aria-pressed={showDebugOverlay}
+                title="Developer debug overlay"
+              >
+                Debug
+              </button>
+              <button
                 className={`notification-bell ${notificationsPending ? 'notification-bell--pending' : ''}`}
                 type="button"
                 aria-label={notificationsPending ? 'Unread notifications' : 'No notifications'}
@@ -1266,7 +1329,7 @@ export default function GameplayLayout({
                 <button
                   className="btn btn-secondary btn-sm"
                   type="button"
-                  onClick={doAdvanceScene}
+                  onClick={() => doAdvanceScene()}
                 >
                   Force Advance
                 </button>
@@ -1300,6 +1363,80 @@ export default function GameplayLayout({
                     focusMode={focusMode}
                     onExitRead={() => setSessionMode('play')}
                   />
+
+                  {/* World Mode archive dashboard */}
+                  {sessionMode === 'world' && (
+                    <div className="archive-dashboard">
+                      <div className="archive-dashboard-header">
+                        <h2 className="archive-dashboard-title">Campaign Archive</h2>
+                        <span className="archive-dashboard-subtitle">Entities, threads, and clues encountered so far</span>
+                      </div>
+                      {/* Recently updated */}
+                      {memoryUpdates && (memoryUpdates.new_npcs?.length > 0 || memoryUpdates.new_locations?.length > 0 || memoryUpdates.new_clues?.length > 0) ? (
+                        <section className="archive-section">
+                          <h3 className="archive-section-title">Recently discovered</h3>
+                          <div className="archive-card-grid">
+                            {(memoryUpdates.new_npcs || []).slice(0, 4).map((npc: any, i: number) => (
+                              <div key={`npc-${i}`} className="archive-card archive-card--npc">
+                                <span className="archive-card-type">NPC</span>
+                                <strong className="archive-card-name">{typeof npc === 'string' ? npc : npc?.name || '—'}</strong>
+                                {typeof npc === 'object' && npc?.role ? <span className="archive-card-detail">{npc.role}</span> : null}
+                                <span className={`archive-card-status archive-card-status--${typeof npc === 'object' ? (npc.canon_status || 'provisional') : 'provisional'}`}>
+                                  {typeof npc === 'object' ? (npc.canon_status || 'provisional') : 'provisional'}
+                                </span>
+                              </div>
+                            ))}
+                            {(memoryUpdates.new_locations || []).slice(0, 4).map((loc: any, i: number) => (
+                              <div key={`loc-${i}`} className="archive-card archive-card--location">
+                                <span className="archive-card-type">Location</span>
+                                <strong className="archive-card-name">{typeof loc === 'string' ? loc : loc?.name || '—'}</strong>
+                                {typeof loc === 'object' && loc?.type ? <span className="archive-card-detail">{loc.type}</span> : null}
+                                <span className="archive-card-status archive-card-status--provisional">provisional</span>
+                              </div>
+                            ))}
+                            {(memoryUpdates.new_clues || []).slice(0, 3).map((clue: string, i: number) => (
+                              <div key={`clue-${i}`} className="archive-card archive-card--clue">
+                                <span className="archive-card-type">Clue</span>
+                                <strong className="archive-card-name">{clue}</strong>
+                                <span className="archive-card-status archive-card-status--canon">discovered</span>
+                              </div>
+                            ))}
+                          </div>
+                        </section>
+                      ) : null}
+                      {/* Active threads */}
+                      {situation.threads && situation.threads.length > 0 ? (
+                        <section className="archive-section">
+                          <h3 className="archive-section-title">Active threads</h3>
+                          <div className="archive-card-grid">
+                            {situation.threads.slice(0, 6).map((thread: string, i: number) => (
+                              <div key={i} className="archive-card archive-card--thread">
+                                <span className="archive-card-type">Thread</span>
+                                <strong className="archive-card-name">{thread}</strong>
+                              </div>
+                            ))}
+                          </div>
+                        </section>
+                      ) : null}
+                      {/* Current scene summary in world mode */}
+                      {situation.currentObjective ? (
+                        <section className="archive-section">
+                          <h3 className="archive-section-title">Current scene</h3>
+                          <div className="archive-scene-summary">
+                            {situation.currentObjective ? <div className="archive-summary-row"><span>Objective</span><strong>{situation.currentObjective}</strong></div> : null}
+                            {situation.location ? <div className="archive-summary-row"><span>Location</span><strong>{situation.location}</strong></div> : null}
+                            {situation.stakes ? <div className="archive-summary-row"><span>Stakes</span><strong>{situation.stakes}</strong></div> : null}
+                            {situationType ? <div className="archive-summary-row"><span>Situation</span><strong>{situationType.replace(/_/g, ' ')}</strong></div> : null}
+                          </div>
+                        </section>
+                      ) : null}
+                      {!memoryUpdates && !situation.currentObjective ? (
+                        <div className="archive-empty">
+                          <p>No data yet. Archive updates after each scene.</p>
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
 
                   {/* Situation strip — current context at a glance */}
                   {(situation.location || situation.mood || situation.currentObjective || (situation.threads && situation.threads.length > 0)) && (
@@ -1529,7 +1666,174 @@ export default function GameplayLayout({
                       </section>
                     ) : null}
 
-                    {situation.visibleClues && situation.visibleClues.length > 0 ? (
+                    {/* Opening / New Scene Bundle */}
+                    {(situationType === 'campaign_opening' || situationType === 'new_scene_opening') && uiPayload.objective ? (
+                      <section className="resolution-section resolution-opening">
+                        <span className="resolution-section-label">Scene hook</span>
+                        {uiPayload.objective ? (
+                          <div className="resolution-row">
+                            <span>Problem</span>
+                            <strong>{uiPayload.objective}</strong>
+                          </div>
+                        ) : null}
+                        {uiPayload.key_npc ? (
+                          <div className="resolution-row">
+                            <span>Key NPC</span>
+                            <strong>{uiPayload.key_npc}</strong>
+                          </div>
+                        ) : null}
+                        {uiPayload.starting_question ? (
+                          <div className="resolution-row resolution-row--question">
+                            <span>First question</span>
+                            <strong>{uiPayload.starting_question}</strong>
+                          </div>
+                        ) : null}
+                        {Array.isArray(uiPayload.suggested_first_actions) && uiPayload.suggested_first_actions.length > 0 ? (
+                          <div className="resolution-lead-list">
+                            {uiPayload.suggested_first_actions.slice(0, 3).map((action: string, i: number) => (
+                              <button key={i} type="button" className="resolution-lead" onClick={() => setActionDraft(action)}>
+                                {action}
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                      </section>
+                    ) : null}
+
+                    {/* Combat Bundle */}
+                    {(situationType === 'combat_setup' || situationType === 'combat_round') && (uiPayload.enemy_cards?.length > 0 || uiPayload.victory_conditions?.length > 0) ? (
+                      <section className="resolution-section resolution-combat">
+                        <span className="resolution-section-label">Encounter</span>
+                        {Array.isArray(uiPayload.enemy_cards) && uiPayload.enemy_cards.map((card: any, i: number) => (
+                          <div key={i} className="resolution-enemy-card">
+                            <span className="resolution-enemy-name">{card.name}</span>
+                            {card.hp != null ? <span className="resolution-enemy-stat">HP {card.hp}</span> : null}
+                            {card.ac != null ? <span className="resolution-enemy-stat">AC {card.ac}</span> : null}
+                            {card.tactics ? <span className="resolution-enemy-tactics">{card.tactics}</span> : null}
+                          </div>
+                        ))}
+                        {Array.isArray(uiPayload.terrain_features) && uiPayload.terrain_features.length > 0 ? (
+                          <div className="resolution-row">
+                            <span>Terrain</span>
+                            <strong>{uiPayload.terrain_features.slice(0, 2).join(', ')}</strong>
+                          </div>
+                        ) : null}
+                        {Array.isArray(uiPayload.non_combat_options) && uiPayload.non_combat_options.length > 0 ? (
+                          <div className="resolution-row">
+                            <span>Alternatives</span>
+                            <strong>{uiPayload.non_combat_options.slice(0, 3).join(' · ')}</strong>
+                          </div>
+                        ) : null}
+                      </section>
+                    ) : null}
+
+                    {/* Dialogue / Interrogation / Social Bundle */}
+                    {(situationType === 'interrogation' || situationType === 'social_conflict' || situationType === 'conversation' || situationType === 'npc_reappearance') && uiPayload.npc_name ? (
+                      <section className="resolution-section resolution-dialogue">
+                        <span className="resolution-section-label">
+                          {situationType === 'interrogation' ? 'Interrogation' : situationType === 'social_conflict' ? 'Social conflict' : 'Conversation'}
+                        </span>
+                        <div className="resolution-row">
+                          <span>{uiPayload.npc_name}</span>
+                          <strong className={`resolution-attitude resolution-attitude--${uiPayload.npc_attitude || 'neutral'}`}>
+                            {uiPayload.npc_attitude || 'neutral'}
+                          </strong>
+                        </div>
+                        {uiPayload.npc_goal ? (
+                          <div className="resolution-row">
+                            <span>Wants</span>
+                            <strong>{uiPayload.npc_goal}</strong>
+                          </div>
+                        ) : null}
+                        {Array.isArray(uiPayload.known_leverage) && uiPayload.known_leverage.length > 0 ? (
+                          <div className="resolution-row">
+                            <span>Leverage</span>
+                            <strong>{uiPayload.known_leverage.slice(0, 2).join(', ')}</strong>
+                          </div>
+                        ) : null}
+                        {Array.isArray(uiPayload.possible_checks) && uiPayload.possible_checks.length > 0 ? (
+                          <div className="resolution-lead-list">
+                            {uiPayload.possible_checks.slice(0, 3).map((check: string, i: number) => (
+                              <button key={i} type="button" className="resolution-lead"
+                                onClick={() => setActionDraft(`I attempt ${check} against ${uiPayload.npc_name}`)}>
+                                {check}
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                      </section>
+                    ) : null}
+
+                    {/* Investigation Bundle */}
+                    {(situationType === 'investigation' || situationType === 'mystery_reveal') && (uiPayload.mystery_question || (uiPayload.visible_clues?.length > 0)) ? (
+                      <section className="resolution-section resolution-investigation">
+                        <span className="resolution-section-label">Investigation</span>
+                        {uiPayload.mystery_question ? (
+                          <div className="resolution-row resolution-row--question">
+                            <span>Question</span>
+                            <strong>{uiPayload.mystery_question}</strong>
+                          </div>
+                        ) : null}
+                        {Array.isArray(uiPayload.visible_clues) && uiPayload.visible_clues.length > 0 ? (
+                          <div className="resolution-lead-list">
+                            {uiPayload.visible_clues.slice(0, 4).map((clue: string, i: number) => (
+                              <button key={i} type="button" className="resolution-lead"
+                                onClick={() => setActionDraft(`I examine ${clue}`)}>
+                                {clue}
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                        {uiPayload.time_pressure ? (
+                          <div className="resolution-row resolution-row--urgent">
+                            <span>Time pressure</span>
+                            <strong>{uiPayload.time_pressure}</strong>
+                          </div>
+                        ) : null}
+                      </section>
+                    ) : null}
+
+                    {/* Travel Bundle */}
+                    {(situationType === 'travel' || situationType === 'arrival' || situationType === 'return_to_known_location') && uiPayload.destination ? (
+                      <section className="resolution-section resolution-travel">
+                        <span className="resolution-section-label">
+                          {situationType === 'return_to_known_location' ? 'Return' : situationType === 'arrival' ? 'Arrival' : 'Travel'}
+                        </span>
+                        {uiPayload.destination ? (
+                          <div className="resolution-row">
+                            <span>Heading to</span>
+                            <strong>{uiPayload.destination}</strong>
+                          </div>
+                        ) : null}
+                        {uiPayload.travel_time ? (
+                          <div className="resolution-row">
+                            <span>Est. time</span>
+                            <strong>{uiPayload.travel_time}</strong>
+                          </div>
+                        ) : null}
+                        {uiPayload.weather ? (
+                          <div className="resolution-row">
+                            <span>Weather</span>
+                            <strong>{uiPayload.weather}</strong>
+                          </div>
+                        ) : null}
+                        {uiPayload.encounter_risk && uiPayload.encounter_risk !== 'low' ? (
+                          <div className="resolution-row resolution-row--urgent">
+                            <span>Road risk</span>
+                            <strong>{uiPayload.encounter_risk}</strong>
+                          </div>
+                        ) : null}
+                        {uiPayload.what_changed ? (
+                          <div className="resolution-row">
+                            <span>Changed</span>
+                            <strong>{uiPayload.what_changed}</strong>
+                          </div>
+                        ) : null}
+                      </section>
+                    ) : null}
+
+                    {/* Legacy: investigation leads from situation strip (fallback when no bundle) */}
+                    {!uiPayload.visible_clues && situation.visibleClues && situation.visibleClues.length > 0 ? (
                       <section className="resolution-section">
                         <span className="resolution-section-label">Investigation leads</span>
                         <div className="resolution-lead-list">
@@ -1641,8 +1945,8 @@ export default function GameplayLayout({
                       roster={playerStats ? [playerStats] : []}
                       selectedId={playerStats ? String(playerStats.id) : null}
                       showRoster={false}
-                      sceneCues={sceneCues}
-                      npcSpotlight={npcSpotlight}
+                      sceneCues={[]}
+                      npcSpotlight={[]}
                       onCueRoll={triggerCueRoll}
                       onGoToCharacters={onGoToCharacters}
                       onGoToImport={onGoToImport}
@@ -1679,8 +1983,8 @@ export default function GameplayLayout({
                   roster={playerStats ? [playerStats] : []}
                   selectedId={playerStats ? String(playerStats.id) : null}
                   showRoster={false}
-                  sceneCues={sceneCues}
-                  npcSpotlight={npcSpotlight}
+                  sceneCues={[]}
+                  npcSpotlight={[]}
                   onCueRoll={triggerCueRoll}
                   onGoToCharacters={onGoToCharacters}
                   onGoToImport={onGoToImport}
@@ -1823,9 +2127,9 @@ export default function GameplayLayout({
           <nav className="mobile-session-nav" aria-label="Session sections">
             {([
               ['story', 'Story'],
-              ['resolution', 'Resolve'],
               ['action', 'Action'],
               ['character', 'Character'],
+              ['journal', 'Journal'],
               ['world', 'World'],
             ] as const).map(([key, label]) => (
               <button
@@ -1841,6 +2145,7 @@ export default function GameplayLayout({
                   }
                   if (sessionMode === 'world') setSessionMode('play')
                   if (key === 'character') setRightTab('character')
+                  if (key === 'journal') setRightTab('journal')
                 }}
               >
                 {label}
@@ -1897,6 +2202,103 @@ export default function GameplayLayout({
           ) : null}
         </>
       ) : null}
+
+      {/* Pipeline Debug Overlay */}
+      {showDebugOverlay ? (
+        <div className="debug-overlay" role="dialog" aria-label="Pipeline debug overlay">
+          <div className="debug-overlay-header">
+            <strong>Pipeline Inspector</strong>
+            <button className="debug-overlay-close" type="button" onClick={() => setShowDebugOverlay(false)}>✕</button>
+          </div>
+          <div className="debug-overlay-body">
+            {[
+              { label: 'Situation Type', value: debugPayload.situation_type || situationType || '—' },
+              { label: 'Resolution State', value: resolutionState || '—' },
+            ].map(row => (
+              <div key={row.label} className="debug-row">
+                <span className="debug-row-label">{row.label}</span>
+                <span className="debug-row-value">{row.value}</span>
+              </div>
+            ))}
+            {[
+              { label: 'Situation Classification', data: debugPayload.situation_classification },
+              { label: 'Content Bundle', data: debugPayload.content_bundle },
+              { label: 'Situation Validation', data: debugPayload.situation_validation },
+              { label: 'Simulation Delta', data: debugPayload.simulation_delta },
+              { label: 'Narrative Validation', data: debugPayload.narrative_validation },
+              { label: 'Memory Delta', data: debugPayload.memory_delta },
+              { label: 'Canon Validation', data: debugPayload.canon_validation },
+              { label: 'Canon Changes', data: debugPayload.canon_changes },
+              { label: 'Campaign Contract', data: debugPayload.campaign_contract },
+              { label: 'Director Output', data: debugPayload.director_output },
+              { label: 'UI Payload', data: debugPayload.ui_payload },
+            ].map(section => section.data && Object.keys(section.data).length > 0 ? (
+              <details key={section.label} className="debug-section">
+                <summary className="debug-section-title">{section.label}</summary>
+                <pre className="debug-section-body">{JSON.stringify(section.data, null, 2)}</pre>
+              </details>
+            ) : null)}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Read Mode — Left Drawer (Character / Party) */}
+      {sessionMode === 'read' && (
+        <>
+          <button
+            className={`read-drawer-toggle read-drawer-toggle--left ${readLeftOpen ? 'active' : ''}`}
+            type="button"
+            onClick={() => setReadLeftOpen(v => !v)}
+            aria-label="Character drawer"
+          >
+            {readLeftOpen ? '◀ Character' : '▶'}
+          </button>
+          {readLeftOpen ? (
+            <aside className="read-drawer read-drawer--left" aria-label="Character">
+              <div className="read-drawer-header">
+                <strong>Character</strong>
+                <button type="button" onClick={() => setReadLeftOpen(false)}>✕</button>
+              </div>
+              <div className="read-drawer-body">
+                <CharacterPanel
+                  title="Your character"
+                  roster={playerStats ? [playerStats] : []}
+                  selectedId={playerStats ? String(playerStats.id) : null}
+                  showRoster={false}
+                  sceneCues={[]}
+                  npcSpotlight={[]}
+                  onCueRoll={triggerCueRoll}
+                  onGoToCharacters={onGoToCharacters}
+                  onGoToImport={onGoToImport}
+                  onSheetUpdate={handleSheetUpdate}
+                  onQuickAction={handleQuickAction}
+                />
+              </div>
+            </aside>
+          ) : null}
+
+          <button
+            className={`read-drawer-toggle read-drawer-toggle--right ${readRightOpen ? 'active' : ''}`}
+            type="button"
+            onClick={() => setReadRightOpen(v => !v)}
+            aria-label="Journal drawer"
+          >
+            {readRightOpen ? 'Journal ▶' : '◀'}
+          </button>
+          {readRightOpen ? (
+            <aside className="read-drawer read-drawer--right" aria-label="Journal">
+              <div className="read-drawer-header">
+                <strong>Journal</strong>
+                <button type="button" onClick={() => setReadRightOpen(false)}>✕</button>
+              </div>
+              <div className="read-drawer-body">
+                <JournalPanel sessionId={sessionId || null} memoryUpdates={memoryUpdates} />
+                <SessionDayLog sessionId={sessionId || null} />
+              </div>
+            </aside>
+          ) : null}
+        </>
+      )}
     </div>
   )
 }

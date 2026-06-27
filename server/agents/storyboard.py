@@ -248,7 +248,7 @@ def generate_plot(payload: StoryboardPlotRequest) -> StoryboardPlotResponse:
                 "You are a tabletop RPG campaign architect. Write a SPECIFIC, GROUNDED plot seed "
                 f"(2–3 sentences, max 80 words) for the opening of this {genre} session.\n\n"
                 "Requirements:\n"
-                "  — Name a SPECIFIC location from the context (or invent one that fits)\n"
+                "  — Name a SPECIFIC location from the context (or invent one that fits) — do NOT default to a tavern or inn unless the context mentions one\n"
                 "  — Name a SPECIFIC NPC from the context (or invent one with a real name)\n"
                 "  — Describe what is ACTIVELY HAPPENING right now — a concrete event, not a vague mood\n"
                 "  — Create immediate urgency or tension\n"

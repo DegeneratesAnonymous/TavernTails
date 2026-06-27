@@ -245,7 +245,7 @@ export default function JournalPanel({ sessionId, memoryUpdates }: Props) {
           ['people', 'People'],
           ['places', 'Places'],
           ['threads', 'Threads'],
-          ['clues', 'Clues'],
+          ['clues', 'Noteworthy'],
           ['timeline', 'Timeline'],
           ['notes', 'Notes'],
           ['factions', 'Factions'],
