@@ -1264,14 +1264,18 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     ]
     mem_hook_texts = [h.get('title', '') for h in mem_hooks if h.get('title')]
     mem_event_texts = [c.get('summary', '') for c in mem_changes if c.get('summary')]
+    _tavern_words = {"tavern", "inn", "alehouse", "flagon", "tankard", "wayward", "lantern"}
+    usable_mem_loc_names = [
+        loc for loc in mem_loc_names
+        if not any(w in loc.lower() for w in _tavern_words)
+    ]
 
     candidate_npcs = (mem_npc_names or plot_result.candidate_npcs)
     # Filter tavern defaults from storyboard-generated location candidates — the
     # Storyboard LLM may invent a tavern for new campaigns with no context,
     # and those names must not reach the Scene Director or the _has_location_context check.
-    _tavern_words = {"tavern", "inn", "alehouse", "flagon", "tankard", "wayward", "lantern"}
     candidate_locations = [
-        loc for loc in (mem_loc_names or plot_result.candidate_locations)
+        loc for loc in (usable_mem_loc_names or plot_result.candidate_locations)
         if not any(w in loc.lower() for w in _tavern_words)
     ]
     candidate_threads = (mem_thread_texts or plot_result.candidate_story_threads)
@@ -1289,7 +1293,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     # Only treat "real" campaign context as location context — NOT storyboard-generated
     # candidate_locations, which are LLM outputs that default to taverns for new campaigns.
     _has_location_context = bool(
-        mem_loc_names
+        usable_mem_loc_names
         or (campaign_settings or {}).get("starting_location")
         or (campaign_contract.get("campaign_dna") or {}).get("starting_location")
         or (campaign_contract.get("world_contract") or {}).get("known_starting_location")
