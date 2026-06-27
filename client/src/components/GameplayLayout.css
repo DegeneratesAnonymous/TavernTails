@@ -1252,8 +1252,8 @@
   border-top: 1px solid var(--tt-border, #2a2a3e);
   background: var(--tt-bg, #0d0d14);
   flex-shrink: 0;
-  min-height: 154px;
-  max-height: clamp(170px, 24vh, 245px);
+  min-height: 190px;
+  max-height: clamp(250px, 30vh, 330px);
 }
 
 .action-console{
@@ -1266,8 +1266,8 @@
 }
 
 .session-mode-play .action-console{
-  min-height: 166px;
-  max-height: clamp(170px, 22vh, 230px);
+  min-height: 200px;
+  max-height: clamp(260px, 31vh, 340px);
 }
 
 .scene-summary-strip{
@@ -1426,8 +1426,37 @@
   max-height: clamp(150px, 24vh, 270px);
 }
 
-.action-console .chat-messages-wrapper,
+.action-console .chat-messages-wrapper{
+  min-height: 62px;
+  max-height: 118px;
+  border-top: 1px solid rgba(245,200,66,0.1);
+}
+
+.action-console .chat-messages{
+  padding: 7px 14px;
+  gap: 6px;
+}
+
 .action-console .chat-empty-state{
+  display: block;
+  padding: 7px 14px 8px;
+  color: rgba(255,255,255,0.34);
+  font-size: 12px;
+  font-style: italic;
+}
+
+.action-console .chat-msg--gm{
+  padding: 7px 10px;
+}
+
+.action-console .chat-msg-gm-text,
+.action-console .chat-msg-bubble{
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.action-console--chat-collapsed .chat-messages-wrapper,
+.action-console--chat-collapsed .chat-empty-state{
   display: none;
 }
 

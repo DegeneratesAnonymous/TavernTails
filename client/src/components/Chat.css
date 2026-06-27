@@ -126,6 +126,88 @@
   position: relative;
 }
 
+.chat-compact-log {
+  width: 100%;
+  display: grid;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 0;
+  border-top: 1px solid rgba(245, 200, 66, 0.12);
+  border-bottom: 1px solid rgba(245, 200, 66, 0.12);
+  background: rgba(245, 200, 66, 0.055);
+  color: rgba(255, 255, 255, 0.78);
+  text-align: left;
+  cursor: pointer;
+}
+
+.chat-compact-log:hover,
+.chat-compact-log:focus-visible {
+  background: rgba(245, 200, 66, 0.09);
+  outline: none;
+}
+
+.chat-compact-log-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  color: rgba(245, 200, 66, 0.82);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.chat-compact-log-header strong {
+  min-width: 24px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.28);
+  color: rgba(255, 255, 255, 0.76);
+  text-align: center;
+  font-size: 10px;
+}
+
+.chat-compact-log-items {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 10px;
+  overflow: hidden;
+}
+
+.chat-compact-line {
+  min-width: 0;
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.chat-compact-line b {
+  flex: 0 0 auto;
+  color: rgba(255, 255, 255, 0.52);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.chat-compact-line span,
+.chat-compact-empty {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-compact-line--you b {
+  color: rgba(245, 200, 66, 0.82);
+}
+
+.chat-compact-line--gm b {
+  color: rgba(137, 180, 250, 0.82);
+}
+
 .chat-messages {
   flex: 1;
   min-height: 0;

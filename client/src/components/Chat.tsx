@@ -38,6 +38,9 @@ type Props = {
   composerInject?: string | null
   onComposerInjectConsumed?: () => void
   character?: CharacterSummary | null
+  compactLog?: boolean
+  onExpandLog?: () => void
+  onMessageSent?: () => void
 }
 
 // Resolve @tag to a roll result string. Returns original match if no roll needed.
@@ -126,7 +129,7 @@ const ADVANCED_TOOLS: AdvancedTool[] = [
 
 const ADVANCED_TOOLS_FOR_PANEL = ADVANCED_TOOLS.map((t) => ({ id: t.id, label: t.label, description: t.description }))
 
-export default function Chat({sessionId, variant = 'full', aboveComposer, currentUserId, composerInject, onComposerInjectConsumed, character}: Props){
+export default function Chat({sessionId, variant = 'full', aboveComposer, currentUserId, composerInject, onComposerInjectConsumed, character, compactLog = false, onExpandLog, onMessageSent}: Props){
   const [messages, setMessages] = useState<Msg[]>([])
   const [pinnedMessages, setPinnedMessages] = useState<Msg[]>([])
   const [value, setValue] = useState('')
@@ -295,6 +298,7 @@ export default function Chat({sessionId, variant = 'full', aboveComposer, curren
       const saved = await res.json()
       appendMessage({ id: saved.id, who:'you', text:saved.message, createdAt:saved.created_at, mentions: saved.mentions || [], senderId: saved.sender_id ?? null })
       notifyMentions(saved.mentions)
+      onMessageSent?.()
     }catch(err:any){
       const msg = err?.message || 'Unable to send message'
       if(variant === 'dock'){
@@ -325,6 +329,7 @@ export default function Chat({sessionId, variant = 'full', aboveComposer, curren
       const result = data?.result
       const summary = result ? `${result.expression} → ${result.rolls?.join(' + ')} ${result.mod ? (result.mod>0?`+ ${result.mod}`:`- ${Math.abs(result.mod)}`) : ''} = ${result.total}` : `Roll complete (${expr})`
       appendMessage({id:`roll-${Date.now()}`,who:'system',text:summary})
+      onMessageSent?.()
     }catch(err:any){
       appendMessage({id:`roll-${Date.now()}`,who:'system',text:`Roll error: ${err?.message || 'unknown error'}`})
     }
@@ -595,6 +600,8 @@ export default function Chat({sessionId, variant = 'full', aboveComposer, curren
     }
   },[sessionId, appendMessage, notifyMentions])
 
+  const compactMessages = messages.slice(-4)
+
   return (
     <div className={`chat-root ${variant === 'dock' ? 'chat-root--dock' : ''} ${messages.length === 0 ? 'chat-root--empty' : ''}`}>
       <NpcSnapshotModal
@@ -672,15 +679,34 @@ export default function Chat({sessionId, variant = 'full', aboveComposer, curren
         onUnpin={sessionId ? handleUnpinMessage : undefined}
       />
 
-      <MessageList
-        ref={listRef}
-        loading={loading}
-        messages={messages}
-        currentUserId={currentUserId ?? null}
-        onPin={sessionId ? handlePinMessage : undefined}
-        onDelete={sessionId ? handleDeleteMessage : undefined}
-        character={character}
-      />
+      {compactLog ? (
+        <button className="chat-compact-log" type="button" onClick={onExpandLog} aria-label="Expand chat log">
+          <span className="chat-compact-log-header">
+            <span>Chat Log</span>
+            <strong>{messages.length}</strong>
+          </span>
+          <span className="chat-compact-log-items">
+            {compactMessages.length ? compactMessages.map((message) => (
+              <span key={message.id} className={`chat-compact-line chat-compact-line--${message.who}`}>
+                <b>{message.who === 'you' ? 'You' : message.who === 'gm' ? 'TavernTails' : message.who}</b>
+                <span>{message.text}</span>
+              </span>
+            )) : (
+              <span className="chat-compact-empty">No messages in this scene yet.</span>
+            )}
+          </span>
+        </button>
+      ) : (
+        <MessageList
+          ref={listRef}
+          loading={loading}
+          messages={messages}
+          currentUserId={currentUserId ?? null}
+          onPin={sessionId ? handlePinMessage : undefined}
+          onDelete={sessionId ? handleDeleteMessage : undefined}
+          character={character}
+        />
+      )}
 
       {error ? <div className="inline-alert inline-alert-error" style={{ marginTop: 10 }}>{error}</div> : null}
       {!loading && !error && messages.length === 0 && sessionId ? (

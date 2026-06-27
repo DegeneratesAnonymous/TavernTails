@@ -282,7 +282,9 @@ def _action_response_scene(
     loc = location_name or "the current location"
     action = (latest_action or "").strip()
     lower = action.lower()
+    context = f"{loc} {action}".lower()
 
+    title = "The Next Move"
     objective = f"Turn {action[:80] or 'the latest move'} into a concrete advantage at {loc}."
     stakes = "The situation is still moving; delay will let someone else define what this moment means."
     clues = [
@@ -301,59 +303,144 @@ def _action_response_scene(
         "Ask what everyone is avoiding",
     ]
 
-    if any(word in lower for word in ("detect magic", "arcana", "ritual", "spell")) or (
+    if any(word in context for word in ("northwood", "hiding place", "slave army", "escape", "escaped", "camp", "march north", "pack up", "move on")):
+        title = "Breaking Camp"
+        if any(word in lower for word in ("pack", "move", "leave", "march", "go", "on")):
+            body = (
+                f"{pc} turns the quiet decision into motion. Blankets are rolled with stiff fingers, "
+                "cold ash is kicked apart, and every strap is checked twice because a loose buckle can sound "
+                f"like a bell in the trees around {loc}.\n\n"
+                "The hiding place answers in small betrayals. A heel-print near the edge of camp is too deep, "
+                "made by someone carrying weight or dragging fear behind them. A broken twig points north by "
+                "habit, not accident. Farther off, where the wind moves through bare branches, a horn gives one "
+                "short note and then stops as if the searchers are listening for what the camp will do next.\n\n"
+                "Yungmin can feel the choice narrowing. Leaving now may keep the escapees ahead of the army, "
+                "but a rushed departure will leave a trail any practiced tracker can read. Staying long enough "
+                "to clean the site may save lives tomorrow and cost them the lead today.\n\n"
+                "One person in the group hesitates over a half-buried scrap of cloth caught under a root. It is "
+                "not camp gear. It is dyed in the color of the marching column, and it is fresh."
+            )
+            objective = "Choose the escape route and decide whether to hide the camp's trail."
+            stakes = "Moving fast protects the escapees from encirclement; moving carelessly gives the army a road to follow."
+            clues = [
+                "A heavy heel-print marks the edge of camp.",
+                "A fresh scrap of army-colored cloth is caught under a root.",
+                "A distant horn suggests the search line is closer than anyone hoped.",
+            ]
+            moves = [
+                "The army search line tests the woods with short horn calls.",
+                "A frightened escapee delays the group over something they found.",
+                "The weather begins to preserve tracks instead of hiding them.",
+            ]
+            actions = [
+                "Hide the camp's trail before leaving",
+                "Inspect the army-colored cloth",
+                "Send someone ahead to find safer ground",
+                "Question who stepped near the camp edge",
+            ]
+        else:
+            body = (
+                f"{pc}'s words settle over {loc} and make the silence honest. The escapees stop pretending this "
+                "is a rest. It is a decision point: the last pocket of stillness before the woods either protects "
+                "them or gives them away.\n\n"
+                "A woman with mud on one sleeve grips her pack too tightly. A younger man keeps watching the "
+                "tree line instead of the speaker. Neither of them interrupts, but both know something about the "
+                "route that no one has said aloud.\n\n"
+                "Wind drags old leaves across the camp's border. Under that dry scraping, Yungmin hears a second "
+                "sound: leather, brushed once against bark, then held still. Someone outside the hiding place is "
+                "close enough to be careful.\n\n"
+                "The camp has seconds before fear turns into noise. A clear order, a quiet spell, or one sharp "
+                "question could decide whether the group moves as fugitives or scatters as prey."
+            )
+            objective = "Find out who knows the unsafe route before the camp breaks into panic."
+            stakes = "If the group loses discipline, the hidden camp becomes visible before anyone chooses a direction."
+            clues = [
+                "Two escapees react like they know more about the route.",
+                "A careful sound comes from beyond the camp edge.",
+                "The hiding place is close to becoming noisy.",
+            ]
+            actions = [
+                "Question the two nervous escapees",
+                "Listen for the watcher outside camp",
+                "Cast a quiet protective spell",
+                "Give the group a clear marching order",
+            ]
+    elif any(word in lower for word in ("detect magic", "arcana", "ritual", "spell")) or (
         "cast" in lower and not any(word in lower for word in ("mage armor", "light"))
     ):
+        title = "A Trace in the Air"
         body = (
             f"{pc} lets the working settle over {loc}. The first answer is not light or sound, but a pressure "
             "behind the eyes, as if the place is remembering a shape it was forced to hold.\n\n"
             "A faint trace gathers around the most handled surface nearby. It is not enough to explain the whole "
-            "danger, but it proves the trouble was deliberate, recent, and touched by someone who expected not to be noticed."
+            "danger, but it proves the trouble was deliberate, recent, and touched by someone who expected not to be noticed.\n\n"
+            "The residue is strongest where ordinary attention would skip past it: the underside of a latch, the seam "
+            "of a wrapped object, the dark line where dust should have settled evenly and did not.\n\n"
+            "Following it will take focus. Disturbing it will make the next answer harder to trust."
         )
         objective = "Follow the fresh magical trace before it fades or is hidden."
         clues = ["A recent magical trace is present.", "The effect was deliberate.", "Someone expected the sign to be overlooked."]
         actions = ["Follow the trace", "Identify the magic", "Ask who handled the marked object", "Shield the area from interference"]
     elif any(word in lower for word in ("ask", "question", "talk", "press", "persuade")):
+        title = "The Answer Between Answers"
         body = (
             f"{pc}'s question lands harder than expected. The first answer is too quick, too polished, and the second "
             "comes only after an uncomfortable silence.\n\n"
             "The useful part is not the words. It is the glance that follows them: toward a person, door, object, or route "
-            "that everyone else has been carefully pretending is ordinary."
+            "that everyone else has been carefully pretending is ordinary.\n\n"
+            "Someone nearby notices that glance and changes posture, one shoulder turning as if to hide what their hands "
+            "are doing. The room keeps breathing, but it is no longer relaxed.\n\n"
+            "There is a narrow opening now. Press too softly and it closes. Press too hard and the person with the truth "
+            "may bolt before Yungmin can learn why they are afraid."
         )
         objective = "Use the nervous glance to identify who or what is being protected."
         clues = ["The first answer is rehearsed.", "A nervous glance points toward a hidden priority.", "Someone is withholding the useful part of the truth."]
         actions = ["Follow the glance", "Ask a sharper follow-up", "Separate the nervous witness", "Offer protection for honesty"]
     elif any(word in lower for word in ("search", "inspect", "examine", "investigate", "track", "look")):
+        title = "The Detail Out of Place"
         body = (
             f"{pc} slows down and lets the scene become physical: scuffs, dust, disturbed edges, a mark where a hand rested "
             "too long. The obvious story starts to separate from the real one.\n\n"
             "The clearest sign is small, but fresh. It points away from the center of attention and toward the route someone "
-            "used when they thought no one would be looking."
+            "used when they thought no one would be looking.\n\n"
+            "Once seen, the route becomes hard to ignore. A smear breaks the pattern of the floor. A thread catches on a rough "
+            "edge. Even the bystanders seem arranged to keep eyes away from that direction.\n\n"
+            "The evidence will not stay clean for long. Every passing footstep makes the real trail look more like noise."
         )
         objective = "Follow the fresh sign before the trail is disturbed."
         clues = ["The obvious story is incomplete.", "A fresh physical sign points away from the center of attention.", "Someone used a less visible route."]
         actions = ["Follow the sign", "Preserve the evidence", "Compare it to nearby surfaces", "Ask who had access"]
     elif any(word in lower for word in ("watch", "scan", "observe", "listen")):
+        title = "What Moves First"
         body = (
             f"{pc} waits instead of filling the silence. That patience catches what movement would have missed: one person "
             "reacts to the wrong detail, and another notices that reaction before looking away.\n\n"
-            "The room has a pattern now. Fear near the center, calculation near the edge, and a narrow gap where someone may slip out."
+            "The room has a pattern now. Fear near the center, calculation near the edge, and a narrow gap where someone may slip out.\n\n"
+            "A sleeve brushes against a pouch. A boot turns toward the nearest exit. Someone who should be relieved looks "
+            "angry instead, as though Yungmin has accidentally stepped on the one part of the truth they needed buried.\n\n"
+            "The next move can be quiet or direct, but it has to be chosen before the room realizes it has been read."
         )
         objective = "Decide whether to confront the reaction or quietly follow the person trying to leave."
         clues = ["One person reacts to the wrong detail.", "Another person notices and looks away.", "Someone may be preparing to leave."]
         actions = ["Confront the first reaction", "Follow the person near the edge", "Signal an ally", "Block the quiet exit"]
     else:
+        title = "A Choice Takes Shape"
         body = (
-            f"{pc}'s choice changes the tempo at {loc}. A few people adjust around it, and that adjustment reveals more "
-            "than cooperation would have.\n\n"
-            "The situation has not resolved, but it has narrowed. There is now a person to press, a sign to follow, and a cost "
-            "to waiting too long."
+            f"{pc} acts, and {loc} changes in response. Not dramatically at first: a pause in conversation, a shift of weight, "
+            "a hand leaving something half-covered instead of finishing the motion.\n\n"
+            "That small hesitation gives the scene texture. The danger is not abstract anymore. It has a direction, a witness, "
+            "and at least one person who understands more than they meant to reveal.\n\n"
+            "Near the edge of attention, a detail stands out because it does not belong with the story everyone is accepting. "
+            "It could be evidence, bait, or the first honest sign in the room.\n\n"
+            "Yungmin has room for one clean follow-up before the moment disperses: press the witness, secure the detail, or "
+            "move before the people with something to hide can rearrange themselves."
         )
 
     if action_count >= 8:
         stakes = f"The longer {pc} waits, the more the trail spreads beyond easy reach."
 
     return {
+        "title": title,
         "narrative": body,
         "objective": objective,
         "stakes": stakes,
@@ -2483,9 +2570,15 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         'Press on toward the obvious destination',
         'Make a plan',
     ]
+    scene_title = (
+        (action_response or {}).get("title")
+        or getattr(adv_scene_director_output, "scene_title", "")
+        or adv_scene_director_output.location.name
+        or f"Scene — {now.strftime('%Y-%m-%d %H:%M')} UTC"
+    )
     new_scene = {
         'id': scene_index,
-        'title': f"Scene — {now.strftime('%Y-%m-%d %H:%M')} UTC",
+        'title': scene_title,
         'image': None,
         'narrative_body': narrative.narrative,
         'player_prompt': narrative.prompt,

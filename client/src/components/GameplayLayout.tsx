@@ -178,7 +178,12 @@ export default function GameplayLayout({
   const [phase, setPhase] = useState<'player_turn' | 'advancing'>('player_turn')
   const [phaseLabel, setPhaseLabel] = useState('')
   const [playerReady, setPlayerReady] = useState(false)
+  const [chatLogCollapsed, setChatLogCollapsed] = useState(false)
   const [diceRolls, setDiceRolls] = useState<Array<{type: string; skill?: string; reason?: string}>>([])
+
+  useEffect(() => {
+    setChatLogCollapsed(false)
+  }, [sessionId])
 
   useEffect(()=>{
     const handler = (event: Event) => {
@@ -1305,6 +1310,7 @@ export default function GameplayLayout({
                   onClick={async () => {
                     if (!sessionId || playerReady || phase === 'advancing') return
                     setPlayerReady(true)
+                    setChatLogCollapsed(true)
                     try {
                       const res = await apiFetch(`/sessions/${sessionId}/player-ready`, {
                         method: 'POST',
@@ -1315,6 +1321,7 @@ export default function GameplayLayout({
                       if (data?.all_ready) await doAdvanceScene()
                     } catch {
                       setPlayerReady(false)
+                      setChatLogCollapsed(false)
                     }
                   }}
                 >
@@ -1997,7 +2004,7 @@ export default function GameplayLayout({
           </div>
 
           {sessionId && (
-            <section className="player-action-area action-console" aria-label="Action Console">
+            <section className={`player-action-area action-console ${chatLogCollapsed ? 'action-console--chat-collapsed' : ''}`} aria-label="Action Console">
               {(situation.currentObjective || observedSummary || currentRisk) ? (
                 <div
                   className="scene-summary-strip"
@@ -2120,6 +2127,9 @@ export default function GameplayLayout({
                   character={playerStats ?? null}
                   composerInject={actionDraft}
                   onComposerInjectConsumed={() => setActionDraft(null)}
+                  compactLog={chatLogCollapsed}
+                  onExpandLog={() => setChatLogCollapsed(false)}
+                  onMessageSent={() => setChatLogCollapsed(false)}
                 />
               </div>
             </section>
