@@ -1290,15 +1290,13 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     # to a tavern when the plot seed and candidate lists are empty.
     _bootstrap_guidance = narrative_director_output.model_dump() if narrative_director_output else {}
     _bootstrap_plot_seed = plot_result.plot
-    # Only treat "real" campaign context as location context — NOT storyboard-generated
-    # candidate_locations, which are LLM outputs that default to taverns for new campaigns.
-    _has_location_context = bool(
-        usable_mem_loc_names
-        or (campaign_settings or {}).get("starting_location")
+    _bootstrap_seed_rc: dict = {}
+    _explicit_starting_location = bool(
+        (campaign_settings or {}).get("starting_location")
         or (campaign_contract.get("campaign_dna") or {}).get("starting_location")
         or (campaign_contract.get("world_contract") or {}).get("known_starting_location")
     )
-    if not _has_location_context:
+    if not _explicit_starting_location:
         try:
             _bootstrap_seed_rc = build_content_bundle(
                 situation_type="campaign_opening",
@@ -1308,6 +1306,20 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
                 freshness_context={"scene_count": 0},
                 campaign_settings=campaign_settings,
             ).get("required_content") or {}
+        except Exception:
+            _bootstrap_seed_rc = {}
+    _has_premise_seed = _bootstrap_seed_rc.get("generated_by") == "premise_seed"
+    # Only treat "real" campaign context as location context — NOT storyboard-generated
+    # candidate_locations, which are LLM outputs that default to taverns for new campaigns.
+    _has_location_context = bool(
+        not _has_premise_seed
+        and (
+            usable_mem_loc_names
+            or _explicit_starting_location
+        )
+    )
+    if not _has_location_context:
+        try:
             if _bootstrap_seed_rc and _bootstrap_seed_rc.get("generated_by") in ("starter_seed", "premise_seed"):
                 if _bootstrap_seed_rc.get("starting_location"):
                     _bootstrap_guidance["required_opening_location"] = _bootstrap_seed_rc["starting_location"]
