@@ -388,6 +388,25 @@ def build_fallback_scene(
     else:
         stakes_line = "What happens next will be hard to undo"
 
+    premise_hay = " ".join([
+        loc,
+        campaign_name or "",
+        inciting_incident or "",
+        central_conflict or "",
+        immediate_stakes or "",
+    ]).lower()
+    if any(w in premise_hay for w in ("slave army", "forced army", "pressed army", "conscript", "escape", "pursuit")):
+        evidence_object = "fresh bootprints pressed into the needle-strewn mud beside a snapped branch"
+        sensory = sensory_detail or "Cold sap, wet bark, and old campfire ash hang under the trees"
+        return (
+            f"{sensory.rstrip('.')} at {loc}; the hidden camp is quiet except for breath held too long and canvas stirred by the north wind.\n\n"
+            f"{npc} arrives {state}, one hand clamped around a torn strip of army cloth, and points to {evidence_object} where {pc} can see it.\n\n"
+            f'"{incident_line}," {npc} says, voice barely above the creak of branches. '
+            f'"They should not be this close unless someone found our trail."\n\n'
+            f"{conflict_evidence}. {stakes_line}, and the next choice is no longer theoretical: "
+            f"break camp, hide and watch, or turn the woods themselves into a false trail."
+        )
+
     evidence_object = "a sealed packet marked with a symbol no one nearby wants to explain"
     if any(w in (campaign_name or "").lower() for w in ("winter", "frost", "ice", "snow")):
         evidence_object = "a frost-stiff packet wrapped around a shard of dark glass"

@@ -148,6 +148,9 @@ def generate_starter_seed(
     genre = str(settings.get("genre") or contract.get("campaign_dna", {}).get("genre") or "fantasy")
     tone = str(settings.get("tone") or contract.get("campaign_dna", {}).get("tone") or "balanced")
     pillars = list((contract.get("campaign_dna") or {}).get("preferred_scene_types") or [])
+    premise_seed = _seed_from_campaign_premise(settings, contract, genre, rng)
+    if premise_seed:
+        return premise_seed
 
     # Choose fresh location type
     recent_locs = freshness.get("recent_location_types") or []
@@ -193,6 +196,107 @@ def generate_starter_seed(
             "event": inciting_event,
         },
     }
+
+
+def _campaign_premise_text(settings: dict[str, Any], contract: dict[str, Any]) -> str:
+    dna = contract.get("campaign_dna") or {}
+    return " ".join([
+        str(settings.get("setting_summary") or ""),
+        str(settings.get("world_name") or ""),
+        str(contract.get("campaign_name") or ""),
+        str(contract.get("campaign_pitch") or ""),
+        str(dna.get("setting_summary") or ""),
+        str(dna.get("starting_promise") or ""),
+        " ".join(str(x) for x in (dna.get("central_questions") or [])[:4]),
+        str(contract.get("agent_output_contract") or "")[:1200],
+    ]).strip()
+
+
+def _seed_from_campaign_premise(
+    settings: dict[str, Any],
+    contract: dict[str, Any],
+    genre: str,
+    rng: random.Random,
+) -> dict[str, Any] | None:
+    premise = _campaign_premise_text(settings, contract)
+    hay = premise.lower()
+    if not premise:
+        return None
+
+    escaped_forced_march = (
+        any(w in hay for w in ("slave army", "slave-army", "forced army", "pressed army", "conscript", "enslaved"))
+        and any(w in hay for w in ("escape", "escaped", "slipped away", "fled", "deserted"))
+    )
+    woods_hiding = any(w in hay for w in ("woods", "forest", "treeline", "hidden out", "hiding in the woods", "hiding in a forest"))
+    north_march = any(w in hay for w in ("marching north", "north for months", "northern march"))
+
+    if escaped_forced_march:
+        location = "The Northwood Hiding Place" if woods_hiding else "The Frozen March Road"
+        npc_name = _generate_npc_name(genre, rng)
+        location_identity = (
+            "A concealed camp beneath winter-bent trees, far enough from the army road "
+            "to feel possible and close enough that every snapped branch matters."
+        ) if woods_hiding else (
+            "A wind-scoured stretch of northern road where the forced march has left tracks, "
+            "discarded bindings, and fear behind it."
+        )
+        inciting = (
+            "A distant horn answers from the army road, then a second horn sounds closer than it should."
+            if north_march else
+            "Fresh bootprints appear near the hiding place where there were none at dawn."
+        )
+        stakes = (
+            "If the trail is found before nightfall, the escape becomes a hunt and the army learns exactly where to search."
+        )
+        decision = (
+            "Break camp and risk exposure, hide and watch who is searching, or set a false trail before the patrol reaches the trees."
+        )
+        return {
+            "starting_location": location,
+            "location_type": "forest road camp" if woods_hiding else "frozen pass",
+            "location_identity": location_identity,
+            "inciting_event": inciting,
+            "named_npc_or_visible_threat": f"{npc_name} (fellow escapee)",
+            "immediate_problem": "The escape has held for weeks, but signs of pursuit are beginning to close around the hiding place.",
+            "specific_stakes": stakes,
+            "first_clue_or_question": "How did the searchers get this close without being seen?",
+            "player_decision": decision,
+            "memory_updates": [
+                {"type": "location", "name": location, "status": "campaign_opening"},
+                {"type": "npc", "name": npc_name, "role": "fellow escapee", "status": "provisional"},
+            ],
+            "generated_by": "premise_seed",
+            "freshness_consumed": {
+                "location_type": "forest road camp" if woods_hiding else "frozen pass",
+                "event": "pursuit closes on escaped conscripts",
+            },
+        }
+
+    if woods_hiding:
+        location = "The Hidden Woodline"
+        npc_name = _generate_npc_name(genre, rng)
+        return {
+            "starting_location": location,
+            "location_type": "forest road camp",
+            "location_identity": "A rough place of concealment under close trees, built for silence rather than comfort.",
+            "inciting_event": "A sound from the trees repeats twice, too deliberate to be an animal.",
+            "named_npc_or_visible_threat": f"{npc_name} (watchful survivor)",
+            "immediate_problem": "The hidden camp may no longer be hidden.",
+            "specific_stakes": "If the camp is discovered, safety, supplies, and the next route all vanish at once.",
+            "first_clue_or_question": "Who found the camp first: an ally, a hunter, or the enemy?",
+            "player_decision": "Stay silent and observe, move the camp, or confront the watcher in the trees.",
+            "memory_updates": [
+                {"type": "location", "name": location, "status": "campaign_opening"},
+                {"type": "npc", "name": npc_name, "role": "watchful survivor", "status": "provisional"},
+            ],
+            "generated_by": "premise_seed",
+            "freshness_consumed": {
+                "location_type": "forest road camp",
+                "event": "hidden camp is found",
+            },
+        }
+
+    return None
 
 
 _LOCATION_PREFIXES: dict[str, list[str]] = {

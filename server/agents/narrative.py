@@ -134,6 +134,31 @@ _FORBIDDEN_NARRATIVE = [
     "atmosphere:", "stakes:", "mood:", "threat:", "quest:", "objective:",
 ]
 
+
+def _contains_unsupported_tavern_default(narrative: str, scene_director_data: dict | None) -> bool:
+    text = (narrative or "").lower()
+    if not text:
+        return False
+    fixture_terms = (
+        "wayward lantern",
+        "torven",
+        "mara vell",
+        "cracked lantern",
+        "harness leather",
+        "rusty flagon",
+        "silver tankard",
+    )
+    if any(term in text for term in fixture_terms):
+        return True
+    if not scene_director_data:
+        return False
+    loc = ((scene_director_data.get("location") or {}).get("name") or "").lower()
+    loc_allows_tavern = any(term in loc for term in ("tavern", " inn", "alehouse", "pub", "taproom"))
+    if loc_allows_tavern:
+        return False
+    return any(term in text for term in (" tavern", " inn", " alehouse", " taproom"))
+
+
 # Phrases that corrupt the LLM brief when they appear in scene_director_data fields
 _FORBIDDEN_SDD = [
     "fantasy world", "dark-fantasy", "dark fantasy", "heroic fantasy",
@@ -568,7 +593,8 @@ def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
         or "waiting for what comes next" in best_narrative.lower()
         or "at here" in best_narrative.lower()
     )
-    if (placeholder or not score_passed) and payload.scene_director_data:
+    unsupported_default = _contains_unsupported_tavern_default(best_narrative, payload.scene_director_data)
+    if (placeholder or unsupported_default or not score_passed) and payload.scene_director_data:
         loc = payload.scene_director_data.get("location") or {}
         npc = payload.scene_director_data.get("primary_npc") or {}
         sensory = loc.get("sensory_details") or []
@@ -585,7 +611,7 @@ def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
         best_prompt = default_prompt
         score_val = max(score_val, 75)
         score_passed = True
-        score_dict = {**score_dict, "fallback_used": True}
+        score_dict = {**score_dict, "fallback_used": True, "unsupported_default_rejected": unsupported_default}
 
     return NarrativeResponse(
         narrative=best_narrative,

@@ -895,8 +895,9 @@ async def bootstrap_session(session_id: str, payload: BootstrapRequest, current_
     # Generate a starter seed so the LLM is constrained to a non-tavern location
     _boot_seed_rc: dict = {}
     _has_boot_location_context = bool(
-        (_boot_campaign_settings or {}).get("setting_summary")
-        or (_boot_campaign_contract.get("campaign_dna") or {}).get("setting_summary")
+        (_boot_campaign_settings or {}).get("starting_location")
+        or (_boot_campaign_contract.get("campaign_dna") or {}).get("starting_location")
+        or (_boot_campaign_contract.get("world_contract") or {}).get("known_starting_location")
     )
     if not _has_boot_location_context:
         try:
@@ -911,7 +912,7 @@ async def bootstrap_session(session_id: str, payload: BootstrapRequest, current_
         except Exception:
             pass
 
-    if _boot_seed_rc.get("generated_by") == "starter_seed":
+    if _boot_seed_rc.get("generated_by") in ("starter_seed", "premise_seed"):
         _s_loc = _boot_seed_rc.get("starting_location") or ""
         _s_npc = _boot_seed_rc.get("named_npc_or_visible_threat") or ""
         _s_event = _boot_seed_rc.get("inciting_event") or ""
@@ -1288,9 +1289,10 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     # Only treat "real" campaign context as location context — NOT storyboard-generated
     # candidate_locations, which are LLM outputs that default to taverns for new campaigns.
     _has_location_context = bool(
-        (campaign_settings or {}).get("setting_summary")
-        or (campaign_contract.get("campaign_dna") or {}).get("setting_summary")
-        or campaign_contract.get("player_canon")
+        mem_loc_names
+        or (campaign_settings or {}).get("starting_location")
+        or (campaign_contract.get("campaign_dna") or {}).get("starting_location")
+        or (campaign_contract.get("world_contract") or {}).get("known_starting_location")
     )
     if not _has_location_context:
         try:
@@ -1302,7 +1304,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
                 freshness_context={"scene_count": 0},
                 campaign_settings=campaign_settings,
             ).get("required_content") or {}
-            if _bootstrap_seed_rc and _bootstrap_seed_rc.get("generated_by") == "starter_seed":
+            if _bootstrap_seed_rc and _bootstrap_seed_rc.get("generated_by") in ("starter_seed", "premise_seed"):
                 if _bootstrap_seed_rc.get("starting_location"):
                     _bootstrap_guidance["required_opening_location"] = _bootstrap_seed_rc["starting_location"]
                 if _bootstrap_seed_rc.get("named_npc_or_visible_threat"):
@@ -1352,15 +1354,20 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     director_data_dict = director_output.model_dump()
     if not _has_location_context and '_bootstrap_seed_rc' in dir():
         _bsrc = locals().get('_bootstrap_seed_rc') or {}
-        if _bsrc.get("generated_by") == "starter_seed":
+        _seed_source = _bsrc.get("generated_by")
+        if _seed_source in ("starter_seed", "premise_seed"):
             from .content_bundles import _looks_like_tavern_default
             _seed_loc = _bsrc.get("starting_location") or ""
             _seed_npc = _bsrc.get("named_npc_or_visible_threat") or ""
             _seed_event = _bsrc.get("inciting_event") or ""
             _seed_stakes = _bsrc.get("specific_stakes") or ""
+            _seed_problem = _bsrc.get("immediate_problem") or ""
+            _seed_decision = _bsrc.get("player_decision") or ""
+            _seed_question = _bsrc.get("first_clue_or_question") or ""
             if _seed_loc:
-                if not loc_name or _looks_like_tavern_default(loc_name):
+                if _seed_source == "premise_seed" or not loc_name or _looks_like_tavern_default(loc_name):
                     director_data_dict["location"]["name"] = _seed_loc
+                    director_data_dict["scene_title"] = f"Opening — {_seed_loc}"
                     loc_name = _seed_loc
             if _seed_npc:
                 _llm_npc = (director_data_dict.get("primary_npc") or {}).get("name") or ""
@@ -1369,10 +1376,20 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
                 ):
                     director_data_dict["primary_npc"]["name"] = _seed_npc
                     npc_name = _seed_npc
-            if _seed_event and not director_data_dict.get("inciting_incident"):
+            if _seed_event and (_seed_source == "premise_seed" or not director_data_dict.get("inciting_incident")):
                 director_data_dict["inciting_incident"] = _seed_event
-            if _seed_stakes and not director_data_dict.get("immediate_stakes"):
+            if _seed_stakes and (_seed_source == "premise_seed" or not director_data_dict.get("immediate_stakes")):
                 director_data_dict["immediate_stakes"] = _seed_stakes
+            if _seed_problem and _seed_source == "premise_seed":
+                director_data_dict["central_conflict"] = _seed_problem
+            if _seed_question and _seed_source == "premise_seed":
+                director_data_dict["player_visible_clues"] = [_seed_question]
+            if _seed_decision and _seed_source == "premise_seed":
+                director_data_dict["possible_actions"] = [
+                    part.strip()
+                    for part in _seed_decision.replace(" or ", ", ").split(",")
+                    if part.strip()
+                ][:4] or director_data_dict.get("possible_actions", [])
             # Also patch the plot_seed so the Narrative Writer prose is anchored correctly
             _bootstrap_plot_seed = (
                 f"Opening location: {_seed_loc}. "
@@ -1499,7 +1516,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
 
     scene = {
         'id': 'opening',
-        'title': director_output.scene_title or f"{session_name} — Opening Scene",
+        'title': director_data_dict.get("scene_title") or director_output.scene_title or f"{session_name} — Opening Scene",
         'image': None,
         'narrative_body': narrative.narrative,
         'player_prompt': narrative.prompt,
@@ -2092,7 +2109,8 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         # Only seed if the campaign has no location context of its own
         contract_has_location = bool(
             campaign_contract and (
-                (campaign_contract.get("campaign_dna") or {}).get("setting_summary")
+                (campaign_contract.get("campaign_dna") or {}).get("starting_location")
+                or (campaign_contract.get("world_contract") or {}).get("known_starting_location")
                 or campaign_contract.get("player_canon")
             )
         )

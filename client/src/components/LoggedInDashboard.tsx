@@ -3308,6 +3308,14 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                         name,
                         description: newCampaignDescription.trim(),
                         create_session: true,
+                        creation_posture: 'quick_create_modal',
+                        preferences: {
+                          genre: newCampaignGenre,
+                          tone: newCampaignTone,
+                          pacing: newCampaignPacing,
+                          content_rating: newCampaignContentRating,
+                          setting_summary: newCampaignDescription.trim(),
+                        },
                       }),
                     })
 
