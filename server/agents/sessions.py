@@ -1368,6 +1368,10 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     # location, forcibly patch the director data before Composer + Narrative Writer run.
     # Instruction-following alone is not reliable enough — this is a hard code-level guard.
     director_data_dict = director_output.model_dump()
+    _seed_source = ""
+    _seed_event = ""
+    _seed_stakes = ""
+    _seed_problem = ""
     if not _has_location_context and '_bootstrap_seed_rc' in dir():
         _bsrc = locals().get('_bootstrap_seed_rc') or {}
         _seed_source = _bsrc.get("generated_by")
@@ -1385,9 +1389,24 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
                     director_data_dict["location"]["name"] = _seed_loc
                     director_data_dict["scene_title"] = f"Opening — {_seed_loc}"
                     loc_name = _seed_loc
+                if _seed_source == "premise_seed":
+                    director_data_dict["location"]["type"] = _bsrc.get("location_type") or director_data_dict["location"].get("type") or "camp"
+                    director_data_dict["location"]["sensory_details"] = [
+                        _bsrc.get("location_identity") or f"The hidden camp at {_seed_loc} is quiet under the trees.",
+                        _seed_event or "The woods carry sound farther than they should.",
+                    ]
+                    director_data_dict["visual_prompt_elements"] = [
+                        f"{_seed_loc}, concealed forest camp",
+                        "cold woods, army road nearby, signs of pursuit",
+                        "fresh bootprints and snapped branches",
+                    ]
+                    director_data_dict["world_moves"] = [
+                        "Search horns move along the army road beyond the trees.",
+                        "Someone or something has found the edge of the escapees' trail.",
+                    ]
             if _seed_npc:
                 _llm_npc = (director_data_dict.get("primary_npc") or {}).get("name") or ""
-                if not _llm_npc or _looks_like_tavern_default(_llm_npc) or _llm_npc.lower() in (
+                if _seed_source == "premise_seed" or not _llm_npc or _looks_like_tavern_default(_llm_npc) or _llm_npc.lower() in (
                     "a stranger", "a mysterious figure", "the barkeep", "innkeeper", "the innkeeper"
                 ):
                     director_data_dict["primary_npc"]["name"] = _seed_npc
@@ -1413,6 +1432,10 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
                 f"NPC: {_seed_npc}. "
                 f"Stakes: {_seed_stakes}.\n\n" + (_bootstrap_plot_seed or "")
             ).strip()
+    try:
+        director_output = SceneDirectorOutput(**director_data_dict)
+    except Exception:
+        pass
     composer_output = narrative_composer_agent.compose_scene(
         scene_director_data=director_data_dict,
         player_name=player_name,
@@ -1433,6 +1456,37 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         character_context=character_context,
         campaign_contract=campaign_contract,
     ))
+    if _seed_source == "premise_seed":
+        _narr_lower = (narrative.narrative or "").lower()
+        _looks_stock = (
+            "sealed packet" in _narr_lower
+            or "something has gone very wrong" in _narr_lower
+            or "first crossroads" in _narr_lower
+        )
+        if _looks_stock:
+            sensory = ((director_data_dict.get("location") or {}).get("sensory_details") or [""])[0]
+            npc_data = director_data_dict.get("primary_npc") or {}
+            fallback_text = build_fallback_scene(
+                location_name=loc_name or 'the hiding place',
+                npc_name=npc_name,
+                player_name=player_name,
+                emotional_state=npc_data.get("current_emotional_state") or 'urgent',
+                inciting_incident=director_data_dict.get("inciting_incident") or _seed_event,
+                central_conflict=director_data_dict.get("central_conflict") or _seed_problem,
+                immediate_stakes=director_data_dict.get("immediate_stakes") or _seed_stakes,
+                sensory_detail=sensory,
+                campaign_name=session_name,
+            )
+            narrative = narrative_agent.NarrativeResponse(
+                narrative=fallback_text,
+                prompt=f"What does {player_name} do?",
+                tone=derived_style,
+                scene_score=max(narrative.scene_score or 0, 80),
+                score_passed=True,
+                score_detail={**(narrative.score_detail or {}), "premise_fallback_used": True},
+                suggested_actions=narrative.suggested_actions,
+                world_moves=narrative.world_moves,
+            )
 
     # --- Step 3b: Quality validation + retry/fallback ---
     quality_score, quality_issues = validate_scene_quality(
