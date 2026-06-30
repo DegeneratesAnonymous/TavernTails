@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 import server.main as main
 from server import db
 from server.auth import create_access_token
-from server.agents.campaign_interpretation import interpret_imports
+from server.agents.campaign_interpretation import build_full_contract_package, interpret_imports
 from server.agents.scene_validator import validate_campaign_expectations
 
 
@@ -251,6 +251,101 @@ def test_imported_lore_creates_canon_and_provisional_entities():
     api_entities = import_interp.get("canon_sensitive_entities", [])
     api_names = {e["name"] for e in api_entities}
     assert "Velara Ashveil" in api_names, f"Expected Velara Ashveil in API-returned entities, got {api_names}"
+    contract_names = {e["name"] for e in meta["campaign_contract"].get("player_canon", [])}
+    assert "Velara Ashveil" in contract_names
+
+
+def test_full_contract_promotes_imports_and_backstories_to_agent_contract():
+    lore = (
+        "NPC: Ilyra Voss, keeper of the sealed archive.\n"
+        "Location: Moonfall Academy, safe refuge for exiles.\n"
+        "The Argent Order Guild hides a forbidden map. Rumor contradicts the official record."
+    )
+    package = build_full_contract_package(
+        campaign_id="contract-pack",
+        campaign_name="Moonfall Intrigue",
+        description="Roleplay-heavy slow-burn mystery with strict canon.",
+        settings={"creation_posture": "lore_importer", "tone": "investigative"},
+        variables={"themes": "political intrigue, secrets"},
+        docs=[lore],
+        backstories=[
+            {
+                "character_id": "char-1",
+                "player_id": "player-1",
+                "character_name": "Seren",
+                "text": (
+                    "Seren's mentor Alar Venn vanished from Moonfall Academy. "
+                    "Seren owes a debt, carries a secret, and has no family danger."
+                ),
+            }
+        ],
+    )
+
+    contract = package["campaign_contract"]
+    canon_names = {e["name"] for e in contract["player_canon"]}
+    provisional_names = {e["name"] for e in contract["provisional_entities"]}
+
+    assert "Ilyra Voss" in canon_names
+    assert "Alar Venn" in canon_names
+    assert "Argent Order" in provisional_names
+    assert contract["backstory_profiles"][0]["private_facts"] == ["protected secret"]
+    assert "family_danger" in contract["backstory_profiles"][0]["hard_boundaries"]
+    assert any(h["type"] == "mentor_message" for h in contract["backstory_hooks"])
+    assert any(h["type"] == "debt_called_in" for h in contract["backstory_hooks"])
+    assert contract["backstory_spotlight"]
+    assert package["debug"]["user_input"]["backstory_count"] == 1
+    assert package["session_zero"]["character_hooks"][0]["unresolved_questions"]
+
+
+def test_explicit_ui_contract_choices_override_inference():
+    package = build_full_contract_package(
+        campaign_id="explicit-ui",
+        campaign_name="Open Road",
+        description="A bright sandbox adventure.",
+        settings={
+            "creation_posture": "player_fast_start",
+            "canon_policy": "strict_canon",
+            "ai_creativity_level": "conservative",
+            "playstyle_profile": "slow-burn mystery",
+        },
+        variables={},
+        docs=[],
+        backstories=[],
+    )
+
+    contract = package["campaign_contract"]
+    interp = package["campaign_interpretation"]
+    assert interp["canon_policy"] == "strict_canon"
+    assert interp["ai_creativity_level"] == "conservative"
+    assert "investigation" in interp["primary_play_pillars"]
+    assert contract["canon_policy"]["mode"] == "strict_canon"
+    assert contract["ai_creativity_policy"]["level"] == "conservative"
+
+
+def test_validator_consumes_player_canon_and_profile_boundaries():
+    contract = {
+        "canon_policy": {"mode": "guided_canon"},
+        "backstory_policy": {"allow_secret_reveals": "with_setup"},
+        "validator_policy": {"reject_single_solution": False},
+        "player_canon": [{"name": "Ilyra Voss", "type": "npc", "canon_status": "player_canon"}],
+        "backstory_profiles": [
+            {
+                "character_id": "char-1",
+                "hard_boundaries": ["family_danger", "identity_retcon"],
+                "spotlight_preferences": {"approval_required_for": ["secret_reveal"]},
+            }
+        ],
+    }
+
+    result = validate_campaign_expectations(
+        "Ilyra Voss never existed. Your family is in danger, everyone learns your secret, and you were secretly royal.",
+        campaign_contract=contract,
+    )
+
+    assert any("contradicts_player_canon" in v for v in result["canon_violations"])
+    assert "profile_family_danger_requires_permission" in result["backstory_boundary_violations"]
+    assert "profile_secret_reveal_requires_permission" in result["backstory_boundary_violations"]
+    assert "identity_retcon_forbidden" in result["backstory_boundary_violations"]
 
 
 def test_session_zero_surfaces_low_confidence_assumptions():

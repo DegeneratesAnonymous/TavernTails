@@ -21,6 +21,73 @@
   border-top: 0;
 }
 
+.chat-log-header {
+  flex: 0 0 auto;
+  padding: 0 14px 6px;
+}
+
+.chat-root--dock .chat-log-header {
+  position: absolute;
+  top: -31px;
+  right: 6px;
+  z-index: 2;
+  padding: 0;
+}
+
+.chat-root--dock .chat-log-tabs {
+  background: rgba(0,0,0,0.32);
+}
+
+.chat-root--dock .chat-log-tab {
+  min-height: 22px;
+  padding: 3px 6px;
+  font-size: 9px;
+}
+
+.chat-log-tabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 8px;
+  background: rgba(0,0,0,0.22);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+.chat-log-tab {
+  min-height: 26px;
+  border: 0;
+  border-radius: 6px;
+  padding: 4px 8px;
+  background: transparent;
+  color: rgba(255,255,255,0.5);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.chat-log-tab span {
+  color: rgba(255,255,255,0.34);
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-log-tab--active {
+  background: rgba(245,200,66,0.12);
+  color: rgba(245,200,66,0.92);
+}
+
+.chat-composer-prompt {
+  flex: 0 0 auto;
+  padding: 6px 14px 4px;
+  color: rgba(245,200,66,0.86);
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.02em;
+}
+
 /* ── Toolbar ─────────────────────────────────────────────────────────────── */
 .chat-toolbar {
   flex-shrink: 0;
@@ -311,6 +378,53 @@
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 20px;
   padding: 2px 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-msg--roll-result {
+  align-self: center;
+  width: min(520px, 92%);
+  display: grid;
+  gap: 4px;
+  padding: 7px 10px;
+  border: 1px solid rgba(245, 200, 66, 0.18);
+  border-radius: 7px;
+  background: rgba(245, 200, 66, 0.055);
+}
+
+.chat-roll-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.chat-roll-main strong {
+  color: rgba(245, 200, 66, 0.9);
+  font-weight: 850;
+}
+
+.chat-roll-main b {
+  color: rgba(255, 255, 255, 0.95);
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-roll-main em {
+  margin-left: auto;
+  color: rgba(255, 255, 255, 0.48);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.chat-roll-detail {
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 

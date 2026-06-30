@@ -1070,7 +1070,7 @@ export default function ImportCharacterView({
         ) : null}
 
         <div className="muted" style={{ fontSize: 12 }}>
-          Tip: assigning an import changes the active character for the current session and remembers that campaign for the character.
+          Tip: assigning an import joins the current session with that character and remembers that campaign for the character.
         </div>
       </div>
     </section>

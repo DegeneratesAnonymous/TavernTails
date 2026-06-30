@@ -135,6 +135,8 @@ app.add_middleware(
 )
 
 
+# Router registration is the backend table of contents. Keep feature behavior
+# inside server/agents/* routers; main.py should stay limited to app wiring.
 app.include_router(player_router)
 app.include_router(admin_router)
 app.include_router(users_router)
@@ -162,10 +164,9 @@ app.include_router(references_router.router)
 app.include_router(srd_router.router)
 app.include_router(campaign_memory_router)
 
-# Serve static build at both root and /taverntails prefix.
-# - Root mount: handles direct port access (8002/8443)
-# - /taverntails mount: handles asset requests when proxied behind Steward
-#   (index.html references /taverntails/static/... due to homepage setting)
+# Static hosting for production/self-hosted runs.
+# In local development, CRA serves the client separately; when `client/build`
+# exists, FastAPI can serve that bundle from the same process as the API.
 build_dir = Path(__file__).resolve().parents[1] / 'client' / 'build'
 if build_dir.exists():
     app.mount('/', StaticFiles(directory=str(build_dir), html=True), name='static')

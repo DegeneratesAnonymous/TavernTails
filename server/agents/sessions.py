@@ -1,4 +1,5 @@
 import json
+import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,9 +34,22 @@ from .scene_validator import (
     validate_scene_quality,
 )
 from .campaign_interpretation import build_full_contract_package
+from .arc_planner import plan_arc
 from .situation_classifier import classify_situation, REQUIRES_CONTRACT
-from .content_bundles import build_content_bundle
+from .content_bundles import build_content_bundle, ensure_content_bundle
+from .player_intent_parser import parse_player_intent
+from .scene_beat_selector import select_scene_beat_plan
 from .memory_extractor import extract_memory
+from .scene_qa import apply_targeted_scene_repairs, load_recent_opening_shapes, record_opening_shape, run_scene_qa
+from .opening_setup import (
+    answers_to_anchor,
+    auto_generate_anchor,
+    build_opening_scene_contract,
+    generate_questionnaire,
+    validate_first_scene_contract,
+    validate_opening_anchor,
+    validate_opening_scene_contract,
+)
 from .canon_manager import (
     load_canon_index,
     save_canon_index,
@@ -84,6 +98,388 @@ def is_player_run_mode(session_id: str) -> bool:
 BASE.mkdir(exist_ok=True)
 
 _doc_store = doc_storage.get_document_store()
+
+_RECYCLED_OPENING_TERMS = (
+    "first crossroads",
+    "mira vale",
+    "sealed packet",
+    "something has gone very wrong at the first crossroads",
+    "wayward lantern",
+    "torven",
+    "mara vell",
+    "cracked lantern",
+    "harness leather",
+    "rusty flagon",
+    "silver tankard",
+    "outer court",
+    "envoy marrec",
+    "docking concourse",
+    "quartermaster vale",
+    "rain-dark crossing",
+    "waterlogged dispatch tube sealed with split red wax",
+    "arcane observatory",
+    "a messenger arrives too late",
+    "needs help, but is not saying everything",
+    "the phenomenon will not repeat for a decade",
+    "conversation falters as attention turns toward the same point of trouble",
+    "this was not supposed to reach us like this",
+    "the trouble that brought",
+    "everyone nearby is already deciding who will risk being seen helping",
+)
+
+
+def _contains_recycled_opening_fixture(*values: object) -> bool:
+    text = " ".join(str(value or "") for value in values).lower()
+    return any(term in text for term in _RECYCLED_OPENING_TERMS)
+
+
+def _opening_freshness_context(campaign_id: str | None = None, **extra: object) -> dict:
+    recent_shapes = [
+        shape for shape in load_recent_opening_shapes(limit=20)
+        if not campaign_id or str(shape.get("campaign_id") or "") == str(campaign_id)
+    ]
+    return {
+        "scene_count": 0,
+        "recent_location_types": [str(s.get("location_type") or "") for s in recent_shapes if s.get("location_type")],
+        "recent_opening_events": [str(s.get("inciting_event_type") or "") for s in recent_shapes if s.get("inciting_event_type")],
+        "recent_npc_roles": [str(s.get("npc_role") or "") for s in recent_shapes if s.get("npc_role")],
+        "recent_symbols": [
+            motif
+            for s in recent_shapes
+            for motif in (s.get("motifs_used") or [])
+            if motif
+        ],
+        "recent_opening_shapes": [str(s.get("opening_shape") or "") for s in recent_shapes if s.get("opening_shape")],
+        **extra,
+    }
+
+
+def _opening_narrative_from_seed(required: dict, player_name: str) -> str:
+    """Write a direct, coherent opening from required campaign-opening content."""
+    loc = str(required.get("starting_location") or "the opening scene")
+    identity = str(required.get("location_identity") or "").strip().rstrip(".")
+    event = str(required.get("inciting_event") or "").strip().rstrip(".")
+    problem = str(required.get("immediate_problem") or "").strip().rstrip(".")
+    stakes = str(required.get("specific_stakes") or "").strip().rstrip(".")
+    clue = str(required.get("first_clue_or_question") or "").strip().rstrip(".")
+    decision = str(required.get("player_decision") or "").strip().rstrip(".")
+    npc_label = str(required.get("named_npc_or_visible_threat") or "the nearest named contact")
+    npc_name = npc_label.split("(")[0].strip() or "the nearest named contact"
+    pc = player_name or "the party"
+    pc_sentence = pc[0].upper() + pc[1:] if pc else "The party"
+
+    if not identity:
+        identity = f"{loc} is where the first real sign of trouble becomes visible"
+    if not event:
+        event = "A visible sign of trouble interrupts the scene"
+    if not problem:
+        problem = "The situation is already moving, and waiting will let someone else control what happens next"
+    if not stakes:
+        stakes = "If no one acts, the evidence and the chance to help both slip away"
+    if not clue:
+        clue = "What happened here before anyone arrived?"
+    if not decision:
+        decision = "Investigate the evidence, question the witness, or move before the trail disappears"
+
+    ctx = required.get("opening_context") or {}
+    campaign_brief = required.get("campaign_brief") or {}
+    brief_paragraphs = [
+        str(p).strip()
+        for p in (campaign_brief.get("brief_paragraphs") or [])
+        if str(p).strip()
+    ] if isinstance(campaign_brief, dict) else []
+    anchor_paragraphs: list[str] = []
+    arrival = str(ctx.get("arrival_reason") or "").strip().rstrip(".")
+    pre_scene = str(ctx.get("pre_scene_activity") or "").strip().rstrip(".")
+    personal_stake = str(ctx.get("personal_stake") or "").strip().rstrip(".")
+    npc_connection = str(ctx.get("known_npc_connection") or "").strip().rstrip(".")
+    party_bond = str(ctx.get("party_bond") or "").strip().rstrip(".")
+    complication = str(ctx.get("followed_complication") or "").strip().rstrip(".")
+    fear = str(ctx.get("fear_of_loss") or "").strip().rstrip(".")
+    if arrival:
+        anchor_paragraphs.append(f"{pc_sentence} reaches {loc} with a reason already in motion: {arrival}.")
+    if pre_scene:
+        anchor_paragraphs.append(f"Before the trouble becomes public, {pc_sentence} {pre_scene}.")
+    if personal_stake:
+        anchor_paragraphs.append(f"The moment matters because {personal_stake}.")
+    if complication:
+        anchor_paragraphs.append(f"The complication following close behind is this: {complication}.")
+    if fear:
+        anchor_paragraphs.append(f"What can be lost is clear: {fear}.")
+    if npc_connection:
+        anchor_paragraphs.append(f"{npc_connection}.")
+    if party_bond and pc.lower() == "the party":
+        anchor_paragraphs.append(f"The party holds together because {party_bond}.")
+    anchor_intro = "\n\n".join(anchor_paragraphs[:3])
+    if anchor_intro:
+        anchor_intro += "\n\n"
+    brief_intro = ""
+    if brief_paragraphs:
+        brief_intro = "\n\n".join(brief_paragraphs[:2]).strip()
+        if brief_intro:
+            brief_intro += "\n\n"
+
+    return (
+        f"{brief_intro}{anchor_intro}{loc} is no place for comfort. {identity}.\n\n"
+        f"{event}. {npc_name} is closest to it, shaken enough to need help and steady enough to point out what matters.\n\n"
+        f"{problem}. The first clear question is simple and dangerous: {clue}\n\n"
+        f"{stakes}. {pc_sentence} can still shape the moment: {decision}."
+    )
+
+
+def _opening_anchor_context(anchor: dict) -> dict:
+    return {
+        "character_name": anchor.get("character_name") or "",
+        "arrival_reason": anchor.get("arrival_reason") or "",
+        "pre_scene_activity": anchor.get("pre_scene_activity") or "",
+        "personal_stake": anchor.get("personal_stake") or "",
+        "known_npc_connection": anchor.get("known_npc_connection") or "",
+        "party_bond": anchor.get("party_bond") or "",
+        "followed_complication": anchor.get("followed_complication") or "",
+        "fear_of_loss": anchor.get("fear_of_loss") or "",
+        "trust_or_distrust": anchor.get("trust_or_distrust") or anchor.get("known_npc_connection") or "",
+        "belief_or_rumor": anchor.get("belief_or_rumor") or "",
+        "why_now": anchor.get("personal_stake") or anchor.get("arrival_reason") or anchor.get("belief_or_rumor") or "",
+    }
+
+
+def _anchor_repair_text(anchor: dict, loc_name: str, player_name: str) -> str:
+    pc = str(anchor.get("character_name") or player_name or "the party").strip() or "the party"
+    pc_sentence = pc[0].upper() + pc[1:] if pc else "The party"
+    loc = loc_name or "the opening scene"
+    pieces: list[str] = []
+    arrival = str(anchor.get("arrival_reason") or "").strip().rstrip(".")
+    pre_scene = str(anchor.get("pre_scene_activity") or "").strip().rstrip(".")
+    stake = str(anchor.get("personal_stake") or "").strip().rstrip(".")
+    npc_connection = str(anchor.get("known_npc_connection") or "").strip().rstrip(".")
+    party_bond = str(anchor.get("party_bond") or "").strip().rstrip(".")
+    complication = str(anchor.get("followed_complication") or "").strip().rstrip(".")
+    fear = str(anchor.get("fear_of_loss") or "").strip().rstrip(".")
+    if arrival:
+        pieces.append(f"{pc_sentence} reaches {loc} because {arrival}.")
+    if pre_scene:
+        pieces.append(f"Before anyone can control the moment, {pc_sentence} {pre_scene}.")
+    if stake:
+        pieces.append(f"The moment is personal because {stake}.")
+    if complication:
+        pieces.append(f"A complication has followed close behind: {complication}.")
+    if fear:
+        pieces.append(f"What can be lost is clear: {fear}.")
+    if npc_connection:
+        pieces.append(f"{npc_connection}.")
+    if party_bond and pc.lower() == "the party":
+        pieces.append(f"The party stays together because {party_bond}.")
+    return "\n\n".join(pieces[:3])
+
+
+def _apply_opening_anchor_validation(
+    scene: dict,
+    opening_anchor: dict,
+    *,
+    player_name: str,
+    known_character_names: list[str] | None = None,
+) -> tuple[dict, dict]:
+    if not opening_anchor:
+        return scene, {"valid": True, "anchor_hits": [], "issues": [], "required_hits": 0, "skipped": True}
+    validation = validate_opening_anchor(
+        scene_text=str(scene.get("text") or scene.get("narrative_body") or ""),
+        anchor=opening_anchor,
+        selected_character_name=str(opening_anchor.get("character_name") or player_name or ""),
+        known_character_names=known_character_names or [],
+    )
+    if validation.get("valid"):
+        return scene, validation
+    repair = _anchor_repair_text(opening_anchor, str(scene.get("location") or ""), player_name)
+    if repair:
+        body = str(scene.get("narrative_body") or scene.get("text") or "")
+        prompt = str(scene.get("player_prompt") or "")
+        scene["narrative_body"] = f"{repair}\n\n{body}".strip()
+        scene["text"] = f"{scene['narrative_body']}\n\n{prompt}".strip()
+        validation = validate_opening_anchor(
+            scene_text=scene["text"],
+            anchor=opening_anchor,
+            selected_character_name=str(opening_anchor.get("character_name") or player_name or ""),
+            known_character_names=known_character_names or [],
+        )
+        validation["repair_applied"] = True
+    return scene, validation
+
+
+def _apply_first_scene_contract(
+    scene: dict,
+    opening_anchor: dict,
+    *,
+    player_name: str,
+    dice_rolls: list[dict] | None = None,
+) -> tuple[dict, dict, list[dict]]:
+    validation = validate_first_scene_contract(
+        scene=scene,
+        anchor=opening_anchor,
+        player_name=player_name,
+        dice_rolls=dice_rolls if dice_rolls is not None else (scene.get("dice_rolls") or []),
+    )
+    repaired_dice = list(dice_rolls if dice_rolls is not None else (scene.get("dice_rolls") or []))
+    if validation.get("valid"):
+        return scene, validation, repaired_dice
+
+    loc = str(scene.get("location") or "the opening scene")
+    anchor_text = _anchor_repair_text(opening_anchor, loc, player_name)
+    choices = scene.get("choices") or []
+    if len(choices) < 3:
+        scene["choices"] = [
+            {"id": "inspect_clue", "label": "Inspect the most obvious clue before anyone moves it"},
+            {"id": "question_contact", "label": "Ask the nearest named contact what they saw"},
+            {"id": "watch_crowd", "label": "Watch who reacts before choosing a side"},
+        ]
+    scene["suggested_actions"] = (scene.get("suggested_actions") or [])[:]
+    if len(scene["suggested_actions"]) < 3:
+        scene["suggested_actions"] = [
+            "Inspect the most obvious clue",
+            "Question the nearest named contact",
+            "Watch who tries to leave",
+        ]
+    body = str(scene.get("narrative_body") or scene.get("text") or "")
+    for forbidden in (
+        "follows the first choice through",
+        "the useful detail is not separate from the danger",
+        "the first witness",
+        "the story plan",
+        "the scene should",
+        "a safe road becomes unsafe",
+    ):
+        body = re.sub(re.escape(forbidden), "the pressure in the moment becomes visible", body, flags=re.IGNORECASE)
+    body = body.replace(" a underground", " an underground").replace(" an surface", " a surface")
+    if anchor_text and anchor_text.lower() not in body.lower():
+        body = f"{anchor_text}\n\n{body}".strip()
+    prompt = str(scene.get("player_prompt") or f"What does {player_name or 'the party'} do?")
+    scene["narrative_body"] = body
+    scene["text"] = f"{body}\n\n{prompt}".strip()
+    supported: list[dict] = []
+    lower = scene["text"].lower()
+    for roll in repaired_dice:
+        skill = str((roll or {}).get("skill") or (roll or {}).get("type") or "").lower()
+        reason = str((roll or {}).get("reason") or "").lower()
+        if skill and (skill in lower or any(word in lower for word in reason.split() if len(word) > 5)):
+            supported.append(roll)
+    repaired_dice = supported
+    scene["dice_rolls"] = repaired_dice
+    validation = validate_first_scene_contract(
+        scene=scene,
+        anchor=opening_anchor,
+        player_name=player_name,
+        dice_rolls=repaired_dice,
+    )
+    validation["repair_applied"] = True
+    return scene, validation, repaired_dice
+
+
+def _apply_concrete_opening_scene_contract(
+    scene: dict,
+    *,
+    required: dict,
+    opening_anchor: dict,
+    campaign_brief: dict,
+    player_name: str,
+    time_of_day: str,
+) -> tuple[dict, dict]:
+    effective_required = {
+        **(required or {}),
+        "starting_location": scene.get("location") or (required or {}).get("starting_location") or (campaign_brief or {}).get("location_name") or "",
+    }
+    opening_scene = build_opening_scene_contract(
+        required=effective_required,
+        anchor=opening_anchor,
+        campaign_brief=campaign_brief,
+        player_name=player_name,
+        time_of_day=time_of_day,
+    )
+    validation = validate_opening_scene_contract(
+        scene=scene,
+        opening_scene=opening_scene,
+        campaign_brief=campaign_brief,
+        anchor=opening_anchor,
+        player_name=player_name,
+    )
+    if not validation.get("valid"):
+        actions = opening_scene.get("action_options") or []
+        scene = {
+            **scene,
+            "title": opening_scene.get("scene_title") or scene.get("title") or "Opening Scene",
+            "location": opening_scene.get("location_name") or scene.get("location") or "",
+            "time_of_day": opening_scene.get("time_of_day") or scene.get("time_of_day") or time_of_day,
+            "narrative_body": opening_scene.get("opening_narrative") or scene.get("narrative_body") or "",
+            "player_prompt": f"What does {player_name or 'the party'} do?",
+            "choices": [
+                {"id": f"opening_action_{idx}", "label": str(label)}
+                for idx, label in enumerate(actions[:4])
+            ],
+            "suggested_actions": list(actions[:4]),
+            "visible_clues": list(opening_scene.get("key_objects_or_clues") or scene.get("visible_clues") or [])[:4],
+            "immediate_stakes": opening_scene.get("pressure_or_timer") or scene.get("immediate_stakes") or "",
+            "current_objective": opening_scene.get("visible_problem") or scene.get("current_objective") or "",
+            "opening_scene": opening_scene,
+        }
+        scene["text"] = f"{scene['narrative_body']}\n\n{scene['player_prompt']}".strip()
+        validation = validate_opening_scene_contract(
+            scene=scene,
+            opening_scene=opening_scene,
+            campaign_brief=campaign_brief,
+            anchor=opening_anchor,
+            player_name=player_name,
+        )
+        validation["repair_applied"] = True
+    else:
+        scene["opening_scene"] = opening_scene
+    scene["opening_scene_validation"] = validation
+    return scene, validation
+
+
+def _dice_rolls_from_content_bundle(content_bundle: dict) -> list[dict]:
+    required = (content_bundle or {}).get("required_content") or {}
+    checks: list[str] = []
+    for key in ("possible_checks", "available_checks"):
+        checks.extend(str(item) for item in (required.get(key) or []) if item)
+    npc = required.get("npc") or {}
+    if isinstance(npc, dict):
+        checks.extend(str(item) for item in (npc.get("possible_checks") or []) if item)
+    return [
+        {"type": "d20", "skill": skill, "reason": "Supported by validated content bundle."}
+        for skill in list(dict.fromkeys(checks))[:4]
+    ]
+
+
+def _fallback_response_from_director(
+    *,
+    director_data: dict,
+    loc_name: str,
+    npc_name: str,
+    player_name: str,
+    derived_style: str,
+    session_name: str,
+    score_detail: dict | None = None,
+) -> narrative_agent.NarrativeResponse:
+    loc = director_data.get("location") or {}
+    npc = director_data.get("primary_npc") or {}
+    sensory = ((loc.get("sensory_details") or [])[:1] or [""])[0]
+    fallback_text = build_fallback_scene(
+        location_name=loc_name or loc.get("name") or "the opening location",
+        npc_name=npc_name or npc.get("name") or "the nearest named contact",
+        player_name=player_name,
+        emotional_state=npc.get("current_emotional_state") or "urgent",
+        inciting_incident=director_data.get("inciting_incident") or director_data.get("central_conflict") or "",
+        central_conflict=director_data.get("central_conflict") or "",
+        immediate_stakes=director_data.get("immediate_stakes") or "",
+        sensory_detail=sensory,
+        campaign_name=session_name,
+    )
+    return narrative_agent.NarrativeResponse(
+        narrative=fallback_text,
+        prompt=f"What does {player_name} do?",
+        tone=derived_style,
+        scene_score=80,
+        score_passed=True,
+        score_detail={**(score_detail or {}), "recycled_opening_guard_used": True},
+    )
 
 
 def _campaign_package_from_metadata(campaign, *, character_context: dict | None = None) -> tuple[dict, list[dict], list[dict], dict]:
@@ -143,6 +539,181 @@ def _campaign_package_from_metadata(campaign, *, character_context: dict | None 
     )
 
 
+def _repair_recycled_opening_scene_if_needed(folder: Path, scene: dict, *, meta: dict | None = None) -> dict:
+    """Replace stale canned openings that were written before the content gate existed."""
+    if not isinstance(scene, dict):
+        return scene
+    scene_text = json.dumps(scene, default=str)
+    if not _contains_recycled_opening_fixture(scene_text):
+        return scene
+
+    meta = meta or {}
+    try:
+        meta_path = folder / "meta.json"
+        if not meta and meta_path.exists():
+            meta = json.loads(meta_path.read_text())
+    except Exception:
+        meta = {}
+
+    campaign = None
+    campaign_id = str(meta.get("campaign_id") or "").strip()
+    if campaign_id:
+        try:
+            campaign = db.get_campaign_by_id(campaign_id)
+        except Exception:
+            campaign = None
+
+    campaign_meta = dict(getattr(campaign, "metadata_json", None) or {})
+    settings = dict(campaign_meta.get("settings") or {})
+    if campaign and not settings.get("setting_summary"):
+        settings["setting_summary"] = getattr(campaign, "description", "") or ""
+    contract, _profiles, _hooks, _session_zero = _campaign_package_from_metadata(campaign) if campaign else ({}, [], [], {})
+    if campaign and not contract.get("campaign_name"):
+        contract = {**contract, "campaign_name": getattr(campaign, "name", "")}
+    if campaign and not contract.get("campaign_pitch"):
+        contract = {**contract, "campaign_pitch": getattr(campaign, "description", "") or settings.get("setting_summary", "")}
+
+    content_bundle = ensure_content_bundle(
+        "campaign_opening",
+        scene_director_output={},
+        campaign_contract=contract,
+        freshness_context={"scene_count": 0, "repaired_recycled_opening": True},
+        campaign_settings=settings,
+        max_attempts=3,
+    )
+    required = content_bundle.get("required_content") or {}
+    if required.get("generated_by") != "premise_seed" and _contains_recycled_opening_fixture(json.dumps(required, default=str)):
+        fallback_loc = scene_director_agent._location_from_text(  # type: ignore[attr-defined]
+            " ".join([
+                str(settings.get("setting_summary") or ""),
+                str(contract.get("campaign_pitch") or ""),
+                str(getattr(campaign, "name", "") or meta.get("name") or ""),
+            ]),
+            str(settings.get("genre") or ""),
+        )
+        if _contains_recycled_opening_fixture(fallback_loc):
+            fallback_loc = "The Opening Ground"
+        fallback_npc = scene_director_agent._contact_from_text(  # type: ignore[attr-defined]
+            " ".join([
+                str(settings.get("setting_summary") or ""),
+                str(contract.get("campaign_pitch") or ""),
+                str(getattr(campaign, "name", "") or meta.get("name") or ""),
+            ]),
+            str(settings.get("genre") or ""),
+        )
+        required = {
+            "starting_location": fallback_loc,
+            "location_type": "opening location",
+            "location_identity": f"{fallback_loc} holds the first visible sign of the campaign's trouble.",
+            "inciting_event": "A local warning arrives before anyone has agreed what it means.",
+            "named_npc_or_visible_threat": f"{fallback_npc} (local witness)",
+            "immediate_problem": "Someone nearby is trying to control what the party learns first.",
+            "specific_stakes": "If the moment passes, the first clear lead becomes much harder to follow.",
+            "first_clue_or_question": "Who benefits if this warning is ignored?",
+            "player_decision": "Question the witness, inspect the warning, or watch who tries to leave.",
+            "generated_by": "repair_seed",
+        }
+        content_bundle = {
+            **content_bundle,
+            "required_content": required,
+            "memory_updates": [],
+            "ui_payload": {},
+            "content_gate_passed": True,
+        }
+    location_name = str(required.get("starting_location") or settings.get("world_name") or "The Opening Ground")
+    npc_label = str(required.get("named_npc_or_visible_threat") or "Sera Vane")
+    npc_name = npc_label.split("(")[0].strip() or "Sera Vane"
+    player_names = _session_player_names(folder, meta)
+    player_name = player_names[0] if player_names else "the party"
+    sensory = str(required.get("location_identity") or "")
+    inciting = str(required.get("inciting_event") or required.get("first_clue_or_question") or "")
+    conflict = str(required.get("immediate_problem") or inciting)
+    stakes = str(required.get("specific_stakes") or "")
+    if required.get("generated_by") == "premise_seed":
+        narrative = _opening_narrative_from_seed(required, player_name)
+    else:
+        narrative = build_fallback_scene(
+            location_name=location_name,
+            npc_name=npc_name,
+            player_name=player_name,
+            emotional_state="focused and wary",
+            inciting_incident=inciting,
+            central_conflict=conflict,
+            immediate_stakes=stakes,
+            sensory_detail=sensory,
+            campaign_name=str(getattr(campaign, "name", "") or meta.get("name") or ""),
+        )
+    if _contains_recycled_opening_fixture(narrative):
+        return scene
+
+    prompt = f"What does {player_name} do?"
+    repaired = {
+        "id": scene.get("id") or "opening",
+        "title": f"Opening — {location_name}",
+        "image": None if _contains_recycled_opening_fixture(scene.get("image")) else scene.get("image"),
+        "text": narrative,
+        "narrative_body": narrative,
+        "player_prompt": prompt,
+        "prompt": prompt,
+        "scene_type": scene.get("scene_type") or "opening",
+        "location": location_name,
+        "location_detail": {"name": location_name, "description": sensory},
+        "primary_npc": {"name": npc_name, "role": npc_label},
+        "content_bundle": content_bundle,
+        "current_objective": str(required.get("player_decision") or conflict),
+        "immediate_stakes": stakes,
+        "visible_clues": [str(required.get("first_clue_or_question") or inciting)],
+        "choices": [
+            {"id": "press", "label": f"Ask {npc_name} what they know"},
+            {"id": "inspect", "label": "Inspect the most obvious sign of trouble"},
+            {"id": "watch", "label": "Watch who reacts before acting"},
+        ],
+        "scene_director_data": {
+            "source": "recycled_fixture_repair",
+            "scene_title": f"Opening — {location_name}",
+            "scene_type": "opening",
+            "location": {"name": location_name, "sensory_details": [sensory] if sensory else []},
+            "primary_npc": {
+                "name": npc_name,
+                "role": npc_label,
+                "current_emotional_state": "focused and wary",
+                "what_they_want": str(required.get("player_decision") or "resolve the immediate danger"),
+                "what_they_know": str(required.get("first_clue_or_question") or ""),
+            },
+            "central_conflict": conflict,
+            "inciting_incident": inciting,
+            "immediate_stakes": stakes,
+        },
+    }
+    simulation_agent.atomic_write_json(folder / "scene.json", repaired)
+    return repaired
+
+
+def _normalize_scene_render_fields(folder: Path, scene: dict) -> dict:
+    """Keep scene.json render-facing fields compatible with the React client."""
+    if not isinstance(scene, dict):
+        return scene
+    changed = False
+    normalized = dict(scene)
+    loc = normalized.get("location")
+    if isinstance(loc, dict):
+        loc_name = str(loc.get("name") or loc.get("title") or "").strip()
+        if loc_name:
+            normalized["location"] = loc_name
+            normalized.setdefault("location_detail", loc)
+            changed = True
+    image = normalized.get("image")
+    if isinstance(image, dict):
+        image_loc = image.get("location")
+        if isinstance(image_loc, dict):
+            image_loc_name = str(image_loc.get("name") or image_loc.get("title") or "").strip()
+            normalized["image"] = {**image, "location": image_loc_name}
+            changed = True
+    if changed:
+        simulation_agent.atomic_write_json(folder / "scene.json", normalized)
+    return normalized
+
+
 def _session_player_names(folder: Path, meta: dict) -> list[str]:
     names: list[str] = []
     try:
@@ -159,6 +730,8 @@ def _session_player_names(folder: Path, meta: dict) -> list[str]:
         pass
     for member in meta.get('members', []) or []:
         if not isinstance(member, dict):
+            continue
+        if not member.get('character_id'):
             continue
         name = str(member.get('character_name') or '').strip()
         if name and name not in names:
@@ -276,6 +849,7 @@ def _action_response_scene(
     location_name: str,
     latest_action: str,
     action_count: int,
+    approved_context: dict | None = None,
 ) -> dict:
     """Deterministic action-result narration when the LLM cannot produce prose."""
     pc = player_name or "you"
@@ -283,13 +857,23 @@ def _action_response_scene(
     action = (latest_action or "").strip()
     lower = action.lower()
     context = f"{loc} {action}".lower()
+    approved = approved_context or {}
+    approved_clue = str(approved.get("clue") or approved.get("first_clue_or_question") or "").strip()
+    approved_object = str(approved.get("object") or approved.get("approved_object") or "").strip()
+    approved_stakes = str(approved.get("stakes") or approved.get("specific_stakes") or "").strip()
+    approved_npc = str(approved.get("npc") or approved.get("named_npc_or_visible_threat") or "").split("(")[0].strip()
+    concrete_detail = approved_object or approved_clue or (
+        "blackened charm" if "charm" in lower else
+        "water seal" if "water" in lower or "seal" in lower else
+        "marked clue"
+    )
 
     title = "The Next Move"
     objective = f"Turn {action[:80] or 'the latest move'} into a concrete advantage at {loc}."
-    stakes = "The situation is still moving; delay will let someone else define what this moment means."
+    stakes = approved_stakes or f"If the party waits, the clearest lead at {loc} is disturbed before it can be tested."
     clues = [
-        "One nearby detail does not match the explanation people are giving.",
-        "Someone present reacts before they can hide it.",
+        approved_clue or f"The {concrete_detail} does not match the explanation people are giving.",
+        f"{approved_npc or 'Someone present'} reacts before they can hide it.",
         f"{pc}'s action changes what is safe to ask or attempt next.",
     ]
     moves = [
@@ -314,7 +898,7 @@ def _action_response_scene(
                 "made by someone carrying weight or dragging fear behind them. A broken twig points north by "
                 "habit, not accident. Farther off, where the wind moves through bare branches, a horn gives one "
                 "short note and then stops as if the searchers are listening for what the camp will do next.\n\n"
-                "Yungmin can feel the choice narrowing. Leaving now may keep the escapees ahead of the army, "
+                f"{pc} can feel the choice narrowing. Leaving now may keep the escapees ahead of the army, "
                 "but a rushed departure will leave a trail any practiced tracker can read. Staying long enough "
                 "to clean the site may save lives tomorrow and cost them the lead today.\n\n"
                 "One person in the group hesitates over a half-buried scrap of cloth caught under a root. It is "
@@ -346,7 +930,7 @@ def _action_response_scene(
                 "A woman with mud on one sleeve grips her pack too tightly. A younger man keeps watching the "
                 "tree line instead of the speaker. Neither of them interrupts, but both know something about the "
                 "route that no one has said aloud.\n\n"
-                "Wind drags old leaves across the camp's border. Under that dry scraping, Yungmin hears a second "
+                f"Wind drags old leaves across the camp's border. Under that dry scraping, {pc} hears a second "
                 "sound: leather, brushed once against bark, then held still. Someone outside the hiding place is "
                 "close enough to be careful.\n\n"
                 "The camp has seconds before fear turns into noise. A clear order, a quiet spell, or one sharp "
@@ -383,33 +967,37 @@ def _action_response_scene(
         actions = ["Follow the trace", "Identify the magic", "Ask who handled the marked object", "Shield the area from interference"]
     elif any(word in lower for word in ("ask", "question", "talk", "press", "persuade")):
         title = "The Answer Between Answers"
+        target_detail = approved_object or approved_clue or f"{loc}'s guarded clue"
+        witness = approved_npc or "the witness"
         body = (
             f"{pc}'s question lands harder than expected. The first answer is too quick, too polished, and the second "
-            "comes only after an uncomfortable silence.\n\n"
-            "The useful part is not the words. It is the glance that follows them: toward a person, door, object, or route "
-            "that everyone else has been carefully pretending is ordinary.\n\n"
-            "Someone nearby notices that glance and changes posture, one shoulder turning as if to hide what their hands "
-            "are doing. The room keeps breathing, but it is no longer relaxed.\n\n"
+            f"comes only after an uncomfortable silence from {witness}.\n\n"
+            f"The useful part is not the words. It is the glance that follows them: toward {target_detail}, "
+            f"the detail everyone else at {loc} has been carefully pretending is ordinary.\n\n"
+            f"{witness} notices that glance being noticed and changes posture, one shoulder turning as if to hide "
+            "what their hands are doing. The room keeps breathing, but it is no longer relaxed.\n\n"
             "There is a narrow opening now. Press too softly and it closes. Press too hard and the person with the truth "
-            "may bolt before Yungmin can learn why they are afraid."
+            f"may bolt before {pc} can learn why they are afraid."
         )
-        objective = "Use the nervous glance to identify who or what is being protected."
-        clues = ["The first answer is rehearsed.", "A nervous glance points toward a hidden priority.", "Someone is withholding the useful part of the truth."]
-        actions = ["Follow the glance", "Ask a sharper follow-up", "Separate the nervous witness", "Offer protection for honesty"]
+        objective = f"Use the nervous glance to learn why {target_detail} is being protected."
+        clues = [approved_clue or "The first answer is rehearsed.", f"A nervous glance points toward {target_detail}.", f"{witness} is withholding the useful part of the truth."]
+        actions = [f"Follow the glance toward {target_detail}", "Ask a sharper follow-up", f"Separate {witness}", "Offer protection for honesty"]
     elif any(word in lower for word in ("search", "inspect", "examine", "investigate", "track", "look")):
         title = "The Detail Out of Place"
+        target_detail = approved_object or approved_clue or concrete_detail
+        witness = approved_npc or "the nearest witness"
         body = (
-            f"{pc} slows down and lets the scene become physical: scuffs, dust, disturbed edges, a mark where a hand rested "
-            "too long. The obvious story starts to separate from the real one.\n\n"
-            "The clearest sign is small, but fresh. It points away from the center of attention and toward the route someone "
-            "used when they thought no one would be looking.\n\n"
-            "Once seen, the route becomes hard to ignore. A smear breaks the pattern of the floor. A thread catches on a rough "
-            "edge. Even the bystanders seem arranged to keep eyes away from that direction.\n\n"
-            "The evidence will not stay clean for long. Every passing footstep makes the real trail look more like noise."
+            f"{pc} slows down and lets {loc} become physical: scuffs, dust, disturbed edges, and {target_detail} "
+            "held against the light long enough for the false story to split from the real one.\n\n"
+            f"The clearest sign is small, but fresh. {approved_clue or f'The {target_detail} points away from the center of attention.'} "
+            f"{witness} sees the same detail and goes still.\n\n"
+            f"Once seen, {target_detail} becomes hard to ignore. A smear breaks the pattern nearby, and a thread catches "
+            "on a rough edge as if someone passed through in a hurry.\n\n"
+            f"{stakes}"
         )
-        objective = "Follow the fresh sign before the trail is disturbed."
-        clues = ["The obvious story is incomplete.", "A fresh physical sign points away from the center of attention.", "Someone used a less visible route."]
-        actions = ["Follow the sign", "Preserve the evidence", "Compare it to nearby surfaces", "Ask who had access"]
+        objective = f"Use {target_detail} before the trail is disturbed."
+        clues = [approved_clue or f"{target_detail} contradicts the obvious story.", f"{witness} reacts to the detail.", "Someone used a less visible route."]
+        actions = [f"Follow the sign from {target_detail}", "Preserve the evidence", "Compare it to nearby surfaces", f"Ask {witness} who had access"]
     elif any(word in lower for word in ("watch", "scan", "observe", "listen")):
         title = "What Moves First"
         body = (
@@ -417,7 +1005,7 @@ def _action_response_scene(
             "reacts to the wrong detail, and another notices that reaction before looking away.\n\n"
             "The room has a pattern now. Fear near the center, calculation near the edge, and a narrow gap where someone may slip out.\n\n"
             "A sleeve brushes against a pouch. A boot turns toward the nearest exit. Someone who should be relieved looks "
-            "angry instead, as though Yungmin has accidentally stepped on the one part of the truth they needed buried.\n\n"
+            f"angry instead, as though {pc} has accidentally stepped on the one part of the truth they needed buried.\n\n"
             "The next move can be quiet or direct, but it has to be chosen before the room realizes it has been read."
         )
         objective = "Decide whether to confront the reaction or quietly follow the person trying to leave."
@@ -432,7 +1020,7 @@ def _action_response_scene(
             "and at least one person who understands more than they meant to reveal.\n\n"
             "Near the edge of attention, a detail stands out because it does not belong with the story everyone is accepting. "
             "It could be evidence, bait, or the first honest sign in the room.\n\n"
-            "Yungmin has room for one clean follow-up before the moment disperses: press the witness, secure the detail, or "
+            f"{pc} has room for one clean follow-up before the moment disperses: press the witness, secure the detail, or "
             "move before the people with something to hide can rearrange themselves."
         )
 
@@ -483,13 +1071,36 @@ def _normalize_invites(raw):
     return normalized
 
 
-def create_session_folder(name: str, owner_email: str, invites=None, campaign_id: str | None = None):
+def create_session_folder(
+    name: str,
+    owner_email: str,
+    invites=None,
+    campaign_id: str | None = None,
+    owner_character_id: int | None = None,
+    owner_role: str = "owner",
+    opening_setup_required: bool = False,
+):
     """Create a session folder programmatically and return the session id and meta."""
     sid = uuid.uuid4().hex[:8]
     folder = BASE / sid
     if folder.exists():
         raise Exception('Session id collision')
     folder.mkdir(parents=True)
+    owner_character_name = None
+    if owner_character_id is not None:
+        try:
+            owner_user = db.get_user_by_identifier(owner_email)
+            if owner_user and owner_user.id is not None:
+                owner_character = db.get_character_for_owner(int(owner_character_id), int(owner_user.id))
+                if owner_character:
+                    owner_character_name = owner_character.name
+                else:
+                    owner_character_id = None
+        except Exception:
+            owner_character_id = None
+            owner_character_name = None
+
+    normalized_owner_role = "dm" if owner_role == "dm" else "owner"
     meta = {
         'id': sid,
         'name': name,
@@ -500,10 +1111,17 @@ def create_session_folder(name: str, owner_email: str, invites=None, campaign_id
         'members': [
             {
                 'email': owner_email,
-                'character_id': None,
-                'role': 'owner'
+                'character_id': owner_character_id,
+                'character_name': owner_character_name,
+                'role': normalized_owner_role,
             }
-        ]
+        ],
+        'opening_setup': {
+            'required': bool(opening_setup_required),
+            'completed': False,
+            'questionnaire_id': None,
+            'anchors': [],
+        },
     }
     (folder / 'meta.json').write_text(json.dumps(meta))
     (folder / 'notes.md').write_text(f'# Notes for {name}\n')
@@ -513,14 +1131,14 @@ def create_session_folder(name: str, owner_email: str, invites=None, campaign_id
     (folder / 'story.json').write_text(json.dumps([{'type': 'meta', 'text': 'The session begins.'}]))
     (folder / 'scene.json').write_text(json.dumps({
         'id': 'opening',
-        'title': f"{name} — Opening Scene",
+        'title': f"{name} - Setup Pending",
         'image': None,
-        'text': 'Your adventure is about to begin. Choose an approach to set the tone.',
-        'choices': [
-            {'id': 'scout', 'label': 'Scout ahead cautiously'},
-            {'id': 'parley', 'label': 'Seek conversation first'},
-            {'id': 'press_on', 'label': 'Press forward decisively'},
-        ],
+        'text': 'Complete the campaign brief and character setup to begin the opening scene.',
+        'narrative_body': 'Complete the campaign brief and character setup to begin the opening scene.',
+        'player_prompt': '',
+        'choices': [],
+        'suggested_actions': [],
+        'setup_pending': True,
     }))
     simulation_agent.atomic_write_json(folder / 'world_state.json', simulation_agent.default_world_state())
     simulation_agent.atomic_write_json(folder / 'persistent_npcs.json', [])
@@ -684,7 +1302,10 @@ def set_character_for_session(session_id: str, req: SetCharacterRequest, current
 
     found = False
     for member in members:
-        if _normalize_email(member.get('email')) == identifier:
+        same_user = _normalize_email(member.get('email')) == identifier
+        same_character = member.get('character_id') == req.character_id
+        empty_slot = member.get('character_id') is None
+        if same_user and (same_character or empty_slot):
             member['character_id'] = req.character_id
             member['character_name'] = character_name
             member.setdefault('role', role)
@@ -702,6 +1323,73 @@ def set_character_for_session(session_id: str, req: SetCharacterRequest, current
     data['members'] = members
     meta_path.write_text(json.dumps(data))
     return {'ok': True, 'session_id': session_id, 'character_id': req.character_id, 'character_name': character_name}
+
+
+class JoinSessionRequest(BaseModel):
+    character_id: int
+
+
+@router.post('/{session_id}/join')
+def join_session_with_character(session_id: str, req: JoinSessionRequest, current_user=Depends(get_current_user)):
+    folder = BASE / session_id
+    if not folder.exists():
+        raise HTTPException(status_code=404, detail='Session not found')
+    meta_path = folder / 'meta.json'
+    if not meta_path.exists():
+        raise HTTPException(status_code=404, detail='Meta not found')
+
+    try:
+        data = json.loads(meta_path.read_text())
+    except Exception as err:
+        raise HTTPException(status_code=500, detail='Failed to read meta') from err
+
+    identifier = _identifier_for_user(current_user)
+    invites = _normalize_invites(data.get('invites'))
+    invite = next((item for item in invites if item.get('email') == identifier and not item.get('accepted')), None)
+    owner = _normalize_email(data.get('owner'))
+    if not invite and identifier != owner:
+        raise HTTPException(status_code=403, detail='No pending invite for this account')
+
+    owner_id = getattr(current_user, 'id', None)
+    if not isinstance(owner_id, int):
+        raise HTTPException(status_code=401, detail='Invalid authentication credentials')
+
+    character = db.get_character_for_owner(req.character_id, owner_id)
+    if not character:
+        raise HTTPException(status_code=404, detail='Character not found')
+    if invite and character.level < int(invite.get('min_level') or 1):
+        raise HTTPException(status_code=400, detail='Character does not meet invite level requirement')
+
+    members = data.get('members', []) or []
+    already_joined = any(
+        _normalize_email(member.get('email')) == identifier
+        and member.get('character_id') == req.character_id
+        for member in members
+    )
+    if not already_joined:
+        members.append({
+            'email': identifier,
+            'character_id': req.character_id,
+            'character_name': character.name,
+            'role': 'member' if identifier != owner else 'owner',
+            'joined_at': datetime.now(timezone.utc).isoformat(),
+        })
+
+    if invite:
+        invite['accepted'] = True
+        invite['character_id'] = req.character_id
+        invite['character_name'] = character.name
+        invite['accepted_at'] = datetime.now(timezone.utc).isoformat()
+
+    data['members'] = members
+    data['invites'] = invites
+    meta_path.write_text(json.dumps(data))
+    return {
+        'ok': True,
+        'session_id': session_id,
+        'character_id': req.character_id,
+        'character_name': character.name,
+    }
 
 
 @router.delete('/{session_id}/file/{filename}')
@@ -747,7 +1435,11 @@ def get_file(session_id: str, filename: str, current_user=Depends(get_current_us
     text = target.read_text()
     # try to return json if parseable
     try:
-        return json.loads(text)
+        parsed = json.loads(text)
+        if filename == "scene.json" and isinstance(parsed, dict):
+            repaired = _repair_recycled_opening_scene_if_needed(folder, parsed, meta=data if meta.exists() else {})
+            return _normalize_scene_render_fields(folder, repaired)
+        return parsed
     except Exception:
         return {'content': text}
 
@@ -793,6 +1485,336 @@ class BootstrapRequest(BaseModel):
     time_of_day: str | None = None
 
 
+def _opening_setup_default(required: bool = False) -> dict:
+    return {
+        "required": bool(required),
+        "completed": False,
+        "questionnaire_id": None,
+        "campaign_brief": {},
+        "anchors": [],
+    }
+
+
+def _selected_character_from_meta(meta: dict) -> dict:
+    for member in meta.get("members", []) or []:
+        char_id = member.get("character_id")
+        if not char_id:
+            continue
+        try:
+            ch = db.get_character_by_id(int(char_id))
+            if ch:
+                sheet = ch.sheet or {}
+                return {
+                    "id": ch.id,
+                    "name": ch.name or member.get("character_name") or "",
+                    "class_name": ch.class_name or "",
+                    "level": ch.level or 1,
+                    "backstory": sheet.get("backstory") or "",
+                    "personality_traits": sheet.get("personality_traits") or "",
+                    "ideals": sheet.get("ideals") or "",
+                    "bonds": sheet.get("bonds") or "",
+                    "flaws": sheet.get("flaws") or "",
+                }
+        except Exception:
+            pass
+    return {"id": "", "name": "the party"}
+
+
+def _opening_anchor_from_meta(meta: dict) -> dict:
+    setup = meta.get("opening_setup") or {}
+    anchors = setup.get("anchors") or []
+    if anchors:
+        return anchors[0]
+    return {}
+
+
+def _build_opening_setup_questionnaire(folder: Path, meta: dict) -> dict:
+    campaign_id = str(meta.get("campaign_id") or "")
+    campaign_contract: dict = {}
+    campaign_scale_profile: dict = {}
+    story_shape_profile: dict = {}
+    backstory_hooks: list[dict] = []
+    campaign_settings: dict = {}
+    campaign = db.get_campaign_by_id(campaign_id) if campaign_id else None
+    if campaign and isinstance(campaign.metadata_json, dict):
+        campaign_settings = campaign.metadata_json.get("settings") or {}
+        campaign_contract, _profiles, backstory_hooks, _session_zero = _campaign_package_from_metadata(campaign)
+        campaign_scale_profile = campaign.metadata_json.get("campaign_scale_profile") or campaign_contract.get("campaign_scale_profile") or {}
+        story_shape_profile = campaign.metadata_json.get("story_shape_profile") or campaign_contract.get("story_shape_profile") or {}
+    try:
+        opening_seed = ensure_content_bundle(
+            situation_type="campaign_opening",
+            scene_director_output={},
+            world_state={},
+            campaign_contract=campaign_contract,
+            freshness_context=_opening_freshness_context(campaign_id or None),
+            campaign_settings=campaign_settings,
+        ).get("required_content") or {}
+    except Exception:
+        opening_seed = {}
+    character = _selected_character_from_meta(meta)
+    party_mode = len(_session_player_names(folder, meta)) > 1 or not character.get("id")
+    return generate_questionnaire(
+        session_id=str(meta.get("id") or folder.name),
+        campaign_id=campaign_id,
+        campaign_contract={
+            **campaign_contract,
+            "campaign_name": campaign.name if campaign else meta.get("name", ""),
+            "description": campaign.description if campaign else "",
+            "setting_summary": campaign_settings.get("setting_summary") or campaign_contract.get("setting_summary") or "",
+        },
+        opening_seed=opening_seed,
+        character=character,
+        backstory_hooks=backstory_hooks,
+        party_mode=party_mode,
+    )
+
+
+class OpeningSetupAnswer(BaseModel):
+    question_id: str | None = None
+    id: str | None = None
+    option_id: str | None = None
+    value: str | None = None
+    custom_value: str | None = None
+    question_text: str | None = None
+    answer_source: str | None = None
+    answer_text: str | None = None
+    character_id: str | int | None = None
+    campaign_id: str | int | None = None
+    session_id: str | None = None
+
+
+class OpeningSetupSubmit(BaseModel):
+    questionnaire_id: str
+    answers: list[OpeningSetupAnswer] = []
+    character_hook_override: str | None = None
+
+
+class OpeningSetupSkip(BaseModel):
+    character_hook_override: str | None = None
+
+
+def _normalized_bridge_answers(
+    *,
+    session_id: str,
+    campaign_id: str,
+    character: dict,
+    questionnaire: dict,
+    answers: list[dict],
+) -> list[dict]:
+    q_by_id = {str(q.get("id") or ""): q for q in (questionnaire or {}).get("questions", [])}
+    normalized: list[dict] = []
+    for raw in answers:
+        qid = str(raw.get("question_id") or raw.get("id") or "").strip()
+        if not qid:
+            continue
+        question = q_by_id.get(qid) or {}
+        question_text = str(raw.get("question_text") or question.get("question") or "").strip()
+        answer_text = str(raw.get("answer_text") or raw.get("custom_value") or raw.get("value") or "").strip()
+        option_id = str(raw.get("option_id") or "").strip()
+        answer_source = str(raw.get("answer_source") or "").strip()
+        if option_id == "ai_choose":
+            answer_source = "ai_choice"
+            answer_text = answer_text or ""
+        elif answer_text and not option_id:
+            answer_source = answer_source or "custom"
+        else:
+            option = next((opt for opt in (question.get("options") or []) if str(opt.get("id") or "") == option_id), None)
+            if option:
+                answer_text = answer_text or str(option.get("value") or option.get("label") or "")
+            answer_source = answer_source or "user_choice"
+        if not answer_text and answer_source == "ai_choice":
+            option = next((opt for opt in (question.get("options") or []) if str(opt.get("id") or "") != "ai_choose"), None)
+            answer_text = str((option or {}).get("value") or (option or {}).get("label") or "")
+        if not answer_text:
+            continue
+        normalized.append({
+            "question_id": qid,
+            "question_text": question_text,
+            "answer_source": answer_source,
+            "answer_text": answer_text,
+            "character_id": str(character.get("id") or character.get("character_id") or raw.get("character_id") or ""),
+            "campaign_id": str(campaign_id or raw.get("campaign_id") or ""),
+            "session_id": str(session_id or raw.get("session_id") or ""),
+        })
+    return normalized
+
+
+def _campaign_brief_with_hook(campaign_brief: dict, hook: str | None) -> dict:
+    hook_text = " ".join(str(hook or "").split()).strip()
+    if not hook_text:
+        return campaign_brief
+    brief = dict(campaign_brief or {})
+    anchor = dict(brief.get("character_anchor") or {})
+    anchor["reason_to_care"] = hook_text
+    brief["character_anchor"] = anchor
+    facts = [str(f) for f in (brief.get("known_facts") or []) if str(f).strip()]
+    if facts:
+        if len(facts) >= 6:
+            facts[-1] = hook_text
+        elif hook_text not in facts:
+            facts.append(hook_text)
+    else:
+        facts = [hook_text]
+    brief["known_facts"] = facts
+    paragraphs = [str(p) for p in (brief.get("brief_paragraphs") or []) if str(p).strip()]
+    if paragraphs:
+        if len(paragraphs) >= 4:
+            paragraphs[-1] = hook_text
+        elif hook_text not in paragraphs:
+            paragraphs.append(hook_text)
+    else:
+        paragraphs = [hook_text]
+    brief["brief_paragraphs"] = paragraphs
+    return brief
+
+
+@router.get('/{session_id}/opening-setup')
+def get_opening_setup(session_id: str, current_user=Depends(get_current_user)):
+    folder = BASE / session_id
+    meta_path = folder / 'meta.json'
+    if not folder.exists() or not meta_path.exists():
+        raise HTTPException(status_code=404, detail='Session not found')
+    meta = json.loads(meta_path.read_text())
+    identifier = _identifier_for_user(current_user)
+    if not _user_is_member(meta, identifier):
+        raise HTTPException(status_code=403, detail='Not a member of this session')
+    setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
+    meta["opening_setup"] = setup
+    if setup.get("completed"):
+        meta_path.write_text(json.dumps(meta))
+        return {"opening_setup": setup, "completed": True, "anchors": setup.get("anchors") or []}
+    questionnaire = setup.get("questionnaire")
+    if not questionnaire:
+        questionnaire = _build_opening_setup_questionnaire(folder, meta)
+        setup["questionnaire"] = questionnaire
+        setup["questionnaire_id"] = questionnaire.get("questionnaire_id")
+        setup["campaign_brief"] = questionnaire.get("campaign_brief") or {}
+        meta_path.write_text(json.dumps(meta))
+    return {"opening_setup": setup, "questionnaire": questionnaire, "completed": False}
+
+
+@router.post('/{session_id}/opening-setup')
+def submit_opening_setup(session_id: str, payload: OpeningSetupSubmit, current_user=Depends(get_current_user)):
+    folder = BASE / session_id
+    meta_path = folder / 'meta.json'
+    if not folder.exists() or not meta_path.exists():
+        raise HTTPException(status_code=404, detail='Session not found')
+    meta = json.loads(meta_path.read_text())
+    identifier = _identifier_for_user(current_user)
+    if not _user_is_member(meta, identifier):
+        raise HTTPException(status_code=403, detail='Not a member of this session')
+    setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
+    questionnaire = setup.get("questionnaire") or _build_opening_setup_questionnaire(folder, meta)
+    if payload.questionnaire_id != questionnaire.get("questionnaire_id"):
+        raise HTTPException(status_code=400, detail="Questionnaire mismatch")
+    character = _selected_character_from_meta(meta)
+    raw_answers = [ans.model_dump() for ans in payload.answers]
+    campaign_brief = _campaign_brief_with_hook(
+        questionnaire.get("campaign_brief") or setup.get("campaign_brief") or {},
+        payload.character_hook_override,
+    )
+    bridge_answers = _normalized_bridge_answers(
+        session_id=session_id,
+        campaign_id=str(meta.get("campaign_id") or ""),
+        character=character,
+        questionnaire=questionnaire,
+        answers=raw_answers,
+    )
+    anchor = answers_to_anchor(
+        session_id=session_id,
+        campaign_id=str(meta.get("campaign_id") or ""),
+        character=character,
+        questionnaire=questionnaire,
+        answers=raw_answers,
+        source="player_answered",
+        character_hook_override=payload.character_hook_override or "",
+    )
+    setup.update({
+        "required": bool(setup.get("required", True)),
+        "completed": True,
+        "questionnaire_id": questionnaire.get("questionnaire_id"),
+        "questionnaire": questionnaire,
+        "campaign_brief": campaign_brief,
+        "anchors": [anchor],
+        "bridge_answers": bridge_answers,
+    })
+    meta["opening_setup"] = setup
+    meta["session_start_context"] = {
+        "source": anchor.get("source") or "player_answered",
+        "questionnaire_id": questionnaire.get("questionnaire_id"),
+        "character_id": anchor.get("character_id"),
+        "character_name": anchor.get("character_name"),
+        "campaign_brief": campaign_brief,
+        "bridge_answers": bridge_answers,
+        "answers": anchor,
+        "character_hook_override": payload.character_hook_override or anchor.get("character_hook_override") or "",
+    }
+    meta_path.write_text(json.dumps(meta))
+    (folder / "opening_character_anchors.json").write_text(json.dumps([anchor], indent=2))
+    return {"ok": True, "opening_setup": setup, "anchors": [anchor]}
+
+
+@router.post('/{session_id}/opening-setup/skip')
+def skip_opening_setup(session_id: str, payload: OpeningSetupSkip | None = None, current_user=Depends(get_current_user)):
+    folder = BASE / session_id
+    meta_path = folder / 'meta.json'
+    if not folder.exists() or not meta_path.exists():
+        raise HTTPException(status_code=404, detail='Session not found')
+    meta = json.loads(meta_path.read_text())
+    identifier = _identifier_for_user(current_user)
+    if not _user_is_member(meta, identifier):
+        raise HTTPException(status_code=403, detail='Not a member of this session')
+    setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
+    questionnaire = setup.get("questionnaire") or _build_opening_setup_questionnaire(folder, meta)
+    character = _selected_character_from_meta(meta)
+    campaign_brief = _campaign_brief_with_hook(
+        questionnaire.get("campaign_brief") or setup.get("campaign_brief") or {},
+        (payload.character_hook_override if payload else ""),
+    )
+    anchor = auto_generate_anchor(
+        session_id=session_id,
+        campaign_id=str(meta.get("campaign_id") or ""),
+        questionnaire=questionnaire,
+        character=character,
+        character_hook_override=(payload.character_hook_override if payload else "") or "",
+    )
+    bridge_answers = _normalized_bridge_answers(
+        session_id=session_id,
+        campaign_id=str(meta.get("campaign_id") or ""),
+        character=character,
+        questionnaire=questionnaire,
+        answers=[
+            {"question_id": q.get("id"), "option_id": "ai_choose", "answer_source": "ai_choice"}
+            for q in (questionnaire.get("questions") or [])
+            if q.get("id")
+        ],
+    )
+    setup.update({
+        "required": bool(setup.get("required", True)),
+        "completed": True,
+        "questionnaire_id": questionnaire.get("questionnaire_id"),
+        "questionnaire": questionnaire,
+        "campaign_brief": campaign_brief,
+        "anchors": [anchor],
+        "bridge_answers": bridge_answers,
+    })
+    meta["opening_setup"] = setup
+    meta["session_start_context"] = {
+        "source": anchor.get("source") or "auto_generated",
+        "questionnaire_id": questionnaire.get("questionnaire_id"),
+        "character_id": anchor.get("character_id"),
+        "character_name": anchor.get("character_name"),
+        "campaign_brief": campaign_brief,
+        "bridge_answers": bridge_answers,
+        "answers": anchor,
+        "character_hook_override": (payload.character_hook_override if payload else "") or anchor.get("character_hook_override") or "",
+    }
+    meta_path.write_text(json.dumps(meta))
+    (folder / "opening_character_anchors.json").write_text(json.dumps([anchor], indent=2))
+    return {"ok": True, "opening_setup": setup, "anchors": [anchor]}
+
+
 @router.post('/{session_id}/invite')
 def invite_user(session_id: str, req: InviteRequest, current_user=Depends(get_current_user)):
     folder = BASE / session_id
@@ -822,7 +1844,7 @@ def invite_user(session_id: str, req: InviteRequest, current_user=Depends(get_cu
         invite_email = _normalize_email(user.email)
 
     invites = _normalize_invites(data.get('invites'))
-    if any(inv.get('email') == invite_email for inv in invites):
+    if any(inv.get('email') == invite_email and not inv.get('accepted') for inv in invites):
         data['invites'] = invites
         meta.write_text(json.dumps(data))
         return {'ok': True, 'invites': invites}
@@ -949,6 +1971,21 @@ async def bootstrap_session(session_id: str, payload: BootstrapRequest, current_
     if not _user_is_member(meta, identifier):
         raise HTTPException(status_code=403, detail='Not a member of this session')
 
+    opening_setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
+    meta["opening_setup"] = opening_setup
+    if opening_setup.get("required") and not opening_setup.get("completed"):
+        meta_path.write_text(json.dumps(meta))
+        return {
+            "ok": False,
+            "requires_opening_setup": True,
+            "opening_setup_url": f"/sessions/{session_id}/opening-setup",
+            "opening_setup": {
+                "required": True,
+                "completed": False,
+                "questionnaire_id": opening_setup.get("questionnaire_id"),
+            },
+        }
+
     session_name = (meta.get('name') or session_id)
     owner = (meta.get('owner') or 'GM')
     style = (payload.style or 'balanced')
@@ -993,7 +2030,7 @@ async def bootstrap_session(session_id: str, payload: BootstrapRequest, current_
                 scene_director_output={},
                 world_state={},
                 campaign_contract=_boot_campaign_contract,
-                freshness_context={"scene_count": 0},
+                freshness_context=_opening_freshness_context(str(campaign_id) if campaign_id else None),
                 campaign_settings=_boot_campaign_settings,
             ).get("required_content") or {}
         except Exception:
@@ -1021,6 +2058,28 @@ async def bootstrap_session(session_id: str, payload: BootstrapRequest, current_
         weather=weather,
         time_of_day=time_of_day,
     ))
+    if _contains_recycled_opening_fixture(narrative.narrative, narrative.prompt):
+        fallback_loc = _boot_seed_rc.get("starting_location") or session_name
+        fallback_npc = _boot_seed_rc.get("named_npc_or_visible_threat") or "the nearest named contact"
+        fallback_text = build_fallback_scene(
+            location_name=fallback_loc,
+            npc_name=fallback_npc,
+            player_name="party",
+            emotional_state="urgent",
+            inciting_incident=_boot_seed_rc.get("inciting_event") or scene_seed,
+            central_conflict=_boot_seed_rc.get("immediate_problem") or scene_seed,
+            immediate_stakes=_boot_seed_rc.get("specific_stakes") or "",
+            sensory_detail="The air is tense with held breath.",
+            campaign_name=session_name,
+        )
+        narrative = narrative_agent.NarrativeResponse(
+            narrative=fallback_text,
+            prompt="What does the party do?",
+            tone=style,
+            scene_score=80,
+            score_passed=True,
+            score_detail={"recycled_opening_guard_used": True},
+        )
 
     scene = {
         'id': 'opening',
@@ -1108,6 +2167,23 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     if not _user_is_member(meta, identifier):
         raise HTTPException(status_code=403, detail='Not a member of this session')
 
+    opening_setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
+    meta["opening_setup"] = opening_setup
+    if opening_setup.get("required") and not opening_setup.get("completed"):
+        meta_path.write_text(json.dumps(meta))
+        return {
+            "ok": False,
+            "requires_opening_setup": True,
+            "opening_setup_url": f"/sessions/{session_id}/opening-setup",
+            "opening_setup": {
+                "required": True,
+                "completed": False,
+                "questionnaire_id": opening_setup.get("questionnaire_id"),
+            },
+        }
+    opening_anchor = _opening_anchor_from_meta(meta)
+    opening_campaign_brief = (meta.get("session_start_context") or {}).get("campaign_brief") or (meta.get("opening_setup") or {}).get("campaign_brief") or {}
+
     session_name = meta.get('name') or session_id
     style = payload.style or 'balanced'
     weather = payload.weather or 'clear'
@@ -1174,6 +2250,8 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     backstory_profiles: list[dict] = []
     backstory_hooks: list[dict] = []
     session_zero_summary: dict = {}
+    campaign_scale_profile: dict = {}
+    story_shape_profile: dict = {}
     campaign_docs: list[str] = []
     campaign_id = meta.get('campaign_id')
     if campaign_id:
@@ -1190,6 +2268,8 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
                     campaign,
                     character_context=character_context,
                 )
+                campaign_scale_profile = campaign.metadata_json.get('campaign_scale_profile') or campaign_contract.get('campaign_scale_profile') or {}
+                story_shape_profile = campaign.metadata_json.get('story_shape_profile') or campaign_contract.get('story_shape_profile') or {}
         except Exception:
             pass
         try:
@@ -1204,6 +2284,8 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     # Inject character context into campaign_docs so Storyboard can build personal hooks
     if character_context and character_context.get('_doc_block'):
         campaign_docs.insert(0, character_context['_doc_block'])
+    if opening_anchor:
+        campaign_docs.insert(0, "[Opening Character Anchor]\n" + json.dumps(opening_anchor, sort_keys=True))
     if campaign_contract.get("agent_output_contract"):
         campaign_docs.insert(0, "[Campaign Contract]\n" + campaign_contract["agent_output_contract"])
 
@@ -1214,6 +2296,10 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         or str(campaign_settings.get('tone') or '').strip()
         or style
     )
+    if campaign_scale_profile:
+        campaign_contract.setdefault("campaign_scale_profile", campaign_scale_profile)
+    if story_shape_profile:
+        campaign_contract.setdefault("story_shape_profile", story_shape_profile)
 
     # --- Context Orchestrator: assemble ranked context packet ---
     from .context_collector import summarize_active_threads, summarize_recent_world_changes
@@ -1335,6 +2421,33 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
 
     narrative_director_output: DirectorOutput | None = narrative_director_output  # type annotation
 
+    opening_campaign_storyboard = getattr(plot_result, 'campaign_storyboard', {}) or {}
+    opening_session_storyboard = getattr(plot_result, 'session_storyboard', {}) or {}
+    opening_arc_plan = plan_arc({
+        "campaign_contract": campaign_contract,
+        "campaign_scale_profile": campaign_scale_profile,
+        "story_shape_profile": story_shape_profile,
+        "campaign_storyboard": opening_campaign_storyboard,
+        "active_threads": world_ctx.get('active_threads') or [],
+        "world_clocks": world_ctx.get('world_clocks') or [],
+        "backstory_spotlight": campaign_contract.get("backstory_spotlight") or [],
+    }).model_dump()
+    opening_scene_beat = select_scene_beat_plan({
+        "session_storyboard": opening_session_storyboard,
+        "campaign_storyboard": opening_campaign_storyboard,
+        "arc_plan": opening_arc_plan,
+        "player_intent": {"declared_actions": [], "requested_mode": "other"},
+        "simulation_delta": {},
+        "current_location": {},
+        "active_npcs": world_ctx.get('relevant_npcs') or [],
+        "active_threads": world_ctx.get('active_threads') or [],
+        "recent_scene_types": [],
+        "recent_motifs": [],
+        "backstory_spotlight": campaign_contract.get("backstory_spotlight") or [],
+    })
+    opening_scene_beat["scene_type"] = "campaign_opening"
+    opening_scene_beat["required_content_bundle"] = "OpeningBundle"
+
     # --- Step 1b: Merge campaign memory into Scene Director candidates ---
     mem_npc_details: list[dict] = world_ctx.get('relevant_npcs') or []
     mem_loc_details: list[dict] = world_ctx.get('locations') or []
@@ -1380,17 +2493,18 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     _bootstrap_seed_rc: dict = {}
     _explicit_starting_location = bool(
         (campaign_settings or {}).get("starting_location")
+        or (campaign_settings or {}).get("world_name")
         or (campaign_contract.get("campaign_dna") or {}).get("starting_location")
         or (campaign_contract.get("world_contract") or {}).get("known_starting_location")
     )
     if not _explicit_starting_location:
         try:
-            _bootstrap_seed_rc = build_content_bundle(
+            _bootstrap_seed_rc = ensure_content_bundle(
                 situation_type="campaign_opening",
                 scene_director_output={},
                 world_state={},
                 campaign_contract=campaign_contract,
-                freshness_context={"scene_count": 0},
+                freshness_context={**_opening_freshness_context(str(campaign_id) if campaign_id else None), "opening_anchor": opening_anchor},
                 campaign_settings=campaign_settings,
             ).get("required_content") or {}
         except Exception:
@@ -1455,6 +2569,17 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     # location, forcibly patch the director data before Composer + Narrative Writer run.
     # Instruction-following alone is not reliable enough — this is a hard code-level guard.
     director_data_dict = director_output.model_dump()
+    _explicit_location_name = str(
+        (campaign_settings or {}).get("starting_location")
+        or (campaign_settings or {}).get("world_name")
+        or (campaign_contract.get("campaign_dna") or {}).get("starting_location")
+        or (campaign_contract.get("world_contract") or {}).get("known_starting_location")
+        or ""
+    ).strip()
+    if _explicit_location_name and director_data_dict.get("location"):
+        director_data_dict["location"]["name"] = _explicit_location_name
+        director_data_dict["scene_title"] = director_data_dict.get("scene_title") or f"Opening — {_explicit_location_name}"
+        loc_name = _explicit_location_name
     _seed_source = ""
     _seed_event = ""
     _seed_stakes = ""
@@ -1472,41 +2597,63 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
             _seed_decision = _bsrc.get("player_decision") or ""
             _seed_question = _bsrc.get("first_clue_or_question") or ""
             if _seed_loc:
-                if _seed_source == "premise_seed" or not loc_name or _looks_like_tavern_default(loc_name):
+                if (
+                    _seed_source == "premise_seed"
+                    or (_seed_source == "starter_seed" and not _has_location_context)
+                    or not loc_name
+                    or _looks_like_tavern_default(loc_name)
+                    or _contains_recycled_opening_fixture(loc_name, json.dumps(director_data_dict))
+                ):
                     director_data_dict["location"]["name"] = _seed_loc
                     director_data_dict["scene_title"] = f"Opening — {_seed_loc}"
                     loc_name = _seed_loc
                 if _seed_source == "premise_seed":
-                    director_data_dict["location"]["type"] = _bsrc.get("location_type") or director_data_dict["location"].get("type") or "camp"
+                    _seed_loc_type = _bsrc.get("location_type") or director_data_dict["location"].get("type") or "opening location"
+                    _seed_identity = _bsrc.get("location_identity") or f"{_seed_loc} is a {_seed_loc_type} where the opening problem is already visible."
+                    director_data_dict["location"]["type"] = _seed_loc_type
                     director_data_dict["location"]["sensory_details"] = [
-                        _bsrc.get("location_identity") or f"The hidden camp at {_seed_loc} is quiet under the trees.",
-                        _seed_event or "The woods carry sound farther than they should.",
+                        _seed_identity,
+                        _seed_event or _seed_problem or _seed_question or "The first scene has a visible, local problem.",
                     ]
                     director_data_dict["visual_prompt_elements"] = [
-                        f"{_seed_loc}, concealed forest camp",
-                        "cold woods, army road nearby, signs of pursuit",
-                        "fresh bootprints and snapped branches",
-                    ]
+                        str(bit)
+                        for bit in (
+                            f"{_seed_loc}, {_seed_loc_type}",
+                            _seed_identity,
+                            _seed_event or _seed_problem,
+                            _seed_stakes or _seed_question,
+                        )
+                        if bit
+                    ][:4]
                     director_data_dict["world_moves"] = [
-                        "Search horns move along the army road beyond the trees.",
-                        "Someone or something has found the edge of the escapees' trail.",
+                        str(bit)
+                        for bit in (
+                            _seed_problem,
+                            _seed_stakes,
+                        )
+                        if bit
                     ]
             if _seed_npc:
                 _llm_npc = (director_data_dict.get("primary_npc") or {}).get("name") or ""
-                if _seed_source == "premise_seed" or not _llm_npc or _looks_like_tavern_default(_llm_npc) or _llm_npc.lower() in (
-                    "a stranger", "a mysterious figure", "the barkeep", "innkeeper", "the innkeeper"
+                if (
+                    _seed_source == "premise_seed"
+                    or (_seed_source == "starter_seed" and not _has_location_context)
+                    or not _llm_npc
+                    or _looks_like_tavern_default(_llm_npc)
+                    or _contains_recycled_opening_fixture(_llm_npc, json.dumps(director_data_dict))
+                    or _llm_npc.lower() in ("a stranger", "a mysterious figure", "the barkeep", "innkeeper", "the innkeeper")
                 ):
                     director_data_dict["primary_npc"]["name"] = _seed_npc
                     npc_name = _seed_npc
-            if _seed_event and (_seed_source == "premise_seed" or not director_data_dict.get("inciting_incident")):
+            if _seed_event and (_seed_source in ("premise_seed", "starter_seed") or not director_data_dict.get("inciting_incident")):
                 director_data_dict["inciting_incident"] = _seed_event
-            if _seed_stakes and (_seed_source == "premise_seed" or not director_data_dict.get("immediate_stakes")):
+            if _seed_stakes and (_seed_source in ("premise_seed", "starter_seed") or not director_data_dict.get("immediate_stakes")):
                 director_data_dict["immediate_stakes"] = _seed_stakes
-            if _seed_problem and _seed_source == "premise_seed":
+            if _seed_problem and _seed_source in ("premise_seed", "starter_seed"):
                 director_data_dict["central_conflict"] = _seed_problem
-            if _seed_question and _seed_source == "premise_seed":
+            if _seed_question and _seed_source in ("premise_seed", "starter_seed"):
                 director_data_dict["player_visible_clues"] = [_seed_question]
-            if _seed_decision and _seed_source == "premise_seed":
+            if _seed_decision and _seed_source in ("premise_seed", "starter_seed"):
                 director_data_dict["possible_actions"] = [
                     part.strip()
                     for part in _seed_decision.replace(" or ", ", ").split(",")
@@ -1523,6 +2670,112 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         director_output = SceneDirectorOutput(**director_data_dict)
     except Exception:
         pass
+    if _contains_recycled_opening_fixture(json.dumps(director_data_dict)):
+        replacement_loc = ""
+        replacement_npc = ""
+        replacement_event = ""
+        replacement_stakes = ""
+        try:
+            _guard_seed = build_content_bundle(
+                situation_type="campaign_opening",
+                scene_director_output={},
+                world_state={},
+                campaign_contract=campaign_contract,
+                freshness_context={**_opening_freshness_context(str(campaign_id) if campaign_id else None), "opening_anchor": opening_anchor},
+                campaign_settings=campaign_settings,
+            ).get("required_content") or {}
+            replacement_loc = _guard_seed.get("starting_location") or ""
+            replacement_npc = _guard_seed.get("named_npc_or_visible_threat") or ""
+            replacement_event = _guard_seed.get("inciting_event") or ""
+            replacement_stakes = _guard_seed.get("specific_stakes") or ""
+        except Exception:
+            pass
+        replacement_loc = replacement_loc or scene_director_agent._location_from_text(  # type: ignore[attr-defined]
+            " ".join([
+                str(campaign_settings.get("world_name") or ""),
+                str(campaign_settings.get("setting_summary") or ""),
+                str(campaign_contract.get("campaign_pitch") or ""),
+                session_name,
+            ]),
+            str(campaign_settings.get("genre") or ""),
+        )
+        replacement_npc = replacement_npc or scene_director_agent._contact_from_text(  # type: ignore[attr-defined]
+            " ".join([
+                str(campaign_settings.get("setting_summary") or ""),
+                str(campaign_contract.get("campaign_pitch") or ""),
+                session_name,
+            ]),
+            str(campaign_settings.get("genre") or ""),
+        )
+        director_data_dict["scene_title"] = f"Opening — {replacement_loc}"
+        director_data_dict["location"] = {
+            **(director_data_dict.get("location") or {}),
+            "name": replacement_loc,
+            "sensory_details": scene_director_agent._sensory_from_context(  # type: ignore[attr-defined]
+                replacement_loc,
+                str(campaign_settings.get("setting_summary") or campaign_contract.get("campaign_pitch") or session_name),
+                str(campaign_settings.get("genre") or ""),
+                derived_style,
+            ),
+        }
+        director_data_dict["primary_npc"] = {
+            **(director_data_dict.get("primary_npc") or {}),
+            "name": replacement_npc,
+        }
+        if replacement_event:
+            director_data_dict["inciting_incident"] = replacement_event
+        if replacement_stakes:
+            director_data_dict["immediate_stakes"] = replacement_stakes
+        loc_name = replacement_loc
+        npc_name = replacement_npc
+        try:
+            director_output = SceneDirectorOutput(**director_data_dict)
+        except Exception:
+            pass
+    opening_content_bundle = ensure_content_bundle(
+        situation_type="campaign_opening",
+        scene_director_output=director_data_dict,
+        world_state={},
+        campaign_contract=campaign_contract,
+        previous_scene=None,
+        freshness_context={**_opening_freshness_context(str(campaign_id) if campaign_id else None), "opening_anchor": opening_anchor},
+        campaign_settings=campaign_settings,
+    )
+    if not opening_content_bundle.get("content_gate_passed"):
+        fallback_bundle = ensure_content_bundle(
+            situation_type="campaign_opening",
+            scene_director_output={},
+            world_state={},
+            campaign_contract=campaign_contract,
+            freshness_context={**_opening_freshness_context(str(campaign_id) if campaign_id else None), "opening_anchor": opening_anchor},
+            campaign_settings=campaign_settings,
+        )
+        opening_content_bundle = fallback_bundle
+        rc = fallback_bundle.get("required_content") or {}
+        if rc.get("starting_location") and director_data_dict.get("location"):
+            director_data_dict["location"]["name"] = rc["starting_location"]
+            loc_name = rc["starting_location"]
+        if rc.get("named_npc_or_visible_threat") and director_data_dict.get("primary_npc"):
+            director_data_dict["primary_npc"]["name"] = rc["named_npc_or_visible_threat"]
+            npc_name = rc["named_npc_or_visible_threat"]
+        if rc.get("inciting_event"):
+            director_data_dict["inciting_incident"] = rc["inciting_event"]
+        if rc.get("specific_stakes"):
+            director_data_dict["immediate_stakes"] = rc["specific_stakes"]
+        try:
+            director_output = SceneDirectorOutput(**director_data_dict)
+        except Exception:
+            pass
+    if opening_anchor:
+        required_context = opening_content_bundle.setdefault("required_content", {})
+        required_context.setdefault("opening_context", _opening_anchor_context(opening_anchor))
+        required_context.setdefault("opening_character_anchor", opening_anchor)
+        if opening_campaign_brief:
+            required_context.setdefault("campaign_brief", opening_campaign_brief)
+        director_data_dict["opening_character_anchor"] = opening_anchor
+        director_data_dict["opening_context"] = required_context.get("opening_context") or {}
+        if opening_campaign_brief:
+            director_data_dict["campaign_brief"] = opening_campaign_brief
     composer_output = narrative_composer_agent.compose_scene(
         scene_director_data=director_data_dict,
         player_name=player_name,
@@ -1544,36 +2797,24 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         campaign_contract=campaign_contract,
     ))
     if _seed_source == "premise_seed":
-        _narr_lower = (narrative.narrative or "").lower()
-        _looks_stock = (
-            "sealed packet" in _narr_lower
-            or "something has gone very wrong" in _narr_lower
-            or "first crossroads" in _narr_lower
+        _seed_required = locals().get("_bsrc") or {}
+        if opening_anchor:
+            _seed_required = {
+                **_seed_required,
+                "opening_context": _opening_anchor_context(opening_anchor),
+                "opening_character_anchor": opening_anchor,
+                "campaign_brief": opening_campaign_brief,
+            }
+        narrative = narrative_agent.NarrativeResponse(
+            narrative=_opening_narrative_from_seed(_seed_required, player_name),
+            prompt=f"What does {player_name} do?",
+            tone=derived_style,
+            scene_score=90,
+            score_passed=True,
+            score_detail={**(narrative.score_detail or {}), "premise_seed_opening_used": True},
+            suggested_actions=director_data_dict.get("possible_actions") or [],
+            world_moves=director_data_dict.get("world_moves") or [],
         )
-        if _looks_stock:
-            sensory = ((director_data_dict.get("location") or {}).get("sensory_details") or [""])[0]
-            npc_data = director_data_dict.get("primary_npc") or {}
-            fallback_text = build_fallback_scene(
-                location_name=loc_name or 'the hiding place',
-                npc_name=npc_name,
-                player_name=player_name,
-                emotional_state=npc_data.get("current_emotional_state") or 'urgent',
-                inciting_incident=director_data_dict.get("inciting_incident") or _seed_event,
-                central_conflict=director_data_dict.get("central_conflict") or _seed_problem,
-                immediate_stakes=director_data_dict.get("immediate_stakes") or _seed_stakes,
-                sensory_detail=sensory,
-                campaign_name=session_name,
-            )
-            narrative = narrative_agent.NarrativeResponse(
-                narrative=fallback_text,
-                prompt=f"What does {player_name} do?",
-                tone=derived_style,
-                scene_score=max(narrative.scene_score or 0, 80),
-                score_passed=True,
-                score_detail={**(narrative.score_detail or {}), "premise_fallback_used": True},
-                suggested_actions=narrative.suggested_actions,
-                world_moves=narrative.world_moves,
-            )
 
     # --- Step 3b: Quality validation + retry/fallback ---
     quality_score, quality_issues = validate_scene_quality(
@@ -1588,12 +2829,16 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         narrative_text=f"{narrative.narrative}\n\n{narrative.prompt}",
         campaign_contract=campaign_contract,
     )
+    recycled_opening_detected = _contains_recycled_opening_fixture(narrative.narrative, narrative.prompt)
+    if recycled_opening_detected:
+        quality_score = 0
+        quality_issues.append("Recycled opening fixture returned instead of campaign-specific content")
     retry_used = False
     fallback_used = False
     contract_minimum = int((campaign_contract.get("validator_policy") or {}).get("minimum_scene_score") or MINIMUM_SCORE) if campaign_contract else MINIMUM_SCORE
     minimum_score = max(MINIMUM_SCORE, contract_minimum)
 
-    if quality_score < minimum_score or contract_validator.get("failed_expectations"):
+    if quality_score < minimum_score or contract_validator.get("failed_expectations") or recycled_opening_detected:
         retry_used = True
         feedback = build_retry_feedback(
             quality_issues + list(contract_validator.get("failed_expectations", [])),
@@ -1627,25 +2872,21 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
             narrative_text=f"{narrative.narrative}\n\n{narrative.prompt}",
             campaign_contract=campaign_contract,
         )
+        recycled_opening_detected = _contains_recycled_opening_fixture(narrative.narrative, narrative.prompt)
+        if recycled_opening_detected:
+            quality_score = 0
+            quality_issues.append("Recycled opening fixture returned again after retry")
 
-    if quality_score < minimum_score:
+    if quality_score < minimum_score or recycled_opening_detected:
         fallback_used = True
-        sensory = (director_output.location.sensory_details[:1] or [''])[0]
-        fallback_text = build_fallback_scene(
-            location_name=loc_name or 'the settlement',
+        narrative = _fallback_response_from_director(
+            director_data=director_data_dict,
+            loc_name=loc_name or "the settlement",
             npc_name=npc_name,
             player_name=player_name,
-            emotional_state=director_output.primary_npc.current_emotional_state or 'grim-faced',
-            inciting_incident=director_output.inciting_incident or director_output.central_conflict,
-            central_conflict=director_output.central_conflict,
-            immediate_stakes=director_output.immediate_stakes,
-            sensory_detail=sensory,
-            campaign_name=session_name,
-        )
-        narrative = narrative_agent.NarrativeResponse(
-            narrative=fallback_text,
-            prompt=f"What does {player_name} do?",
-            tone=derived_style,
+            derived_style=derived_style,
+            session_name=session_name,
+            score_detail={"quality_fallback_used": True},
         )
 
     # --- Step 4: Build scene object ---
@@ -1701,6 +2942,26 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         'suggested_actions': (narrative.suggested_actions or composer_output.suggested_actions or [])[:4],
         # Persisted for regeneration — gives /narrative/regenerate the full structured brief
         'scene_director_data': director_data_dict,
+        'situation_type': opening_scene_beat.get("scene_type") or "campaign_opening",
+        'content_bundle': opening_content_bundle,
+        'ui_payload': opening_content_bundle.get('ui_payload', {}),
+        'campaign_scale_profile': campaign_scale_profile,
+        'story_shape_profile': story_shape_profile,
+        'arc_plan': opening_arc_plan,
+        'campaign_storyboard': opening_campaign_storyboard,
+        'session_storyboard': opening_session_storyboard,
+        'scene_beat_plan': opening_scene_beat,
+        'selected_scene_beat': opening_scene_beat,
+        'opening_setup': meta.get("opening_setup") or {},
+        'opening_character_anchor': opening_anchor,
+        'opening_bundle_context': (opening_content_bundle.get("required_content") or {}).get("opening_context") or {},
+        'beat_selection_reason': opening_scene_beat.get("selection_reason", ""),
+        'repetition_warnings': opening_scene_beat.get("repetition_warnings", []),
+        'thread_budget': {
+            'max_open_threads': campaign_scale_profile.get('max_open_threads'),
+            'active_thread_count': len(candidate_threads),
+            'threads_to_retire': opening_arc_plan.get('threads_to_retire', []),
+        },
         'campaign_contract': {
             'contract_version': campaign_contract.get('contract_version'),
             'canon_policy': campaign_contract.get('canon_policy', {}),
@@ -1709,6 +2970,94 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         } if campaign_contract else {},
         'ui_policy': campaign_contract.get('ui_policy', {}) if campaign_contract else {},
     }
+    scene = _repair_recycled_opening_scene_if_needed(folder, scene, meta=meta)
+    scene = _normalize_scene_render_fields(folder, scene)
+    scene, opening_scene_validation = _apply_concrete_opening_scene_contract(
+        scene,
+        required=(opening_content_bundle.get("required_content") or {}),
+        opening_anchor=opening_anchor,
+        campaign_brief=opening_campaign_brief,
+        player_name=player_name,
+        time_of_day=time_of_day,
+    )
+    known_character_names = [
+        str(member.get("character_name") or "")
+        for member in (meta.get("members") or [])
+        if member.get("character_name")
+    ]
+    scene, opening_anchor_validation = _apply_opening_anchor_validation(
+        scene,
+        opening_anchor,
+        player_name=player_name,
+        known_character_names=known_character_names,
+    )
+    scene["anchor_validation"] = opening_anchor_validation
+    scene, first_scene_validation, _contract_dice_rolls = _apply_first_scene_contract(
+        scene,
+        opening_anchor,
+        player_name=player_name,
+        dice_rolls=[],
+    )
+    scene["first_scene_validation"] = first_scene_validation
+    scene["opening_scene_validation"] = opening_scene_validation
+    scene_qa_initial = run_scene_qa(
+        scene=scene,
+        campaign_contract=campaign_contract,
+        campaign_scale_profile=campaign_scale_profile,
+        story_shape_profile=story_shape_profile,
+        scene_beat_plan=opening_scene_beat,
+        content_bundle=opening_content_bundle,
+        narrative_output={"narrative": narrative.narrative, "prompt": narrative.prompt},
+        player_intent={"declared_actions": [], "requested_mode": "campaign_opening"},
+        recent_player_actions=[],
+        current_scene=None,
+        recent_scene_history=[],
+        recent_motifs=[],
+        memory_delta={},
+        ui_payload=scene.get("ui_payload") or {},
+    )
+    scene = apply_targeted_scene_repairs(scene, scene_qa_initial, player_name=player_name)
+    scene_qa_final = run_scene_qa(
+        scene=scene,
+        campaign_contract=campaign_contract,
+        campaign_scale_profile=campaign_scale_profile,
+        story_shape_profile=story_shape_profile,
+        scene_beat_plan=opening_scene_beat,
+        content_bundle=opening_content_bundle,
+        player_intent={"declared_actions": [], "requested_mode": "campaign_opening"},
+        recent_player_actions=[],
+        current_scene=None,
+        recent_scene_history=[],
+        recent_motifs=[],
+        memory_delta={},
+        ui_payload=scene.get("ui_payload") or {},
+    )
+    scene["scene_qa"] = scene_qa_final
+    scene["quality_debug"] = {
+        "scene_qa_initial": scene_qa_initial,
+        "scene_qa_final": scene_qa_final,
+        "truth_table": scene_qa_final.get("truth_table", {}),
+        "opening_shape": scene_qa_final.get("opening_shape", {}),
+        "gm_move": scene_qa_final.get("gm_move", ""),
+        "scene_purpose": scene_qa_final.get("scene_purpose", {}),
+        "tension_curve": scene_qa_final.get("tension_curve", {}),
+        "npc_scene_roles": scene_qa_final.get("npc_scene_roles", []),
+        "detail_budget": scene_qa_final.get("detail_budget", {}),
+        "campaign_palette": scene_qa_final.get("campaign_palette", {}),
+        "memory_delta_consistency": scene_qa_final.get("memory_delta_consistency", {}),
+        "ui_payload_validation": scene_qa_final.get("ui_payload_validation", {}),
+        "regression_tags": scene_qa_final.get("regression_tags", []),
+        "opening_setup": meta.get("opening_setup") or {},
+        "opening_bundle_context": scene.get("opening_bundle_context") or {},
+        "anchor_validation": opening_anchor_validation,
+        "first_scene_validation": first_scene_validation,
+    }
+    if campaign_id:
+        try:
+            record_opening_shape(str(campaign_id), scene_qa_final.get("opening_shape") or {})
+        except Exception:
+            pass
+    loc_name = str(scene.get('location') or loc_name)
     (folder / 'scene.json').write_text(json.dumps(scene))
 
     # --- Step 4b: Visual Director + Image generation ---
@@ -1784,6 +3133,58 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         ["Campaign Opening"],
         dice_rolls=dice_rolls,
     ))
+    scene = _repair_recycled_opening_scene_if_needed(folder, scene, meta=meta)
+    scene = _normalize_scene_render_fields(folder, scene)
+    scene, opening_scene_validation = _apply_concrete_opening_scene_contract(
+        scene,
+        required=(opening_content_bundle.get("required_content") or {}),
+        opening_anchor=opening_anchor,
+        campaign_brief=opening_campaign_brief,
+        player_name=player_name,
+        time_of_day=time_of_day,
+    )
+    scene, first_scene_validation, dice_rolls = _apply_first_scene_contract(
+        scene,
+        opening_anchor,
+        player_name=player_name,
+        dice_rolls=dice_rolls,
+    )
+    scene["first_scene_validation"] = first_scene_validation
+    scene["opening_scene_validation"] = opening_scene_validation
+    opening_memory_delta = simulation_agent.build_memory_delta(scene, opening_world_state, opening_delta)
+    scene_qa_memory = run_scene_qa(
+        scene=scene,
+        campaign_contract=campaign_contract,
+        campaign_scale_profile=campaign_scale_profile,
+        story_shape_profile=story_shape_profile,
+        scene_beat_plan=opening_scene_beat,
+        content_bundle=opening_content_bundle,
+        player_intent={"declared_actions": [], "requested_mode": "campaign_opening"},
+        recent_player_actions=[],
+        current_scene=None,
+        recent_scene_history=[],
+        recent_motifs=[],
+        memory_delta=opening_memory_delta,
+        ui_payload=scene.get("ui_payload") or {},
+        dice_rolls=dice_rolls,
+    )
+    scene["scene_qa"] = scene_qa_memory
+    scene["quality_debug"] = {
+        **(scene.get("quality_debug") or {}),
+        "scene_qa_final": scene_qa_memory,
+        "truth_table": scene_qa_memory.get("truth_table", {}),
+        "opening_shape": scene_qa_memory.get("opening_shape", {}),
+        "gm_move": scene_qa_memory.get("gm_move", ""),
+        "scene_purpose": scene_qa_memory.get("scene_purpose", {}),
+        "tension_curve": scene_qa_memory.get("tension_curve", {}),
+        "npc_scene_roles": scene_qa_memory.get("npc_scene_roles", []),
+        "detail_budget": scene_qa_memory.get("detail_budget", {}),
+        "campaign_palette": scene_qa_memory.get("campaign_palette", {}),
+        "memory_delta_consistency": scene_qa_memory.get("memory_delta_consistency", {}),
+        "ui_payload_validation": scene_qa_memory.get("ui_payload_validation", {}),
+        "regression_tags": scene_qa_memory.get("regression_tags", []),
+        "first_scene_validation": first_scene_validation,
+    }
     simulation_agent.atomic_write_json(folder / 'world_state.json', opening_world_state)
     simulation_agent.seed_persistent_npcs(folder, scene)
     simulation_agent.seed_location_state(folder, scene, opening_world_state)
@@ -1909,6 +3310,21 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     scene_debug = {
         'storyboard_plot': plot_result.plot,
         'storyboard_hooks': plot_result.hooks,
+        'campaign_storyboard': getattr(plot_result, 'campaign_storyboard', {}),
+        'session_storyboard': getattr(plot_result, 'session_storyboard', {}),
+        'campaign_scale_profile': campaign_scale_profile,
+        'story_shape_profile': story_shape_profile,
+        'arc_plan': opening_arc_plan,
+        'selected_scene_beat': opening_scene_beat,
+        'content_bundle': opening_content_bundle,
+        'content_bundle_validation': opening_content_bundle.get('validation_result', {}),
+        'story_model_stage': story_shape_profile.get('current_arc_stage', ''),
+        'thread_budget': {
+            'max_open_threads': campaign_scale_profile.get('max_open_threads'),
+            'active_thread_count': len(candidate_threads),
+            'threads_to_retire': opening_arc_plan.get('threads_to_retire', []),
+        },
+        'repetition_warnings': opening_scene_beat.get("repetition_warnings", []),
         'scene_director_source': director_output.source,
         'scene_director': {
             'location': loc_name,
@@ -1925,6 +3341,8 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         'scene_score': narrative.scene_score,
         'scene_score_passed': narrative.score_passed,
         'scene_score_detail': narrative.score_detail,
+        'scene_qa': scene.get('scene_qa') or {},
+        'quality_debug': scene.get('quality_debug') or {},
         'campaign_contract': {
             'canon_policy': campaign_contract.get('canon_policy', {}),
             'ai_creativity_policy': campaign_contract.get('ai_creativity_policy', {}),
@@ -2054,6 +3472,8 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
     backstory_profiles: list[dict] = []
     backstory_hooks: list[dict] = []
     session_zero_summary: dict = {}
+    campaign_scale_profile: dict = {}
+    story_shape_profile: dict = {}
     if campaign_id:
         try:
             campaign = db.get_campaign_by_id(str(campaign_id))
@@ -2065,8 +3485,14 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
                 if not isinstance(campaign_variables, dict):
                     campaign_variables = {}
                 campaign_contract, backstory_profiles, backstory_hooks, session_zero_summary = _campaign_package_from_metadata(campaign)
+                campaign_scale_profile = campaign.metadata_json.get('campaign_scale_profile') or campaign_contract.get('campaign_scale_profile') or {}
+                story_shape_profile = campaign.metadata_json.get('story_shape_profile') or campaign_contract.get('story_shape_profile') or {}
         except Exception:
             pass
+    if campaign_scale_profile:
+        campaign_contract.setdefault("campaign_scale_profile", campaign_scale_profile)
+    if story_shape_profile:
+        campaign_contract.setdefault("story_shape_profile", story_shape_profile)
 
     if is_player_run_mode(session_id):
         raise HTTPException(status_code=400, detail='advance-scene is not available in player-run mode')
@@ -2100,6 +3526,19 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             scene_text = previous_scene.get('text', '')
     except Exception:
         pass
+
+    selected_character_context = {}
+    for member in meta.get('members', []) or []:
+        if member.get('character_name'):
+            selected_character_context = {"name": member.get('character_name'), "id": member.get('character_id')}
+            break
+    player_intent = parse_player_intent(
+        recent_player_chat=player_actions,
+        selected_character=selected_character_context,
+        current_scene=previous_scene,
+        pending_rolls=[],
+        active_situation=previous_scene.get("situation_type") or "",
+    ).model_dump()
 
     dice_rolls: list[dict] = []
     try:
@@ -2207,6 +3646,197 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         npcs=persistent_npcs,
     )
 
+    if payload.opening_approach:
+        required = {}
+        try:
+            required = (ensure_content_bundle(
+                situation_type="campaign_opening",
+                scene_director_output={},
+                world_state=world_state,
+                campaign_contract=campaign_contract,
+                previous_scene=previous_scene,
+                freshness_context=_opening_freshness_context(str(campaign_id) if campaign_id else None, fast_opening_choice=True),
+                campaign_settings=campaign_settings,
+            ).get("required_content") or {})
+        except Exception:
+            required = {}
+        loc_hay = str(current_location_name or "").strip().lower()
+        loc_needs_seed = (
+            not loc_hay
+            or loc_hay in {"the current location", "current location"}
+            or loc_hay.startswith("for ")
+            or _contains_recycled_opening_fixture(loc_hay)
+            or required.get("generated_by") == "premise_seed"
+        )
+        if loc_needs_seed and not required:
+            try:
+                required = (ensure_content_bundle(
+                    situation_type="campaign_opening",
+                    scene_director_output={},
+                    world_state=world_state,
+                    campaign_contract=campaign_contract,
+                    previous_scene=previous_scene,
+                    freshness_context=_opening_freshness_context(str(campaign_id) if campaign_id else None, fast_opening_choice=True),
+                    campaign_settings=campaign_settings,
+                ).get("required_content") or {})
+            except Exception:
+                required = {}
+        fast_location = str(required.get("starting_location") or current_location_name or meta.get("name") or "the opening scene")
+        fast_location_type = str(required.get("location_type") or "opening location")
+        fast_npc_label = str(required.get("named_npc_or_visible_threat") or "")
+        fast_npc = fast_npc_label.split("(")[0].strip() or (
+            ((previous_scene.get("scene_director_data") or {}).get("primary_npc") or {}).get("name")
+            or "the nearest witness"
+        )
+        action_response = _action_response_scene(
+            player_name=adv_player_name,
+            location_name=fast_location,
+            latest_action=str(payload.opening_approach or ""),
+            action_count=len(player_actions),
+            approved_context={
+                "clue": required.get("first_clue_or_question") or "",
+                "object": required.get("approved_object") or "",
+                "stakes": required.get("specific_stakes") or "",
+                "npc": fast_npc_label or fast_npc,
+            },
+        )
+        if required:
+            action_response["objective"] = str(required.get("player_decision") or action_response["objective"])
+            action_response["stakes"] = str(required.get("specific_stakes") or action_response["stakes"])
+            action_response["clues"] = [
+                str(required.get("first_clue_or_question") or ""),
+                str(required.get("inciting_event") or ""),
+                *action_response.get("clues", []),
+            ]
+            action_response["clues"] = [c for c in action_response["clues"] if c][:4]
+            identity = str(required.get("location_identity") or f"{fast_location} is already under pressure").rstrip(".")
+            inciting = str(required.get("inciting_event") or "").rstrip(".")
+            first_clue = str(required.get("first_clue_or_question") or (action_response["clues"] or [""])[0]).rstrip(".")
+            decision = str(required.get("player_decision") or action_response["objective"]).rstrip(".")
+            action_text = str(payload.opening_approach or "act").strip()
+            identity_sentence = identity[0].lower() + identity[1:] if identity else "the opening danger is visible"
+            player_sentence = adv_player_name[0].upper() + adv_player_name[1:] if adv_player_name else "The party"
+            clue_sentence = first_clue if first_clue.endswith(("?", "!", ".")) else f"{first_clue}."
+            action_response["narrative"] = (
+                f"At {fast_location}, {identity_sentence}.\n\n"
+                f"{player_sentence} follows the first choice through: {action_text}. "
+                f"{inciting or 'The scene answers with a sign too concrete to ignore'}.\n\n"
+                f"The useful detail is not separate from the danger. {clue_sentence} "
+                f"{action_response['stakes']}\n\n"
+                f"The moment is still narrow enough to shape. {decision}."
+            )
+
+        now = datetime.now(timezone.utc)
+        scene_index = f"scene-{uuid.uuid4().hex[:8]}"
+        prompt = f"What does {adv_player_name} do?"
+        fast_scene = {
+            "id": scene_index,
+            "title": action_response["title"],
+            "image": previous_scene.get("image"),
+            "narrative_body": action_response["narrative"],
+            "player_prompt": prompt,
+            "text": f"{action_response['narrative']}\n\n{prompt}",
+            "choices": [
+                {"id": f"action_{i}", "label": label}
+                for i, label in enumerate((action_response.get("suggested_actions") or [])[:4])
+            ],
+            "suggested_actions": (action_response.get("suggested_actions") or [])[:4],
+            "world_moves": (action_response.get("world_moves") or [])[:4],
+            "active_player": adv_player_name,
+            "location": fast_location,
+            "weather": weather,
+            "time_of_day": time_of_day,
+            "time_block": world_state.get("time_block"),
+            "campaign_day": world_state.get("campaign_day"),
+            "immediate_stakes": action_response["stakes"],
+            "visible_clues": action_response.get("clues") or [],
+            "current_objective": action_response["objective"],
+            "situation_type": "opening_choice",
+            "situation_classification": {
+                **adv_situation,
+                "situation_type": "opening_choice",
+                "reason": "Fast deterministic response to opening choice.",
+            },
+            "scene_director_data": {
+                "source": "fast_opening_choice",
+                "scene_title": action_response["title"],
+                "scene_type": "opening_choice",
+                "location": {
+                    "name": fast_location,
+                    "type": fast_location_type,
+                    "sensory_details": [str(required.get("location_identity") or "")] if required.get("location_identity") else [],
+                },
+                "primary_npc": {
+                    "name": fast_npc,
+                    "role": fast_npc_label or "local witness",
+                    "current_emotional_state": "urgent",
+                    "what_they_want": action_response["objective"],
+                    "what_they_know": str(required.get("first_clue_or_question") or ""),
+                },
+                "central_conflict": action_response["objective"],
+                "inciting_incident": str(required.get("inciting_event") or payload.opening_approach or ""),
+                "immediate_stakes": action_response["stakes"],
+                "player_visible_clues": action_response.get("clues") or [],
+                "possible_actions": (action_response.get("suggested_actions") or [])[:4],
+                "world_moves": (action_response.get("world_moves") or [])[:4],
+                "visual_prompt_elements": [
+                    f"{fast_location}, {fast_location_type}",
+                    str(required.get("location_identity") or action_response["objective"]),
+                    str(required.get("inciting_event") or payload.opening_approach or ""),
+                ],
+            },
+            "content_bundle": {"required_content": required} if required else previous_scene.get("content_bundle", {}),
+            "fast_path": "opening_choice",
+        }
+        try:
+            fast_vs, fast_img_prompt, fast_refresh = run_visual_pipeline(
+                session_id=session_id,
+                scene_text=fast_scene["text"],
+                location_name=fast_location,
+                location_type=fast_location_type,
+                weather=weather,
+                time_of_day=time_of_day,
+                previous_visual_state=load_visual_state(session_id),
+            )
+            fast_scene["visual_state"] = fast_vs.model_dump()
+            save_visual_state(session_id, fast_vs)
+            if fast_refresh or not fast_scene.get("image"):
+                img = image_agent.generate_image(image_agent.ImageRequest(prompt=fast_img_prompt, style="realistic"))
+                fast_scene["image"] = img.image_url
+        except Exception:
+            pass
+
+        fast_scene = simulation_agent.normalize_scene_presentation(fast_scene, world_state, simulation_delta)
+        simulation_agent.atomic_write_json(folder / 'world_state.json', world_state)
+        simulation_agent.atomic_write_json(folder / 'last_simulation_delta.json', simulation_delta)
+        simulation_agent.atomic_write_json(folder / 'scene.json', fast_scene)
+        cur = _load_story_entries(folder)
+        last_story_ts = _story_last_timestamp(cur)
+        cur.extend(_story_action_entries_since(recent_messages, last_story_ts))
+        cur.append({
+            "type": "narration",
+            "ts": now.isoformat(),
+            "text": fast_scene["text"],
+            "scene_id": scene_index,
+            "campaign_day": fast_scene.get("campaign_day"),
+            "time_block": fast_scene.get("time_block"),
+        })
+        _write_story_entries(folder, sorted(cur, key=lambda e: str(e.get("ts") or "")))
+        simulation_agent.atomic_write_json(folder / 'ready.json', {})
+        generation_lock = simulation_agent.complete_scene_lock(folder, generation_lock, "complete")
+        await broadcaster.broadcast_json(session_id, {
+            "type": "narrative.scene",
+            "session_id": session_id,
+            "scene": fast_scene,
+        })
+        return {
+            "ok": True,
+            "scene": fast_scene,
+            "dice_rolls": [],
+            "generation": generation_lock,
+            "simulation_debug": {"fast_path": "opening_choice", "required_content": required},
+        }
+
     if campaign_id:
         try:
             from .context_orchestrator import orchestrate
@@ -2277,7 +3907,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
                 scene_director_output={},
                 world_state=world_state,
                 campaign_contract=campaign_contract,
-                freshness_context={"scene_count": 0},
+                freshness_context=_opening_freshness_context(str(campaign_id) if campaign_id else None),
                 campaign_settings=campaign_settings,
             ).get("required_content") or {}
         else:
@@ -2366,6 +3996,64 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             if t.current_state or t.title
         ]
 
+    adv_campaign_storyboard = previous_scene.get("campaign_storyboard") or storyboard_agent.create_campaign_storyboard(
+        campaign_id=str(campaign_id or session_id),
+        campaign_premise=campaign_contract.get("campaign_pitch") or meta.get("name") or "",
+        central_question=(candidate_threads[0] if candidate_threads else ""),
+        major_threat=str(campaign_variables.get("major_threat") or ""),
+        major_factions=[],
+        open_threads=candidate_threads,
+        backstory_hooks_available=[str(h.get("summary") or h.get("hook") or "") for h in backstory_hooks if isinstance(h, dict)],
+    ).model_dump()
+    adv_arc_plan = plan_arc({
+        "campaign_contract": campaign_contract,
+        "campaign_scale_profile": campaign_scale_profile,
+        "story_shape_profile": story_shape_profile,
+        "campaign_storyboard": adv_campaign_storyboard,
+        "active_threads": candidate_threads,
+        "world_clocks": simulation_delta.get("faction_advances") or simulation_delta.get("threat_updates") or [],
+        "backstory_spotlight": campaign_contract.get("backstory_spotlight") or [],
+    }).model_dump()
+    adv_session_storyboard = previous_scene.get("session_storyboard") or storyboard_agent.generate_session_storyboard(
+        session_id=session_id,
+        campaign=storyboard_agent.CampaignStoryboard(**adv_campaign_storyboard),
+        campaign_contract={
+            **campaign_variables,
+            "pacing_profile": (campaign_scale_profile or {}).get("planning_horizon") or "",
+        },
+        recent_patterns=storyboard_agent.PacingPatternState(
+            recent_scene_types=[previous_scene.get("situation_type") or ""] if previous_scene.get("situation_type") else [],
+            recent_motifs=previous_scene.get("visible_clues") or [],
+            recent_locations=[current_location_name] if current_location_name else [],
+        ),
+    ).model_dump()
+    selected_scene_beat = select_scene_beat_plan({
+        "session_storyboard": adv_session_storyboard,
+        "campaign_storyboard": adv_campaign_storyboard,
+        "arc_plan": adv_arc_plan,
+        "player_intent": player_intent,
+        "simulation_delta": simulation_delta,
+        "current_location": {"name": current_location_name},
+        "active_npcs": mem_npc_details,
+        "active_threads": candidate_threads,
+        "recent_scene_types": [previous_scene.get("situation_type") or ""] if previous_scene.get("situation_type") else [],
+        "recent_motifs": previous_scene.get("visible_clues") or [],
+        "backstory_spotlight": campaign_contract.get("backstory_spotlight") or [],
+    })
+    if selected_scene_beat.get("scene_type"):
+        adv_situation_type = selected_scene_beat["scene_type"]
+        adv_situation = {
+            **adv_situation,
+            "situation_type": adv_situation_type,
+            "reason": f"{adv_situation.get('reason', '')}; scene beat selector: {selected_scene_beat.get('selection_reason', '')}".strip("; "),
+            "requires_content_contract": adv_situation_type in REQUIRES_CONTRACT,
+        }
+    director_guidance["selected_scene_beat"] = selected_scene_beat
+    if selected_scene_beat.get("location"):
+        scene_summary = f"{scene_summary}\n\nSelected scene beat: {selected_scene_beat.get('scene_purpose')} at {selected_scene_beat.get('location')}"
+    else:
+        scene_summary = f"{scene_summary}\n\nSelected scene beat: {selected_scene_beat.get('scene_purpose')}"
+
     adv_scene_director_output: SceneDirectorOutput = scene_director_agent.direct_scene(SceneDirectorRequest(
         campaign_settings=campaign_settings,
         campaign_variables=campaign_variables,
@@ -2403,7 +4091,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             "recent_location_types": [],
             "recent_opening_events": [],
         }
-        adv_content_bundle = build_content_bundle(
+        adv_content_bundle = ensure_content_bundle(
             situation_type=adv_situation_type,
             scene_director_output=adv_director_data,
             world_state=world_state,
@@ -2443,6 +4131,21 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
                 f"NPC: {seed_npc}. "
                 f"Stakes: {seed_stakes}.\n\n" + scene_summary
             ).strip()
+    else:
+        adv_content_bundle = ensure_content_bundle(
+            situation_type=adv_situation_type,
+            scene_director_output=adv_director_data,
+            world_state=world_state,
+            campaign_contract=campaign_contract,
+            previous_scene=previous_scene,
+            freshness_context={"scene_count": adv_scene_count},
+            campaign_settings=campaign_settings,
+        )
+        adv_situation_validated = adv_content_bundle.get("validated", True)
+
+    bundle_dice_rolls = _dice_rolls_from_content_bundle(adv_content_bundle)
+    if bundle_dice_rolls:
+        dice_rolls = bundle_dice_rolls
 
     adv_composer_output = narrative_composer_agent.compose_scene(
         scene_director_data=adv_director_data,
@@ -2470,6 +4173,12 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             location_name=adv_scene_director_output.location.name or current_location_name or "the current location",
             latest_action=player_actions[-1],
             action_count=len(player_actions),
+            approved_context={
+                "clue": (adv_content_bundle.get("required_content") or {}).get("first_clue_or_question") or (adv_scene_director_output.player_visible_clues[:1] or [""])[0],
+                "object": (adv_content_bundle.get("required_content") or {}).get("approved_object") or "",
+                "stakes": (adv_content_bundle.get("required_content") or {}).get("specific_stakes") or adv_scene_director_output.immediate_stakes,
+                "npc": (adv_content_bundle.get("required_content") or {}).get("named_npc_or_visible_threat") or adv_scene_director_output.primary_npc.name,
+            },
         )
         narrative = narrative_agent.NarrativeResponse(
             narrative=action_response["narrative"],
@@ -2612,6 +4321,21 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         'scene_director_data': adv_director_data,
         'composer_data': adv_composer_data,
         'simulation_delta': simulation_delta,
+        'campaign_scale_profile': campaign_scale_profile,
+        'story_shape_profile': story_shape_profile,
+        'arc_plan': adv_arc_plan,
+        'campaign_storyboard': adv_campaign_storyboard,
+        'session_storyboard': adv_session_storyboard,
+        'player_intent': player_intent,
+        'scene_beat_plan': selected_scene_beat,
+        'selected_scene_beat': selected_scene_beat,
+        'beat_selection_reason': selected_scene_beat.get("selection_reason", ""),
+        'repetition_warnings': selected_scene_beat.get("repetition_warnings", []),
+        'thread_budget': {
+            'max_open_threads': campaign_scale_profile.get('max_open_threads'),
+            'active_thread_count': len(candidate_threads),
+            'threads_to_retire': adv_arc_plan.get('threads_to_retire', []),
+        },
         'campaign_contract': {
             'contract_version': campaign_contract.get('contract_version'),
             'canon_policy': campaign_contract.get('canon_policy', {}),
@@ -2621,7 +4345,64 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         'ui_policy': campaign_contract.get('ui_policy', {}) if campaign_contract else {},
     }
 
+    recent_scene_history = [previous_scene] if previous_scene else []
+    recent_motifs = list((previous_scene.get("visible_clues") or [])[:5]) if previous_scene else []
+    adv_scene_qa_initial = run_scene_qa(
+        scene=new_scene,
+        campaign_contract=campaign_contract,
+        campaign_scale_profile=campaign_scale_profile,
+        story_shape_profile=story_shape_profile,
+        scene_beat_plan=selected_scene_beat,
+        content_bundle=adv_content_bundle,
+        narrative_output={"narrative": narrative.narrative, "prompt": narrative.prompt},
+        player_intent=player_intent,
+        recent_player_actions=player_actions,
+        current_scene=previous_scene,
+        recent_scene_history=recent_scene_history,
+        recent_motifs=recent_motifs,
+        memory_delta={},
+        ui_payload=new_scene.get("ui_payload") or {},
+    )
+    new_scene = apply_targeted_scene_repairs(
+        new_scene,
+        adv_scene_qa_initial,
+        player_name=adv_player_name,
+        recent_player_actions=player_actions,
+    )
+    adv_scene_qa_after_repair = run_scene_qa(
+        scene=new_scene,
+        campaign_contract=campaign_contract,
+        campaign_scale_profile=campaign_scale_profile,
+        story_shape_profile=story_shape_profile,
+        scene_beat_plan=selected_scene_beat,
+        content_bundle=adv_content_bundle,
+        player_intent=player_intent,
+        recent_player_actions=player_actions,
+        current_scene=previous_scene,
+        recent_scene_history=recent_scene_history,
+        recent_motifs=recent_motifs,
+        memory_delta={},
+        ui_payload=new_scene.get("ui_payload") or {},
+    )
+    new_scene["scene_qa"] = adv_scene_qa_after_repair
+    new_scene["quality_debug"] = {
+        "scene_qa_initial": adv_scene_qa_initial,
+        "scene_qa_final": adv_scene_qa_after_repair,
+        "truth_table": adv_scene_qa_after_repair.get("truth_table", {}),
+        "opening_shape": adv_scene_qa_after_repair.get("opening_shape", {}),
+        "gm_move": adv_scene_qa_after_repair.get("gm_move", ""),
+        "scene_purpose": adv_scene_qa_after_repair.get("scene_purpose", {}),
+        "tension_curve": adv_scene_qa_after_repair.get("tension_curve", {}),
+        "npc_scene_roles": adv_scene_qa_after_repair.get("npc_scene_roles", []),
+        "detail_budget": adv_scene_qa_after_repair.get("detail_budget", {}),
+        "campaign_palette": adv_scene_qa_after_repair.get("campaign_palette", {}),
+        "memory_delta_consistency": adv_scene_qa_after_repair.get("memory_delta_consistency", {}),
+        "ui_payload_validation": adv_scene_qa_after_repair.get("ui_payload_validation", {}),
+        "regression_tags": adv_scene_qa_after_repair.get("regression_tags", []),
+    }
+
     post_scene_dice_rolls: list[dict] = []
+    scene_analysis_consistency: dict = {}
     try:
         post_cues = await scene_agent.analyze_scene(scene_agent.SceneAnalysisRequest(
             scene=new_scene['text'],
@@ -2629,8 +4410,12 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             session_id=session_id,
         ))
         post_scene_dice_rolls = [r.model_dump() for r in post_cues.dice_rolls]
+        scene_analysis_consistency = scene_agent.check_roll_consistency(adv_content_bundle, post_cues)
     except Exception:
         pass
+    if bundle_dice_rolls:
+        post_scene_dice_rolls = bundle_dice_rolls
+    new_scene['scene_analysis_consistency'] = scene_analysis_consistency
 
     # --- Visual Director: determine atmosphere + image refresh decision ---
     image_url = None
@@ -2737,6 +4522,39 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         new_scene["canon_validation"] = canon_validation
     except Exception:
         full_ui_payload = {}
+
+    adv_scene_qa_final = run_scene_qa(
+        scene=new_scene,
+        campaign_contract=campaign_contract,
+        campaign_scale_profile=campaign_scale_profile,
+        story_shape_profile=story_shape_profile,
+        scene_beat_plan=selected_scene_beat,
+        content_bundle=adv_content_bundle,
+        player_intent=player_intent,
+        recent_player_actions=player_actions,
+        current_scene=previous_scene,
+        recent_scene_history=recent_scene_history,
+        recent_motifs=recent_motifs,
+        memory_delta=memory_delta,
+        ui_payload=full_ui_payload,
+        dice_rolls=post_scene_dice_rolls,
+    )
+    new_scene["scene_qa"] = adv_scene_qa_final
+    new_scene["quality_debug"] = {
+        **(new_scene.get("quality_debug") or {}),
+        "scene_qa_final": adv_scene_qa_final,
+        "truth_table": adv_scene_qa_final.get("truth_table", {}),
+        "opening_shape": adv_scene_qa_final.get("opening_shape", {}),
+        "gm_move": adv_scene_qa_final.get("gm_move", ""),
+        "scene_purpose": adv_scene_qa_final.get("scene_purpose", {}),
+        "tension_curve": adv_scene_qa_final.get("tension_curve", {}),
+        "npc_scene_roles": adv_scene_qa_final.get("npc_scene_roles", []),
+        "detail_budget": adv_scene_qa_final.get("detail_budget", {}),
+        "campaign_palette": adv_scene_qa_final.get("campaign_palette", {}),
+        "memory_delta_consistency": adv_scene_qa_final.get("memory_delta_consistency", {}),
+        "ui_payload_validation": adv_scene_qa_final.get("ui_payload_validation", {}),
+        "regression_tags": adv_scene_qa_final.get("regression_tags", []),
+    }
 
     new_scene.update(simulation_agent.build_structured_scene_fields(
         new_scene,
@@ -2854,6 +4672,24 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         'situation_type': adv_situation_type,
         'situation_classification': adv_situation,
         'content_bundle': adv_content_bundle,
+        'content_bundle_validation': adv_content_bundle.get('validation_result', {}),
+        'campaign_scale_profile': campaign_scale_profile,
+        'story_shape_profile': story_shape_profile,
+        'arc_plan': adv_arc_plan,
+        'campaign_storyboard': adv_campaign_storyboard,
+        'session_storyboard': adv_session_storyboard,
+        'player_intent': player_intent,
+        'selected_scene_beat': selected_scene_beat,
+        'story_model_stage': story_shape_profile.get('current_arc_stage', ''),
+        'thread_budget': {
+            'max_open_threads': campaign_scale_profile.get('max_open_threads'),
+            'active_thread_count': len(candidate_threads),
+            'threads_to_retire': adv_arc_plan.get('threads_to_retire', []),
+        },
+        'repetition_warnings': selected_scene_beat.get("repetition_warnings", []),
+        'scene_analysis_consistency': scene_analysis_consistency,
+        'scene_qa': new_scene.get('scene_qa') or {},
+        'quality_debug': new_scene.get('quality_debug') or {},
         'canon_changes': canon_changes,
         'canon_validation': canon_validation,
         'ui_payload': full_ui_payload,

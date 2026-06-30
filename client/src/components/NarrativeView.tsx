@@ -39,6 +39,11 @@ type Scene = {
   current_objective?: string
   active_thread?: string
   current_situation?: Record<string, any>
+  scene_summary?: {
+    objective?: string
+    observed?: string
+    risk?: string
+  }
   world_clock?: Record<string, any>
   experience_mode?: string
   memory_updates?: Record<string, any>
@@ -60,16 +65,29 @@ type Props = {
   onExitRead?: () => void
 }
 
+function displayText(value: any): string {
+  if (typeof value === 'string') return value
+  if (value && typeof value === 'object') {
+    return String(value.name || value.title || value.description || '')
+  }
+  return ''
+}
+
 function EntityMention({ entity, children }: { entity: EntityHint; children: string }) {
+  const openJournal = () => {
+    window.dispatchEvent(new CustomEvent('journal:focus-entity', {
+      detail: { entityType: 'people', name: entity.name },
+    }))
+  }
   return (
-    <span className="entity-mention">
+    <button className="entity-mention" type="button" onClick={openJournal}>
       {children}
       <span className="entity-tooltip">
         <span className="entity-tooltip-name">{entity.name}</span>
         {entity.role ? <span className="entity-tooltip-role">{entity.role}</span> : null}
         {entity.description ? <span className="entity-tooltip-desc">{entity.description}</span> : null}
       </span>
-    </span>
+    </button>
   )
 }
 
@@ -98,6 +116,8 @@ function annotateText(text: string, entities: EntityHint[]): React.ReactNode {
 }
 
 export default function NarrativeView({sessionId, showChoicesInScene = false, entities = [], presentationMode = 'play', focusMode = false, onExitRead}: Props){
+  // Scene ownership is intentionally local: this component fetches and renders
+  // prose/art, then broadcasts scene metadata for the surrounding play layout.
   const [scene, setScene] = useState<Scene|null>(null)
   const [choicesOpen, setChoicesOpen] = useState(false)
   const [imageError, setImageError] = useState(false)
@@ -158,7 +178,8 @@ export default function NarrativeView({sessionId, showChoicesInScene = false, en
         choices: Array.isArray(scene.choices) ? scene.choices : [],
       }
     }))
-    // Broadcast full scene for session-banner and situation strip
+    // Broadcast full scene for session banner, summary strip, roll drawers, and
+    // world/archive panels. Consumers choose the slices they need.
     window.dispatchEvent(new CustomEvent('narrative:scene-meta', { detail: scene }))
   }, [scene])
 
@@ -273,8 +294,9 @@ export default function NarrativeView({sessionId, showChoicesInScene = false, en
     return { main, citations }
   }
 
-  // Use narrative_body/player_prompt if available (new scene format).
-  // Fall back to splitting scene.text for old cached scenes.
+  // Use narrative_body/player_prompt when available. Older cached scenes may
+  // still include the player question at the end of `text`, so this fallback
+  // peels that prompt off for UI placement.
   const splitNarrativePrompt = (text: string): { narration: string; playerPrompt: string } => {
     const lastQ = text.lastIndexOf('?')
     if (lastQ === -1) return { narration: text, playerPrompt: '' }
@@ -290,10 +312,14 @@ export default function NarrativeView({sessionId, showChoicesInScene = false, en
   }
 
   const parsed = parseCitations(scene.narrative_body || scene.text || '')
+  const narrativeParagraphs = parsed.main.split(/\n{2,}/).map(p => p.trim()).filter(Boolean)
+  // Two-column prose only helps after the body is long enough; tune this with
+  // the matching `.narrative-prose-flow--columns` CSS.
+  const narrativeWordCount = parsed.main.split(/\s+/).filter(Boolean).length
   const playerPromptFallback = splitNarrativePrompt(parsed.main)
   const playerPrompt = scene.player_prompt || playerPromptFallback.playerPrompt
 
-  const locationName = scene.visual_state?.location_name || scene.location || ''
+  const locationName = scene.visual_state?.location_name || displayText(scene.location)
   const mood = scene.visual_state?.mood || ''
   const imageUrl = typeof scene.image === 'string' ? scene.image : scene.image?.url || ''
   const imageMeta = typeof scene.image === 'object' && scene.image ? scene.image : null
@@ -340,29 +366,14 @@ export default function NarrativeView({sessionId, showChoicesInScene = false, en
     setBookPage(p => delta < 0 ? Math.min(maxBookPage, p + 1) : Math.max(0, p - 1))
   }
 
-  // ── Opening placeholder state ───────────────────────────────────────────
-  // Before the first advance-scene runs, scene.id === 'opening' and there's no
-  // narrative_body. Show prominent approach selection cards instead of empty prose.
+  // Opening setup pending state. Older cached sessions may still contain the
+  // pre-scene generic approach choices; do not show them as playable fiction.
   const isOpeningPlaceholder = scene.id === 'opening' && !scene.narrative_body && hasChoices
   if (isOpeningPlaceholder && presentationMode !== 'read') {
     return (
       <div className="opening-approach-view">
-        <div className="opening-approach-star" aria-hidden="true">✦</div>
-        <h2 className="opening-approach-title">Your adventure begins.</h2>
-        <p className="opening-approach-subtitle">Choose an approach to set the tone of your opening scene.</p>
-        <div className="opening-approach-cards">
-          {scene.choices.map(c => (
-            <button
-              key={c.id}
-              type="button"
-              className="opening-approach-card"
-              onClick={() => window.dispatchEvent(new CustomEvent('narrative:start-approach', { detail: { label: c.label, id: c.id } }))}
-            >
-              <span className="opening-approach-card-label">{c.label}</span>
-            </button>
-          ))}
-        </div>
-        <p className="opening-approach-hint">Or describe your own approach in the message box below.</p>
+        <h2 className="opening-approach-title">Opening scene pending.</h2>
+        <p className="opening-approach-subtitle">Complete the campaign brief and character setup to generate the first playable scene.</p>
       </div>
     )
   }
@@ -397,21 +408,6 @@ export default function NarrativeView({sessionId, showChoicesInScene = false, en
                   </p>
                   {isLast && playerPrompt ? (
                     <div className="book-page-prompt">{playerPrompt}</div>
-                  ) : null}
-                  {isLast && scene.suggested_actions && scene.suggested_actions.length > 0 ? (
-                    <div className="book-page-actions">
-                      <div className="book-page-actions-label">You could...</div>
-                      {scene.suggested_actions.slice(0, 5).map((action, i) => (
-                        <button
-                          key={i}
-                          type="button"
-                          className="book-action-chip"
-                          onClick={() => window.dispatchEvent(new CustomEvent('narrative:suggest-action', { detail: { action } }))}
-                        >
-                          {action}
-                        </button>
-                      ))}
-                    </div>
                   ) : null}
                 </div>
                 <div className="book-page-number">{pageIndex + 1}</div>
@@ -470,28 +466,18 @@ export default function NarrativeView({sessionId, showChoicesInScene = false, en
 
             <div className="narrative-divider" aria-hidden="true">❖ ❖ ❖</div>
 
-            <p className="narrative-text">{annotatedNarration}</p>
+            <div className={`narrative-prose-flow ${narrativeWordCount >= 150 ? 'narrative-prose-flow--columns' : ''}`}>
+              {narrativeParagraphs.length > 0 ? (
+                narrativeParagraphs.map((paragraph, index) => (
+                  <p key={index} className="narrative-text">{annotateText(paragraph, entities)}</p>
+                ))
+              ) : (
+                <p className="narrative-text">{annotatedNarration}</p>
+              )}
+            </div>
 
-            {playerPrompt ? (
+            {playerPrompt && presentationMode !== 'play' ? (
               <div className="narrative-player-prompt">{playerPrompt}</div>
-            ) : null}
-
-            {scene.suggested_actions && scene.suggested_actions.length > 0 ? (
-              <div className="narrative-suggestions-block">
-                <div className="narrative-suggestions-label">You could...</div>
-                <div className="narrative-suggested-actions">
-                  {scene.suggested_actions.slice(0, 5).map((action, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      className="narrative-action-chip"
-                      onClick={() => window.dispatchEvent(new CustomEvent('narrative:suggest-action', { detail: { action } }))}
-                    >
-                      {action}
-                    </button>
-                  ))}
-                </div>
-              </div>
             ) : null}
 
             {parsed.citations && parsed.citations.length > 0 ? (

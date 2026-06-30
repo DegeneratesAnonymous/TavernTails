@@ -77,6 +77,121 @@ def test_create_campaign_without_session_returns_empty_sessions():
     assert sessions == [], f"Expected empty sessions list, got {sessions}"
 
 
+def test_create_campaign_owner_can_join_as_character():
+    client = _client()
+    user = _ensure_user("wo008-owner-character@example.com")
+    assert user.id is not None
+    character = db.create_character(owner_id=user.id, name="Owner Hero", level=4, class_name="Paladin", sheet={})
+
+    res = client.post(
+        "/campaigns",
+        headers=_auth(user.email),
+        json={
+            "name": "WO008 Owner Character Campaign",
+            "create_session": True,
+            "owner_role": "player",
+            "owner_character_id": character.id,
+        },
+    )
+    assert res.status_code == 201, res.text
+    campaign = res.json()["campaign"]
+    assert campaign["metadata_json"]["owner_participation"]["character_id"] == character.id
+
+    session_id = campaign["sessions"][0]["id"]
+    meta = client.get(f"/sessions/{session_id}/meta", headers=_auth(user.email)).json()
+    owner_member = next(m for m in meta["members"] if m["email"] == user.email)
+    assert owner_member["character_id"] == character.id
+    assert owner_member["character_name"] == "Owner Hero"
+
+
+def test_create_campaign_uses_selected_owner_character_not_first_character():
+    client = _client()
+    user = _ensure_user("wo008-selected-character@example.com")
+    assert user.id is not None
+    first = db.create_character(owner_id=user.id, name="Yungmin", level=5, class_name="Wizard", sheet={})
+    selected = db.create_character(owner_id=user.id, name="Chosen Ranger", level=3, class_name="Ranger", sheet={})
+
+    res = client.post(
+        "/campaigns",
+        headers=_auth(user.email),
+        json={
+            "name": "WO008 Selected Character Campaign",
+            "create_session": True,
+            "owner_role": "player",
+            "owner_character_id": selected.id,
+        },
+    )
+
+    assert res.status_code == 201, res.text
+    campaign = res.json()["campaign"]
+    assert campaign["metadata_json"]["owner_participation"]["character_id"] == selected.id
+    assert campaign["metadata_json"]["owner_participation"]["character_id"] != first.id
+
+    session_id = campaign["sessions"][0]["id"]
+    meta = client.get(f"/sessions/{session_id}/meta", headers=_auth(user.email)).json()
+    owner_member = next(m for m in meta["members"] if m["email"] == user.email)
+    assert owner_member["character_id"] == selected.id
+    assert owner_member["character_name"] == "Chosen Ranger"
+
+
+def test_partial_settings_update_preserves_setting_summary_for_opening_context():
+    client = _client()
+    user = _ensure_user("wo008-settings-merge@example.com")
+    assert user.id is not None
+
+    res = client.post(
+        "/campaigns",
+        headers=_auth(user.email),
+        json={
+            "name": "WO008 Setting Preserve",
+            "description": "A crystal desert where glass storms expose buried cities.",
+            "create_session": True,
+            "preferences": {
+                "genre": "fantasy",
+                "tone": "mystery",
+                "setting_summary": "A crystal desert where glass storms expose buried cities.",
+            },
+        },
+    )
+    assert res.status_code == 201, res.text
+    campaign_id = res.json()["campaign"]["id"]
+
+    settings_res = client.put(
+        f"/campaigns/{campaign_id}/settings",
+        headers=_auth(user.email),
+        json={"genre": "fantasy", "tone": "mystery"},
+    )
+
+    assert settings_res.status_code == 200, settings_res.text
+    settings = settings_res.json()["settings"]
+    assert settings["setting_summary"] == "A crystal desert where glass storms expose buried cities."
+
+
+def test_create_campaign_owner_can_designate_self_dm():
+    client = _client()
+    user = _ensure_user("wo008-owner-dm@example.com")
+    assert user.id is not None
+
+    res = client.post(
+        "/campaigns",
+        headers=_auth(user.email),
+        json={
+            "name": "WO008 Owner DM Campaign",
+            "create_session": True,
+            "owner_role": "dm",
+        },
+    )
+    assert res.status_code == 201, res.text
+    campaign = res.json()["campaign"]
+    assert campaign["metadata_json"]["owner_participation"]["role"] == "dm"
+
+    session_id = campaign["sessions"][0]["id"]
+    meta = client.get(f"/sessions/{session_id}/meta", headers=_auth(user.email)).json()
+    owner_member = next(m for m in meta["members"] if m["email"] == user.email)
+    assert owner_member["role"] == "dm"
+    assert owner_member["character_id"] is None
+
+
 # ---------------------------------------------------------------------------
 # create_session_from_campaign returns session_id + meta
 # ---------------------------------------------------------------------------
@@ -97,6 +212,36 @@ def test_create_session_from_campaign_returns_session_id_and_meta():
     data = res.json()
     assert data.get("session_id"), "Response must include session_id"
     assert isinstance(data.get("meta"), dict), "Response must include meta dict"
+
+
+def test_create_session_from_campaign_inherits_owner_character():
+    client = _client()
+    user = _ensure_user("wo008-newsession-owner-character@example.com")
+    assert user.id is not None
+    character = db.create_character(owner_id=user.id, name="Chosen Later", level=2, class_name="Bard", sheet={})
+
+    res = client.post(
+        "/campaigns",
+        headers=_auth(user.email),
+        json={
+            "name": "WO008 Later Session Character Campaign",
+            "create_session": False,
+            "owner_role": "player",
+            "owner_character_id": character.id,
+        },
+    )
+    assert res.status_code == 201, res.text
+    campaign_id = res.json()["campaign"]["id"]
+
+    session_res = client.post(
+        f"/campaigns/{campaign_id}/create_session",
+        headers=_auth(user.email),
+    )
+    assert session_res.status_code == 201, session_res.text
+    meta = session_res.json()["meta"]
+    owner_member = next(m for m in meta["members"] if m["email"] == user.email)
+    assert owner_member["character_id"] == character.id
+    assert owner_member["character_name"] == "Chosen Later"
 
 
 def test_create_session_from_campaign_forbidden_for_other_user():

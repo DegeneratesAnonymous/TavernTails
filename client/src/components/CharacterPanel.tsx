@@ -97,6 +97,7 @@ type Props = {
   selectedId?: string | null
   onSelect?: (id: string) => void
   sceneCues?: SceneCue[]
+  requestedSkillNames?: string[]
   npcSpotlight?: {name: string; initiative_hint?: string}[]
   onCueRoll?: (cue: SceneCue) => Promise<void>
   title?: string
@@ -124,6 +125,7 @@ export default function CharacterPanel({
   selectedId,
   onSelect,
   sceneCues = [],
+  requestedSkillNames = [],
   npcSpotlight = [],
   onCueRoll,
   title = 'Characters',
@@ -134,7 +136,7 @@ export default function CharacterPanel({
   onSheetUpdate,
   sessionId,
 }: Props){
-  const [sheetTab, setSheetTab] = useState<SheetTab | null>(null)
+  const [sheetTab, setSheetTab] = useState<SheetTab | null>('skills')
   const containerRef = useRef<HTMLDivElement|null>(null)
   const [rollingCueId, setRollingCueId] = useState<string | null>(null)
   const [cueError, setCueError] = useState<string | null>(null)
@@ -162,9 +164,6 @@ export default function CharacterPanel({
   const [showAddSpell, setShowAddSpell] = useState(false)
   const [addSpellName, setAddSpellName] = useState('')
   const [addSpellLevel, setAddSpellLevel] = useState(1)
-  // Rest dialog
-  const [restDialog, setRestDialog] = useState<'short' | 'long' | null>(null)
-  const [shortRestInput, setShortRestInput] = useState('')
   // Lore tab state
   const [loreData, setLoreData] = useState<LoreData | null>(null)
   const [loreLoading, setLoreLoading] = useState(false)
@@ -192,10 +191,9 @@ export default function CharacterPanel({
       setPreparedOverridesLocal(null)
       setShowAllKnown(false)
       setShowAddSpell(false)
+      setSheetTab('skills')
       setAddSpellName('')
       setAddSpellLevel(1)
-      setRestDialog(null)
-      setShortRestInput('')
       setLoreData(null)
       setLoreLoading(false)
       prevIdRef.current = selected?.id
@@ -386,7 +384,9 @@ export default function CharacterPanel({
     )
   }
 
-  // ── In-session character sheet ─────────────────────────────────────────────
+  // In-session character sheet.
+  // This compact render path is what Play mode uses. Keep always-visible
+  // survival/session data here; put deeper sheet details behind section toggles.
   if(!showRoster){
     const hp = effectiveHp
     const hpPct = hp.max > 0 ? Math.max(0, Math.min(1, hp.current / hp.max)) : 0
@@ -395,6 +395,7 @@ export default function CharacterPanel({
     const deathSaves = selected?.deathSaves ?? { successes: 0, failures: 0 }
     const showDeathSaves = hp.current <= 0
     const showExhaustion = exhaustion > 0
+    const requestedNames = new Set(requestedSkillNames.map(name => String(name || '').toLowerCase()))
 
     const subtitle = [
       `Lv${selected?.level ?? 0}`,
@@ -601,23 +602,6 @@ export default function CharacterPanel({
           </div>
         </div>
 
-        {(selected?.skills || []).length > 0 ? (
-          <div className="cs-quick-section">
-            <div className="cs-quick-section-title">Relevant Skills</div>
-            <div className="cs-quick-skills">
-              {(selected?.skills || [])
-                .filter(s => /perception|investigation|arcana|insight|stealth|survival/i.test(s.name))
-                .slice(0, 5)
-                .map(s => (
-                  <div key={s.name} className="cs-skill-item cs-skill-item--quick">
-                    <span className="cs-skill-name">{s.name}</span>
-                    <span className="cs-skill-mod">{s.mod >= 0 ? '+' : ''}{s.mod}</span>
-                  </div>
-                ))}
-            </div>
-          </div>
-        ) : null}
-
         {/* ── Quick Actions ── */}
         <div className="cs-actions">
           {quickActions.equippedWeapons.length > 0 ? (
@@ -638,81 +622,9 @@ export default function CharacterPanel({
               </div>
             </>
           ) : null}
-
-          {/* Rest buttons — always visible */}
-          <div className="cs-rest-row">
-            <button type="button" className="cs-action-btn cs-action-btn--rest"
-              onClick={() => { setRestDialog('short'); setShortRestInput('') }}>
-              Short Rest
-            </button>
-            <button type="button" className="cs-action-btn cs-action-btn--rest"
-              onClick={() => setRestDialog('long')}>
-              Long Rest
-            </button>
-          </div>
         </div>
 
-        {/* Rest dialogs */}
-        {restDialog === 'short' ? (
-          <div className="cs-rest-dialog">
-            <div className="cs-rest-dialog-title">Short Rest — Restore HP</div>
-            <div className="cs-rest-dialog-row">
-              <input
-                className="cs-hp-edit-input"
-                type="number"
-                min={0}
-                placeholder="HP to restore"
-                value={shortRestInput}
-                onChange={e => setShortRestInput(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') {
-                    const n = parseInt(shortRestInput, 10)
-                    if (!isNaN(n) && n >= 0) { applyHp({ ...hp, current: hp.current + n }); setRestDialog(null) }
-                  }
-                  if (e.key === 'Escape') setRestDialog(null)
-                }}
-                autoFocus
-              />
-              <button type="button" className="cs-hp-edit-btn cs-hp-edit-btn--heal"
-                onClick={() => {
-                  const n = parseInt(shortRestInput, 10)
-                  if (!isNaN(n) && n >= 0) { applyHp({ ...hp, current: hp.current + n }); setRestDialog(null) }
-                }}>
-                Rest
-              </button>
-              <button type="button" className="cs-hp-edit-close" onClick={() => setRestDialog(null)}>✕</button>
-            </div>
-          </div>
-        ) : null}
-        {restDialog === 'long' ? (
-          <div className="cs-rest-dialog">
-            <div className="cs-rest-dialog-title">Long Rest</div>
-            <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 8 }}>
-              Restore to full HP and recover all spell slots?
-            </div>
-            <div className="cs-rest-dialog-row">
-              <button type="button" className="cs-hp-edit-btn cs-hp-edit-btn--heal"
-                onClick={() => {
-                  const fullHp = { ...hp, current: hp.max }
-                  setHpLocal(fullHp)
-                  const resetSlots = Object.fromEntries(
-                    Object.entries(effectiveSlots).map(([k, s]) => [k, { ...s, used: 0 }])
-                  )
-                  setSlotsLocal(resetSlots)
-                  pushSheetPatch({ hp: fullHp, spell_slots: resetSlots })
-                  onQuickAction?.({ type: 'long_rest' })
-                  setRestDialog(null)
-                }}>
-                Take Long Rest
-              </button>
-              <button type="button" className="cs-hp-edit-close" onClick={() => setRestDialog(null)}>✕</button>
-            </div>
-          </div>
-        ) : null}
-
-        {/* ── Full-sheet drawers ── */}
-        <div className="cs-fullsheet-label">Open Full Sheet</div>
-        <div className="cs-tabs" role="tablist">
+        <div className="cs-sheet-sections" role="list" aria-label="Character sheet sections">
           {(['skills', 'spells', 'features', 'inventory', 'lore'] as SheetTab[]).map(tab => {
             const counts: Record<SheetTab, number> = {
               skills: selected?.skills?.length ?? 0,
@@ -721,17 +633,26 @@ export default function CharacterPanel({
               inventory: selected?.inventory?.length ?? 0,
               lore: 0,
             }
+            const labels: Record<SheetTab, string> = {
+              skills: 'Full Skills',
+              spells: 'Spells',
+              features: 'Features',
+              inventory: 'Inventory',
+              lore: 'Lore',
+            }
             return (
               <button
                 key={tab}
                 type="button"
-                role="tab"
-                aria-selected={sheetTab === tab}
-                className={`cs-tab ${sheetTab === tab ? 'cs-tab--active' : ''}`}
+                aria-expanded={sheetTab === tab}
+                className={`cs-section-toggle ${sheetTab === tab ? 'cs-section-toggle--active' : ''}`}
                 onClick={() => setSheetTab(prev => prev === tab ? null : tab)}
               >
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                {counts[tab] > 0 ? <span className="cs-tab-count">{counts[tab]}</span> : null}
+                <span>{labels[tab]}</span>
+                <span className="cs-section-toggle-meta">
+                  {counts[tab] > 0 ? counts[tab] : null}
+                  <span className="cs-section-chevron">{sheetTab === tab ? '▲' : '▼'}</span>
+                </span>
               </button>
             )
           })}
@@ -747,8 +668,11 @@ export default function CharacterPanel({
                   <div className="cs-empty">No skills recorded</div>
                 ) : (
                   (selected?.skills || []).map(s => (
-                    <div key={s.name} className="cs-skill-item">
-                      <span className="cs-skill-name">{s.name}</span>
+                    <div key={s.name} className={`cs-skill-item ${requestedNames.has(String(s.name || '').toLowerCase()) ? 'cs-skill-item--requested' : ''}`}>
+                      <span className="cs-skill-name">
+                        {s.name}
+                        {requestedNames.has(String(s.name || '').toLowerCase()) ? <em>Requested</em> : null}
+                      </span>
                       <span className="cs-skill-mod">{s.mod >= 0 ? '+' : ''}{s.mod}</span>
                     </div>
                   ))

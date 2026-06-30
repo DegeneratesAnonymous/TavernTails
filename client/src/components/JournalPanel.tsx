@@ -66,6 +66,7 @@ export default function JournalPanel({ sessionId, memoryUpdates }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [noteDraft, setNoteDraft] = useState('')
   const [saving, setSaving] = useState(false)
+  const [focusedEntityName, setFocusedEntityName] = useState<string | null>(null)
   const feedRef = useRef<HTMLDivElement | null>(null)
 
   const canLoad = Boolean(sessionId)
@@ -101,6 +102,19 @@ export default function JournalPanel({ sessionId, memoryUpdates }: Props) {
     window.addEventListener('journal:refresh', handler)
     return () => window.removeEventListener('journal:refresh', handler)
   }, [load])
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent).detail || {}
+      const name = String(detail?.name || '').trim()
+      if (!name) return
+      setArchiveTab(detail?.entityType === 'places' ? 'places' : 'people')
+      setFocusedEntityName(name)
+      window.setTimeout(() => setFocusedEntityName(null), 2400)
+    }
+    window.addEventListener('journal:focus-entity', handler)
+    return () => window.removeEventListener('journal:focus-entity', handler)
+  }, [])
 
   // Scroll feed to bottom when entries change
   useEffect(() => {
@@ -282,8 +296,11 @@ export default function JournalPanel({ sessionId, memoryUpdates }: Props) {
 
       {archiveTab === 'people' || archiveTab === 'places' || archiveTab === 'threads' || archiveTab === 'clues' || archiveTab === 'factions' ? (
         <div className="jrnl-card-grid">
-          {memoryItems.length ? memoryItems.slice(0, 12).map((item, idx) => (
-            <article key={idx} className="jrnl-memory-card">
+          {memoryItems.length ? memoryItems.slice(0, 12).map((item, idx) => {
+            const label = itemLabel(item)
+            const isFocused = focusedEntityName && label.toLowerCase() === focusedEntityName.toLowerCase()
+            return (
+            <article key={idx} className={`jrnl-memory-card${isFocused ? ' is-focused' : ''}`}>
               <div className="jrnl-memory-card-title">{itemLabel(item)}</div>
               {typeof item !== 'string' && item?.summary ? (
                 <div className="jrnl-memory-card-body">{String(item.summary)}</div>
@@ -292,7 +309,8 @@ export default function JournalPanel({ sessionId, memoryUpdates }: Props) {
                 <div className="jrnl-memory-card-meta">{String(item.status)}</div>
               ) : null}
             </article>
-          )) : (
+            )
+          }) : (
             <div className="jrnl-empty jrnl-empty--useful">{emptyText[archiveTab]}</div>
           )}
         </div>

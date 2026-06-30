@@ -140,6 +140,9 @@ def _contains_unsupported_tavern_default(narrative: str, scene_director_data: di
     if not text:
         return False
     fixture_terms = (
+        "first crossroads",
+        "mira vale",
+        "sealed packet",
         "wayward lantern",
         "torven",
         "mara vell",
@@ -147,6 +150,19 @@ def _contains_unsupported_tavern_default(narrative: str, scene_director_data: di
         "harness leather",
         "rusty flagon",
         "silver tankard",
+        "outer court",
+        "envoy marrec",
+        "docking concourse",
+        "quartermaster vale",
+        "rain-dark crossing",
+        "waterlogged dispatch tube sealed with split red wax",
+        "arcane observatory",
+        "a messenger arrives too late",
+        "needs help, but is not saying everything",
+        "the phenomenon will not repeat for a decade",
+        "conversation falters as attention turns toward the same point of trouble",
+        "this was not supposed to reach us like this",
+        "everyone nearby is already deciding who will risk being seen helping",
     )
     if any(term in text for term in fixture_terms):
         return True
@@ -380,6 +396,7 @@ def _build_director_system(
         npc_role_hint = npc.get("role") or npc.get("occupation") or "a stranger"
         lines.append(f"     RIGHT: 'A {npc_role_hint} shoves through the door, breathing hard.' — then name them in dialogue.")
         lines.append("  5. END with a concrete choice — a decision the character must make in the next moment.")
+        lines.append("  6. The final sentence must be an immediate beat: a nearby sound, urgent NPC line, visible threat, changing clue, or clock advancing.")
         lines.append("  Structure: ARRIVAL CONTEXT → PLACE DESCRIPTION → WHAT IS HAPPENING → WHY IT MATTERS → WHAT {player} MUST DECIDE.".replace("{player}", player))
         lines.append("  Do NOT use flashback, recap, or 'adventure begins' framing.")
 
@@ -402,6 +419,7 @@ def _build_director_system(
     lines.append("  ✗ 'the party' — use the character's name")
     lines.append("  ✗ 'a figure', 'a stranger', 'someone nearby' — all NPCs need a name")
     lines.append("  ✗ mood without evidence ('tension fills the air', 'something feels wrong')")
+    lines.append("  ✗ ending only on abstract stakes — the final sentence must show a concrete immediate beat")
     lines.append("  ✗ the player question anywhere in the narrative body")
     lines.append("  ✗ labels like 'Atmosphere:', 'Stakes:', 'Location:' — these are metadata, not prose")
     if validator_feedback:
@@ -410,7 +428,7 @@ def _build_director_system(
         lines.append(validator_feedback)
     lines.append("")
     lines.append("Return ONLY valid JSON — no markdown, no preamble, no explanation:")
-    lines.append('{"narrative": "<4-6 paragraphs — context, setting description, action outcome, consequence, hook — no player question>", "prompt": "<one urgent question addressed to ' + player + ' by name>"}')
+    lines.append('{"narrative": "<4-6 paragraphs — context, setting description, action outcome, consequence, hook, final concrete immediate beat — no player question>", "prompt": "<one urgent question addressed to ' + player + ' by name>"}')
     return "\n".join(lines)
 
 
@@ -455,6 +473,7 @@ def _build_generic_system(
     lines.append("  ✗ 'the party' — use the character's name")
     lines.append("  ✗ unnamed NPCs — 'a figure', 'a stranger', 'someone nearby'")
     lines.append("  ✗ abstract moods without physical evidence")
+    lines.append("  ✗ ending only on abstract stakes — final sentence must be a concrete immediate beat")
     lines.append("  ✗ the player question in the narrative body")
     if validator_feedback:
         lines.append("")
@@ -462,7 +481,7 @@ def _build_generic_system(
         lines.append(validator_feedback)
     lines.append("")
     lines.append("Return ONLY valid JSON — no markdown, no preamble, no explanation:")
-    lines.append('{"narrative": "<4-6 paragraphs — context, sensory setting, action outcome, consequence, hook — no player question inside>", "prompt": "<one urgent question addressed to ' + player + ' by name>"}')
+    lines.append('{"narrative": "<4-6 paragraphs — context, sensory setting, action outcome, consequence, hook, final concrete immediate beat — no player question inside>", "prompt": "<one urgent question addressed to ' + player + ' by name>"}')
     return "\n".join(lines)
 
 
@@ -607,6 +626,7 @@ def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
             central_conflict=payload.scene_director_data.get("central_conflict") or payload.scene or "",
             immediate_stakes=payload.scene_director_data.get("immediate_stakes") or "",
             sensory_detail=sensory[0] if sensory else "",
+            campaign_name=payload.scene or scene_title,
         )
         best_prompt = default_prompt
         score_val = max(score_val, 75)
@@ -775,6 +795,8 @@ def regenerate_narrative(payload: RegenerateRequest, current_user=Depends(get_cu
         try:
             meta_data = json.loads(meta_file.read_text()) if meta_file.exists() else {}
             for member in (meta_data.get('members') or []):
+                if not member.get('character_id'):
+                    continue
                 name = member.get('character_name') or ''
                 if name:
                     player = name
@@ -782,7 +804,7 @@ def regenerate_narrative(payload: RegenerateRequest, current_user=Depends(get_cu
         except Exception:
             pass
     if not player:
-        raise HTTPException(status_code=400, detail='No player character found — cannot regenerate without a player name')
+        player = "the party"
 
     npc_names_list = [str(n_item.get('name') or '') for n_item in npcs if n_item]
     npc_names_list = [n for n in npc_names_list if n]

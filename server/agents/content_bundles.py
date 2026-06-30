@@ -32,7 +32,9 @@ BUNDLE_TYPES = frozenset({
     "TravelBundle",
     "DowntimeBundle",
     "DiscoveryBundle",
+    "ThreatBundle",
     "FactionMoveBundle",
+    "BackstoryHookBundle",
     "ConsequenceBundle",
 })
 
@@ -55,6 +57,8 @@ _SITUATION_TO_BUNDLE: dict[str, str] = {
     "rest": "DowntimeBundle",
     "shopping": "DowntimeBundle",
     "faction_move": "FactionMoveBundle",
+    "resource_pressure": "ThreatBundle",
+    "backstory_callback": "BackstoryHookBundle",
     "consequence": "ConsequenceBundle",
     "npc_reappearance": "DialogueBundle",
     "quest_offer": "DialogueBundle",
@@ -71,7 +75,7 @@ _LOCATION_TYPES = [
     "river ferry station", "ruined watchtower", "mining settlement",
     "coastal shrine", "occupied city district", "forest road camp",
     "noble estate", "swamp causeway", "battlefield hospital",
-    "arcane observatory", "market square", "frontier fort",
+    "market square", "frontier fort",
     "ship at sea", "underground refuge", "temple courtyard",
     "burned farmstead", "frozen pass",
 ]
@@ -80,7 +84,7 @@ _INCITING_EVENTS = [
     "someone returns without what they left with",
     "a trusted object appears in the wrong place",
     "a public ritual fails",
-    "a messenger arrives too late",
+    "a warning reaches the wrong hands first",
     "a safe road becomes unsafe",
     "a settlement resource disappears overnight",
     "a witness refuses to speak",
@@ -103,6 +107,29 @@ _OPENING_QUESTIONS = [
 ]
 
 _AVOID_REPEAT_WINDOW = 5
+
+_RECYCLED_OPENING_FIXTURES = (
+    "first crossroads",
+    "mira vale",
+    "sealed packet",
+    "something has gone very wrong",
+    "wayward lantern",
+    "cracked lantern",
+    "harness leather",
+    "outer court",
+    "envoy marrec",
+    "docking concourse",
+    "quartermaster vale",
+    "rain-dark crossing",
+    "waterlogged dispatch tube sealed with split red wax",
+    "arcane observatory",
+    "a messenger arrives too late",
+    "needs help, but is not saying everything",
+    "the phenomenon will not repeat for a decade",
+    "conversation falters as attention turns toward the same point of trouble",
+    "this was not supposed to reach us like this",
+    "everyone nearby is already deciding who will risk being seen helping",
+)
 
 
 def empty_freshness() -> dict[str, Any]:
@@ -150,7 +177,7 @@ def generate_starter_seed(
     pillars = list((contract.get("campaign_dna") or {}).get("preferred_scene_types") or [])
     premise_seed = _seed_from_campaign_premise(settings, contract, genre, rng)
     if premise_seed:
-        return premise_seed
+        return _vary_premise_seed(premise_seed, freshness, rng)
 
     # Choose fresh location type
     recent_locs = freshness.get("recent_location_types") or []
@@ -182,7 +209,7 @@ def generate_starter_seed(
         "location_identity": f"A {location_type} where {inciting_event}.",
         "inciting_event": inciting_event.capitalize() + ".",
         "named_npc_or_visible_threat": f"{npc_name} ({npc_role})",
-        "immediate_problem": f"The {npc_role.lower()} {npc_name} needs help, but is not saying everything.",
+        "immediate_problem": f"The {npc_role.lower()} {npc_name} is trying to keep a fragile lead from disappearing before the party can examine it.",
         "specific_stakes": stakes,
         "first_clue_or_question": opening_question,
         "player_decision": player_decision,
@@ -196,6 +223,193 @@ def generate_starter_seed(
             "event": inciting_event,
         },
     }
+
+
+def _vary_premise_seed(seed: dict[str, Any], freshness: dict[str, Any], rng: random.Random) -> dict[str, Any]:
+    """Keep premise-specific content while varying repeated opening structure."""
+    recent_locs = {str(x).lower() for x in (freshness.get("recent_location_types") or [])}
+    recent_events = {str(x).lower() for x in (freshness.get("recent_opening_events") or [])}
+    identity = str(seed.get("location_identity") or "").lower()
+    if "water seal" in identity or "glass desert" in identity or "cistern" in identity:
+        return _vary_desert_premise_seed(seed, freshness, rng)
+    if "blackened silver" not in identity and "silver charm" not in identity and "blackened charm" not in identity:
+        return seed
+    variants = [
+        {
+            "starting_location": "The Frostmark Road Shrine",
+            "location_type": "winter road shrine",
+            "location_identity": "A wind-scoured roadside shrine where blackened silver charms hang from ice-stiff cords.",
+            "inciting_event": "A bloodied survivor collapses beneath the shrine and presses a forgotten symbol into the snow.",
+            "named_npc_or_visible_threat": "Hadwin Crowe (winter survivor)",
+            "immediate_problem": "The early winter is cutting off the road, and the survivor's symbol matches charms that failed overnight.",
+            "specific_stakes": "If the warning is ignored, the next settlement loses its road, its trade, and the last witness before nightfall.",
+            "first_clue_or_question": "Why did the old silver charms blacken before the survivor arrived?",
+            "player_decision": "Aid the survivor, inspect the blackened charms, or follow the frozen tracks before new snow buries them.",
+        },
+        {
+            "starting_location": "Blackpine Toll Gate",
+            "location_type": "snowbound toll gate",
+            "location_identity": "A locked timber toll gate where pine smoke freezes low and one blackened silver charm has been nailed through the post.",
+            "inciting_event": "The toll bell rings once by itself, and a frozen handprint appears on the inside of the barred gate.",
+            "named_npc_or_visible_threat": "Elska Venn (toll keeper)",
+            "immediate_problem": "Elska Venn cannot open the road until someone proves whether the handprint came from a living traveler or the thing following them.",
+            "specific_stakes": "If the gate stays barred until dusk, the supply sleds turn back and Frostmere runs out of lamp oil by morning.",
+            "first_clue_or_question": "Who nailed the blackened silver charm to the toll post before the bell rang?",
+            "player_decision": "Open the gate, test the blackened charm, or follow the handprints along the fence line.",
+        },
+        {
+            "starting_location": "Snowmelt Cairn",
+            "location_type": "roadside cairn",
+            "location_identity": "A thawing cairn beside the north road where frozen tracks circle a heap of blackened silver charms.",
+            "inciting_event": "Meltwater runs uphill through the stones and exposes a traveler's name carved fresh beneath old ice.",
+            "named_npc_or_visible_threat": "Nera Holl (road surveyor)",
+            "immediate_problem": "Nera Holl recognizes the carved name as someone who is still alive in the next village.",
+            "specific_stakes": "If the cairn is covered again, the party loses the only trail that points to who winter has marked next.",
+            "first_clue_or_question": "Why does the cairn carry a living person's name under old ice?",
+            "player_decision": "Dig into the cairn, warn the named villager, or track the circling footprints into the trees.",
+        },
+        {
+            "starting_location": "Ironbell Waystation",
+            "location_type": "abandoned winter waystation",
+            "location_identity": "An abandoned waystation where the iron bell is split and its pull-rope is threaded with blackened silver charms.",
+            "inciting_event": "A supply ledger slides from beneath the bell tower door, already rimed with frost on the inside.",
+            "named_npc_or_visible_threat": "Tovin Hale (teamster)",
+            "immediate_problem": "Tovin Hale's missing sled is listed in the ledger as having arrived tomorrow.",
+            "specific_stakes": "If no one checks the bell tower before nightfall, the road patrol follows a false arrival record into whiteout conditions.",
+            "first_clue_or_question": "Who wrote tomorrow's arrival into the frozen waystation ledger?",
+            "player_decision": "Break into the bell tower, compare the ledger entries, or intercept the road patrol before they leave.",
+        },
+        {
+            "starting_location": "Hollowdrift Supply Cache",
+            "location_type": "buried road cache",
+            "location_identity": "A half-buried supply cache where frost has sealed the hinges and blackened silver charms are packed among the emergency rations.",
+            "inciting_event": "The cache inventory lists three missing blankets and one extra name scratched into the lid from the inside.",
+            "named_npc_or_visible_threat": "Mael Rusk (cache warden)",
+            "immediate_problem": "Mael Rusk knows the extra name belongs to a patrol member who never reached this road.",
+            "specific_stakes": "If the cache is abandoned, the next patrol follows a false supply count and freezes without shelter.",
+            "first_clue_or_question": "Who scratched the extra name inside a sealed winter cache?",
+            "player_decision": "Break the cache open, search for the missing blankets, or warn the patrol before the false count sends them onward.",
+        },
+    ]
+    available = [
+        item for item in variants
+        if item["location_type"].lower() not in recent_locs
+        and item["inciting_event"].lower() not in recent_events
+        and _premise_event_type(item["inciting_event"]).lower() not in recent_events
+    ] or variants
+    chosen = rng.choice(available)
+    return {
+        **seed,
+        **chosen,
+        "generated_by": "premise_seed",
+        "memory_updates": [
+            {"type": "location", "name": chosen["starting_location"], "status": "provisional"},
+            {"type": "npc", "name": chosen["named_npc_or_visible_threat"].split("(")[0].strip(), "status": "provisional"},
+        ],
+        "freshness_consumed": {
+            "location_type": chosen["location_type"],
+            "event": chosen["inciting_event"],
+        },
+    }
+
+
+def _vary_desert_premise_seed(seed: dict[str, Any], freshness: dict[str, Any], rng: random.Random) -> dict[str, Any]:
+    recent_locs = {str(x).lower() for x in (freshness.get("recent_location_types") or [])}
+    recent_events = {str(x).lower() for x in (freshness.get("recent_opening_events") or [])}
+    variants = [
+        {
+            "starting_location": "The Suncrack Cistern",
+            "location_type": "desert cistern",
+            "location_identity": "A stone cistern under white glare where a cracked water seal hangs from a dry chain.",
+            "inciting_event": "The cistern lock opens to the wrong faction's seal, but the water level has not changed.",
+            "named_npc_or_visible_threat": "Yuna Silt (water broker)",
+            "immediate_problem": "Yuna Silt knows the seal should only open for the caravan council, not for a faction mark cut this morning.",
+            "specific_stakes": "If the seal is not traced before noon, the caravan council blames the wrong house and closes the public wells.",
+            "first_clue_or_question": "Who cut the faction mark into the cracked water seal?",
+            "player_decision": "Inspect the cracked seal, question Yuna Silt, or follow the wet footprints leaving the cistern.",
+        },
+        {
+            "starting_location": "Glasswake Caravan Yard",
+            "location_type": "caravan water yard",
+            "location_identity": "A glare-bright caravan yard where glass sand has fused around a missing cistern ledger.",
+            "inciting_event": "A water tally board changes while everyone is watching, moving three barrels to a caravan that never arrived.",
+            "named_npc_or_visible_threat": "Marrek Voss (ledger keeper)",
+            "immediate_problem": "Marrek Voss can prove the tally changed, but not who touched the board without leaving a shadow.",
+            "specific_stakes": "If the false tally stands, one outbound caravan crosses the dunes without enough water to return.",
+            "first_clue_or_question": "Why did the tally assign water to a caravan that never entered Glasswake?",
+            "player_decision": "Secure the tally board, audit the cistern ledger, or search for the shadowless intruder.",
+        },
+        {
+            "starting_location": "The Saltglass Well",
+            "location_type": "contested desert well",
+            "location_identity": "A public well rimed with saltglass where every bucket rope has been knotted in a faction pattern.",
+            "inciting_event": "The first bucket comes up full of clean water and a stamped token from a supposedly empty cistern.",
+            "named_npc_or_visible_threat": "Iri Qan (well guard)",
+            "immediate_problem": "Iri Qan has orders to seal the well, but the token proves someone is moving water through a hidden route.",
+            "specific_stakes": "If the well is sealed before the token is understood, the poorer quarter loses its only water before nightfall.",
+            "first_clue_or_question": "Which hidden cistern route carried the stamped token into the public well?",
+            "player_decision": "Test the token, keep the well open, or trace the knotted ropes to the faction responsible.",
+        },
+        {
+            "starting_location": "Mirage Tax Gate",
+            "location_type": "desert toll gate",
+            "location_identity": "A heat-warped toll gate where water permits are punched with a seal no caravan admits using.",
+            "inciting_event": "A child tries to trade a fresh water permit dated tomorrow for one mouthful from the gate barrel.",
+            "named_npc_or_visible_threat": "Safa Reed (permit clerk)",
+            "immediate_problem": "Safa Reed recognizes tomorrow's permit stamp as a forgery made with the real office die.",
+            "specific_stakes": "If the permit die is not found, the gate shuts and every caravan behind it begins buying water at knife prices.",
+            "first_clue_or_question": "Who used the real permit die to stamp tomorrow's water papers?",
+            "player_decision": "Protect the child, inspect the permit die, or confront the clerk before the gate shuts.",
+        },
+        {
+            "starting_location": "Red Dune Ration Line",
+            "location_type": "desert ration line",
+            "location_identity": "A wind-cut ration line where empty water jars are marked with blue wax and one jar sweats in the sun.",
+            "inciting_event": "The sweating jar carries a caravan captain's mark, but the captain has been missing for three days.",
+            "named_npc_or_visible_threat": "Tamar Kes (ration caller)",
+            "immediate_problem": "Tamar Kes must decide whether to open the marked jar publicly or hide it before faction agents see it.",
+            "specific_stakes": "If the jar is taken by a faction agent, the only proof of the missing captain's route disappears into the dunes.",
+            "first_clue_or_question": "Why is the missing captain's water jar sweating while every other jar is dry?",
+            "player_decision": "Open the jar, shield Tamar Kes, or follow the blue-wax mark through the ration line.",
+        },
+    ]
+    available = [
+        item for item in variants
+        if item["location_type"].lower() not in recent_locs
+        and item["inciting_event"].lower() not in recent_events
+        and _premise_event_type(item["inciting_event"]).lower() not in recent_events
+    ] or variants
+    chosen = rng.choice(available)
+    return {
+        **seed,
+        **chosen,
+        "generated_by": "premise_seed",
+        "memory_updates": [
+            {"type": "location", "name": chosen["starting_location"], "status": "provisional"},
+            {"type": "npc", "name": chosen["named_npc_or_visible_threat"].split("(")[0].strip(), "status": "provisional"},
+        ],
+        "freshness_consumed": {
+            "location_type": chosen["location_type"],
+            "event": chosen["inciting_event"],
+        },
+    }
+
+
+def _premise_event_type(text: str) -> str:
+    lower = text.lower()
+    if "collapses" in lower or "blood" in lower:
+        return "injured_witness"
+    if "bell" in lower or "rings" in lower:
+        return "failed_protection"
+    if "cairn" in lower or "carved" in lower or "name" in lower:
+        return "marked_victim"
+    if "ledger" in lower:
+        return "impossible_record"
+    if "seal" in lower or "permit" in lower:
+        return "forged_authority"
+    if "water" in lower or "cistern" in lower or "well" in lower:
+        return "water_evidence"
+    return "local_disruption"
 
 
 def _campaign_premise_text(settings: dict[str, Any], contract: dict[str, Any]) -> str:
@@ -296,6 +510,146 @@ def _seed_from_campaign_premise(
             },
         }
 
+    desert_water = any(w in hay for w in ("desert", "dune", "glass sand", "glass desert", "caravan"))
+    water_power = any(w in hay for w in ("water", "cistern", "well", "water seal", "ration", "permit"))
+    if desert_water and water_power:
+        return {
+            "starting_location": "The Suncrack Cistern",
+            "location_type": "desert cistern",
+            "location_identity": "A stone cistern under white glare where a cracked water seal hangs from a dry chain.",
+            "inciting_event": "The cistern lock opens to the wrong faction's seal, but the water level has not changed.",
+            "named_npc_or_visible_threat": f"{_generate_npc_name(genre, rng)} (water witness)",
+            "immediate_problem": "The water seal proves someone with faction access reached the cistern before the party arrived.",
+            "specific_stakes": "If the seal is not traced before noon, the public wells close and one caravan leaves without enough water.",
+            "first_clue_or_question": "Who cut the faction mark into the cracked water seal?",
+            "player_decision": "Inspect the cracked seal, question the water witness, or follow the wet footprints leaving the cistern.",
+            "memory_updates": [
+                {"type": "location", "name": "The Suncrack Cistern", "status": "campaign_opening"},
+            ],
+            "generated_by": "premise_seed",
+            "freshness_consumed": {
+                "location_type": "desert cistern",
+                "event": "wrong faction seal opens cistern",
+            },
+        }
+
+    premise_cases = [
+        (
+            ("reef", "drowned", "pearl", "tide", "citadel"),
+            {
+                "starting_location": "The Low-Tide Reef Gate",
+                "location_type": "drowned ruin",
+                "location_identity": "A glass reef passage where the drowned citadel is visible only while the tide pulls back.",
+                "inciting_event": "A pearl diver's marker-bell rings from inside the sealed reef gate.",
+                "role": "reef witness",
+                "immediate_problem": "The tide is turning, and the bell belongs to someone who vanished before dawn.",
+                "specific_stakes": "If the gate floods again, the trail disappears and the missing divers are trapped below another night.",
+                "first_clue_or_question": "Why is the marker-bell ringing from inside a sealed passage?",
+                "player_decision": "Enter before the tide turns, question the sea-priests, or secure the reef gate and search for another route.",
+                "event_key": "reef gate opens at low tide",
+            },
+        ),
+        (
+            ("ash guild", "volcano", "vote", "election", "parliament", "relic"),
+            {
+                "starting_location": "The Cinder Vote Hall",
+                "location_type": "civic hall",
+                "location_identity": "A heat-stained assembly hall where guild votes are counted beneath old volcanic reliefs.",
+                "inciting_event": "A ballot token cracks open and reveals a forbidden relic seal inside.",
+                "role": "guild clerk",
+                "immediate_problem": "The vote cannot continue unless someone proves which guild smuggled the relic seal into the count.",
+                "specific_stakes": "If the count is certified, the wrong faction gains legal power before the fraud can be exposed.",
+                "first_clue_or_question": "Who had access to the ballot urn after the ash bell rang?",
+                "player_decision": "Stop the count publicly, trace the token quietly, or bargain with a guild before the hall erupts.",
+                "event_key": "relic seal found in ballot token",
+            },
+        ),
+        (
+            ("orbital", "orchard", "gravity fruit", "harvest", "corporate"),
+            {
+                "starting_location": "The Helix Orchard Gantry",
+                "location_type": "orbital farm",
+                "location_identity": "A curved maintenance gantry overlooking fruit rows that bend gravity around their branches.",
+                "inciting_event": "A crate of gravity fruit rises against its restraints and points toward a sabotaged harvest arm.",
+                "role": "harvest tech",
+                "immediate_problem": "The fruit is predicting a disaster, but the inspection crew is minutes from declaring sabotage.",
+                "specific_stakes": "If the harvest arm cycles again, workers below the gantry are caught in a gravity shear.",
+                "first_clue_or_question": "Why did only one crate reverse gravity before the harvest arm failed?",
+                "player_decision": "Shut down the harvest line, inspect the floating crate, or confront the crew hiding the maintenance logs.",
+                "event_key": "gravity fruit warns of sabotage",
+            },
+        ),
+        (
+            ("bone lantern", "lanterns", "family memory", "borderlands", "raider"),
+            {
+                "starting_location": "The Blackwick Lantern Mile",
+                "location_type": "border road",
+                "location_identity": "A lonely stretch of border road where ancestral bone lanterns mark every family oath.",
+                "inciting_event": "One bone lantern goes dark and speaks a stranger's memory in a child's voice.",
+                "role": "lantern keeper",
+                "immediate_problem": "The dark lantern has erased a family's route-marker just as riders are seen beyond the ridge.",
+                "specific_stakes": "If the memory is not anchored before nightfall, the road forgets who is allowed to pass safely.",
+                "first_clue_or_question": "Whose memory replaced the family oath inside the lantern?",
+                "player_decision": "Relight the lantern, follow the stolen memory, or prepare the road before riders reach the mile.",
+                "event_key": "bone lantern speaks wrong memory",
+            },
+        ),
+        (
+            ("clockwork", "mechanical rain", "prophetic rust", "impossible weather"),
+            {
+                "starting_location": "The Rustfall District Gauge",
+                "location_type": "clockwork district",
+                "location_identity": "A narrow municipal gauge station where rain should fall by schedule and nowhere else.",
+                "inciting_event": "The rain gauge prints tomorrow's death notice in rust before the rain begins.",
+                "role": "rain auditor",
+                "immediate_problem": "The district is receiving weather no engine scheduled, and the notice names someone still alive.",
+                "specific_stakes": "If the gauge is reset, the warning vanishes and the district accepts a false weather report.",
+                "first_clue_or_question": "Who changed the rain schedule before the gauge began to rust?",
+                "player_decision": "Protect the named victim, audit the rain engine, or follow the rust trail through the district.",
+                "event_key": "rain gauge prints prophetic rust",
+            },
+        ),
+        (
+            ("long winter", "north march", "frozen road", "frozen roads", "silver charms", "blacken", "howls from the wilderness"),
+            {
+                "starting_location": "The Frostmark Road Shrine",
+                "location_type": "winter road shrine",
+                "location_identity": "A wind-scoured roadside shrine where blackened silver charms hang from ice-stiff cords.",
+                "inciting_event": "A bloodied survivor collapses beneath the shrine and presses a forgotten symbol into the snow.",
+                "role": "winter survivor",
+                "immediate_problem": "The early winter is cutting off the road, and the survivor's symbol matches charms that failed overnight.",
+                "specific_stakes": "If the warning is ignored, the next settlement loses its road, its trade, and the last witness before nightfall.",
+                "first_clue_or_question": "Why did the old silver charms blacken before the survivor arrived?",
+                "player_decision": "Aid the survivor, inspect the blackened charms, or follow the frozen tracks before new snow buries them.",
+                "event_key": "winter survivor brings forgotten symbol",
+            },
+        ),
+    ]
+    for keywords, data in premise_cases:
+        if any(term in hay for term in keywords):
+            npc_name = _generate_npc_name(genre, rng)
+            role = data["role"]
+            return {
+                "starting_location": data["starting_location"],
+                "location_type": data["location_type"],
+                "location_identity": data["location_identity"],
+                "inciting_event": data["inciting_event"],
+                "named_npc_or_visible_threat": f"{npc_name} ({role})",
+                "immediate_problem": data["immediate_problem"],
+                "specific_stakes": data["specific_stakes"],
+                "first_clue_or_question": data["first_clue_or_question"],
+                "player_decision": data["player_decision"],
+                "memory_updates": [
+                    {"type": "location", "name": data["starting_location"], "status": "campaign_opening"},
+                    {"type": "npc", "name": npc_name, "role": role, "status": "provisional"},
+                ],
+                "generated_by": "premise_seed",
+                "freshness_consumed": {
+                    "location_type": data["location_type"],
+                    "event": data["event_key"],
+                },
+            }
+
     return None
 
 
@@ -380,9 +734,9 @@ def _stakes_for_location(location_type: str, inciting_event: str) -> str:
         "mountain monastery": "The records at risk contain something someone wants destroyed.",
         "mining settlement": "The company will seal the mine with workers still inside.",
         "frontier fort": "Without reinforcements, the fort falls. The region falls with it.",
-        "arcane observatory": "The phenomenon will not repeat for a decade.",
+        "arcane observatory": "If the evidence is lost, the source of the threat becomes guesswork.",
     }
-    fallback = f"The situation triggered by '{inciting_event}' will escalate if ignored."
+    fallback = f"By dusk, the person carrying the clearest lead will leave {location_type} and the trail will go cold."
     return stakes_map.get(location_type, fallback)
 
 
@@ -600,6 +954,34 @@ def build_content_bundle(
     else:
         required_content = {"situation_type": situation_type, "scene_director_summary": str(sdo)[:200]}
 
+    opening_anchor = (freshness_context or {}).get("opening_anchor") or {}
+    if situation_type == "campaign_opening" and isinstance(opening_anchor, dict) and opening_anchor:
+        opening_context = {
+            "character_name": opening_anchor.get("character_name") or "",
+            "arrival_reason": opening_anchor.get("arrival_reason") or "",
+            "pre_scene_activity": opening_anchor.get("pre_scene_activity") or "",
+            "personal_stake": opening_anchor.get("personal_stake") or "",
+            "known_npc_connection": opening_anchor.get("known_npc_connection") or "",
+            "party_bond": opening_anchor.get("party_bond") or "",
+            "followed_complication": opening_anchor.get("followed_complication") or "",
+            "fear_of_loss": opening_anchor.get("fear_of_loss") or "",
+            "trust_or_distrust": opening_anchor.get("trust_or_distrust") or opening_anchor.get("known_npc_connection") or "",
+            "belief_or_rumor": opening_anchor.get("belief_or_rumor") or "",
+            "why_now": (
+                opening_anchor.get("personal_stake")
+                or opening_anchor.get("arrival_reason")
+                or opening_anchor.get("belief_or_rumor")
+                or ""
+            ),
+        }
+        required_content["opening_context"] = opening_context
+        required_content["opening_character_anchor"] = opening_anchor
+        if not required_content.get("player_decision"):
+            required_content["player_decision"] = (
+                "Act on the personal lead, ask the connected witness what they know, "
+                "or hold back long enough to see who else reacts."
+            )
+
     # Validate
     validation = validate_situation(situation_type, required_content)
 
@@ -622,6 +1004,66 @@ def build_content_bundle(
         "memory_updates": required_content.get("memory_updates") or [],
         "ui_payload": ui_payload,
     }
+
+
+def ensure_content_bundle(
+    situation_type: str,
+    scene_director_output: dict[str, Any] | None = None,
+    world_state: dict[str, Any] | None = None,
+    campaign_contract: dict[str, Any] | None = None,
+    previous_scene: dict[str, Any] | None = None,
+    freshness_context: dict[str, Any] | None = None,
+    campaign_settings: dict[str, Any] | None = None,
+    max_attempts: int = 2,
+) -> dict[str, Any]:
+    """Build and validate a content bundle before prose generation.
+
+    This is deterministic: if the first bundle is invalid, it retries with an
+    empty director output so the fallback builders/starter seed can provide the
+    required gameable fields. The returned bundle always includes
+    ``content_gate_passed`` for orchestration/debug decisions.
+    """
+    bundle = build_content_bundle(
+        situation_type=situation_type,
+        scene_director_output=scene_director_output,
+        world_state=world_state,
+        campaign_contract=campaign_contract,
+        previous_scene=previous_scene,
+        freshness_context=freshness_context,
+        campaign_settings=campaign_settings,
+    )
+    if _bundle_has_recycled_fixture(bundle):
+        bundle["validated"] = False
+        bundle.setdefault("validation_result", {})["valid"] = False
+        bundle["validation_result"].setdefault("generic_defaults_detected", []).append(
+            "recycled opening fixture detected"
+        )
+    attempts = 1
+    while not bundle.get("validated") and attempts < max_attempts:
+        attempts += 1
+        bundle = build_content_bundle(
+            situation_type=situation_type,
+            scene_director_output={},
+            world_state=world_state,
+            campaign_contract=campaign_contract,
+            previous_scene=previous_scene,
+            freshness_context={**(freshness_context or {}), "scene_count": (freshness_context or {}).get("scene_count", 0)},
+            campaign_settings=campaign_settings,
+        )
+        if _bundle_has_recycled_fixture(bundle):
+            bundle["validated"] = False
+            bundle.setdefault("validation_result", {})["valid"] = False
+            bundle["validation_result"].setdefault("generic_defaults_detected", []).append(
+                "recycled opening fixture detected"
+            )
+    bundle["content_gate_passed"] = bool(bundle.get("validated"))
+    bundle["content_gate_attempts"] = attempts
+    return bundle
+
+
+def _bundle_has_recycled_fixture(bundle: dict[str, Any]) -> bool:
+    text = str((bundle or {}).get("required_content") or {}).lower()
+    return any(term in text for term in _RECYCLED_OPENING_FIXTURES)
 
 
 def _looks_like_tavern_default(name: str) -> bool:

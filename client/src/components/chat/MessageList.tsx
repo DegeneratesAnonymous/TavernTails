@@ -82,8 +82,44 @@ function RenderText({ text }: { text: string }) {
   return <>{renderSegments(segs)}</>
 }
 
+type RollDisplay = {
+  actor: string
+  skill: string
+  total: string
+  detail?: string
+  outcome?: string
+}
+
+function parseRollDisplay(text: string, character?: CharacterSummary | null): RollDisplay | null {
+  const clean = text.trim()
+  const modern = clean.match(/^(.+?)\s+rolled\s+(.+?):\s*(-?\d+)(?:\s+\(([^)]+)\))?(?:\s+-\s+(Succeeded|Failed))?$/i)
+  if (modern) {
+    return {
+      actor: modern[1].trim(),
+      skill: modern[2].replace(/\bcheck\b/ig, '').trim(),
+      total: modern[3],
+      detail: modern[4],
+      outcome: modern[5],
+    }
+  }
+  const legacy = clean.match(/^(.+?)\s+rolled\s+to\s+(.+?)\s+and\s+(Succeeded|Failed|Rolled)\s+with\s+(-?\d+)$/i)
+  if (legacy) {
+    const skill = legacy[2]
+      .replace(/\bcheck\b/ig, '')
+      .replace(/\s+for:\s+.+$/i, '')
+      .trim()
+    return {
+      actor: character?.name || legacy[1].replace(/\s+@\S+/g, '').trim() || 'Character',
+      skill: skill || 'Roll',
+      total: legacy[4],
+      outcome: legacy[3] === 'Rolled' ? undefined : legacy[3],
+    }
+  }
+  return null
+}
+
 const MessageList = React.forwardRef<HTMLDivElement, Props>(function MessageList(
-  { loading, messages, currentUserId, onPin, onDelete },
+  { loading, messages, currentUserId, onPin, onDelete, character },
   ref,
 ) {
   const [searchOpen, setSearchOpen] = useState(false)
@@ -125,6 +161,7 @@ const MessageList = React.forwardRef<HTMLDivElement, Props>(function MessageList
           const ts = formatTime(m.createdAt)
           const canDelete = onDelete && typeof m.id === 'number' && m.senderId !== null && m.senderId !== undefined && m.senderId === currentUserId
           const canPin = onPin && typeof m.id === 'number'
+          const rollDisplay = m.who === 'system' ? parseRollDisplay(m.text, character) : null
 
           if (m.who === 'gm') {
             return (
@@ -138,6 +175,20 @@ const MessageList = React.forwardRef<HTMLDivElement, Props>(function MessageList
                     {canDelete ? <button className="chat-action-btn chat-action-btn--danger" type="button" onClick={() => onDelete!(m.id)}>✕</button> : null}
                   </div>
                 </div>
+              </div>
+            )
+          }
+
+          if (rollDisplay) {
+            return (
+              <div key={m.id} className="chat-msg chat-msg--roll-result">
+                <div className="chat-roll-main">
+                  <strong>{rollDisplay.actor}</strong>
+                  <span>rolled {rollDisplay.skill}: <b>{rollDisplay.total}</b></span>
+                  {rollDisplay.outcome ? <em>{rollDisplay.outcome}</em> : null}
+                </div>
+                {rollDisplay.detail ? <div className="chat-roll-detail">{rollDisplay.detail}</div> : null}
+                {ts ? <span className="chat-msg-ts">{ts}</span> : null}
               </div>
             )
           }

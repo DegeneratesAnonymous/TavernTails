@@ -261,6 +261,8 @@ def presentation_objective(scene: dict[str, Any]) -> str:
     for candidate in candidates:
         clean = _clean_text(candidate)
         if clean and len(clean) >= 12:
+            if not re.match(r"^(find|learn|inspect|ask|follow|decide|protect|reach|stop|secure|identify|track|escape|choose|confront|search|bring|warn|hide)\b", clean, re.IGNORECASE):
+                clean = f"Decide how to respond to {clean[0].lower()}{clean[1:]}"
             return clean[:220]
     npc_name = _clean_text(npc.get("name"), "someone")
     if npc_name != "someone":
@@ -288,6 +290,8 @@ def presentation_stakes(scene: dict[str, Any]) -> str:
     sd = scene.get("scene_director_data") or {}
     clean = _clean_text(scene.get("immediate_stakes") or sd.get("immediate_stakes"))
     if clean:
+        if not re.search(r"\b(before|by|within|tonight|today|tomorrow|this hour|this morning|this evening|at dawn|at dusk|nightfall|sunrise|sundown|soon)\b", clean, re.IGNORECASE):
+            clean = f"{clean.rstrip('.')} before the next clear chance to act passes."
         return clean[:220]
     npc = sd.get("primary_npc") or {}
     npc_name = _clean_text(npc.get("name"), "the people nearby")
@@ -360,6 +364,7 @@ def normalize_scene_presentation(scene: dict[str, Any], world_state: dict[str, A
     current_situation["current_objective"] = normalized["current_objective"]
     current_situation["immediate_stakes"] = normalized["immediate_stakes"]
     current_situation["visible_clues"] = normalized["visible_clues"]
+    current_situation["observed"] = normalized["visible_clues"][0] if normalized["visible_clues"] else ""
     normalized["current_situation"] = current_situation
     if not normalized.get("suggested_actions"):
         clues = normalized["visible_clues"]

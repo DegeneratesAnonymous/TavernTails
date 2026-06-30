@@ -961,7 +961,7 @@
   align-items: flex-start;
   gap: 4px;
   padding: 16px;
-  border-radius: 10px;
+  border-radius: 8px;
   border: 1.5px solid var(--tt-border, rgba(255,255,255,0.10));
   background: var(--tt-surface-2, rgba(255,255,255,0.04));
   cursor: pointer;
@@ -986,6 +986,123 @@
   font-size: 12px;
   color: var(--muted-text);
   line-height: 1.4;
+}
+
+.wizard-section-kicker {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent, #c8941a);
+}
+
+.wizard-contract-controls {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--tt-border, rgba(255,255,255,0.10));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--tt-surface-2, rgba(255,255,255,0.04)) 86%, transparent);
+}
+
+.wizard-control-grid {
+  display: grid;
+  gap: 10px;
+}
+
+@media (min-width: 680px) {
+  .wizard-control-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.wizard-control-group {
+  display: grid;
+  gap: 6px;
+}
+
+.wizard-control-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-text);
+}
+
+.wizard-control-help {
+  min-height: 32px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted-text);
+}
+
+.wizard-segmented {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.wizard-segment {
+  min-height: 38px;
+  padding: 7px 8px;
+  border: 1px solid var(--tt-border, rgba(255,255,255,0.10));
+  border-radius: 6px;
+  background: var(--tt-surface-2, rgba(255,255,255,0.04));
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease, color 150ms ease;
+}
+
+.wizard-segment:hover,
+.wizard-segment.is-selected {
+  border-color: var(--accent, #c8941a);
+  background: color-mix(in srgb, var(--accent, #c8941a) 12%, transparent);
+  color: var(--text);
+}
+
+.wizard-contract-preview {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--accent, #c8941a) 30%, var(--tt-border, rgba(255,255,255,0.10)));
+  background: color-mix(in srgb, var(--accent, #c8941a) 8%, transparent);
+}
+
+.wizard-preview-list {
+  display: grid;
+  gap: 6px;
+}
+
+@media (min-width: 680px) {
+  .wizard-preview-list {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.wizard-preview-list > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.wizard-preview-list strong {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-text);
+}
+
+.wizard-preview-list span {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  overflow-wrap: anywhere;
 }
 
 /* ── Quick genre grid ──────────────────────────────── */

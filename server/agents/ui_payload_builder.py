@@ -66,20 +66,42 @@ def resolution_state_for(situation_type: str, has_dice_rolls: bool, has_roll_res
 def _build_scene_summary(scene: dict[str, Any], content_bundle: dict[str, Any]) -> dict[str, Any]:
     sd = scene.get("scene_director_data") or {}
     bundle_content = (content_bundle or {}).get("required_content") or {}
+    def one_sentence(value: Any, limit: int = 120) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        for marker in (". ", "! ", "? "):
+            idx = text.find(marker)
+            if idx > 0:
+                text = text[:idx + 1]
+                break
+        return text[:limit].strip()
+
+    objective = one_sentence(
+        scene.get("current_objective")
+        or bundle_content.get("immediate_problem")
+        or sd.get("central_conflict")
+    )
+    if objective and not objective.lower().startswith(("find ", "reach ", "stop ", "protect ", "learn ", "decide ", "escape ", "convince ", "investigate ", "resolve ", "survive ", "choose ", "act ")):
+        objective = f"Resolve: {objective}"
+
+    observed = one_sentence((scene.get("visible_clues") or [""])[0])
+    if not observed:
+        director_clues = sd.get("player_visible_clues")
+        observed = one_sentence(
+            sd.get("inciting_incident")
+            or (director_clues[0] if isinstance(director_clues, list) and director_clues else "")
+        )
+
+    risk = one_sentence(
+        bundle_content.get("specific_stakes")
+        or sd.get("immediate_stakes")
+        or scene.get("immediate_stakes")
+    )
     return {
-        "objective": (
-            bundle_content.get("immediate_problem")
-            or sd.get("central_conflict")
-            or scene.get("current_objective")
-            or ""
-        )[:120],
-        "observed": ", ".join((scene.get("visible_clues") or [])[:3]),
-        "risk": (
-            bundle_content.get("specific_stakes")
-            or sd.get("immediate_stakes")
-            or scene.get("immediate_stakes")
-            or ""
-        )[:120],
+        "objective": objective,
+        "observed": observed,
+        "risk": risk,
     }
 
 
@@ -287,6 +309,16 @@ def build_ui_payload(
             } if content_bundle else {},
             "situation_validation": content_bundle.get("validation_result") or {} if content_bundle else {},
             "director_output": scene.get("scene_director_data") or {},
+            "campaign_storyboard": scene.get("campaign_storyboard") or {},
+            "session_storyboard": scene.get("session_storyboard") or {},
+            "scene_beat_plan": scene.get("scene_beat_plan") or {},
+            "beat_type_chosen": scene.get("beat_type_chosen") or "",
+            "beat_selection_reason": scene.get("beat_selection_reason") or "",
+            "rejected_candidate_beats": scene.get("rejected_candidate_beats") or [],
+            "repetition_warnings": scene.get("repetition_warnings") or [],
+            "active_clocks": scene.get("active_clocks") or [],
+            "threads_advanced": scene.get("threads_advanced") or [],
+            "do_not_force": scene.get("do_not_force") or [],
             "writer_output": {
                 "title": scene.get("title") or "",
                 "narrative_body": (scene.get("narrative_body") or "")[:200],

@@ -81,3 +81,36 @@ def test_session_player_names_fall_back_to_meta_character_name():
     (folder / "pcs.json").write_text("[]")
 
     assert sessions_module._session_player_names(folder, meta) == ["Yungmin"]
+
+
+def test_invited_player_joins_with_character_and_can_join_again_with_other_character():
+    client = _client()
+    owner = "join-owner@example.com"
+    player = "join-player@example.com"
+    _ensure_user(owner)
+    _ensure_user(player)
+
+    player_user = db.get_user_by_identifier(player)
+    assert player_user and player_user.id is not None
+    first = db.create_character(owner_id=player_user.id, name="First Hero", level=2, class_name="Ranger", sheet={})
+    second = db.create_character(owner_id=player_user.id, name="Second Hero", level=2, class_name="Wizard", sheet={})
+
+    sid, _meta = sessions_module.create_session_folder("Join Character Session", owner, invites=[player])
+    owner_headers = {"Authorization": f"Bearer {create_access_token(owner)}"}
+    player_headers = {"Authorization": f"Bearer {create_access_token(player)}"}
+
+    joined = client.post(f"/sessions/{sid}/join", headers=player_headers, json={"character_id": first.id})
+    assert joined.status_code == 200, joined.text
+    assert joined.json()["character_name"] == "First Hero"
+
+    # A later invite to the same player should be accepted as an additional character.
+    reinvite = client.post(f"/sessions/{sid}/invite", headers=owner_headers, json={"identifier": player})
+    assert reinvite.status_code == 200, reinvite.text
+    joined_again = client.post(f"/sessions/{sid}/join", headers=player_headers, json={"character_id": second.id})
+    assert joined_again.status_code == 200, joined_again.text
+
+    meta = client.get(f"/sessions/{sid}/meta", headers=owner_headers).json()
+    player_members = [m for m in meta.get("members", []) if m.get("email") == player]
+    assert {m.get("character_name") for m in player_members} >= {"First Hero", "Second Hero"}
+    accepted = [i for i in meta.get("invites", []) if i.get("email") == player and i.get("accepted")]
+    assert len(accepted) == 2

@@ -69,6 +69,22 @@ _GENERIC_FANTASY = [
     r"\blegendary hero\b",
 ]
 
+_REPEATED_STRUCTURE_CLICHES = [
+    r"\bvisibly shaken\b",
+    r"\bshaken (npc|guard|messenger|villager|traveler|traveller)\b",
+    r"\bmysterious stranger\b",
+    r"\b(cloaked|hooded) figure\b",
+    r"\burgent request\b",
+    r"\bwe need help\b",
+    r"\bsomething has gone wrong\b",
+    r"\bsomething is wrong\b",
+    r"\bmissing caravan\b",
+    r"\bsealed packet\b",
+    r"\bwayward lantern\b",
+    r"\btavern\b",
+    r"\binn\b",
+]
+
 _CONCRETENESS_INDICATORS = [
     # Named location patterns (capitalized noun phrases)
     r"\bat the [A-Z][a-z]+",
@@ -263,6 +279,12 @@ def validate_story_quality(
         result.add_penalty("Generic Fantasy", 25)
     elif generic_hits == 1:
         result.add_penalty("Generic Fantasy (minor)", 10)
+
+    repeated_structure_hits = _count_pattern_matches(scene_text, _REPEATED_STRUCTURE_CLICHES)
+    if repeated_structure_hits >= 2:
+        result.add_penalty("Repeated Generic Structure", 20)
+    elif repeated_structure_hits == 1:
+        result.add_penalty("Repeated Generic Structure (minor)", 8)
 
     # -20 Thread regression (highest priority thread entirely ignored)
     if state.threads:

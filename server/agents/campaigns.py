@@ -221,6 +221,8 @@ class CampaignCreate(BaseModel):
     description: str | None = ""
     invites: list[str] | None = None
     create_session: bool | None = True
+    owner_character_id: int | None = None
+    owner_role: str | None = "player"
     creation_posture: str | None = None
     seed_id: str | None = None
     preferences: dict[str, Any] | None = None
@@ -267,6 +269,8 @@ def _persist_contract_package(campaign_id: str, owner_id: int, package: dict[str
     values = {
         "campaign_interpretation": package.get("campaign_interpretation", {}),
         "campaign_contract": package.get("campaign_contract", {}),
+        "campaign_scale_profile": package.get("campaign_scale_profile", {}),
+        "story_shape_profile": package.get("story_shape_profile", {}),
         "backstory_profiles": package.get("backstory_profiles", []),
         "backstory_hooks": package.get("backstory_hooks", []),
         "backstory_thread_links": package.get("backstory_thread_links", []),
@@ -287,6 +291,13 @@ def list_campaign_seeds():
 @router.post('', status_code=201)
 def create_campaign(req: CampaignCreate, current_user=Depends(get_current_user)):
     owner_id = _require_user_id(current_user)
+    owner_character_id = req.owner_character_id
+    owner_role = "dm" if req.owner_role == "dm" else "player"
+    if owner_role == "player" and owner_character_id is not None:
+        if not db.get_character_for_owner(int(owner_character_id), owner_id):
+            raise HTTPException(status_code=404, detail='Owner character not found')
+    if owner_role == "dm":
+        owner_character_id = None
     camp = db.create_campaign(owner_id=owner_id, name=req.name, description=req.description)
     campaign_id = camp.id
     if campaign_id is None:
@@ -318,6 +329,10 @@ def create_campaign(req: CampaignCreate, current_user=Depends(get_current_user))
             "settings": initial_settings,
             "imported_lore": imported_lore,
             "player_backstories": req.player_backstories or [],
+            "owner_participation": {
+                "role": owner_role,
+                "character_id": owner_character_id,
+            },
         })
         if updated:
             camp = updated
@@ -331,7 +346,15 @@ def create_campaign(req: CampaignCreate, current_user=Depends(get_current_user))
     try:
         owner_email = _require_user_identifier(current_user)
         if req.create_session:
-            sid, meta = sessions_agent.create_session_folder(req.name, owner_email, invites=req.invites, campaign_id=str(campaign_id))
+            sid, meta = sessions_agent.create_session_folder(
+                req.name,
+                owner_email,
+                invites=req.invites,
+                campaign_id=str(campaign_id),
+                owner_character_id=owner_character_id,
+                owner_role="dm" if owner_role == "dm" else "owner",
+                opening_setup_required=True,
+            )
             db.add_session_to_campaign(campaign_id, owner_id, sid)
             created_session = sid
     except Exception:
@@ -407,8 +430,19 @@ def create_session_from_campaign(campaign_id: str, current_user=Depends(get_curr
         raise HTTPException(status_code=403, detail='Forbidden')
     owner_email = _require_user_identifier(current_user)
     invites = (c.metadata_json or {}).get('invites', [])
+    owner_participation = (c.metadata_json or {}).get('owner_participation') or {}
+    owner_role = "dm" if owner_participation.get("role") == "dm" else "owner"
+    owner_character_id = owner_participation.get("character_id") if owner_role != "dm" else None
     try:
-        sid, meta = sessions_agent.create_session_folder(c.name, owner_email, invites=invites, campaign_id=str(campaign_id))
+        sid, meta = sessions_agent.create_session_folder(
+            c.name,
+            owner_email,
+            invites=invites,
+            campaign_id=str(campaign_id),
+            owner_character_id=owner_character_id,
+            owner_role=owner_role,
+            opening_setup_required=True,
+        )
         db.add_session_to_campaign(campaign_id, c.owner_id, sid)
         return {'session_id': sid, 'meta': meta}
     except Exception as e:
@@ -531,7 +565,13 @@ def put_campaign_settings(
         raise HTTPException(status_code=404, detail='Campaign not found')
     if c.owner_id != owner_id:
         raise HTTPException(status_code=403, detail='Forbidden')
-    updated = db.set_campaign_settings(campaign_id, owner_id, settings.model_dump())
+    existing_meta = c.metadata_json or {}
+    existing_settings = existing_meta.get('settings') if isinstance(existing_meta, dict) else {}
+    merged_settings = {
+        **(existing_settings if isinstance(existing_settings, dict) else {}),
+        **settings.model_dump(exclude_unset=True),
+    }
+    updated = db.set_campaign_settings(campaign_id, owner_id, merged_settings)
     if not updated:
         raise HTTPException(status_code=404, detail='Campaign not found or forbidden')
     try:
@@ -563,6 +603,8 @@ def get_campaign_contract(campaign_id: str, current_user=Depends(get_current_use
     return {
         'campaign_interpretation': meta.get('campaign_interpretation', {}),
         'campaign_contract': meta.get('campaign_contract', {}),
+        'campaign_scale_profile': meta.get('campaign_scale_profile', {}),
+        'story_shape_profile': meta.get('story_shape_profile', {}),
         'backstory_profiles': meta.get('backstory_profiles', []),
         'backstory_hooks': meta.get('backstory_hooks', []),
         'backstory_thread_links': meta.get('backstory_thread_links', []),
@@ -640,6 +682,8 @@ def get_campaign_contract_debug(campaign_id: str, current_user=Depends(get_curre
             'player_backstories': meta.get('player_backstories', []),
         },
         **(meta.get('campaign_contract_debug') or {}),
+        'campaign_scale_profile': meta.get('campaign_scale_profile', {}),
+        'story_shape_profile': meta.get('story_shape_profile', {}),
     }
 
 
@@ -975,7 +1019,13 @@ def put_campaign_variables(
         raise HTTPException(status_code=404, detail='Campaign not found')
     if c.owner_id != owner_id:
         raise HTTPException(status_code=403, detail='Forbidden')
-    updated = db.set_campaign_variables(campaign_id, owner_id, variables.model_dump())
+    existing_meta = c.metadata_json or {}
+    existing_variables = existing_meta.get('variables') if isinstance(existing_meta, dict) else {}
+    merged_variables = {
+        **(existing_variables if isinstance(existing_variables, dict) else {}),
+        **variables.model_dump(exclude_unset=True),
+    }
+    updated = db.set_campaign_variables(campaign_id, owner_id, merged_variables)
     if not updated:
         raise HTTPException(status_code=404, detail='Campaign not found or forbidden')
     try:

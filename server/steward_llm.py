@@ -25,9 +25,67 @@ Environment variables:
 
 from __future__ import annotations
 
+import logging
 import os
+import re
+import time
+from threading import Lock
 
 import httpx
+
+logger = logging.getLogger(__name__)
+
+_CLIENTS: dict[str, httpx.Client] = {}
+_CLIENT_LOCK = Lock()
+
+
+def _client_for(base_url: str) -> httpx.Client:
+    """Return a pooled HTTP client for a provider base URL.
+
+    Agent calls are frequent and short-lived; reusing clients keeps TCP
+    connections warm and avoids rebuilding connection pools for every request.
+    """
+    with _CLIENT_LOCK:
+        client = _CLIENTS.get(base_url)
+        if client is None:
+            client = httpx.Client(timeout=None)
+            _CLIENTS[base_url] = client
+        return client
+
+
+def _scope_key(task_scope: str | None) -> str:
+    return re.sub(r"[^A-Z0-9]+", "_", (task_scope or "default").upper()).strip("_") or "DEFAULT"
+
+
+def _env_for_scope(prefix: str, task_scope: str | None, fallback: str) -> str:
+    """Resolve per-task settings before falling back to the global default.
+
+    Example: OLLAMA_MODEL_TAVERNTAILS_ANALYSIS=qwen3:1.7b lets scene analysis
+    use a faster model while narrative generation can keep a stronger default.
+    """
+    scoped = os.environ.get(f"{prefix}_{_scope_key(task_scope)}")
+    return scoped or os.environ.get(prefix, fallback)
+
+
+def _log_attempt(
+    *,
+    provider: str,
+    task_scope: str | None,
+    elapsed: float,
+    ok: bool,
+    detail: str = "",
+) -> None:
+    message = (
+        "llm_attempt provider=%s task_scope=%s ok=%s elapsed_ms=%d%s"
+        % (provider, task_scope or "default", ok, int(elapsed * 1000), f" detail={detail}" if detail else "")
+    )
+    if ok:
+        if elapsed >= float(os.environ.get("TAVERNTAILS_LLM_SLOW_LOG_SECONDS", "2.0")):
+            logger.info(message)
+        else:
+            logger.debug(message)
+    else:
+        logger.warning(message)
 
 
 def chat_complete(
@@ -57,19 +115,41 @@ def chat_complete(
         # 110s covers cold-start (model load ~48s + generation ~50s = ~100s).
         # Falls through to direct PC Ollama only if Steward itself is unreachable.
         steward_attempt_timeout = min(float(timeout), 110.0)
+        started = time.perf_counter()
         try:
-            with httpx.Client(timeout=steward_attempt_timeout) as client:
-                r = client.post(
-                    f"{steward_host}/api/games/taverntails/ai",
-                    json={"messages": messages, "task_scope": scope, "max_tokens": max_tokens, "timeout": int(min(timeout, 90))},
+            client = _client_for(steward_host)
+            r = client.post(
+                f"{steward_host}/api/games/taverntails/ai",
+                json={"messages": messages, "task_scope": scope, "max_tokens": max_tokens, "timeout": int(min(timeout, 90))},
+                timeout=steward_attempt_timeout,
+            )
+            r.raise_for_status()
+            data = r.json()
+            choices = data.get("choices") or []
+            if choices:
+                _log_attempt(
+                    provider="steward",
+                    task_scope=scope,
+                    elapsed=time.perf_counter() - started,
+                    ok=True,
+                    detail=_steward_queue_detail(data),
                 )
-                r.raise_for_status()
-                data = r.json()
-                choices = data.get("choices") or []
-                if choices:
-                    return (choices[0].get("message") or {}).get("content") or None
-        except Exception:
-            pass
+                return (choices[0].get("message") or {}).get("content") or None
+            _log_attempt(
+                provider="steward",
+                task_scope=scope,
+                elapsed=time.perf_counter() - started,
+                ok=False,
+                detail="empty_choices",
+            )
+        except Exception as exc:
+            _log_attempt(
+                provider="steward",
+                task_scope=scope,
+                elapsed=time.perf_counter() - started,
+                ok=False,
+                detail=type(exc).__name__,
+            )
         # Steward failed — fall through to direct Ollama as backup.
 
     # ── 2. Direct Ollama ────────────────────────────────────────────────────
@@ -78,7 +158,7 @@ def chat_complete(
     # Cap at 40s so total (Steward attempt + Ollama) stays under the 150s proxy limit.
     ollama_host = os.environ.get("OLLAMA_HOST", "").rstrip("/")
     if ollama_host:
-        model = os.environ.get("OLLAMA_MODEL", "qwen3:4b")
+        model = _env_for_scope("OLLAMA_MODEL", task_scope, "qwen3:4b")
         # With Steward capped at 30s, allow up to 60s for direct Ollama (model may need loading).
         ollama_timeout = min(float(timeout), 60.0) if steward_host else float(timeout)
         result = _call_openai_compat(
@@ -89,6 +169,8 @@ def chat_complete(
             max_tokens=max_tokens,
             temperature=temperature,
             timeout=ollama_timeout,
+            task_scope=task_scope,
+            provider="ollama",
         )
         if result is not None:
             return result
@@ -98,6 +180,7 @@ def chat_complete(
     if api_key and api_key != "ollama":
         base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
         model = os.environ.get("OPENAI_MODEL", "gpt-4o")
+        model = _env_for_scope("OPENAI_MODEL", task_scope, model)
         return _call_openai_compat(
             base_url=base_url,
             api_key=api_key,
@@ -106,6 +189,8 @@ def chat_complete(
             max_tokens=max_tokens,
             temperature=temperature,
             timeout=timeout,
+            task_scope=task_scope,
+            provider="openai_compat",
         )
 
     return None
@@ -120,6 +205,8 @@ def _call_openai_compat(
     max_tokens: int,
     temperature: float,
     timeout: float,
+    task_scope: str | None = None,
+    provider: str = "openai_compat",
 ) -> str | None:
     payload = {
         "model": model,
@@ -128,18 +215,53 @@ def _call_openai_compat(
         "temperature": temperature,
         "stream": False,
     }
+    started = time.perf_counter()
     try:
-        with httpx.Client(timeout=timeout) as client:
-            r = client.post(
-                f"{base_url}/chat/completions",
-                json=payload,
-                headers={"Authorization": f"Bearer {api_key}"},
+        client = _client_for(base_url)
+        r = client.post(
+            f"{base_url}/chat/completions",
+            json=payload,
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=timeout,
+        )
+        r.raise_for_status()
+        data = r.json()
+        choices = data.get("choices") or []
+        if choices:
+            _log_attempt(
+                provider=provider,
+                task_scope=task_scope,
+                elapsed=time.perf_counter() - started,
+                ok=True,
+                detail=f"model={model}",
             )
-            r.raise_for_status()
-            data = r.json()
-            choices = data.get("choices") or []
-            if choices:
-                return (choices[0].get("message") or {}).get("content") or None
-    except Exception:
+            return (choices[0].get("message") or {}).get("content") or None
+        _log_attempt(
+            provider=provider,
+            task_scope=task_scope,
+            elapsed=time.perf_counter() - started,
+            ok=False,
+            detail="empty_choices",
+        )
+    except Exception as exc:
+        _log_attempt(
+            provider=provider,
+            task_scope=task_scope,
+            elapsed=time.perf_counter() - started,
+            ok=False,
+            detail=type(exc).__name__,
+        )
         return None
     return None
+
+
+def _steward_queue_detail(data: dict) -> str:
+    for key in ("queue_position", "queued", "worker", "model"):
+        if key in data:
+            return f"{key}={data[key]}"
+    meta = data.get("metadata") or data.get("meta") or {}
+    if isinstance(meta, dict):
+        parts = [f"{key}={meta[key]}" for key in ("queue_position", "queued", "worker", "model") if key in meta]
+        if parts:
+            return ",".join(parts)
+    return ""

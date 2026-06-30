@@ -32,6 +32,7 @@
   },
   "scripts": {
     "start": "node scripts/prestart-check.js && react-scripts start",
+    "prebuild": "cd .. && python3 -m server.scripts.purge_qa_campaigns --commit --quiet",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "lint": "eslint src/ --ext .ts,.tsx --max-warnings 0",

@@ -395,8 +395,7 @@
   border: 1px solid rgba(255,255,255,0.055);
 }
 
-.cs-quick-section-title,
-.cs-fullsheet-label {
+.cs-quick-section-title {
   color: rgba(255,255,255,0.46);
   font-size: 10px;
   font-weight: 900;
@@ -420,8 +419,67 @@
   background: rgba(0,0,0,0.18);
 }
 
-.cs-fullsheet-label {
-  margin: 6px 8px 0;
+.cs-skill-item--requested {
+  border-color: rgba(245,200,66,0.38);
+  background: rgba(245,200,66,0.1);
+}
+
+.cs-skill-item--requested .cs-skill-name,
+.cs-skill-item--requested .cs-skill-mod {
+  color: rgba(245,200,66,0.96);
+}
+
+.cs-skill-name em {
+  margin-left: 6px;
+  color: rgba(255,255,255,0.46);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cs-sheet-sections {
+  display: grid;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.cs-section-toggle {
+  width: 100%;
+  min-height: 32px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 9px;
+  border-radius: 7px;
+  border: 1px solid rgba(255,255,255,0.07);
+  background: rgba(30,18,8,0.32);
+  color: rgba(255,255,255,0.66);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cs-section-toggle--active {
+  border-color: rgba(245,200,66,0.28);
+  background: rgba(245,200,66,0.09);
+  color: rgba(245,200,66,0.9);
+}
+
+.cs-section-toggle-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: rgba(255,255,255,0.44);
+  font-variant-numeric: tabular-nums;
+}
+
+.cs-section-chevron {
+  color: rgba(245,200,66,0.7);
+  font-size: 9px;
 }
 
 @media (min-width: 420px) {
@@ -906,36 +964,6 @@
 .cs-cast-item--cancel:hover {
   background: rgba(255,255,255,0.06);
   color: rgba(255,255,255,0.6);
-}
-
-/* ── Rest buttons row ── */
-.cs-rest-row {
-  display: flex;
-  gap: 6px;
-  margin-top: 4px;
-}
-
-/* ── Rest dialog ── */
-.cs-rest-dialog {
-  padding: 10px 12px;
-  background: rgba(0,0,0,0.25);
-  border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.08);
-}
-
-.cs-rest-dialog-title {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: rgba(255,255,255,0.7);
-  margin-bottom: 8px;
-}
-
-.cs-rest-dialog-row {
-  display: flex;
-  gap: 6px;
-  align-items: center;
 }
 
 /* ── Inventory ── */

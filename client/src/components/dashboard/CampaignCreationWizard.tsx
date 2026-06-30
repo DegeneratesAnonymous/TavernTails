@@ -44,6 +44,11 @@ type CampaignDraft = {
   ruleset: string
   worldName: string
   startingLevel: number
+  ownerRole: 'player' | 'dm'
+  ownerCharacterId: string
+  canonMode: 'guided_canon' | 'strict_canon' | 'flexible_canon'
+  creativityLevel: 'conservative' | 'balanced' | 'expansive'
+  playstyle: string
   // Quick Start
   quickGenre: string
   quickTone: string
@@ -61,11 +66,23 @@ const EMPTY_DRAFT: CampaignDraft = {
   ruleset: '',
   worldName: '',
   startingLevel: 1,
+  ownerRole: 'player',
+  ownerCharacterId: '',
+  canonMode: 'guided_canon',
+  creativityLevel: 'balanced',
+  playstyle: 'balanced',
   quickGenre: 'fantasy',
   quickTone: 'balanced',
   importLore: '',
   importBackstory: '',
   seedId: '',
+}
+
+type CampaignCharacterOption = {
+  id: number | string
+  name: string
+  level?: number
+  class_name?: string | null
 }
 
 // ─────────────────────────────────────────────
@@ -171,6 +188,50 @@ const PACING_LABELS: Record<string, string> = {
   slow: '🌘 Slow Burn',
 }
 
+const CANON_OPTIONS = [
+  {
+    id: 'guided_canon' as const,
+    label: 'Guided Canon',
+    summary: 'Use your setup as truth; invent compatible details when useful.',
+  },
+  {
+    id: 'strict_canon' as const,
+    label: 'Strict Canon',
+    summary: 'Major lore, factions, gods, and history require approval first.',
+  },
+  {
+    id: 'flexible_canon' as const,
+    label: 'Flexible Canon',
+    summary: 'Prioritize momentum and surprise while avoiding contradictions.',
+  },
+]
+
+const CREATIVITY_OPTIONS = [
+  {
+    id: 'conservative' as const,
+    label: 'Conservative',
+    summary: 'Prefer existing material and add very little per scene.',
+  },
+  {
+    id: 'balanced' as const,
+    label: 'Balanced',
+    summary: 'Blend setup fidelity with a steady pace of new details.',
+  },
+  {
+    id: 'expansive' as const,
+    label: 'Expansive',
+    summary: 'Create more NPCs, locations, and subplots when they fit.',
+  },
+]
+
+const PLAYSTYLE_OPTIONS = [
+  { id: 'balanced', label: 'Balanced', summary: 'A mix of social, exploration, mystery, and danger.' },
+  { id: 'roleplay-heavy', label: 'Roleplay Heavy', summary: 'NPC motive, relationships, and character drama lead.' },
+  { id: 'slow-burn mystery', label: 'Slow-Burn Mystery', summary: 'Concrete clues, careful reveals, and open questions.' },
+  { id: 'tactical combat', label: 'Tactical Combat', summary: 'Terrain, resources, and enemy intent matter.' },
+  { id: 'survival exploration', label: 'Survival Exploration', summary: 'Weather, supplies, travel risk, and hard choices.' },
+]
+
 // ─────────────────────────────────────────────
 // Quick Start genres
 // ─────────────────────────────────────────────
@@ -214,6 +275,160 @@ type CampaignSeed = {
 
 function pickRandomName(): string {
   return RANDOM_CAMPAIGN_NAMES[Math.floor(Math.random() * RANDOM_CAMPAIGN_NAMES.length)]
+}
+
+function ownerParticipationPayload(draft: CampaignDraft) {
+  return {
+    owner_role: draft.ownerRole,
+    owner_character_id: draft.ownerRole === 'player' ? Number(draft.ownerCharacterId) : null,
+  }
+}
+
+function interpretationPayload(draft: CampaignDraft) {
+  return {
+    canon_policy: draft.canonMode,
+    ai_creativity_level: draft.creativityLevel,
+    playstyle_profile: draft.playstyle,
+  }
+}
+
+function InterpretationControls({
+  draft,
+  onChange,
+}: {
+  draft: CampaignDraft
+  onChange: (patch: Partial<CampaignDraft>) => void
+}) {
+  return (
+    <div className="wizard-contract-controls">
+      <div>
+        <div className="wizard-section-kicker">Campaign Contract</div>
+        <div className="wizard-step-sub">These become persistent instructions for scenes, memory, canon, and validation.</div>
+      </div>
+      <div className="wizard-control-group">
+        <div className="wizard-control-label">Canon</div>
+        <div className="wizard-segmented">
+          {CANON_OPTIONS.map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              className={`wizard-segment${draft.canonMode === opt.id ? ' is-selected' : ''}`}
+              onClick={() => onChange({ canonMode: opt.id })}
+              title={opt.summary}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <div className="wizard-control-help">
+          {CANON_OPTIONS.find((opt) => opt.id === draft.canonMode)?.summary}
+        </div>
+      </div>
+      <div className="wizard-control-grid">
+        <div className="wizard-control-group">
+          <label className="wizard-control-label" htmlFor="campaign-creativity">AI Creativity</label>
+          <select
+            id="campaign-creativity"
+            className="input"
+            value={draft.creativityLevel}
+            onChange={(e) => onChange({ creativityLevel: e.target.value as CampaignDraft['creativityLevel'] })}
+          >
+            {CREATIVITY_OPTIONS.map((opt) => (
+              <option key={opt.id} value={opt.id}>{opt.label}</option>
+            ))}
+          </select>
+          <div className="wizard-control-help">
+            {CREATIVITY_OPTIONS.find((opt) => opt.id === draft.creativityLevel)?.summary}
+          </div>
+        </div>
+        <div className="wizard-control-group">
+          <label className="wizard-control-label" htmlFor="campaign-playstyle">Playstyle</label>
+          <select
+            id="campaign-playstyle"
+            className="input"
+            value={draft.playstyle}
+            onChange={(e) => onChange({ playstyle: e.target.value })}
+          >
+            {PLAYSTYLE_OPTIONS.map((opt) => (
+              <option key={opt.id} value={opt.id}>{opt.label}</option>
+            ))}
+          </select>
+          <div className="wizard-control-help">
+            {PLAYSTYLE_OPTIONS.find((opt) => opt.id === draft.playstyle)?.summary}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ContractPreview({ draft, posture }: { draft: CampaignDraft; posture: string }) {
+  const canon = CANON_OPTIONS.find((opt) => opt.id === draft.canonMode)
+  const creativity = CREATIVITY_OPTIONS.find((opt) => opt.id === draft.creativityLevel)
+  const playstyle = PLAYSTYLE_OPTIONS.find((opt) => opt.id === draft.playstyle)
+  return (
+    <div className="wizard-contract-preview">
+      <div className="wizard-section-kicker">Session Zero Preview</div>
+      <div className="wizard-preview-list">
+        <div><strong>Posture</strong><span>{posture}</span></div>
+        <div><strong>Canon</strong><span>{canon?.label}</span></div>
+        <div><strong>Creativity</strong><span>{creativity?.label}</span></div>
+        <div><strong>Playstyle</strong><span>{playstyle?.label}</span></div>
+      </div>
+    </div>
+  )
+}
+
+function SeatChoice({
+  draft,
+  characters,
+  onChange,
+}: {
+  draft: CampaignDraft
+  characters: CampaignCharacterOption[]
+  onChange: (patch: Partial<CampaignDraft>) => void
+}) {
+  return (
+    <div className="card card-pad" style={{ display: 'grid', gap: 10, marginTop: 14 }}>
+      <div style={{ fontWeight: 750 }}>Your seat</div>
+      <div className="row-wrap" style={{ gap: 8 }}>
+        <label className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+          <input
+            type="radio"
+            checked={draft.ownerRole === 'player'}
+            onChange={() => onChange({ ownerRole: 'player' })}
+          />
+          Join as character
+        </label>
+        <label className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+          <input
+            type="radio"
+            checked={draft.ownerRole === 'dm'}
+            onChange={() => onChange({ ownerRole: 'dm', ownerCharacterId: '' })}
+          />
+          I am the DM
+        </label>
+      </div>
+      {draft.ownerRole === 'player' ? (
+        characters.length ? (
+          <select
+            className="input"
+            value={draft.ownerCharacterId}
+            onChange={(e) => onChange({ ownerCharacterId: e.target.value })}
+          >
+            <option value="">Select a character</option>
+            {characters.map((character) => (
+              <option key={character.id} value={String(character.id)}>
+                {character.name} L{character.level ?? 1}{character.class_name ? ` ${character.class_name}` : ''}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <div className="inline-alert">Create or import a character first, or designate yourself as DM.</div>
+        )
+      ) : null}
+    </div>
+  )
 }
 
 // ─────────────────────────────────────────────
@@ -931,10 +1146,12 @@ async function submitQuickStart(draft: CampaignDraft): Promise<CreatedCampaignRe
       name: draft.name.trim(),
       description: '',
       create_session: true,
+      ...ownerParticipationPayload(draft),
       creation_posture: 'player_fast_start',
       preferences: {
         genre: draft.quickGenre,
         tone: draft.quickTone,
+        ...interpretationPayload(draft),
       },
     }),
   })
@@ -957,10 +1174,14 @@ async function submitImport(draft: CampaignDraft): Promise<CreatedCampaignResult
       name: draft.name.trim(),
       description: '',
       create_session: true,
+      ...ownerParticipationPayload(draft),
       creation_posture: 'lore_importer',
       imported_lore_summary: draft.importLore.trim() || null,
       player_backstories: backstoryEntries,
-      preferences: {},
+      preferences: {
+        ...interpretationPayload(draft),
+        setting_summary: draft.importLore.trim().slice(0, 500),
+      },
     }),
   })
   if (!res.ok) {
@@ -978,11 +1199,13 @@ async function submitSeed(draft: CampaignDraft, seed: CampaignSeed): Promise<Cre
       name: (draft.name.trim() || seed.title),
       description: seed.setting_summary,
       create_session: true,
+      ...ownerParticipationPayload(draft),
       creation_posture: seed.creation_posture,
       seed_id: seed.id,
       preferences: {
         genre: seed.genre,
         tone: seed.tone,
+        ...interpretationPayload(draft),
       },
     }),
   })
@@ -1000,11 +1223,14 @@ async function submitGuided(draft: CampaignDraft, derived: ReturnType<typeof der
     body: JSON.stringify({
       name: draft.name.trim(),
       description: derived.setting_summary,
+      create_session: true,
+      ...ownerParticipationPayload(draft),
       creation_posture: 'guided_builder',
       preferences: {
         genre: derived.genre,
         tone: derived.tone,
         pacing: derived.pacing,
+        ...interpretationPayload(draft),
         setting_summary: derived.setting_summary,
         world_name: draft.worldName.trim() || '',
         ruleset: draft.ruleset,
@@ -1028,6 +1254,9 @@ async function submitGuided(draft: CampaignDraft, derived: ReturnType<typeof der
       ruleset: draft.ruleset,
       starting_level: draft.startingLevel,
       house_rules: '',
+      canon_policy: draft.canonMode,
+      ai_creativity_level: draft.creativityLevel,
+      playstyle_profile: draft.playstyle,
     }),
   })
 
@@ -1040,7 +1269,8 @@ async function submitGuided(draft: CampaignDraft, derived: ReturnType<typeof der
 
 type Props = {
   onDone: () => void
-  onCampaignCreated?: (campaignId: string, sessionId?: string | null) => void
+  onCampaignCreated?: (campaignId: string, sessionId?: string | null, ownerCharacterId?: number | null) => void
+  characters?: CampaignCharacterOption[]
 }
 
 type CreatedCampaignResult = {
@@ -1057,7 +1287,7 @@ function parseCreatedCampaign(body: any): CreatedCampaignResult {
   return { campaignId: String(campaignId), sessionId }
 }
 
-export default function CampaignCreationWizard({ onDone, onCampaignCreated }: Props) {
+export default function CampaignCreationWizard({ onDone, onCampaignCreated, characters = [] }: Props) {
   const [draft, setDraft] = useState<CampaignDraft>({ ...EMPTY_DRAFT })
   const [step, setStep] = useState<Step>('path')
   const [quizIndex, setQuizIndex] = useState(0)
@@ -1132,6 +1362,11 @@ export default function CampaignCreationWizard({ onDone, onCampaignCreated }: Pr
     setBusy(true)
     setError(null)
     try {
+      if (draft.ownerRole === 'player' && !draft.ownerCharacterId) {
+        setError('Choose which character you are joining with, or designate yourself as DM.')
+        setBusy(false)
+        return
+      }
       let created: CreatedCampaignResult
       switch (draft.path) {
         case 'quick':
@@ -1154,7 +1389,11 @@ export default function CampaignCreationWizard({ onDone, onCampaignCreated }: Pr
           created = await submitGuided(draft, derived)
           break
       }
-      onCampaignCreated?.(created.campaignId, created.sessionId)
+      onCampaignCreated?.(
+        created.campaignId,
+        created.sessionId,
+        draft.ownerRole === 'player' && draft.ownerCharacterId ? Number(draft.ownerCharacterId) : null,
+      )
       onDone()
     } catch (e: any) {
       setError(e?.message || 'Something went wrong. Please try again.')
@@ -1235,6 +1474,16 @@ export default function CampaignCreationWizard({ onDone, onCampaignCreated }: Pr
               onNameChange={(v) => setDraft((d) => ({ ...d, name: v }))}
               onGenreChange={(genre, tone) => setDraft((d) => ({ ...d, quickGenre: genre, quickTone: tone }))}
             />
+            <InterpretationControls
+              draft={draft}
+              onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
+            />
+            <ContractPreview draft={draft} posture="Player Fast Start" />
+            <SeatChoice
+              draft={draft}
+              characters={characters}
+              onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
+            />
             {error && <div className="inline-alert inline-alert-error" style={{ marginTop: 12 }}>{error}</div>}
             <div className="wizard-nav" style={{ marginTop: 16 }}>
               <button className="btn btn-secondary" type="button" onClick={goBack}>← Back</button>
@@ -1312,6 +1561,16 @@ export default function CampaignCreationWizard({ onDone, onCampaignCreated }: Pr
               busy={busy}
               error={error}
             />
+            <InterpretationControls
+              draft={draft}
+              onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
+            />
+            <ContractPreview draft={draft} posture="Guided Builder" />
+            <SeatChoice
+              draft={draft}
+              characters={characters}
+              onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
+            />
             <div className="wizard-nav" style={{ marginTop: 8 }}>
               <button className="btn btn-secondary" type="button" onClick={goBack}>← Back</button>
             </div>
@@ -1347,6 +1606,16 @@ export default function CampaignCreationWizard({ onDone, onCampaignCreated }: Pr
               draft={draft}
               onNameChange={(v) => setDraft((d) => ({ ...d, name: v }))}
             />
+            <InterpretationControls
+              draft={draft}
+              onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
+            />
+            <ContractPreview draft={draft} posture="Lore Importer" />
+            <SeatChoice
+              draft={draft}
+              characters={characters}
+              onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
+            />
             {error && <div className="inline-alert inline-alert-error" style={{ marginTop: 12 }}>{error}</div>}
             <div className="wizard-nav" style={{ marginTop: 16 }}>
               <button className="btn btn-secondary" type="button" onClick={() => setStep('import-text')}>← Back</button>
@@ -1381,6 +1650,16 @@ export default function CampaignCreationWizard({ onDone, onCampaignCreated }: Pr
               draft={draft}
               seed={activeSeed}
               onNameChange={(v) => setDraft((d) => ({ ...d, name: v }))}
+            />
+            <InterpretationControls
+              draft={draft}
+              onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
+            />
+            <ContractPreview draft={draft} posture={activeSeed?.creation_posture || 'Campaign Seed'} />
+            <SeatChoice
+              draft={draft}
+              characters={characters}
+              onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
             />
             {error && <div className="inline-alert inline-alert-error" style={{ marginTop: 12 }}>{error}</div>}
             <div className="wizard-nav" style={{ marginTop: 16 }}>

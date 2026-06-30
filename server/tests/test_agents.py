@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 import server.main as main
 from server import db
 from server.agents import narrative as narrative_module
+from server.agents import scene as scene_module
 from server.agents import scene_director as scene_director_module
 from server.agents import sessions as sessions_module
 from server.auth import create_access_token
@@ -101,6 +102,71 @@ def test_scene_agent_roll_prompts(client: TestClient):
     body = resp.json()
     assert any(roll["skill"] == "Persuasion" for roll in body["dice_rolls"])
     assert any("d20" in prompt for prompt in body["prompts"])
+
+
+def test_scene_agent_keyword_fast_path_skips_llm(monkeypatch, client: TestClient):
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("keyword-detected actions should not call the LLM")
+
+    monkeypatch.setattr(scene_module, "chat_complete", fail_if_called)
+
+    resp = client.post("/scene/analyze", json={
+        "scene": "A crowded market square with watchful guards.",
+        "actions": ["I hide behind the spice cart and watch the guards."],
+    })
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["dice_rolls"][0]["skill"] == "Stealth"
+    assert "Stealth" in body["prompts"][0]
+
+
+def test_scene_agent_ambiguous_actions_use_llm(monkeypatch, client: TestClient):
+    scene_module._SCENE_LLM_CACHE.clear()
+    called = {"value": False}
+
+    def fake_llm(*_args, **_kwargs):
+        called["value"] = True
+        return json.dumps({
+            "dice_rolls": [{"skill": "Insight", "type": "d20", "reason": "The intent is unclear."}],
+            "prompts": ["Roll Insight (d20): read the room"],
+        })
+
+    monkeypatch.setattr(scene_module, "chat_complete", fake_llm)
+
+    resp = client.post("/scene/analyze", json={
+        "scene": "The ambassador pauses before answering.",
+        "actions": ["I consider the silence."],
+    })
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert called["value"] is True
+    assert body["dice_rolls"][0]["skill"] == "Insight"
+
+
+def test_scene_agent_reuses_ambiguous_llm_analysis(monkeypatch, client: TestClient):
+    scene_module._SCENE_LLM_CACHE.clear()
+    calls = {"count": 0}
+
+    def fake_llm(*_args, **_kwargs):
+        calls["count"] += 1
+        return json.dumps({
+            "dice_rolls": [{"skill": "Insight", "type": "d20", "reason": "The pause may reveal intent."}],
+            "prompts": ["Roll Insight (d20): interpret the silence"],
+        })
+
+    monkeypatch.setattr(scene_module, "chat_complete", fake_llm)
+    payload = {
+        "scene": "The ambassador pauses before answering.",
+        "actions": ["I consider the silence."],
+    }
+
+    first = client.post("/scene/analyze", json=payload)
+    second = client.post("/scene/analyze", json=payload)
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    assert calls["count"] == 1
+    assert second.json()["dice_rolls"][0]["skill"] == "Insight"
 
 
 def test_scene_director_rejects_unsupported_tavern_default(monkeypatch):

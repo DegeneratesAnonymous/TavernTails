@@ -89,6 +89,8 @@ def _deterministic_composer(sd: dict, player_name: str) -> NarrativeComposerOutp
         else f"What brought this trouble to {loc_name}?"
     )
     meaningful_decision = possible_actions[0] if possible_actions else f"How does {player_name} respond?"
+    beat_subject = npc_name or loc_name
+    ending_beat = f"{beat_subject} changes the moment with a sound, urgent line, visible threat, or clue the player can act on now."
 
     suggested_actions = (possible_actions[:4] if possible_actions else _FALLBACK_SUGGESTED_ACTIONS)
 
@@ -118,7 +120,7 @@ def _deterministic_composer(sd: dict, player_name: str) -> NarrativeComposerOutp
             f"{npc_name} must reveal: {npc_knows[:80]}"
             if npc_name and npc_knows else ""
         ),
-        ending_prompt=f"What does {player_name} do?",
+        ending_prompt=ending_beat,
         suggested_actions=suggested_actions,
         world_moves=world_moves,
     )
@@ -145,7 +147,7 @@ _COMPOSER_SCHEMA = """{
   "meaningful_decision": "the concrete choice the player now faces",
   "environmental_storytelling": ["one visible detail that implies history", "another clue"],
   "dialogue_intent": "what the NPC dialogue must reveal",
-  "ending_prompt": "how to close the scene — a line addressed to the player character by name",
+  "ending_prompt": "the concrete immediate beat that ends the prose: nearby sound, urgent NPC line, visible threat, changing clue, or clock advancing",
   "suggested_actions": ["Verb + specific target 1", "Verb + specific target 2", "Verb + specific target 3", "Verb + specific target 4"],
   "world_moves": ["living-world event implying tension or consequence", "another event outside the immediate scene", "a third subtle signal"]
 }"""
@@ -185,7 +187,8 @@ def compose_scene(
         "  — Stakes must name a specific person and a concrete deadline.\n"
         "  — World moves must imply tension, opportunity, or consequence — not generic atmosphere.\n"
         "  — suggested_actions must be verb+target ('Inspect the marked object', not just 'Inspect').\n"
-        "  — memorable_object must be something the player can touch, examine, or take.\n\n"
+        "  — memorable_object must be something the player can touch, examine, or take.\n"
+        "  — ending_prompt must be an immediate physical beat, not abstract stakes.\n\n"
         f"Return ONLY valid JSON:\n{_COMPOSER_SCHEMA}"
     )
 

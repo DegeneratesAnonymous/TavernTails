@@ -8,6 +8,7 @@ writes a single word of prose.
 from __future__ import annotations
 
 import json
+import hashlib
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -113,14 +114,14 @@ def _deterministic_director(req: SceneDirectorRequest) -> SceneDirectorOutput:
     ]
     loc_name = location_candidates[0] if location_candidates else (
         world_name
-        or _location_from_text(campaign_name or campaign_pitch or setting_summary, genre)
+        or _location_from_text(setting_summary or campaign_pitch or campaign_name, genre)
     )
-    npc_name = req.candidate_npcs[0] if req.candidate_npcs else _contact_from_text(campaign_name or setting_summary, genre)
+    npc_name = req.candidate_npcs[0] if req.candidate_npcs else _contact_from_text(setting_summary or campaign_pitch or campaign_name, genre)
 
     # Prefer active thread over hook over plot seed for conflict text
-    thread = req.candidate_story_threads[0] if req.candidate_story_threads else ""
-    hook = req.open_hooks[0] if req.open_hooks else ""
-    recent = req.recent_events[0] if req.recent_events else ""
+    thread = _first_story_signal(req.candidate_story_threads)
+    hook = _first_story_signal(req.open_hooks)
+    recent = _first_story_signal(req.recent_events)
     conflict_source = thread or hook or recent or (req.plot_seed[:180] if req.plot_seed else "") or campaign_pitch or setting_summary
     conflict = conflict_source or f"A pressure point in {loc_name} has become impossible to ignore."
 
@@ -138,8 +139,8 @@ def _deterministic_director(req: SceneDirectorRequest) -> SceneDirectorOutput:
     npc_detail = {}
     if req.candidate_npc_details:
         npc_detail = req.candidate_npc_details[0]
-    emotional_state = npc_detail.get("emotional_state") or "visibly shaken"
-    npc_goal = npc_detail.get("goal") or "find someone who can help"
+    emotional_state = npc_detail.get("emotional_state") or "focused and wary"
+    npc_goal = npc_detail.get("goal") or _npc_goal_from_context(loc_name, conflict_source)
     npc_knows = npc_detail.get("next_action") or conflict_source[:80] or "what happened — and who is responsible"
 
     loc_detail = {}
@@ -215,36 +216,94 @@ def _deterministic_director(req: SceneDirectorRequest) -> SceneDirectorOutput:
 
 def _location_from_text(text: str, genre: str) -> str:
     hay = (text or "").lower()
+    cleaned = " ".join((text or "").replace("—", " ").replace("-", " ").split())
+    proper_words = [
+        word.strip(".,:;!?()[]{}'\"")
+        for word in cleaned.split()
+        if word[:1].isupper()
+    ]
+    if len(proper_words) >= 2:
+        return " ".join(proper_words[:3])
     if any(w in hay for w in ("ship", "station", "star", "void", "orbit", "alien")):
-        return "The Docking Concourse"
+        return _varied_name(text, ["Kestrel", "Vesper", "Helion", "Morrow", "Cinder"], ["Dock", "Relay", "Berth", "Concourse"])
     if any(w in hay for w in ("court", "crown", "throne", "noble", "palace")):
-        return "The Outer Court"
+        return _varied_name(text, ["Ashen", "Gilded", "Wolfshead", "Pearl", "Blackglass"], ["Petition Hall", "Gallery", "Gate", "Antechamber"])
     if any(w in hay for w in ("academy", "wizard", "arcane", "ritual", "spell")):
-        return "The Old Academy Gate"
+        return _varied_name(text, ["Vellum", "Starfall", "Candle", "Orrery", "Glass"], ["Archive", "Atrium", "Gate", "Scriptorium"])
     if any(w in hay for w in ("forest", "wild", "woods", "grove")):
-        return "The Watchwood Edge"
+        return _varied_name(text, ["Briar", "Greybough", "Moonfen", "Hollow", "Redleaf"], ["Edge", "Camp", "Track", "Grove"])
     if any(w in hay for w in ("ruin", "tomb", "crypt", "catacomb")):
-        return "The Broken Threshold"
+        return _varied_name(text, ["Sunken", "Bone", "Ash", "Hollow", "Salt"], ["Threshold", "Vault", "Steps", "Reliquary"])
     if any(w in hay for w in ("city", "street", "guild", "market")):
-        return "The Market Ward"
+        return _varied_name(text, ["Copper", "Lantern", "Grey", "Barrow", "Bell"], ["Market", "Ward", "Street", "Exchange"])
     if any(w in (genre or "").lower() for w in ("horror", "mystery")):
-        return "The Rain-dark Crossing"
-    return "The First Crossroads"
+        return _varied_name(text or genre, ["Rain", "Pale", "Mourning", "Black", "Drowned"], ["Crossing", "Lane", "House", "Bridge"])
+    return _varied_name(text or genre or "opening", ["Dawn", "Iron", "Thorn", "Cinder", "Hearth"], ["Ground", "Road", "Hollow", "Post"])
 
 
 def _contact_from_text(text: str, genre: str) -> str:
     hay = (text or "").lower()
     if any(w in hay for w in ("academy", "wizard", "arcane", "ritual")):
-        return "Archivist Sera"
+        return _varied_person(text, ["Binder", "Adjunct", "Curator"], ["Ilyen", "Maelis", "Corven", "Tamsin", "Orris"])
     if any(w in hay for w in ("court", "crown", "throne", "noble")):
-        return "Envoy Marrec"
+        return _varied_person(text, ["Factor", "Chamberlain", "Herald"], ["Odran", "Velis", "Kael", "Sovra", "Edrin"])
     if any(w in hay for w in ("ship", "station", "star", "alien")):
-        return "Quartermaster Vale"
+        return _varied_person(text, ["Quartermaster", "Pilot", "Dockhand"], ["Vale", "Rook", "Iven", "Sol", "Nara"])
     if any(w in hay for w in ("forest", "wild", "woods")):
-        return "Ranger Elian"
+        return _varied_person(text, ["Ranger", "Guide", "Warden"], ["Elian", "Mara", "Tovin", "Bran", "Selka"])
     if "horror" in (genre or "").lower():
-        return "Keeper Rook"
-    return "Mira Vale"
+        return _varied_person(text or genre, ["Keeper", "Witness", "Caretaker"], ["Rook", "Hale", "Maren", "Iosef", "Anya"])
+    return _varied_person(text or genre or "contact", ["Witness", "Factor", "Guide"], ["Lio", "Tamsin", "Corren", "Edda", "Neris"])
+
+
+def _stable_index(seed: str, modulo: int, *, salt: str = "") -> int:
+    if modulo <= 0:
+        return 0
+    digest = hashlib.sha1(f"{salt}|{seed}".encode("utf-8")).hexdigest()
+    return int(digest[:8], 16) % modulo
+
+
+def _varied_name(seed: str, prefixes: list[str], suffixes: list[str]) -> str:
+    prefix = prefixes[_stable_index(seed, len(prefixes), salt="location-prefix")]
+    suffix = suffixes[_stable_index(seed, len(suffixes), salt="location-suffix")]
+    return f"The {prefix} {suffix}"
+
+
+def _varied_person(seed: str, roles: list[str], names: list[str]) -> str:
+    role = roles[_stable_index(seed, len(roles), salt="person-role")]
+    name = names[_stable_index(seed, len(names), salt="person-name")]
+    return f"{role} {name}"
+
+
+def _first_story_signal(values: list[str]) -> str:
+    for value in values or []:
+        text = str(value or "").strip()
+        if text and not _is_contract_heading_signal(text):
+            return text
+    return ""
+
+
+def _is_contract_heading_signal(value: str) -> bool:
+    normalized = value.strip().strip("[]").strip().lower().rstrip(":")
+    if not normalized:
+        return True
+    if normalized in {
+        "campaign contract",
+        "campaign output contract",
+        "agent output contract",
+        "requirements",
+        "contract",
+    }:
+        return True
+    return normalized.startswith(("campaign output contract", "requirements for "))
+
+
+def _npc_goal_from_context(location: str, conflict_source: str) -> str:
+    if conflict_source:
+        return "get the truth of the danger in front of them"
+    if location:
+        return f"protect what still matters at {location}"
+    return "understand what changed before someone else pays for it"
 
 
 def _inciting_from_context(location: str, text: str, genre: str) -> str:
