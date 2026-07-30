@@ -3,8 +3,8 @@ from server.agents.campaign_interpretation import build_full_contract_package
 from server.agents.content_bundles import ensure_content_bundle
 from server.agents.player_intent_parser import parse_player_intent
 from server.agents.scene import RollRecommendation, SceneAnalysisResponse, check_roll_consistency
-from server.agents.scene_director import _contact_from_text, _location_from_text
 from server.agents.scene_beat_selector import select_scene_beat_plan
+from server.agents.scene_director import _contact_from_text, _location_from_text
 
 
 def test_campaign_creation_produces_scale_and_story_shape_profiles():
