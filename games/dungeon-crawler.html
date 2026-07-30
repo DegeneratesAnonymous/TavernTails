@@ -1,0 +1,1946 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Into the Depths — A Tavern Tails Dungeon Crawler</title>
+<style>
+  :root{
+    --bg:#0b0b10; --panel:#171720; --panel2:#1e1e2a; --border:#34343f;
+    --gold:#d4af37; --text:#e9e6dc; --dim:#8b8b96; --red:#e0605a;
+    --green:#4ade80; --blue:#60a5fa; --purple:#c084fc; --orange:#fb923c;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--text);
+    font-family:'Consolas','Courier New',monospace;overflow:hidden;}
+  #app{width:100%;height:100%;display:flex;align-items:center;justify-content:center;}
+  .screen{display:none;width:100%;height:100%;flex-direction:column;align-items:center;justify-content:center;padding:16px;overflow:auto;}
+  .screen.active{display:flex;}
+  h1.title{font-size:2.6em;color:var(--gold);text-shadow:0 0 18px rgba(212,175,55,.4);margin:0 0 4px;letter-spacing:2px;}
+  .subtitle{color:var(--dim);margin-bottom:28px;font-size:1.05em;}
+  button{
+    font-family:inherit;background:var(--panel2);color:var(--text);border:1px solid var(--border);
+    border-radius:6px;padding:10px 18px;cursor:pointer;font-size:1em;transition:.15s;
+  }
+  button:hover:not(:disabled){background:#2b2b3a;border-color:var(--gold);color:var(--gold);}
+  button:disabled{opacity:.4;cursor:not-allowed;}
+  button.primary{background:var(--gold);color:#1a1a1a;border-color:var(--gold);font-weight:bold;}
+  button.primary:hover:not(:disabled){background:#e6c65c;color:#111;}
+  .menu-col{display:flex;flex-direction:column;gap:10px;width:260px;}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px;}
+  a.linklike{color:var(--dim);cursor:pointer;text-decoration:underline;font-size:.85em;margin-top:18px;}
+
+  /* ---- Character creation ---- */
+  #screen-create{align-items:stretch;justify-content:flex-start;padding:20px 4vw;}
+  .create-wrap{max-width:1200px;margin:0 auto;width:100%;}
+  .create-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px;}
+  .pick-card{background:var(--panel);border:2px solid var(--border);border-radius:10px;padding:12px;cursor:pointer;transition:.12s;}
+  .pick-card:hover{border-color:#555;}
+  .pick-card.selected{border-color:var(--gold);background:#221f14;box-shadow:0 0 12px rgba(212,175,55,.25);}
+  .pick-card h3{margin:0 0 6px;color:var(--gold);font-size:1.05em;}
+  .pick-card p{margin:0 0 6px;color:var(--dim);font-size:.82em;line-height:1.35;}
+  .pick-card .perk{color:var(--green);font-size:.8em;}
+  .pick-card .mods{font-size:.78em;color:#a9a9b8;margin-top:4px;}
+  .create-bottom{display:flex;gap:16px;align-items:center;flex-wrap:wrap;justify-content:space-between;
+    background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px;}
+  #nameInput{font-family:inherit;background:var(--panel2);border:1px solid var(--border);color:var(--text);
+    padding:8px 10px;border-radius:6px;font-size:1em;width:220px;}
+  .stat-preview{display:flex;gap:14px;flex-wrap:wrap;font-size:.85em;}
+  .stat-preview span{color:var(--dim);}
+  .stat-preview b{color:var(--text);}
+
+  /* ---- Play screen ---- */
+  #screen-play{flex-direction:row;align-items:flex-start;justify-content:center;gap:12px;padding:10px;}
+  .game-col{display:flex;flex-direction:column;gap:8px;}
+  #topbar{display:flex;justify-content:space-between;align-items:center;background:var(--panel);
+    border:1px solid var(--border);border-radius:8px 8px 0 0;padding:6px 12px;font-size:.85em;color:var(--dim);}
+  #topbar b{color:var(--gold);}
+  #canvasWrap{border:1px solid var(--border);border-radius:0 0 8px 8px;overflow:hidden;background:#000;}
+  canvas{display:block;image-rendering:pixelated;}
+  #dpad{display:flex;flex-direction:column;align-items:center;gap:4px;margin-top:6px;}
+  #dpad .row{display:flex;gap:4px;}
+  #dpad button{width:44px;height:36px;padding:0;}
+  #msglog{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:8px 10px;
+    height:110px;overflow-y:auto;font-size:.78em;width:100%;}
+  #msglog div{margin:1px 0;}
+  .m-dmg{color:var(--red);} .m-heal{color:var(--green);} .m-loot{color:var(--gold);}
+  .m-sys{color:var(--dim);} .m-crit{color:var(--orange);font-weight:bold;} .m-lvl{color:var(--purple);font-weight:bold;}
+
+  #sidebar{width:300px;display:flex;flex-direction:column;gap:8px;}
+  .sb-panel{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:10px;}
+  .sb-panel h4{margin:0 0 6px;color:var(--gold);font-size:.85em;text-transform:uppercase;letter-spacing:1px;}
+  .barwrap{background:#0e0e14;border:1px solid var(--border);border-radius:5px;height:16px;position:relative;margin-bottom:5px;overflow:hidden;}
+  .barfill{height:100%;transition:width .2s;}
+  .barlabel{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:.72em;color:#fff;text-shadow:0 0 2px #000;}
+  .hpbar{background:linear-gradient(90deg,#7a1f1f,var(--red));}
+  .statgrid{display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;font-size:.78em;color:var(--dim);}
+  .statgrid b{color:var(--text);}
+  .abil-row{display:flex;align-items:center;gap:8px;padding:5px 6px;border:1px solid var(--border);border-radius:6px;margin-bottom:4px;cursor:pointer;background:var(--panel2);}
+  .abil-row.locked{opacity:.35;cursor:not-allowed;}
+  .abil-row.cd{opacity:.45;cursor:not-allowed;}
+  .abil-row .key{background:#000;border:1px solid var(--border);border-radius:4px;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:.75em;flex-shrink:0;}
+  .abil-row .info{flex:1;font-size:.78em;}
+  .abil-row .info .an{color:var(--text);}
+  .abil-row .info .ac{color:var(--dim);}
+  .eq-slot{display:flex;justify-content:space-between;font-size:.78em;padding:3px 0;border-bottom:1px dashed #2a2a35;}
+  .eq-slot .name{color:var(--text);}
+  #invList{max-height:150px;overflow-y:auto;}
+  .inv-item{display:flex;align-items:center;gap:6px;font-size:.76em;padding:3px 2px;border-bottom:1px solid #23232e;}
+  .inv-item .iname{flex:1;}
+  .inv-item button{padding:2px 6px;font-size:.85em;}
+  .rar-common{color:#c9c9c9;} .rar-uncommon{color:var(--green);} .rar-rare{color:var(--blue);}
+  .rar-epic{color:var(--purple);} .rar-legendary{color:var(--orange);}
+
+  /* ---- overlays ---- */
+  .overlay{position:fixed;inset:0;background:rgba(5,5,8,.82);display:none;align-items:center;justify-content:center;z-index:50;}
+  .overlay.active{display:flex;}
+  .overlay-box{background:var(--panel);border:1px solid var(--gold);border-radius:12px;padding:22px;max-width:560px;width:92%;max-height:85vh;overflow-y:auto;}
+  .overlay-box h2{color:var(--gold);margin-top:0;}
+  .shop-item,.shrine-opt{display:flex;justify-content:space-between;align-items:center;gap:8px;
+    padding:8px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:var(--panel2);}
+  .shrine-opt{cursor:pointer;flex-direction:column;align-items:stretch;text-align:left;}
+  .shrine-opt:hover{border-color:var(--gold);}
+  .toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--gold);
+    border-radius:8px;padding:10px 20px;color:var(--gold);font-weight:bold;z-index:100;opacity:0;transition:opacity .3s;pointer-events:none;}
+  .toast.show{opacity:1;}
+  .board-row{display:grid;grid-template-columns:2em 1fr auto auto;gap:8px;font-size:.85em;padding:4px 0;border-bottom:1px solid #23232e;}
+  .board-row b{color:var(--gold);}
+  #screen-gameover .stats-final{font-size:.95em;line-height:1.9;color:var(--dim);}
+  #screen-gameover .stats-final b{color:var(--text);}
+  ::-webkit-scrollbar{width:8px;height:8px;}
+  ::-webkit-scrollbar-thumb{background:#333340;border-radius:4px;}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- MAIN MENU -->
+  <div class="screen active" id="screen-menu">
+    <h1 class="title">⚔ INTO THE DEPTHS ⚔</h1>
+    <div class="subtitle">A procedurally-generated dungeon crawl — Tavern Tails Arcade</div>
+    <div class="menu-col">
+      <button class="primary" id="btnNewGame">New Adventure</button>
+      <button id="btnContinue">Continue Run</button>
+      <button id="btnLeaderboard">Legend Board</button>
+      <button id="btnHelp">How to Play</button>
+    </div>
+    <div class="linklike" id="btnWipe">Delete saved run</div>
+  </div>
+
+  <!-- HELP -->
+  <div class="screen" id="screen-help">
+    <div class="panel" style="max-width:640px;">
+      <h2 style="color:var(--gold);margin-top:0;">How to Play</h2>
+      <p><b>Movement:</b> Arrow keys / WASD, or the on-screen D-pad. Walking into a monster attacks it.</p>
+      <p><b>Abilities:</b> Press 1 / 2 / 3 (or click them in the sidebar) to use class abilities. Each costs a resource and has a cooldown measured in turns.</p>
+      <p><b>Space:</b> wait a turn. <b>Enter:</b> use stairs / interact. <b>Esc:</b> pause menu.</p>
+      <p>Explore each level for gold, gear, potions, chests, and hidden traps. Find the stairs (<b style="color:var(--gold)">&gt;</b>) to descend — every level is tougher than the last. Every 5th level holds a boss.</p>
+      <p>Shrines let you heal or bless yourself once. Wandering shopkeepers will trade gold for gear. Die, and your run ends — but your legend is recorded on the board.</p>
+      <p>Choose your <b>Race</b>, <b>Class</b>, and <b>Background</b> carefully at character creation — together they define your build, starting gear, and playstyle.</p>
+      <button id="btnHelpBack">Back</button>
+    </div>
+  </div>
+
+  <!-- LEADERBOARD -->
+  <div class="screen" id="screen-board">
+    <div class="panel" style="max-width:640px;width:100%;">
+      <h2 style="color:var(--gold);margin-top:0;">Legend Board</h2>
+      <div id="boardList"></div>
+      <button id="btnBoardBack" style="margin-top:12px;">Back</button>
+    </div>
+  </div>
+
+  <!-- CHARACTER CREATION -->
+  <div class="screen" id="screen-create">
+    <div class="create-wrap">
+      <h2 style="color:var(--gold);">Forge Your Adventurer</h2>
+      <div style="display:grid;grid-template-columns:1fr;gap:6px;">
+        <div>
+          <h4 style="color:var(--dim);margin:6px 0;">RACE</h4>
+          <div class="create-grid" id="raceGrid"></div>
+        </div>
+        <div>
+          <h4 style="color:var(--dim);margin:6px 0;">CLASS</h4>
+          <div class="create-grid" id="classGrid"></div>
+        </div>
+        <div>
+          <h4 style="color:var(--dim);margin:6px 0;">BACKGROUND</h4>
+          <div class="create-grid" id="bgGrid"></div>
+        </div>
+      </div>
+      <div class="create-bottom">
+        <div>
+          <input id="nameInput" placeholder="Adventurer's name" maxlength="18">
+          <div class="stat-preview" id="statPreview" style="margin-top:8px;"></div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button id="btnCreateBack">Back</button>
+          <button class="primary" id="btnBeginAdventure" disabled>Begin Adventure</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PLAY SCREEN -->
+  <div class="screen" id="screen-play">
+    <div class="game-col">
+      <div id="topbar">
+        <span>Depth <b id="hudDepth">1</b></span>
+        <span id="hudLevelName" style="color:var(--gold);"></span>
+        <span>Turn <b id="hudTurn">0</b></span>
+        <span>Gold <b id="hudGold" style="color:var(--gold);">0</b></span>
+        <button id="btnPause" style="padding:2px 10px;font-size:.8em;">II Pause</button>
+      </div>
+      <div id="canvasWrap"><canvas id="gameCanvas"></canvas></div>
+      <div id="dpad">
+        <div class="row"><button id="dU">▲</button></div>
+        <div class="row"><button id="dL">◀</button><button id="dWait">•</button><button id="dR">▶</button></div>
+        <div class="row"><button id="dD">▼</button></div>
+      </div>
+      <div id="msglog"></div>
+    </div>
+    <div id="sidebar">
+      <div class="sb-panel">
+        <h4 id="charTitle">—</h4>
+        <div class="barwrap"><div class="barfill hpbar" id="hpFill" style="width:100%;"></div><div class="barlabel" id="hpLabel"></div></div>
+        <div class="barwrap"><div class="barfill" id="resFill" style="width:100%;background:linear-gradient(90deg,#1f4a7a,var(--blue));"></div><div class="barlabel" id="resLabel"></div></div>
+        <div class="statgrid" id="statGrid"></div>
+      </div>
+      <div class="sb-panel">
+        <h4>Abilities</h4>
+        <div id="abilList"></div>
+      </div>
+      <div class="sb-panel">
+        <h4>Equipment</h4>
+        <div id="eqList"></div>
+      </div>
+      <div class="sb-panel" style="flex:1;display:flex;flex-direction:column;min-height:0;">
+        <h4>Inventory</h4>
+        <div id="invList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GAME OVER -->
+  <div class="screen" id="screen-gameover">
+    <div class="panel" style="max-width:520px;text-align:center;">
+      <h1 id="goTitle" style="color:var(--red);">You Have Fallen</h1>
+      <div class="stats-final" id="goStats"></div>
+      <div style="margin-top:16px;display:flex;gap:10px;justify-content:center;">
+        <button class="primary" id="btnGoRestart">New Adventure</button>
+        <button id="btnGoMenu">Main Menu</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- OVERLAYS -->
+<div class="overlay" id="overlay-pause">
+  <div class="overlay-box" style="text-align:center;">
+    <h2>Paused</h2>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <button id="pResume">Resume</button>
+      <button id="pHelp">How to Play</button>
+      <button id="pSaveQuit">Save &amp; Quit to Menu</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay-shop">
+  <div class="overlay-box">
+    <h2>The Wandering Merchant</h2>
+    <div style="color:var(--dim);font-size:.85em;margin-bottom:8px;">Gold: <b id="shopGold" style="color:var(--gold);"></b></div>
+    <div id="shopBuyList"></div>
+    <h4 style="color:var(--gold);margin-top:14px;">Sell</h4>
+    <div id="shopSellList"></div>
+    <button id="shopClose" style="margin-top:10px;">Leave</button>
+  </div>
+</div>
+
+<div class="overlay" id="overlay-shrine">
+  <div class="overlay-box">
+    <h2 id="shrineTitle">A Quiet Shrine</h2>
+    <div id="shrineOpts"></div>
+    <button id="shrineClose" style="margin-top:6px;">Walk Away</button>
+  </div>
+</div>
+
+<div class="overlay" id="overlay-boss">
+  <div class="overlay-box" style="text-align:center;border-color:var(--red);">
+    <h2 id="bossBanner" style="color:var(--red);">⚠ A POWERFUL PRESENCE STIRS ⚠</h2>
+    <p id="bossBannerSub" style="color:var(--dim);"></p>
+    <button class="primary" id="bossBannerOk">Enter</button>
+  </div>
+</div>
+
+<div class="overlay" id="overlay-victory">
+  <div class="overlay-box" style="text-align:center;border-color:var(--gold);">
+    <h2 style="color:var(--gold);">🐉 The Ancient Dragon Falls 🐉</h2>
+    <p style="color:var(--dim);">Your legend is secure. Will you retire a hero, or delve on into the endless dark for greater glory (and greater danger)?</p>
+    <div style="display:flex;gap:10px;justify-content:center;margin-top:10px;">
+      <button class="primary" id="btnRetire">Retire as Champion</button>
+      <button id="btnContinueEndless">Delve Onward</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+"use strict";
+
+/* ============================= DATA TABLES ============================= */
+
+const RACES = [
+  {id:'human', name:'Human', mods:{hp:0,atk:0,def:0,res:0,evasion:0,crit:0,fov:0},
+   perk:'Adaptable — gains bonus growth every level.', extraGrowth:true,
+   desc:'Balanced and versatile, humans adapt quickly to any calling.'},
+  {id:'elf', name:'Elf', mods:{hp:-4,atk:0,def:0,res:4,evasion:.03,crit:.08,fov:2},
+   perk:'Keen Sight — wider vision and +8% critical chance.',
+   desc:'Graceful and perceptive, with an affinity for the arcane.'},
+  {id:'dwarf', name:'Dwarf', mods:{hp:8,atk:1,def:2,res:0,evasion:0,crit:0,fov:0},
+   perk:'Stonevein — immune to poison, resists stunning effects.', poisonImmune:true, stunResist:.5,
+   desc:'Stout and hardy, forged from mountain stone.'},
+  {id:'orc', name:'Orcish', mods:{hp:10,atk:3,def:0,res:-4,evasion:0,crit:0,fov:0},
+   perk:'Berserker Blood — deal +20% damage below 30% health.', lowHpDmg:.2,
+   desc:'Fierce and powerful, thriving where others falter.'},
+  {id:'halfling', name:'Halfling', mods:{hp:-5,atk:-1,def:0,res:0,evasion:.12,crit:0,fov:0},
+   perk:'Lucky Feet — +12% evasion and finds better loot.', luckyLoot:true,
+   desc:'Small, quick, and impossibly fortunate.'}
+];
+
+const CLASSES = [
+  {id:'warrior', name:'Warrior', resName:'Stamina',
+   baseHp:32, hpLvl:7, baseAtk:6, atkLvl:2, baseDef:5, defLvl:1.4, baseRes:20, resLvl:2, resRegen:4,
+   baseCrit:.05, baseEvasion:.03, fov:6, weapon:'Worn Shortsword', weaponAtk:4, armor:'Padded Vest', armorDef:2,
+   desc:'A stalwart fighter who thrives on raw might and steel.',
+   abilities:[
+     {name:'Power Strike', icon:'⚔', cost:6, cd:1, unlock:1, target:'adjacent', power:1.6,
+      desc:'A heavy blow for 160% weapon damage.'},
+     {name:'Shield Wall', icon:'🛡', cost:8, cd:4, unlock:3, target:'self', effect:'defBuff', amount:.5, duration:3,
+      desc:'+50% Defense for 3 turns.'},
+     {name:'Whirlwind', icon:'🌀', cost:12, cd:5, unlock:6, target:'all_adjacent', power:1.0,
+      desc:'Strike all adjacent foes for 100% weapon damage.'}
+   ]},
+  {id:'mage', name:'Mage', resName:'Mana',
+   baseHp:20, hpLvl:4, baseAtk:3, atkLvl:1, baseDef:2, defLvl:.6, baseRes:26, resLvl:3, resRegen:3,
+   baseCrit:.05, baseEvasion:.02, fov:6, weapon:'Apprentice Wand', weaponAtk:2, armor:'Cloth Robe', armorDef:1,
+   magicMult:2.4,
+   desc:'A wielder of arcane fire, ice and force — fragile, but devastating at range.',
+   abilities:[
+     {name:'Firebolt', icon:'🔥', cost:6, cd:1, unlock:1, target:'nearest', range:5, power:2.2, magic:true,
+      desc:'Ranged bolt of fire, 220% magic power, range 5.'},
+     {name:'Frost Nova', icon:'❄', cost:10, cd:4, unlock:3, target:'all_near', radius:1, power:1.3, magic:true, effect:'stun', duration:1,
+      desc:'Damages and freezes all adjacent foes for 1 turn.'},
+     {name:'Arcane Shield', icon:'✨', cost:8, cd:5, unlock:6, target:'self', effect:'shield', amount:30, duration:4,
+      desc:'Absorb the next 30 damage over 4 turns.'}
+   ]},
+  {id:'rogue', name:'Rogue', resName:'Energy',
+   baseHp:25, hpLvl:5, baseAtk:5, atkLvl:1.6, baseDef:3, defLvl:.6, baseRes:20, resLvl:2, resRegen:4,
+   baseCrit:.15, baseEvasion:.08, fov:6, weapon:'Rusty Dagger', weaponAtk:3, armor:'Leathers', armorDef:1,
+   desc:'A quick, deadly blade that strikes hardest when least expected.',
+   abilities:[
+     {name:'Backstab', icon:'🗡', cost:6, cd:2, unlock:1, target:'adjacent', power:2.0,
+      desc:'A vicious strike for 200% weapon damage.'},
+     {name:'Poison Blade', icon:'☠', cost:7, cd:3, unlock:3, target:'adjacent', power:1.1, effect:'poison', duration:4, potency:.45,
+      desc:'Envenom a foe, dealing damage over 4 turns.'},
+     {name:'Shadow Step', icon:'👣', cost:10, cd:5, unlock:6, target:'blink_attack', power:2.5, range:3,
+      desc:'Blink to a foe within 3 tiles for a guaranteed critical.'}
+   ]},
+  {id:'cleric', name:'Cleric', resName:'Faith',
+   baseHp:28, hpLvl:6, baseAtk:4, atkLvl:1.2, baseDef:5, defLvl:1.2, baseRes:22, resLvl:2, resRegen:3,
+   baseCrit:.04, baseEvasion:.02, fov:6, weapon:'Blunt Mace', weaponAtk:3, armor:'Blessed Vestments', armorDef:2,
+   desc:'A resilient healer who mends wounds as readily as they deal them.',
+   abilities:[
+     {name:'Smite', icon:'✝', cost:6, cd:1, unlock:1, target:'adjacent', power:1.5, selfHeal:.2,
+      desc:'150% damage, healing you for 20% of damage dealt.'},
+     {name:'Heal', icon:'💚', cost:10, cd:3, unlock:3, target:'self', effect:'heal', amount:.4,
+      desc:'Restore 40% of your maximum health.'},
+     {name:'Bless', icon:'🌟', cost:8, cd:5, unlock:6, target:'self', effect:'blessBuff', atkAmount:.3, defAmount:.3, duration:4,
+      desc:'+30% Attack and Defense for 4 turns.'}
+   ]},
+  {id:'ranger', name:'Ranger', resName:'Focus',
+   baseHp:24, hpLvl:5, baseAtk:5, atkLvl:1.6, baseDef:3, defLvl:.6, baseRes:20, resLvl:2, resRegen:4,
+   baseCrit:.08, baseEvasion:.05, fov:8, weapon:'Hunting Bow', weaponAtk:4, armor:'Ranger Cloak', armorDef:1,
+   desc:'A sharp-eyed hunter who strikes true from a distance.',
+   abilities:[
+     {name:'Aimed Shot', icon:'🏹', cost:6, cd:1, unlock:1, target:'nearest', range:6, power:1.8,
+      desc:'Precise ranged shot, 180% weapon damage, range 6.'},
+     {name:'Multishot', icon:'💥', cost:9, cd:3, unlock:3, target:'multi_near', range:6, maxTargets:3, power:1.0,
+      desc:'Strike up to 3 foes within range for 100% damage.'},
+     {name:'Camouflage', icon:'🍃', cost:8, cd:5, unlock:6, target:'self', effect:'stealth', duration:2,
+      desc:'Foes beyond 1 tile cannot notice you for 2 turns.'}
+   ]}
+];
+
+const BACKGROUNDS = [
+  {id:'soldier', name:'Soldier', atkBonus:2, startGold:10,
+   perk:'Combat Training — +2 Attack from disciplined drilling.',
+   desc:'Once marched in the king\'s ranks; knows how to hit hard.'},
+  {id:'scholar', name:'Scholar', resBonus:4, xpMult:1.1, startGold:5,
+   perk:'Studious Mind — +4 max resource and +10% experience gained.',
+   desc:'A student of old tomes, forever chasing greater understanding.'},
+  {id:'criminal', name:'Criminal', evasionBonus:.08, startGold:15, lockpicks:true, trapDetect:true,
+   perk:'Larcenous Instinct — +8% evasion, never triggers trapped chests, spots traps early.',
+   desc:'A former cutpurse with a nose for danger and easy coin.'},
+  {id:'noble', name:'Noble', startGold:60, shopDiscount:.2,
+   perk:'Inherited Wealth — starts with extra gold and a 20% shop discount.',
+   desc:'Born to privilege, and unafraid to spend it.'},
+  {id:'hermit', name:'Hermit', regenOutOfCombat:.03, startGold:5, startPotions:2,
+   perk:'Wilderness Living — regenerates health while no foes are near; starts with 2 potions.',
+   desc:'Years alone in the wild taught hard-won self-sufficiency.'},
+  {id:'merchant', name:'Merchant', shopDiscount:.3, sellMult:2.0, startGold:20,
+   perk:'Silver Tongue — 30% shop discount and sells goods for double value.',
+   desc:'A shrewd trader who always comes out ahead.'}
+];
+
+const RARITIES = [
+  {id:'common', name:'Common', mult:1.0, weight:50},
+  {id:'uncommon', name:'Uncommon', mult:1.35, weight:28},
+  {id:'rare', name:'Rare', mult:1.8, weight:14},
+  {id:'epic', name:'Epic', mult:2.4, weight:6},
+  {id:'legendary', name:'Legendary', mult:3.2, weight:2}
+];
+
+const WEAPON_NAMES = {
+  common:['Rusty Dagger','Wooden Club','Worn Shortsword','Cracked Axe','Bent Fork'],
+  uncommon:['Iron Sword','Steel Axe','Hunting Bow','Oak Staff','Soldier\'s Mace'],
+  rare:['Knight\'s Blade','War Hammer','Silvered Rapier','Runed Staff','Longbow of Aiming'],
+  epic:['Dragonfang Sword','Stormcaller Bow','Voidstaff','Titan\'s Warhammer','Bloodedge Blade'],
+  legendary:['Excalibur\'s Shard','The Worldbreaker','Staff of Eternity','Bow of the Ancients','Kingslayer']
+};
+const ARMOR_NAMES = {
+  common:['Ragged Tunic','Patched Vest','Cracked Buckler'],
+  uncommon:['Leather Cuirass','Chainshirt','Studded Jerkin'],
+  rare:['Chainmail Hauberk','Guardian Plate','Warded Robes'],
+  epic:['Dragonscale Mail','Titan Plate','Robes of the Archmage'],
+  legendary:['Aegis of the Ancients','Armor of the Fallen King','Mantle of Eternity']
+};
+const TRINKETS = [
+  {name:'Ring of Vigor', stat:'hp', label:'Max HP'},
+  {name:'Ring of Might', stat:'atk', label:'Attack'},
+  {name:'Amulet of Protection', stat:'def', label:'Defense'},
+  {name:'Boots of Swiftness', stat:'evasion', label:'Evasion', scale:.01},
+  {name:'Band of Focus', stat:'res', label:'Max Resource'},
+  {name:'Charm of Fortune', stat:'crit', label:'Crit Chance', scale:.01}
+];
+
+const MONSTERS = [
+  {id:'rat', name:'Giant Rat', glyph:'r', color:'#a97c50', minDepth:1, hp:9, atk:3, def:0, xp:6, gold:[1,3], sight:5},
+  {id:'bat', name:'Cave Bat', glyph:'b', color:'#8a7ba8', minDepth:1, hp:7, atk:3, def:0, xp:6, gold:[1,2], sight:6, erratic:true},
+  {id:'spider', name:'Giant Spider', glyph:'s', color:'#7a4fa0', minDepth:2, hp:13, atk:4, def:1, xp:10, gold:[2,5], sight:6, poison:.3},
+  {id:'goblin', name:'Goblin', glyph:'g', color:'#5fa85f', minDepth:1, hp:14, atk:4, def:1, xp:9, gold:[3,7], sight:6},
+  {id:'skeleton', name:'Skeleton', glyph:'k', color:'#d8d8d0', minDepth:3, hp:18, atk:5, def:2, xp:14, gold:[3,8], sight:6},
+  {id:'zombie', name:'Zombie', glyph:'z', color:'#7a9a5a', minDepth:3, hp:26, atk:4, def:1, xp:15, gold:[2,6], sight:4, slow:true},
+  {id:'bandit', name:'Bandit', glyph:'n', color:'#a05050', minDepth:4, hp:20, atk:7, def:2, xp:20, gold:[6,14], sight:7},
+  {id:'acolyte', name:'Dark Acolyte', glyph:'a', color:'#c060c0', minDepth:5, hp:17, atk:6, def:1, xp:22, gold:[6,12], sight:7, ranged:4},
+  {id:'orcbrute', name:'Orc Brute', glyph:'o', color:'#c07030', minDepth:6, hp:34, atk:9, def:3, xp:30, gold:[8,18], sight:6},
+  {id:'wraith', name:'Wraith', glyph:'w', color:'#7090b0', minDepth:8, hp:28, atk:8, def:5, xp:38, gold:[10,20], sight:8, evasive:.15},
+  {id:'troll', name:'Troll', glyph:'t', color:'#4a7a4a', minDepth:9, hp:50, atk:10, def:4, xp:48, gold:[12,24], sight:6, regen:.03},
+  {id:'ogre', name:'Ogre', glyph:'O', color:'#8a6a4a', minDepth:10, hp:60, atk:12, def:5, xp:55, gold:[14,28], sight:6},
+  {id:'darkknight', name:'Dark Knight', glyph:'d', color:'#a03030', minDepth:12, hp:55, atk:14, def:8, xp:70, gold:[18,34], sight:7},
+  {id:'elemental', name:'Elemental', glyph:'e', color:'#40c0c0', minDepth:13, hp:45, atk:13, def:5, xp:75, gold:[16,30], sight:6, ranged:3},
+  {id:'wyvern', name:'Wyvern', glyph:'y', color:'#3a9a7a', minDepth:15, hp:70, atk:16, def:6, xp:95, gold:[20,40], sight:8},
+  {id:'lich', name:'Lich', glyph:'L', color:'#9060d0', minDepth:18, hp:80, atk:18, def:8, xp:130, gold:[30,55], sight:9, ranged:5}
+];
+
+const BOSSES = [
+  {id:'goblinwarlord', name:'Goblin Warlord', glyph:'G', color:'#2fbf2f', minDepth:5, hp:90, atk:11, def:4, xp:120, gold:[40,60], sight:8, title:'The Goblin Warlord holds this floor.'},
+  {id:'trollchief', name:'Troll Chieftain', glyph:'T', color:'#2f8f2f', minDepth:10, hp:180, atk:16, def:7, xp:260, gold:[80,120], sight:8, regen:.04, title:'The Troll Chieftain guards the deep.'},
+  {id:'wraithsov', name:'Wraith Sovereign', glyph:'W', color:'#4f7fbf', minDepth:15, hp:230, atk:20, def:10, xp:420, gold:[130,180], sight:9, evasive:.2, ranged:4, title:'The Wraith Sovereign commands the shadows.'},
+  {id:'dragon', name:'The Ancient Dragon', glyph:'D', color:'#e05a2a', minDepth:20, hp:400, atk:26, def:14, xp:800, gold:[250,350], sight:10, ranged:4, title:'The Ancient Dragon awakens.', final:true}
+];
+
+const FINAL_BOSS_DEPTH = 20;
+const MAP_W = 52, MAP_H = 30;
+const VIEW_W = 21, VIEW_H = 15;
+const TILE = 24;
+
+/* ============================= UTILITIES ============================= */
+
+function rnd(min,max){ return Math.floor(Math.random()*(max-min+1))+min; }
+function chance(p){ return Math.random() < p; }
+function choice(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+function weightedChoice(arr, wKey){
+  const total = arr.reduce((s,x)=>s+x[wKey],0);
+  let r = Math.random()*total;
+  for(const x of arr){ r -= x[wKey]; if(r<=0) return x; }
+  return arr[arr.length-1];
+}
+function clamp(v,min,max){ return Math.max(min,Math.min(max,v)); }
+function dist2(x1,y1,x2,y2){ return Math.max(Math.abs(x1-x2),Math.abs(y1-y2)); }
+function key(x,y){ return x+','+y; }
+
+function pickRarity(depth, luckyLoot){
+  let pool = RARITIES.map(r=>({...r}));
+  const depthBoost = Math.min(depth*1.5, 40);
+  pool.forEach(r=>{ if(r.id!=='common') r.weight += depthBoost*(r.mult-1); });
+  if(luckyLoot) pool.forEach(r=>{ if(r.id!=='common') r.weight *= 1.4; });
+  return weightedChoice(pool,'weight');
+}
+
+/* ============================= AUDIO ============================= */
+
+const Audio_ = (function(){
+  let ctx = null, muted = false;
+  function ensure(){ if(!ctx){ try{ ctx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ ctx=null; } } }
+  function beep(freq, dur, type, vol){
+    if(muted) return;
+    ensure(); if(!ctx) return;
+    try{
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.type = type||'square'; o.frequency.value = freq;
+      g.gain.value = vol||.06;
+      o.connect(g); g.connect(ctx.destination);
+      const t = ctx.currentTime;
+      g.gain.setValueAtTime(g.gain.value, t);
+      g.gain.exponentialRampToValueAtTime(.001, t+dur);
+      o.start(t); o.stop(t+dur);
+    }catch(e){}
+  }
+  return {
+    hit(){ beep(180,.08,'square',.05); },
+    crit(){ beep(120,.15,'sawtooth',.07); },
+    miss(){ beep(300,.05,'triangle',.03); },
+    pickup(){ beep(660,.07,'sine',.05); },
+    gold(){ beep(880,.06,'sine',.04); },
+    heal(){ beep(520,.12,'sine',.05); },
+    levelup(){ beep(440,.1,'sine',.06); setTimeout(()=>beep(660,.15,'sine',.06),100); },
+    descend(){ beep(200,.25,'sine',.06); },
+    death(){ beep(90,.4,'sawtooth',.08); },
+    ability(){ beep(400,.09,'square',.05); },
+    toggle(){ muted = !muted; return muted; }
+  };
+})();
+
+/* ============================= STATE ============================= */
+
+let player = null;
+let level = null;
+let depth = 1;
+let camX = 0, camY = 0;
+let modalOpen = false;
+let inputLocked = false;
+let gameActive = false;
+
+const ctx2d_id = 'gameCanvas';
+let canvas, ctx;
+
+/* ============================= INIT ============================= */
+
+function qs(id){ return document.getElementById(id); }
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  qs(id).classList.add('active');
+}
+function showOverlay(id){ qs(id).classList.add('active'); modalOpen = true; }
+function hideOverlay(id){ qs(id).classList.remove('active'); modalOpen = false; }
+
+function toast(msg){
+  const t = qs('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+window.addEventListener('DOMContentLoaded', function(){
+  canvas = qs(ctx2d_id);
+  canvas.width = VIEW_W*TILE; canvas.height = VIEW_H*TILE;
+  ctx = canvas.getContext('2d');
+  buildCreateScreen();
+  wireMenu();
+  wirePlayControls();
+  if(localStorage.getItem('ttd_save')) qs('btnContinue').disabled = false;
+  else qs('btnContinue').disabled = true;
+});
+
+/* ============================= MENU WIRING ============================= */
+
+function wireMenu(){
+  qs('btnNewGame').addEventListener('click', ()=>{ resetCreateSelections(); showScreen('screen-create'); });
+  qs('btnContinue').addEventListener('click', continueRun);
+  qs('btnLeaderboard').addEventListener('click', ()=>{ renderLeaderboard(); showScreen('screen-board'); });
+  qs('btnHelp').addEventListener('click', ()=>showScreen('screen-help'));
+  qs('btnHelpBack').addEventListener('click', ()=>showScreen(gameActive?'screen-play':'screen-menu'));
+  qs('btnBoardBack').addEventListener('click', ()=>showScreen('screen-menu'));
+  qs('btnWipe').addEventListener('click', ()=>{
+    if(confirm('Delete your saved run? This cannot be undone.')){
+      localStorage.removeItem('ttd_save'); qs('btnContinue').disabled = true; toast('Save deleted.');
+    }
+  });
+  qs('btnCreateBack').addEventListener('click', ()=>showScreen('screen-menu'));
+  qs('btnBeginAdventure').addEventListener('click', beginAdventure);
+  qs('btnGoRestart').addEventListener('click', ()=>{ resetCreateSelections(); showScreen('screen-create'); });
+  qs('btnGoMenu').addEventListener('click', ()=>showScreen('screen-menu'));
+}
+
+/* ============================= CHARACTER CREATION ============================= */
+
+let picked = {race:null, cls:null, bg:null};
+
+function resetCreateSelections(){
+  picked = {race:null, cls:null, bg:null};
+  qs('nameInput').value = '';
+  document.querySelectorAll('.pick-card').forEach(c=>c.classList.remove('selected'));
+  updateCreatePreview();
+}
+
+function buildCreateScreen(){
+  const raceGrid = qs('raceGrid'), classGrid = qs('classGrid'), bgGrid = qs('bgGrid');
+  RACES.forEach(r=>{
+    const c = document.createElement('div');
+    c.className='pick-card'; c.dataset.id = r.id;
+    c.innerHTML = `<h3>${r.name}</h3><p>${r.desc}</p><div class="perk">${r.perk}</div>
+      <div class="mods">${modsToStr(r.mods)}</div>`;
+    c.addEventListener('click', ()=>{ picked.race=r; refreshSelected(raceGrid,r.id); updateCreatePreview(); });
+    raceGrid.appendChild(c);
+  });
+  CLASSES.forEach(cl=>{
+    const c = document.createElement('div');
+    c.className='pick-card'; c.dataset.id = cl.id;
+    c.innerHTML = `<h3>${cl.name}</h3><p>${cl.desc}</p>
+      <div class="mods">HP ${cl.baseHp} · ATK ${cl.baseAtk} · DEF ${cl.baseDef} · ${cl.resName} ${cl.baseRes}</div>
+      <div class="perk">${cl.abilities.map(a=>a.icon+' '+a.name).join('  ')}</div>`;
+    c.addEventListener('click', ()=>{ picked.cls=cl; refreshSelected(classGrid,cl.id); updateCreatePreview(); });
+    classGrid.appendChild(c);
+  });
+  BACKGROUNDS.forEach(b=>{
+    const c = document.createElement('div');
+    c.className='pick-card'; c.dataset.id = b.id;
+    c.innerHTML = `<h3>${b.name}</h3><p>${b.desc}</p><div class="perk">${b.perk}</div>`;
+    c.addEventListener('click', ()=>{ picked.bg=b; refreshSelected(bgGrid,b.id); updateCreatePreview(); });
+    bgGrid.appendChild(c);
+  });
+  qs('nameInput').addEventListener('input', updateCreatePreview);
+}
+function modsToStr(m){
+  const parts=[];
+  if(m.hp) parts.push((m.hp>0?'+':'')+m.hp+' HP');
+  if(m.atk) parts.push((m.atk>0?'+':'')+m.atk+' ATK');
+  if(m.def) parts.push((m.def>0?'+':'')+m.def+' DEF');
+  if(m.evasion) parts.push('+'+Math.round(m.evasion*100)+'% Evasion');
+  if(m.crit) parts.push('+'+Math.round(m.crit*100)+'% Crit');
+  if(m.fov) parts.push('+'+m.fov+' Sight');
+  return parts.join(' · ') || '—';
+}
+function refreshSelected(grid, id){
+  grid.querySelectorAll('.pick-card').forEach(c=>c.classList.toggle('selected', c.dataset.id===id));
+}
+function updateCreatePreview(){
+  const ready = picked.race && picked.cls && picked.bg;
+  qs('btnBeginAdventure').disabled = !ready;
+  const prev = qs('statPreview');
+  if(!ready){ prev.innerHTML=''; return; }
+  const p = buildPlayerPreview();
+  prev.innerHTML = `<span>HP <b>${p.maxHp}</b></span><span>ATK <b>${p.atk}</b></span><span>DEF <b>${p.def}</b></span>
+    <span>${p.resName} <b>${p.maxResource}</b></span><span>Evasion <b>${Math.round(p.evasion*100)}%</b></span>
+    <span>Crit <b>${Math.round(p.crit*100)}%</b></span><span>Sight <b>${p.fov}</b></span><span>Gold <b>${p.gold}</b></span>`;
+}
+
+function buildPlayerPreview(){
+  return computePlayerBase(picked.race, picked.cls, picked.bg, 1);
+}
+
+function computePlayerBase(race, cls, bg, level){
+  const maxHp = Math.round(cls.baseHp + cls.hpLvl*(level-1) + race.mods.hp);
+  const atk = Math.round(cls.baseAtk + cls.atkLvl*(level-1) + race.mods.atk + (bg.atkBonus||0));
+  const def = Math.round(cls.baseDef + cls.defLvl*(level-1) + race.mods.def);
+  const maxResource = Math.round(cls.baseRes + cls.resLvl*(level-1) + race.mods.res + (bg.resBonus||0));
+  const evasion = clamp(cls.baseEvasion + race.mods.evasion + (bg.evasionBonus||0), 0, .6);
+  const crit = clamp(cls.baseCrit + race.mods.crit, 0, .75);
+  const fov = cls.fov + race.mods.fov;
+  const gold = 15 + (bg.startGold||0);
+  return {maxHp, atk, def, maxResource, evasion, crit, fov, gold, resName: cls.resName};
+}
+
+function beginAdventure(){
+  const name = qs('nameInput').value.trim() || 'Adventurer';
+  const race = picked.race, cls = picked.cls, bg = picked.bg;
+  const base = computePlayerBase(race, cls, bg, 1);
+  player = {
+    name, raceId:race.id, classId:cls.id, bgId:bg.id, level:1, xp:0, xpNext:30,
+    maxHp: base.maxHp, hp: base.maxHp, atk: base.atk, def: base.def,
+    maxResource: base.maxResource, resource: base.maxResource,
+    evasion: base.evasion, crit: base.crit, fov: base.fov, gold: base.gold,
+    kills:0, turns:0, x:0, y:0,
+    equipment:{ weapon:{name:cls.weapon, atk:cls.weaponAtk, rarity:'common', kind:'weapon'},
+                armor:{name:cls.armor, def:cls.armorDef, rarity:'common', kind:'armor'}, trinket:null },
+    inventory:[], statusEffects:[], buffs:{}, abilityCooldowns:[0,0,0],
+    xpMult: bg.xpMult||1, sellMult: bg.sellMult||1, shopDiscount: bg.shopDiscount||0,
+    lockpicks: !!bg.lockpicks, trapDetect: !!bg.trapDetect, regenOutOfCombat: bg.regenOutOfCombat||0,
+    poisonImmune: !!race.poisonImmune, stunResist: race.stunResist||0, lowHpDmgBonus: race.lowHpDmg||0,
+    luckyLoot: !!race.luckyLoot, extraGrowth: !!race.extraGrowth, magicMult: cls.magicMult||0
+  };
+  if(bg.startPotions){
+    for(let i=0;i<bg.startPotions;i++) addToInventory(makeHealthPotion(1));
+  }
+  depth = 1;
+  gameActive = true;
+  generateLevel(depth);
+  logMsg('Welcome to the depths, '+name+' the '+race.name+' '+cls.name+'.', 'sys');
+  showScreen('screen-play');
+  renderAll();
+  autosave();
+}
+
+/* ============================= ITEMS ============================= */
+
+function makeWeapon(depth, forcedRarity){
+  const rarity = forcedRarity || pickRarity(depth, player&&player.luckyLoot);
+  const name = choice(WEAPON_NAMES[rarity.id]);
+  const base = {common:3, uncommon:6, rare:10, epic:15, legendary:22}[rarity.id];
+  const atk = Math.round((base + rnd(0,3) + depth*0.4) * rarity.mult);
+  return {kind:'weapon', name, atk, rarity: rarity.id};
+}
+function makeArmor(depth, forcedRarity){
+  const rarity = forcedRarity || pickRarity(depth, player&&player.luckyLoot);
+  const name = choice(ARMOR_NAMES[rarity.id]);
+  const base = {common:2, uncommon:4, rare:7, epic:10, legendary:15}[rarity.id];
+  const def = Math.round((base + rnd(0,2) + depth*0.3) * rarity.mult);
+  return {kind:'armor', name, def, rarity: rarity.id};
+}
+function makeTrinket(depth, forcedRarity){
+  const rarity = forcedRarity || pickRarity(depth, player&&player.luckyLoot);
+  const t = choice(TRINKETS);
+  const scale = t.scale || 1;
+  const base = {common:2, uncommon:4, rare:7, epic:11, legendary:16}[rarity.id];
+  const val = Math.round((base + depth*0.25) * rarity.mult * scale * 100) / 100;
+  return {kind:'trinket', name:t.name, stat:t.stat, value: scale===1?Math.round(base*rarity.mult+depth*0.2):val, rarity: rarity.id};
+}
+function makeHealthPotion(depth){
+  const heal = 24 + Math.round(depth*2.2);
+  return {kind:'potion', sub:'health', name:'Health Potion', heal, rarity:'common'};
+}
+function makeResourcePotion(depth, resName){
+  const amt = 14 + Math.round(depth*1.4);
+  return {kind:'potion', sub:'resource', name: resName+' Draught', amt, rarity:'common'};
+}
+function makeAntidote(){ return {kind:'potion', sub:'antidote', name:'Antidote', rarity:'common'}; }
+function makeElixir(stat){
+  return {kind:'potion', sub:'elixir', name: stat==='atk'?'Elixir of Power':'Elixir of Vitality', stat, rarity:'rare'};
+}
+function makeScroll(sub){
+  return sub==='teleport' ? {kind:'scroll', sub:'teleport', name:'Scroll of Teleportation', rarity:'uncommon'}
+                           : {kind:'scroll', sub:'mapping', name:'Scroll of Mapping', rarity:'uncommon'};
+}
+function makeGoldPile(depth){
+  return {kind:'gold', amount: rnd(4,10) + Math.round(depth*2.5)};
+}
+
+function randomGroundItem(depth){
+  const roll = Math.random();
+  if(roll < 0.30) return makeGoldPile(depth);
+  if(roll < 0.48) return makeHealthPotion(depth);
+  if(roll < 0.60) return makeResourcePotion(depth, player.classResName || (player ? classById(player.classId).resName : 'Mana'));
+  if(roll < 0.68) return makeAntidote();
+  if(roll < 0.74) return makeScroll(chance(.5)?'teleport':'mapping');
+  if(roll < 0.84) return makeWeapon(depth);
+  if(roll < 0.94) return makeArmor(depth);
+  return makeTrinket(depth);
+}
+
+function rarityColorClass(r){ return 'rar-'+r; }
+
+/* ============================= HELPERS: class/race/bg lookup ============================= */
+
+function classById(id){ return CLASSES.find(c=>c.id===id); }
+function raceById(id){ return RACES.find(r=>r.id===id); }
+function bgById(id){ return BACKGROUNDS.find(b=>b.id===id); }
+
+/* ============================= DUNGEON GENERATION ============================= */
+
+function generateLevel(d){
+  const isBoss = d % 5 === 0;
+  const w = MAP_W, h = MAP_H;
+  const tiles = [];
+  for(let y=0;y<h;y++){ tiles.push(new Array(w).fill(0)); }
+  const rooms = [];
+  const roomCount = isBoss ? rnd(3,4) : rnd(6,9) + Math.floor(d/6);
+
+  function overlaps(r){
+    for(const o of rooms){
+      if(r.x-1 < o.x+o.w+1 && r.x+r.w+1 > o.x-1 && r.y-1 < o.y+o.h+1 && r.y+r.h+1 > o.y-1) return true;
+    }
+    return false;
+  }
+  let attempts=0;
+  while(rooms.length < roomCount && attempts < 300){
+    attempts++;
+    const rw = isBoss ? rnd(9,13) : rnd(5,10);
+    const rh = isBoss ? rnd(8,11) : rnd(4,8);
+    const rx = rnd(1, w-rw-2), ry = rnd(1, h-rh-2);
+    const r = {x:rx,y:ry,w:rw,h:rh};
+    if(overlaps(r)) continue;
+    for(let y=r.y;y<r.y+r.h;y++) for(let x=r.x;x<r.x+r.w;x++) tiles[y][x]=1;
+    rooms.push(r);
+  }
+  for(let i=1;i<rooms.length;i++){
+    const a = rooms[i-1], b = rooms[i];
+    const ax = Math.floor(a.x+a.w/2), ay = Math.floor(a.y+a.h/2);
+    const bx = Math.floor(b.x+b.w/2), by = Math.floor(b.y+b.h/2);
+    if(chance(.5)){ carveH(tiles,ax,bx,ay); carveV(tiles,ay,by,bx); }
+    else { carveV(tiles,ay,by,ax); carveH(tiles,ax,bx,by); }
+  }
+
+  const start = {x: Math.floor(rooms[0].x+rooms[0].w/2), y: Math.floor(rooms[0].y+rooms[0].h/2)};
+
+  const dists = bfsDistances(tiles, start.x, start.y, w, h);
+  let farRoom = rooms[0], farDist = -1;
+  for(const r of rooms){
+    const cx = Math.floor(r.x+r.w/2), cy = Math.floor(r.y+r.h/2);
+    const dd = dists[key(cx,cy)] ?? -1;
+    if(dd > farDist){ farDist = dd; farRoom = r; }
+  }
+  const stairsPos = {x: Math.floor(farRoom.x+farRoom.w/2), y: Math.floor(farRoom.y+farRoom.h/2)};
+
+  const features = {};
+  features[key(stairsPos.x,stairsPos.y)] = {type:'stairs'};
+
+  const lvl = { w,h, tiles, features, monsters:[], groundItems:[], explored:new Set(), rooms, start, depth:d, isBoss };
+
+  function randomFloorInRooms(excludeRooms){
+    let tries=0;
+    while(tries<200){
+      tries++;
+      const r = choice(rooms);
+      if(excludeRooms.includes(r)) continue;
+      const x = rnd(r.x, r.x+r.w-1), y = rnd(r.y, r.y+r.h-1);
+      if(tiles[y][x]!==1) continue;
+      if(x===start.x && y===start.y) continue;
+      if(features[key(x,y)]) continue;
+      if(lvl.monsters.some(m=>m.x===x&&m.y===y)) continue;
+      if(lvl.groundItems.some(it=>it.x===x&&it.y===y)) continue;
+      return {x,y};
+    }
+    return null;
+  }
+
+  if(isBoss){
+    const bossDef = BOSSES.slice().reverse().find(b=>d>=b.minDepth) || BOSSES[0];
+    const arena = farRoom;
+    const bx = Math.floor(arena.x+arena.w/2), by = Math.floor(arena.y+arena.h/2)-1;
+    lvl.monsters.push(makeMonsterInstance(bossDef, d, bx, by, true));
+    const minionCount = Math.min(4, 1+Math.floor(d/5));
+    for(let i=0;i<minionCount;i++){
+      const pos = randomFloorInRooms([rooms[0]]);
+      if(pos){
+        const md = MONSTERS.filter(m=>m.minDepth<=d);
+        const m = choice(md.length?md:[MONSTERS[0]]);
+        lvl.monsters.push(makeMonsterInstance(m, d, pos.x, pos.y, false));
+      }
+    }
+    const shrinePos = randomFloorInRooms([arena]);
+    if(shrinePos) features[key(shrinePos.x,shrinePos.y)] = {type:'shrine', used:false};
+    lvl.bossIntro = bossDef.title;
+  } else {
+    const monsterCount = rnd(3,5) + Math.floor(d/2);
+    for(let i=0;i<monsterCount;i++){
+      const pos = randomFloorInRooms([rooms[0]]);
+      if(!pos) continue;
+      const md = MONSTERS.filter(m=>m.minDepth<=d);
+      const m = weightedChoice(md.length?md:[MONSTERS[0]], 'xp');
+      lvl.monsters.push(makeMonsterInstance(m, d, pos.x, pos.y, false));
+    }
+    const itemCount = rnd(4,7);
+    for(let i=0;i<itemCount;i++){
+      const pos = randomFloorInRooms([rooms[0]]);
+      if(!pos) continue;
+      lvl.groundItems.push(Object.assign({x:pos.x,y:pos.y}, {item: randomGroundItem(d)}));
+    }
+    const chestCount = rnd(1,3);
+    for(let i=0;i<chestCount;i++){
+      const pos = randomFloorInRooms([rooms[0]]);
+      if(!pos) continue;
+      features[key(pos.x,pos.y)] = {type:'chest', trapped: chance(Math.min(.35,.1+d*.01))};
+    }
+    const trapCount = rnd(1,2) + Math.floor(d/6);
+    for(let i=0;i<trapCount;i++){
+      const pos = randomFloorInRooms([rooms[0]]);
+      if(!pos) continue;
+      const roll = Math.random();
+      const trapType = roll<.5?'spike':(roll<.85?'poison':'alarm');
+      features[key(pos.x,pos.y)] = {type:'trap', trapType, discovered:false, spent:false};
+    }
+    if(d>=2 && chance(.35)){
+      const pos = randomFloorInRooms([rooms[0]]);
+      if(pos){
+        lvl.monsters.push({ id:'shopkeeper', name:'Wandering Merchant', glyph:'$', color:'#5ac8fa',
+          x:pos.x,y:pos.y, hp:9999, maxHp:9999, isShopkeeper:true, atk:0, def:0 });
+      }
+    }
+    if(chance(.6)){
+      const pos = randomFloorInRooms([rooms[0]]);
+      if(pos) features[key(pos.x,pos.y)] = {type:'shrine', used:false};
+    }
+  }
+
+  level = lvl;
+  player.x = start.x; player.y = start.y;
+  computeFOV();
+  if(isBoss){
+    qs('bossBanner').textContent = '⚠ '+ (BOSSES.slice().reverse().find(b=>d>=b.minDepth)||BOSSES[0]).name.toUpperCase() + ' ⚠';
+    qs('bossBannerSub').textContent = lvl.bossIntro || 'A powerful presence stirs below.';
+  }
+  return lvl;
+}
+
+function carveH(tiles,x1,x2,y){ const [a,b]=[Math.min(x1,x2),Math.max(x1,x2)]; for(let x=a;x<=b;x++) tiles[y][x]=1; }
+function carveV(tiles,y1,y2,x){ const [a,b]=[Math.min(y1,y2),Math.max(y1,y2)]; for(let y=a;y<=b;y++) tiles[y][x]=1; }
+
+function bfsDistances(tiles, sx, sy, w, h){
+  const dists = {}; dists[key(sx,sy)] = 0;
+  const q = [[sx,sy]]; let head=0;
+  while(head<q.length){
+    const [x,y] = q[head++]; const dd = dists[key(x,y)];
+    const nbrs = [[x+1,y],[x-1,y],[x,y+1],[x,y-1]];
+    for(const [nx,ny] of nbrs){
+      if(nx<0||ny<0||nx>=w||ny>=h) continue;
+      if(tiles[ny][nx]!==1) continue;
+      const k = key(nx,ny);
+      if(dists[k]===undefined){ dists[k]=dd+1; q.push([nx,ny]); }
+    }
+  }
+  return dists;
+}
+
+function makeMonsterInstance(def, depth, x, y, isBoss){
+  const scale = 1 + depth*0.13;
+  const hp = Math.round(def.hp * scale);
+  return Object.assign({}, def, {
+    x, y, hp, maxHp:hp,
+    atk: Math.round(def.atk * (1+depth*0.09)),
+    def: Math.round(def.def * (1+depth*0.06)),
+    xpReward: Math.round(def.xp * (1+depth*0.12)),
+    goldReward: [Math.round(def.gold[0]*(1+depth*0.1)), Math.round(def.gold[1]*(1+depth*0.1))],
+    state:'idle', aggroTimer:0, isBoss: !!isBoss, statusEffects:[]
+  });
+}
+
+/* ============================= FOV / LOS ============================= */
+
+function isWallAt(x,y){
+  if(x<0||y<0||x>=level.w||y>=level.h) return true;
+  return level.tiles[y][x]!==1;
+}
+function hasLOS(x0,y0,x1,y1){
+  let dx = Math.abs(x1-x0), dy = Math.abs(y1-y0);
+  let sx = x0<x1?1:-1, sy = y0<y1?1:-1;
+  let err = dx-dy;
+  let x=x0,y=y0;
+  while(!(x===x1&&y===y1)){
+    if(!(x===x0&&y===y0) && isWallAt(x,y)) return false;
+    const e2 = 2*err;
+    if(e2 > -dy){ err -= dy; x += sx; }
+    if(e2 < dx){ err += dx; y += sy; }
+  }
+  return true;
+}
+
+let visibleSet = new Set();
+function computeFOV(){
+  visibleSet = new Set();
+  const r = player.fov;
+  for(let y = player.y-r; y<=player.y+r; y++){
+    for(let x = player.x-r; x<=player.x+r; x++){
+      if(x<0||y<0||x>=level.w||y>=level.h) continue;
+      if(dist2(player.x,player.y,x,y) > r) continue;
+      if(hasLOS(player.x,player.y,x,y)){
+        visibleSet.add(key(x,y));
+        level.explored.add(key(x,y));
+      }
+    }
+  }
+  if(player.trapDetect){
+    for(const k of visibleSet){
+      const f = level.features[k];
+      if(f && f.type==='trap' && !f.discovered){
+        const [tx,ty] = k.split(',').map(Number);
+        if(dist2(player.x,player.y,tx,ty) <= 2) f.discovered = true;
+      }
+    }
+  }
+}
+
+/* ============================= MESSAGE LOG ============================= */
+
+function logMsg(text, cls){
+  const div = document.createElement('div');
+  div.className = 'm-'+(cls||'sys');
+  div.textContent = text;
+  const log = qs('msglog');
+  log.appendChild(div);
+  while(log.children.length > 200) log.removeChild(log.firstChild);
+  log.scrollTop = log.scrollHeight;
+}
+
+/* ============================= PLAYER TURN / MOVEMENT ============================= */
+
+function wirePlayControls(){
+  document.addEventListener('keydown', function(e){
+    if(document.activeElement && document.activeElement.tagName==='INPUT') return;
+    if(!gameActive) return;
+    if(e.key === 'Escape'){ togglePause(); return; }
+    if(modalOpen) return;
+    let handled = true;
+    switch(e.key){
+      case 'ArrowUp': case 'w': case 'W': tryMove(0,-1); break;
+      case 'ArrowDown': case 's': case 'S': tryMove(0,1); break;
+      case 'ArrowLeft': case 'a': case 'A': tryMove(-1,0); break;
+      case 'ArrowRight': case 'd': case 'D': tryMove(1,0); break;
+      case ' ': waitTurn(); break;
+      case '1': useAbility(0); break;
+      case '2': useAbility(1); break;
+      case '3': useAbility(2); break;
+      case 'Enter': interactHere(); break;
+      default: handled = false;
+    }
+    if(handled) e.preventDefault();
+  });
+  qs('dU').addEventListener('click', ()=>tryMove(0,-1));
+  qs('dD').addEventListener('click', ()=>tryMove(0,1));
+  qs('dL').addEventListener('click', ()=>tryMove(-1,0));
+  qs('dR').addEventListener('click', ()=>tryMove(1,0));
+  qs('dWait').addEventListener('click', waitTurn);
+  qs('btnPause').addEventListener('click', togglePause);
+  qs('pResume').addEventListener('click', ()=>{ hideOverlay('overlay-pause'); });
+  qs('pHelp').addEventListener('click', ()=>{ hideOverlay('overlay-pause'); showScreen('screen-help'); });
+  qs('pSaveQuit').addEventListener('click', ()=>{
+    autosave(); hideOverlay('overlay-pause'); gameActive=false; showScreen('screen-menu');
+    qs('btnContinue').disabled = false;
+  });
+  qs('shopClose').addEventListener('click', ()=>hideOverlay('overlay-shop'));
+  qs('shrineClose').addEventListener('click', ()=>hideOverlay('overlay-shrine'));
+  qs('bossBannerOk').addEventListener('click', ()=>hideOverlay('overlay-boss'));
+  qs('btnRetire').addEventListener('click', ()=>finishRun('victory'));
+  qs('btnContinueEndless').addEventListener('click', ()=>{
+    hideOverlay('overlay-victory'); depth++; generateLevel(depth); renderAll(); autosave();
+  });
+}
+
+function togglePause(){
+  if(qs('overlay-pause').classList.contains('active')) hideOverlay('overlay-pause');
+  else showOverlay('overlay-pause');
+}
+
+function isStunned(){
+  return player.statusEffects.some(s=>s.type==='stun');
+}
+
+function tryMove(dx,dy){
+  if(!gameActive || modalOpen || player.hp<=0 || inputLocked) return;
+  if(isStunned()){ logMsg(player.name+' is stunned and cannot act!', 'dmg'); endPlayerTurn(); return; }
+  const nx = player.x+dx, ny = player.y+dy;
+  if(nx<0||ny<0||nx>=level.w||ny>=level.h) return;
+  if(level.tiles[ny][nx] !== 1) return;
+  const mon = level.monsters.find(m=>m.x===nx&&m.y===ny&&m.hp>0);
+  if(mon){
+    if(mon.isShopkeeper){ openShop(mon); return; }
+    playerAttack(mon, 1, false);
+    endPlayerTurn();
+    return;
+  }
+  player.x = nx; player.y = ny;
+  computeFOV();
+  resolveTileArrival();
+  endPlayerTurn();
+}
+
+function waitTurn(){
+  if(!gameActive || modalOpen || player.hp<=0 || inputLocked) return;
+  endPlayerTurn();
+}
+
+function interactHere(){
+  const f = level.features[key(player.x,player.y)];
+  if(f && f.type==='stairs') doDescend();
+}
+
+function resolveTileArrival(){
+  const k = key(player.x,player.y);
+  const gi = level.groundItems.findIndex(it=>it.x===player.x&&it.y===player.y);
+  if(gi>=0){
+    const it = level.groundItems[gi].item;
+    level.groundItems.splice(gi,1);
+    if(it.kind==='gold'){ player.gold += it.amount; logMsg('You find '+it.amount+' gold.', 'loot'); Audio_.gold(); }
+    else { pickupItem(it); }
+  }
+  const f = level.features[k];
+  if(!f) return;
+  if(f.type==='stairs'){ doDescend(); return; }
+  if(f.type==='chest' && !f.taken){
+    f.taken = true;
+    openChest(f);
+    delete level.features[k];
+  } else if(f.type==='trap' && !f.spent){
+    triggerTrap(f);
+  } else if(f.type==='shrine' && !f.used){
+    openShrine(f);
+  }
+}
+
+function pickupItem(it){
+  if(player.inventory.length >= 24){
+    const val = itemSellValue(it);
+    player.gold += val;
+    logMsg('Inventory full — '+it.name+' sold automatically for '+val+' gold.', 'sys');
+    return;
+  }
+  addToInventory(it);
+  logMsg('You pick up '+describeItem(it)+'.', 'loot');
+  Audio_.pickup();
+}
+function addToInventory(it){ player.inventory.push(it); }
+
+function describeItem(it){
+  if(it.kind==='weapon') return it.name+' (+'+it.atk+' ATK, '+it.rarity+')';
+  if(it.kind==='armor') return it.name+' (+'+it.def+' DEF, '+it.rarity+')';
+  if(it.kind==='trinket') return it.name+' ('+trinketDesc(it)+')';
+  if(it.kind==='potion') return it.name;
+  if(it.kind==='scroll') return it.name;
+  return it.name;
+}
+function trinketDesc(it){
+  const t = TRINKETS.find(x=>x.name===it.name);
+  if(!t) return '';
+  const suffix = (t.stat==='evasion'||t.stat==='crit') ? '%' : '';
+  const v = suffix==='%' ? Math.round(it.value*100) : it.value;
+  return '+'+v+suffix+' '+t.label;
+}
+
+function openChest(f){
+  logMsg('You open a chest...', 'sys');
+  if(f.trapped && !player.lockpicks){
+    const dmg = rnd(5,12);
+    applyDamageToPlayer(dmg, 'The chest was trapped!');
+  } else if(f.trapped && player.lockpicks){
+    logMsg('Your lockpicks make quick work of a trapped lock.', 'sys');
+  }
+  const n = rnd(1,3);
+  for(let i=0;i<n;i++){
+    const roll = Math.random();
+    let it;
+    if(roll<.25) it = makeGoldPile(depth*1.5);
+    else if(roll<.5) it = makeHealthPotion(depth);
+    else if(roll<.7) it = makeWeapon(depth);
+    else if(roll<.9) it = makeArmor(depth);
+    else it = makeTrinket(depth);
+    if(it.kind==='gold'){ player.gold += it.amount; logMsg('The chest contains '+it.amount+' gold.', 'loot'); }
+    else { pickupItem(it); }
+  }
+}
+
+function triggerTrap(f){
+  f.discovered = true; f.spent = true;
+  if(f.trapType==='spike'){
+    const dmg = rnd(6,12) + Math.round(depth*0.8);
+    applyDamageToPlayer(dmg, 'A spike trap triggers beneath you!');
+  } else if(f.trapType==='poison'){
+    const dmg = rnd(3,6);
+    applyDamageToPlayer(dmg, 'A poison dart trap hits you!');
+    if(!player.poisonImmune) applyStatus(player, {type:'poison', duration:4, potency:.12});
+    else logMsg('Your Stonevein blood resists the poison.', 'sys');
+  } else if(f.trapType==='alarm'){
+    logMsg('An alarm trap blares! Nearby foes awaken!', 'dmg');
+    level.monsters.forEach(m=>{ if(!m.isShopkeeper) m.state='aggro'; });
+  }
+}
+
+function doDescend(){
+  if(depth >= FINAL_BOSS_DEPTH){
+    const boss = level.monsters.find(m=>m.isBoss);
+    if(boss && boss.hp>0){ logMsg('The stairs are sealed until the guardian is defeated!', 'sys'); return; }
+  }
+  depth++;
+  logMsg('You descend to depth '+depth+'...', 'sys');
+  Audio_.descend();
+  generateLevel(depth);
+  if(level.isBoss) showOverlay('overlay-boss');
+  renderAll();
+  autosave();
+}
+
+/* ============================= COMBAT ============================= */
+
+function calcDamage(atk, def, mult, isMagic){
+  let base = atk*(mult||1) - def*(isMagic?0.35:0.6);
+  base = Math.max(1, base);
+  const variance = base*(0.85+Math.random()*0.3);
+  return Math.max(1, Math.round(variance));
+}
+
+function playerAttack(mon, mult, isAbility, isMagic, forceCrit){
+  if(chance(mon.evasive||0)){ logMsg(mon.name+' evades your attack!', 'sys'); Audio_.miss(); return; }
+  let atkVal = isMagic ? player.atk*(player.magicMult||1) : totalAtk();
+  if(player.hp <= player.maxHp*0.3 && player.lowHpDmgBonus) atkVal *= (1+player.lowHpDmgBonus);
+  let dmg = calcDamage(atkVal, mon.def, mult, isMagic);
+  const isCrit = forceCrit || chance(player.crit);
+  if(isCrit) dmg = Math.round(dmg*1.75);
+  mon.hp -= dmg;
+  logMsg(player.name+' hit'+(isAbility?'s with an ability':'s')+' '+mon.name+' for '+dmg+' damage'+(isCrit?' (CRITICAL!)':'')+'.', isCrit?'crit':'dmg');
+  isCrit ? Audio_.crit() : Audio_.hit();
+  if(mon.hp <= 0){ killMonster(mon); }
+}
+
+function totalAtk(){
+  let a = player.atk + (player.equipment.weapon?player.equipment.weapon.atk:0);
+  if(player.equipment.trinket && player.equipment.trinket.stat==='atk') a += player.equipment.trinket.value;
+  if(player.buffs.atkBuff) a *= (1+player.buffs.atkBuff.amount);
+  return Math.round(a);
+}
+function totalDef(){
+  let d = player.def + (player.equipment.armor?player.equipment.armor.def:0);
+  if(player.equipment.trinket && player.equipment.trinket.stat==='def') d += player.equipment.trinket.value;
+  if(player.buffs.defBuff) d *= (1+player.buffs.defBuff.amount);
+  return Math.round(d);
+}
+function totalMaxHp(){
+  let h = player.maxHp;
+  if(player.equipment.trinket && player.equipment.trinket.stat==='hp') h += player.equipment.trinket.value;
+  return Math.round(h);
+}
+function totalMaxResource(){
+  let r = player.maxResource;
+  if(player.equipment.trinket && player.equipment.trinket.stat==='res') r += player.equipment.trinket.value;
+  return Math.round(r);
+}
+function totalEvasion(){
+  let e = player.evasion;
+  if(player.equipment.trinket && player.equipment.trinket.stat==='evasion') e += player.equipment.trinket.value;
+  return clamp(e,0,.75);
+}
+function totalCrit(){
+  let c = player.crit;
+  if(player.equipment.trinket && player.equipment.trinket.stat==='crit') c += player.equipment.trinket.value;
+  return clamp(c,0,.85);
+}
+
+function killMonster(mon){
+  logMsg(mon.name+' is slain!'+(mon.isBoss?' The floor trembles as it falls.':''), 'loot');
+  player.kills++;
+  const gold = rnd(mon.goldReward[0], mon.goldReward[1]);
+  player.gold += gold;
+  const xp = Math.round(mon.xpReward * (player.xpMult||1));
+  gainXp(xp);
+  logMsg('You gain '+xp+' XP and '+gold+' gold.', 'loot');
+  if(mon.isBoss){
+    const drop = pickRarity(depth+6);
+    let it = chance(.5)?makeWeapon(depth+4,drop):makeArmor(depth+4,drop);
+    pickupItem(it);
+    if(mon.final){
+      setTimeout(()=>{ showOverlay('overlay-victory'); }, 300);
+    }
+  } else if(chance(.35 + (player.luckyLoot?0.1:0))){
+    pickupItem(randomGroundItem(depth));
+  }
+}
+
+function gainXp(amount){
+  player.xp += amount;
+  while(player.xp >= player.xpNext){
+    player.xp -= player.xpNext;
+    levelUp();
+  }
+}
+function levelUp(){
+  player.level++;
+  const cls = classById(player.classId);
+  player.maxHp += cls.hpLvl + (player.extraGrowth?1:0);
+  player.atk += cls.atkLvl*0.5 + (player.extraGrowth?0.3:0);
+  player.def += cls.defLvl*0.5;
+  player.maxResource += cls.resLvl;
+  player.maxHp = Math.round(player.maxHp); player.atk = Math.round(player.atk); player.def = Math.round(player.def); player.maxResource = Math.round(player.maxResource);
+  player.hp = totalMaxHp();
+  player.resource = totalMaxResource();
+  player.xpNext = Math.round(30 + player.level*22);
+  logMsg('★ Level up! '+player.name+' is now level '+player.level+'. HP and '+cls.resName+' restored.', 'lvl');
+  Audio_.levelup();
+  toast('LEVEL UP! Now level '+player.level);
+}
+
+function applyDamageToPlayer(dmg, msg){
+  if(chance(totalEvasion())){ logMsg((msg?msg+' ':'')+'You narrowly evade the attack!', 'sys'); Audio_.miss(); return; }
+  let shieldAbsorb = 0;
+  if(player.buffs.shield){
+    shieldAbsorb = Math.min(player.buffs.shield.amount, dmg);
+    player.buffs.shield.amount -= shieldAbsorb;
+    dmg -= shieldAbsorb;
+    if(player.buffs.shield.amount<=0) delete player.buffs.shield;
+  }
+  dmg = Math.max(0, dmg);
+  player.hp -= dmg;
+  if(msg) logMsg(msg+(shieldAbsorb>0?' (shield absorbs '+shieldAbsorb+')':'')+' You take '+dmg+' damage.', 'dmg');
+  else logMsg('You take '+dmg+' damage.'+(shieldAbsorb>0?' (shield absorbed '+shieldAbsorb+')':''), 'dmg');
+  Audio_.hit();
+  if(player.hp <= 0){ player.hp = 0; handlePlayerDeath(); }
+}
+
+function monsterAttack(mon){
+  if(chance(totalEvasion())){ logMsg(mon.name+' attacks but you dodge!', 'sys'); Audio_.miss(); return; }
+  const dmg = calcDamage(mon.atk, totalDef(), 1, false);
+  let shieldAbsorb = 0;
+  let finalDmg = dmg;
+  if(player.buffs.shield){
+    shieldAbsorb = Math.min(player.buffs.shield.amount, finalDmg);
+    player.buffs.shield.amount -= shieldAbsorb;
+    finalDmg -= shieldAbsorb;
+    if(player.buffs.shield.amount<=0) delete player.buffs.shield;
+  }
+  player.hp -= finalDmg;
+  logMsg(mon.name+' hits you for '+finalDmg+' damage.'+(shieldAbsorb>0?' (shield absorbed '+shieldAbsorb+')':''), 'dmg');
+  Audio_.hit();
+  if(mon.poison && chance(mon.poison) && !player.poisonImmune){
+    applyStatus(player, {type:'poison', duration:3, potency:.1});
+    logMsg('You are poisoned!', 'dmg');
+  }
+  if(player.hp <= 0){ player.hp = 0; handlePlayerDeath(); }
+}
+
+function applyStatus(target, status){
+  target.statusEffects.push(status);
+}
+function processStatusEffects(target, isPlayer){
+  const remaining = [];
+  for(const s of target.statusEffects){
+    if(s.type==='poison' || s.type==='burn'){
+      const dmg = Math.max(1, Math.round((isPlayer?totalMaxHp():target.maxHp)*s.potency));
+      if(isPlayer){ player.hp -= dmg; logMsg('Poison deals '+dmg+' damage to you.', 'dmg'); if(player.hp<=0){player.hp=0; handlePlayerDeath();} }
+      else { target.hp -= dmg; logMsg(target.name+' suffers '+dmg+' poison damage.', 'dmg'); if(target.hp<=0){ killMonster(target); } }
+    }
+    s.duration--;
+    if(s.duration > 0) remaining.push(s);
+  }
+  target.statusEffects = remaining;
+}
+
+/* ============================= ABILITIES ============================= */
+
+function useAbility(idx){
+  if(!gameActive || modalOpen || player.hp<=0 || inputLocked) return;
+  if(isStunned()){ logMsg(player.name+' is stunned and cannot act!', 'dmg'); endPlayerTurn(); return; }
+  const cls = classById(player.classId);
+  const ab = cls.abilities[idx];
+  if(!ab) return;
+  if(player.level < ab.unlock){ logMsg(ab.name+' is locked until level '+ab.unlock+'.', 'sys'); return; }
+  if(player.abilityCooldowns[idx] > 0){ logMsg(ab.name+' is on cooldown ('+player.abilityCooldowns[idx]+' turns).', 'sys'); return; }
+  if(player.resource < ab.cost){ logMsg('Not enough '+cls.resName+' for '+ab.name+'.', 'sys'); return; }
+
+  const targets = gatherAbilityTargets(ab);
+  if(ab.target !== 'self' && targets.length === 0){
+    logMsg('No target in range for '+ab.name+'.', 'sys');
+    return;
+  }
+
+  player.resource -= ab.cost;
+  player.abilityCooldowns[idx] = ab.cd;
+  Audio_.ability();
+  logMsg(player.name+' uses '+ab.name+'!', 'sys');
+
+  const atkVal = ab.magic ? player.atk*(player.magicMult||1) : totalAtk();
+
+  if(ab.target === 'self'){
+    applySelfAbilityEffect(ab);
+  } else if(ab.target === 'blink_attack'){
+    const mon = targets[0];
+    const spot = findAdjacentFreeTile(mon.x, mon.y);
+    if(spot){ player.x = spot.x; player.y = spot.y; computeFOV(); }
+    playerAttack(mon, ab.power, true, ab.magic, true);
+  } else {
+    for(const mon of targets){
+      let dmg = calcDamage(atkVal, mon.def, ab.power, ab.magic);
+      const isCrit = chance(player.crit);
+      if(isCrit) dmg = Math.round(dmg*1.75);
+      if(chance(mon.evasive||0)){ logMsg(mon.name+' evades!', 'sys'); continue; }
+      mon.hp -= dmg;
+      logMsg(ab.name+' deals '+dmg+' damage to '+mon.name+(isCrit?' (CRITICAL!)':'')+'.', isCrit?'crit':'dmg');
+      if(ab.effect==='poison') applyStatus(mon, {type:'poison', duration:ab.duration, potency:ab.potency});
+      if(ab.effect==='stun') applyStatus(mon, {type:'stun', duration:ab.duration});
+      if(mon.hp <= 0){ killMonster(mon); }
+      else if(ab.selfHeal){
+        const heal = Math.round(dmg*ab.selfHeal);
+        player.hp = Math.min(totalMaxHp(), player.hp+heal);
+        logMsg(player.name+' heals '+heal+' HP.', 'heal');
+      }
+    }
+  }
+  endPlayerTurn();
+}
+
+function applySelfAbilityEffect(ab){
+  if(ab.effect==='defBuff'){ player.buffs.defBuff = {amount:ab.amount, duration:ab.duration}; logMsg('Defense increased!', 'sys'); }
+  else if(ab.effect==='shield'){ player.buffs.shield = {amount:ab.amount, duration:ab.duration}; logMsg('A protective shield surrounds you.', 'sys'); }
+  else if(ab.effect==='heal'){ const h = Math.round(totalMaxHp()*ab.amount); player.hp = Math.min(totalMaxHp(), player.hp+h); logMsg('You heal '+h+' HP.', 'heal'); Audio_.heal(); }
+  else if(ab.effect==='blessBuff'){ player.buffs.atkBuff = {amount:ab.atkAmount, duration:ab.duration}; player.buffs.defBuff = {amount:ab.defAmount, duration:ab.duration}; logMsg('You are blessed with might and resilience.', 'sys'); }
+  else if(ab.effect==='stealth'){ player.buffs.stealth = {duration:ab.duration}; logMsg('You fade into the shadows.', 'sys'); }
+}
+
+function gatherAbilityTargets(ab){
+  const visMonsters = level.monsters.filter(m=>m.hp>0 && !m.isShopkeeper && visibleSet.has(key(m.x,m.y)));
+  if(ab.target==='adjacent'){
+    const adj = visMonsters.filter(m=>dist2(player.x,player.y,m.x,m.y)<=1);
+    adj.sort((a,b)=>a.hp-b.hp);
+    return adj.length ? [adj[0]] : [];
+  }
+  if(ab.target==='all_adjacent'){
+    return visMonsters.filter(m=>dist2(player.x,player.y,m.x,m.y)<=1);
+  }
+  if(ab.target==='all_near'){
+    return visMonsters.filter(m=>dist2(player.x,player.y,m.x,m.y)<=(ab.radius||1));
+  }
+  if(ab.target==='nearest'){
+    const inRange = visMonsters.filter(m=>dist2(player.x,player.y,m.x,m.y)<=ab.range && hasLOS(player.x,player.y,m.x,m.y));
+    inRange.sort((a,b)=>dist2(player.x,player.y,a.x,a.y)-dist2(player.x,player.y,b.x,b.y));
+    return inRange.length ? [inRange[0]] : [];
+  }
+  if(ab.target==='multi_near'){
+    const inRange = visMonsters.filter(m=>dist2(player.x,player.y,m.x,m.y)<=ab.range && hasLOS(player.x,player.y,m.x,m.y));
+    inRange.sort((a,b)=>dist2(player.x,player.y,a.x,a.y)-dist2(player.x,player.y,b.x,b.y));
+    return inRange.slice(0, ab.maxTargets||3);
+  }
+  if(ab.target==='blink_attack'){
+    const inRange = visMonsters.filter(m=>dist2(player.x,player.y,m.x,m.y)<=ab.range && hasLOS(player.x,player.y,m.x,m.y));
+    inRange.sort((a,b)=>dist2(player.x,player.y,a.x,a.y)-dist2(player.x,player.y,b.x,b.y));
+    return inRange.length ? [inRange[0]] : [];
+  }
+  return [];
+}
+
+function findAdjacentFreeTile(x,y){
+  const opts = [[x+1,y],[x-1,y],[x,y+1],[x,y-1]];
+  for(const [ox,oy] of opts){
+    if(ox<0||oy<0||ox>=level.w||oy>=level.h) continue;
+    if(level.tiles[oy][ox]!==1) continue;
+    if(level.monsters.some(m=>m.x===ox&&m.y===oy&&m.hp>0)) continue;
+    return {x:ox,y:oy};
+  }
+  return null;
+}
+
+/* ============================= ITEM USE / EQUIP ============================= */
+
+function useInventoryItem(idx){
+  if(!gameActive || modalOpen || player.hp<=0 || inputLocked) return;
+  const it = player.inventory[idx];
+  if(!it) return;
+  if(it.kind==='potion'){
+    if(it.sub==='health'){ player.hp = Math.min(totalMaxHp(), player.hp+it.heal); logMsg('You drink a '+it.name+', healing '+it.heal+' HP.', 'heal'); Audio_.heal(); }
+    else if(it.sub==='resource'){ player.resource = Math.min(totalMaxResource(), player.resource+it.amt); logMsg('You drink a '+it.name+', restoring '+it.amt+' '+classById(player.classId).resName+'.', 'heal'); }
+    else if(it.sub==='antidote'){ player.statusEffects = player.statusEffects.filter(s=>s.type!=='poison'&&s.type!=='burn'); logMsg('The antidote cleanses your ailments.', 'heal'); }
+    else if(it.sub==='elixir'){
+      if(it.stat==='atk'){ player.atk += 1; logMsg('The elixir permanently increases your Attack!', 'lvl'); }
+      else { player.maxHp += 5; player.hp = Math.min(totalMaxHp(), player.hp+5); logMsg('The elixir permanently increases your max HP!', 'lvl'); }
+    }
+    player.inventory.splice(idx,1);
+    renderSidebar();
+    endPlayerTurn();
+  } else if(it.kind==='scroll'){
+    if(it.sub==='teleport'){
+      const spot = randomWalkableTile();
+      if(spot){ player.x=spot.x; player.y=spot.y; computeFOV(); logMsg('You teleport elsewhere in the dungeon.', 'sys'); }
+    } else if(it.sub==='mapping'){
+      for(let y=0;y<level.h;y++) for(let x=0;x<level.w;x++) if(level.tiles[y][x]===1) level.explored.add(key(x,y));
+      logMsg('The dungeon layout is revealed to you.', 'sys');
+    }
+    player.inventory.splice(idx,1);
+    renderSidebar();
+    endPlayerTurn();
+  }
+}
+
+function randomWalkableTile(){
+  let tries=0;
+  while(tries<200){
+    tries++;
+    const x = rnd(0,level.w-1), y = rnd(0,level.h-1);
+    if(level.tiles[y][x]===1 && !level.monsters.some(m=>m.x===x&&m.y===y)) return {x,y};
+  }
+  return null;
+}
+
+function equipItem(idx){
+  const it = player.inventory[idx];
+  if(!it) return;
+  const slot = it.kind;
+  const old = player.equipment[slot];
+  player.equipment[slot] = it;
+  player.inventory.splice(idx,1);
+  if(old) player.inventory.push(old);
+  logMsg('You equip '+it.name+'.', 'sys');
+  renderSidebar();
+}
+function dropItem(idx){
+  const it = player.inventory[idx];
+  if(!it) return;
+  player.inventory.splice(idx,1);
+  logMsg('You discard '+it.name+'.', 'sys');
+  renderSidebar();
+}
+function itemSellValue(it){
+  let base = 5;
+  if(it.kind==='weapon') base = it.atk*2;
+  else if(it.kind==='armor') base = it.def*3;
+  else if(it.kind==='trinket') base = 20;
+  else if(it.kind==='potion') base = 8;
+  else if(it.kind==='scroll') base = 12;
+  return Math.round(base * (player.sellMult||1));
+}
+
+/* ============================= SHOP ============================= */
+
+function openShop(mon){
+  if(!mon.stock){
+    mon.stock = [];
+    const n = rnd(4,6);
+    for(let i=0;i<n;i++){
+      const roll = Math.random();
+      let it;
+      if(roll<.3) it = makeWeapon(depth+2);
+      else if(roll<.55) it = makeArmor(depth+2);
+      else if(roll<.7) it = makeTrinket(depth+2);
+      else if(roll<.9) it = makeHealthPotion(depth);
+      else it = makeScroll(chance(.5)?'teleport':'mapping');
+      mon.stock.push(it);
+    }
+  }
+  renderShop(mon);
+  showOverlay('overlay-shop');
+}
+function renderShop(mon){
+  qs('shopGold').textContent = player.gold;
+  const buyList = qs('shopBuyList');
+  buyList.innerHTML = '';
+  mon.stock.forEach((it,i)=>{
+    if(!it) return;
+    const price = Math.round(basePrice(it) * (1-(player.shopDiscount||0)));
+    const row = document.createElement('div');
+    row.className = 'shop-item';
+    row.innerHTML = `<span class="${rarityColorClass(it.rarity)}">${describeItem(it)}</span>
+      <span>${price}g <button data-i="${i}" class="buyBtn">Buy</button></span>`;
+    buyList.appendChild(row);
+  });
+  buyList.querySelectorAll('.buyBtn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const i = +btn.dataset.i;
+      const it = mon.stock[i];
+      const price = Math.round(basePrice(it) * (1-(player.shopDiscount||0)));
+      if(player.gold < price){ toast('Not enough gold.'); return; }
+      if(player.inventory.length>=24){ toast('Inventory full.'); return; }
+      player.gold -= price;
+      addToInventory(it);
+      mon.stock[i] = null;
+      logMsg('You purchase '+it.name+' for '+price+' gold.', 'loot');
+      renderShop(mon); renderSidebar();
+    });
+  });
+  const sellList = qs('shopSellList');
+  sellList.innerHTML = '';
+  if(player.inventory.length===0) sellList.innerHTML = '<div style="color:var(--dim);font-size:.8em;">Nothing to sell.</div>';
+  player.inventory.forEach((it,i)=>{
+    const val = itemSellValue(it);
+    const row = document.createElement('div');
+    row.className = 'shop-item';
+    row.innerHTML = `<span class="${rarityColorClass(it.rarity)}">${describeItem(it)}</span>
+      <span>${val}g <button data-i="${i}" class="sellBtn">Sell</button></span>`;
+    sellList.appendChild(row);
+  });
+  sellList.querySelectorAll('.sellBtn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const i = +btn.dataset.i;
+      const it = player.inventory[i];
+      const val = itemSellValue(it);
+      player.gold += val;
+      player.inventory.splice(i,1);
+      logMsg('You sell '+it.name+' for '+val+' gold.', 'loot');
+      renderShop(mon); renderSidebar();
+    });
+  });
+}
+function basePrice(it){
+  if(it.kind==='weapon') return 10+it.atk*4;
+  if(it.kind==='armor') return 10+it.def*5;
+  if(it.kind==='trinket') return 40;
+  if(it.kind==='potion') return 15;
+  if(it.kind==='scroll') return 20;
+  return 10;
+}
+
+/* ============================= SHRINE ============================= */
+
+function openShrine(f){
+  qs('shrineTitle').textContent = 'A Quiet Shrine';
+  const opts = qs('shrineOpts');
+  opts.innerHTML = '';
+  const options = [
+    {label:'🙏 Font of Healing', desc:'Fully restore your health.', act:()=>{ player.hp = totalMaxHp(); logMsg('You are fully healed by the shrine.', 'heal'); }},
+    {label:'💧 Cleansing Waters', desc:'Remove all ailments and restore your resource.', act:()=>{ player.statusEffects=[]; player.resource = totalMaxResource(); logMsg('The waters cleanse and restore you.', 'heal'); }},
+    {label:'⚡ Blessing of Power', desc:'+25% Attack and Defense until you next descend.', act:()=>{ player.buffs.atkBuff = {amount:.25, duration:9999}; player.buffs.defBuff = {amount:.25, duration:9999}; logMsg('You feel empowered.', 'heal'); }}
+  ];
+  options.forEach(o=>{
+    const div = document.createElement('div');
+    div.className = 'shrine-opt';
+    div.innerHTML = `<b>${o.label}</b><span style="color:var(--dim);font-size:.85em;">${o.desc}</span>`;
+    div.addEventListener('click', ()=>{ o.act(); f.used = true; hideOverlay('overlay-shrine'); renderSidebar(); });
+    opts.appendChild(div);
+  });
+  showOverlay('overlay-shrine');
+}
+
+/* ============================= MONSTER AI / TURN RESOLUTION ============================= */
+
+function endPlayerTurn(){
+  player.turns++;
+  tickCooldowns();
+  tickBuffs();
+  processStatusEffects(player, true);
+  if(player.hp <= 0) { renderAll(); return; }
+  regenResource();
+  regenHpOutOfCombat();
+  monstersAct();
+  if(player.hp <= 0){ renderAll(); return; }
+  computeFOV();
+  renderAll();
+  autosave();
+}
+
+function tickCooldowns(){
+  for(let i=0;i<player.abilityCooldowns.length;i++){
+    if(player.abilityCooldowns[i]>0) player.abilityCooldowns[i]--;
+  }
+}
+function tickBuffs(){
+  for(const k of Object.keys(player.buffs)){
+    const b = player.buffs[k];
+    if(b.duration !== undefined){
+      b.duration--;
+      if(b.duration<=0) delete player.buffs[k];
+    }
+  }
+}
+function regenResource(){
+  const cls = classById(player.classId);
+  player.resource = Math.min(totalMaxResource(), player.resource + cls.resRegen);
+}
+function regenHpOutOfCombat(){
+  if(!player.regenOutOfCombat) return;
+  const anyVisible = level.monsters.some(m=>!m.isShopkeeper && m.hp>0 && visibleSet.has(key(m.x,m.y)));
+  if(!anyVisible){
+    const heal = Math.round(totalMaxHp()*player.regenOutOfCombat);
+    if(heal>0 && player.hp < totalMaxHp()) player.hp = Math.min(totalMaxHp(), player.hp+heal);
+  }
+}
+
+function monstersAct(){
+  const stealthy = !!player.buffs.stealth;
+  for(const mon of level.monsters){
+    if(mon.hp<=0 || mon.isShopkeeper) continue;
+    processMonsterStatus(mon);
+    if(mon.hp<=0) continue;
+    if(mon.statusEffects.some(s=>s.type==='stun')) continue;
+
+    const dCheb = dist2(player.x,player.y,mon.x,mon.y);
+    const seesPlayer = hasLOS(mon.x,mon.y,player.x,player.y) && dCheb <= mon.sight && !(stealthy && dCheb>1);
+
+    if(seesPlayer){ mon.state='aggro'; mon.aggroTimer = 6; mon.lastKnownX=player.x; mon.lastKnownY=player.y; }
+    else if(mon.state==='aggro'){ mon.aggroTimer--; if(mon.aggroTimer<=0) mon.state='idle'; }
+
+    if(mon.slow && chance(.4)) continue;
+
+    if(mon.state==='aggro'){
+      if(dCheb<=1){
+        if(mon.regen) mon.hp = Math.min(mon.maxHp, mon.hp + Math.round(mon.maxHp*mon.regen));
+        monsterAttack(mon);
+      } else if(mon.ranged && dCheb<=mon.ranged && hasLOS(mon.x,mon.y,player.x,player.y)){
+        monsterAttack(mon);
+      } else {
+        stepToward(mon, mon.lastKnownX ?? player.x, mon.lastKnownY ?? player.y);
+      }
+    } else {
+      if(mon.erratic && chance(.5)) stepRandom(mon);
+      else if(chance(.25)) stepRandom(mon);
+    }
+    if(player.hp<=0) return;
+  }
+}
+
+function processMonsterStatus(mon){
+  const remaining = [];
+  for(const s of mon.statusEffects){
+    if(s.type==='poison'){
+      const dmg = Math.max(1, Math.round(mon.maxHp*s.potency));
+      mon.hp -= dmg;
+      if(mon.hp<=0){ logMsg(mon.name+' succumbs to poison.', 'dmg'); killMonster(mon); }
+    }
+    s.duration--;
+    if(s.duration>0) remaining.push(s);
+  }
+  mon.statusEffects = remaining;
+}
+
+function stepToward(mon, tx, ty){
+  const dx = tx-mon.x, dy = ty-mon.y;
+  const moves = [];
+  if(Math.abs(dx) >= Math.abs(dy)){
+    if(dx!==0) moves.push([Math.sign(dx),0]);
+    if(dy!==0) moves.push([0,Math.sign(dy)]);
+  } else {
+    if(dy!==0) moves.push([0,Math.sign(dy)]);
+    if(dx!==0) moves.push([Math.sign(dx),0]);
+  }
+  for(const [mx,my] of moves){
+    const nx=mon.x+mx, ny=mon.y+my;
+    if(nx<0||ny<0||nx>=level.w||ny>=level.h) continue;
+    if(level.tiles[ny][nx]!==1) continue;
+    if(nx===player.x && ny===player.y) continue;
+    if(level.monsters.some(m=>m!==mon && m.hp>0 && m.x===nx && m.y===ny)) continue;
+    mon.x=nx; mon.y=ny; return;
+  }
+}
+function stepRandom(mon){
+  const opts = [[1,0],[-1,0],[0,1],[0,-1]];
+  const [mx,my] = choice(opts);
+  const nx=mon.x+mx, ny=mon.y+my;
+  if(nx<0||ny<0||nx>=level.w||ny>=level.h) return;
+  if(level.tiles[ny][nx]!==1) return;
+  if(nx===player.x && ny===player.y) return;
+  if(level.monsters.some(m=>m!==mon && m.hp>0 && m.x===nx && m.y===ny)) return;
+  mon.x=nx; mon.y=ny;
+}
+
+/* ============================= DEATH / VICTORY / SAVE ============================= */
+
+function handlePlayerDeath(){
+  gameActive = false;
+  Audio_.death();
+  logMsg(player.name+' has fallen at depth '+depth+'.', 'dmg');
+  finishRun('died');
+}
+
+function finishRun(result){
+  gameActive = false;
+  saveToLeaderboard(result);
+  localStorage.removeItem('ttd_save');
+  qs('btnContinue').disabled = true;
+  if(result==='died'){
+    qs('goTitle').textContent = 'You Have Fallen';
+    qs('goTitle').style.color = 'var(--red)';
+  } else {
+    qs('goTitle').textContent = 'A Legend Retires';
+    qs('goTitle').style.color = 'var(--gold)';
+  }
+  qs('goStats').innerHTML = `
+    <div><b>${player.name}</b> — ${raceById(player.raceId).name} ${classById(player.classId).name} (${bgById(player.bgId).name})</div>
+    <div>Reached Depth <b>${depth}</b>, Character Level <b>${player.level}</b></div>
+    <div>Monsters Slain: <b>${player.kills}</b></div>
+    <div>Gold Collected: <b>${player.gold}</b></div>
+    <div>Turns Taken: <b>${player.turns}</b></div>
+  `;
+  hideOverlay('overlay-victory');
+  showScreen('screen-gameover');
+}
+
+function saveToLeaderboard(result){
+  const score = depth*100 + player.level*20 + player.kills*5 + player.gold + (result==='victory'?1500:0);
+  const entry = { name:player.name, race:raceById(player.raceId).name, cls:classById(player.classId).name,
+    bg:bgById(player.bgId).name, depth, level:player.level, kills:player.kills, gold:player.gold,
+    turns:player.turns, result, score, date:new Date().toISOString().slice(0,10) };
+  let board = [];
+  try{ board = JSON.parse(localStorage.getItem('ttd_leaderboard')||'[]'); }catch(e){ board=[]; }
+  board.push(entry);
+  board.sort((a,b)=>b.score-a.score);
+  board = board.slice(0,10);
+  localStorage.setItem('ttd_leaderboard', JSON.stringify(board));
+}
+
+function renderLeaderboard(){
+  let board = [];
+  try{ board = JSON.parse(localStorage.getItem('ttd_leaderboard')||'[]'); }catch(e){ board=[]; }
+  const el = qs('boardList');
+  if(board.length===0){ el.innerHTML = '<div style="color:var(--dim);">No legends recorded yet. Go make history.</div>'; return; }
+  el.innerHTML = board.map((e,i)=>`
+    <div class="board-row">
+      <b>#${i+1}</b>
+      <span>${e.name} — ${e.race} ${e.cls} (${e.bg})${e.result==='victory'?' 🏆':''}</span>
+      <span>Depth ${e.depth}, Lv${e.level}</span>
+      <span>${e.score} pts</span>
+    </div>`).join('');
+}
+
+function autosave(){
+  if(!gameActive) return;
+  const save = {
+    player, depth,
+    level: {
+      w:level.w, h:level.h, tiles:level.tiles, features:level.features,
+      monsters:level.monsters, groundItems:level.groundItems,
+      explored:Array.from(level.explored), rooms:level.rooms, start:level.start,
+      depth:level.depth, isBoss:level.isBoss, bossIntro:level.bossIntro
+    }
+  };
+  try{ localStorage.setItem('ttd_save', JSON.stringify(save)); }catch(e){}
+}
+
+function continueRun(){
+  let save = null;
+  try{ save = JSON.parse(localStorage.getItem('ttd_save')); }catch(e){}
+  if(!save){ toast('No saved run found.'); return; }
+  player = save.player;
+  depth = save.depth;
+  level = save.level;
+  level.explored = new Set(level.explored);
+  gameActive = true;
+  computeFOV();
+  showScreen('screen-play');
+  logMsg('Your adventure continues at depth '+depth+'...', 'sys');
+  renderAll();
+}
+
+/* ============================= RENDERING ============================= */
+
+const TERRAIN_COLORS = { wallDim:'#141419', wallLit:'#2c2c38', floorDim:'#17171f', floorLit:'#26262f' };
+
+function renderAll(){
+  if(!gameActive) return;
+  renderCanvas();
+  renderTopbar();
+  renderSidebar();
+}
+
+function renderTopbar(){
+  qs('hudDepth').textContent = depth;
+  qs('hudTurn').textContent = player.turns;
+  qs('hudGold').textContent = player.gold;
+  qs('hudLevelName').textContent = level.isBoss ? '⚠ BOSS FLOOR ⚠' : '';
+}
+
+function renderCanvas(){
+  camX = clamp(player.x - Math.floor(VIEW_W/2), 0, Math.max(0,level.w-VIEW_W));
+  camY = clamp(player.y - Math.floor(VIEW_H/2), 0, Math.max(0,level.h-VIEW_H));
+  ctx.fillStyle = '#000'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.font = (TILE-4)+'px monospace';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+
+  for(let vy=0; vy<VIEW_H; vy++){
+    for(let vx=0; vx<VIEW_W; vx++){
+      const mx = camX+vx, my = camY+vy;
+      if(mx<0||my<0||mx>=level.w||my>=level.h) continue;
+      const k = key(mx,my);
+      const isVis = visibleSet.has(k);
+      const isExplored = level.explored.has(k);
+      if(!isVis && !isExplored) continue;
+      const wall = level.tiles[my][mx] !== 1;
+      const px = vx*TILE, py = vy*TILE;
+      ctx.fillStyle = wall ? (isVis?TERRAIN_COLORS.wallLit:TERRAIN_COLORS.wallDim) : (isVis?TERRAIN_COLORS.floorLit:TERRAIN_COLORS.floorDim);
+      ctx.fillRect(px,py,TILE,TILE);
+      if(!wall){
+        const f = level.features[k];
+        if(f){
+          let glyph='', color='#999';
+          if(f.type==='stairs'){ glyph='>'; color='#e8c85a'; }
+          else if(f.type==='chest'){ glyph='='; color='#c98a3a'; }
+          else if(f.type==='shrine'){ glyph = f.used? '†':'✝'; color = f.used? '#555':'#7fd0e0'; }
+          else if(f.type==='trap' && f.discovered){ glyph='^'; color='#e05a5a'; }
+          if(glyph){
+            ctx.globalAlpha = isVis?1:.45;
+            ctx.fillStyle = color;
+            ctx.fillText(glyph, px+TILE/2, py+TILE/2+1);
+            ctx.globalAlpha = 1;
+          }
+        }
+        if(isVis){
+          const gi = level.groundItems.find(it=>it.x===mx&&it.y===my);
+          if(gi){
+            const glyph = gi.item.kind==='gold'?'$':(gi.item.kind==='potion'?'!':(gi.item.kind==='scroll'?'?':(gi.item.kind==='weapon'?'/':(gi.item.kind==='armor'?']':'*'))));
+            ctx.fillStyle = gi.item.kind==='gold'?'#e8c85a':'#cfd6e6';
+            ctx.fillText(glyph, px+TILE/2, py+TILE/2+1);
+          }
+        }
+      }
+      if(isVis){
+        const mon = level.monsters.find(m=>m.x===mx&&m.y===my&&m.hp>0);
+        if(mon){
+          if(mon.isBoss){ ctx.fillStyle='rgba(224,90,90,.35)'; ctx.beginPath(); ctx.arc(px+TILE/2,py+TILE/2,TILE/2-1,0,7); ctx.fill(); }
+          ctx.fillStyle = mon.color;
+          ctx.fillText(mon.glyph, px+TILE/2, py+TILE/2+1);
+        }
+      }
+    }
+  }
+  const ppx = (player.x-camX)*TILE, ppy = (player.y-camY)*TILE;
+  ctx.fillStyle = 'rgba(212,175,55,.25)';
+  ctx.beginPath(); ctx.arc(ppx+TILE/2, ppy+TILE/2, TILE/2-1, 0, 7); ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.fillText('@', ppx+TILE/2, ppy+TILE/2+1);
+}
+
+function renderSidebar(){
+  const race = raceById(player.raceId), cls = classById(player.classId), bg = bgById(player.bgId);
+  qs('charTitle').textContent = player.name+' — Lv'+player.level+' '+race.name+' '+cls.name;
+
+  const mh = totalMaxHp(), mr = totalMaxResource();
+  qs('hpFill').style.width = clamp(player.hp/mh*100,0,100)+'%';
+  qs('hpLabel').textContent = Math.max(0,Math.round(player.hp))+' / '+mh+' HP';
+  qs('resFill').style.width = clamp(player.resource/mr*100,0,100)+'%';
+  qs('resLabel').textContent = Math.round(player.resource)+' / '+mr+' '+cls.resName;
+
+  qs('statGrid').innerHTML = `
+    <div>ATK <b>${totalAtk()}</b></div><div>DEF <b>${totalDef()}</b></div>
+    <div>Evasion <b>${Math.round(totalEvasion()*100)}%</b></div><div>Crit <b>${Math.round(totalCrit()*100)}%</b></div>
+    <div>XP <b>${player.xp}/${player.xpNext}</b></div><div>Sight <b>${player.fov}</b></div>
+    <div>Kills <b>${player.kills}</b></div><div>Turns <b>${player.turns}</b></div>
+  `;
+
+  const abilList = qs('abilList');
+  abilList.innerHTML = '';
+  cls.abilities.forEach((ab,i)=>{
+    const locked = player.level < ab.unlock;
+    const onCd = player.abilityCooldowns[i] > 0;
+    const noRes = player.resource < ab.cost;
+    const row = document.createElement('div');
+    row.className = 'abil-row' + (locked?' locked':'') + ((onCd||noRes)&&!locked?' cd':'');
+    row.innerHTML = `<div class="key">${i+1}</div>
+      <div class="info"><span class="an">${ab.icon} ${ab.name}</span><br>
+      <span class="ac">${locked?('Locked (Lv '+ab.unlock+')') : (onCd?('Cooldown: '+player.abilityCooldowns[i]) : (ab.cost+' '+cls.resName+' · '+ab.desc))}</span></div>`;
+    if(!locked && !onCd) row.addEventListener('click', ()=>useAbility(i));
+    abilList.appendChild(row);
+  });
+
+  const eqList = qs('eqList');
+  eqList.innerHTML = '';
+  ['weapon','armor','trinket'].forEach(slot=>{
+    const it = player.equipment[slot];
+    const div = document.createElement('div');
+    div.className = 'eq-slot';
+    div.innerHTML = `<span style="color:var(--dim);text-transform:capitalize;">${slot}</span>
+      <span class="name ${it?rarityColorClass(it.rarity):''}">${it? (it.kind==='weapon'?it.name+' (+'+it.atk+')': it.kind==='armor'? it.name+' (+'+it.def+')' : it.name+' ('+trinketDesc(it)+')') : '—'}</span>`;
+    eqList.appendChild(div);
+  });
+
+  const invList = qs('invList');
+  invList.innerHTML = '';
+  if(player.inventory.length===0) invList.innerHTML = '<div style="color:var(--dim);font-size:.78em;">Empty</div>';
+  player.inventory.forEach((it,i)=>{
+    const row = document.createElement('div');
+    row.className = 'inv-item';
+    let actions = '';
+    if(it.kind==='weapon' || it.kind==='armor' || it.kind==='trinket') actions += `<button data-act="equip" data-i="${i}">Equip</button>`;
+    if(it.kind==='potion' || it.kind==='scroll') actions += `<button data-act="use" data-i="${i}">Use</button>`;
+    actions += `<button data-act="drop" data-i="${i}">Drop</button>`;
+    row.innerHTML = `<span class="iname ${rarityColorClass(it.rarity)}">${describeItem(it)}</span>${actions}`;
+    invList.appendChild(row);
+  });
+  invList.querySelectorAll('button').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const i = +btn.dataset.i;
+      if(btn.dataset.act==='equip') equipItem(i);
+      else if(btn.dataset.act==='use') useInventoryItem(i);
+      else if(btn.dataset.act==='drop') dropItem(i);
+    });
+  });
+}
+
+})();
+</script>
+</body>
+</html>
