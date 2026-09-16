@@ -1,16 +1,16 @@
+from server.agents.content_bundles import build_content_bundle
 from server.agents.storyboard import (
     CampaignStoryboard,
     PacingPatternState,
     SceneBeatSelectionInput,
+    StoryboardPlotRequest,
     beat_type_library,
     create_campaign_storyboard,
     generate_plot,
     generate_session_storyboard,
     select_scene_beat,
     update_storyboards_after_scene,
-    StoryboardPlotRequest,
 )
-from server.agents.content_bundles import build_content_bundle
 
 
 def _campaign() -> CampaignStoryboard:
