@@ -14,11 +14,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import shutil
 import sqlite3
 from pathlib import Path
-
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATABASES = (

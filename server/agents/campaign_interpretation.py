@@ -10,7 +10,6 @@ import hashlib
 import re
 from typing import Any
 
-
 POSTURES = {
     "player_fast_start",
     "guided_builder",
@@ -496,7 +495,7 @@ def build_backstory_hooks(profile: dict[str, Any]) -> list[dict[str, Any]]:
             hook_type = "home_location_in_trouble"
         else:
             hook_type = "symbol_reappears"
-        hook_id = hashlib.sha1(f"{char_id}:{idx}:{summary}".encode("utf-8")).hexdigest()[:12]
+        hook_id = hashlib.sha1(f"{char_id}:{idx}:{summary}".encode()).hexdigest()[:12]
         hooks.append({
             "hook_id": hook_id,
             "character_id": char_id,

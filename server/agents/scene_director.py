@@ -7,8 +7,8 @@ writes a single word of prose.
 """
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -259,7 +259,7 @@ def _contact_from_text(text: str, genre: str) -> str:
 def _stable_index(seed: str, modulo: int, *, salt: str = "") -> int:
     if modulo <= 0:
         return 0
-    digest = hashlib.sha1(f"{salt}|{seed}".encode("utf-8")).hexdigest()
+    digest = hashlib.sha1(f"{salt}|{seed}".encode()).hexdigest()
     return int(digest[:8], 16) % modulo
 
 
