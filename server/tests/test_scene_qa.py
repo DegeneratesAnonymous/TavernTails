@@ -1,3 +1,4 @@
+from server.agents.scene_beat_selector import select_scene_beat_plan
 from server.agents.scene_qa import (
     apply_targeted_scene_repairs,
     build_scene_truth_table,
@@ -6,7 +7,6 @@ from server.agents.scene_qa import (
     score_specificity,
     validate_player_action_continuity,
 )
-from server.agents.scene_beat_selector import select_scene_beat_plan
 from server.scripts.scene_quality_regression import run_quality_regression
 
 

@@ -22,25 +22,19 @@ from . import scene_director as scene_director_agent
 from . import simulation as simulation_agent
 from . import storyboard as storyboard_agent
 from . import suggestions as suggestions_agent
+from .arc_planner import plan_arc
+from .campaign_interpretation import build_full_contract_package
+from .canon_manager import (
+    apply_memory_delta,
+    load_canon_index,
+    save_canon_index,
+    validate_canon,
+)
+from .content_bundles import build_content_bundle, ensure_content_bundle
 from .entity_schemas import EntityAssociation, PlayerEntityCard
+from .memory_extractor import extract_memory
 from .narrative_director import DirectorOutput
 from .narrative_director import direct_scene as narrative_direct_scene
-from .scene_director import SceneDirectorOutput, SceneDirectorRequest, build_image_prompt
-from .scene_validator import (
-    MINIMUM_SCORE,
-    build_fallback_scene,
-    build_retry_feedback,
-    validate_campaign_expectations,
-    validate_scene_quality,
-)
-from .campaign_interpretation import build_full_contract_package
-from .arc_planner import plan_arc
-from .situation_classifier import classify_situation, REQUIRES_CONTRACT
-from .content_bundles import build_content_bundle, ensure_content_bundle
-from .player_intent_parser import parse_player_intent
-from .scene_beat_selector import select_scene_beat_plan
-from .memory_extractor import extract_memory
-from .scene_qa import apply_targeted_scene_repairs, load_recent_opening_shapes, record_opening_shape, run_scene_qa
 from .opening_setup import (
     answers_to_anchor,
     auto_generate_anchor,
@@ -50,13 +44,18 @@ from .opening_setup import (
     validate_opening_anchor,
     validate_opening_scene_contract,
 )
-from .canon_manager import (
-    load_canon_index,
-    save_canon_index,
-    apply_memory_delta,
-    validate_canon,
+from .player_intent_parser import parse_player_intent
+from .scene_beat_selector import select_scene_beat_plan
+from .scene_director import SceneDirectorOutput, SceneDirectorRequest, build_image_prompt
+from .scene_qa import apply_targeted_scene_repairs, load_recent_opening_shapes, record_opening_shape, run_scene_qa
+from .scene_validator import (
+    MINIMUM_SCORE,
+    build_fallback_scene,
+    build_retry_feedback,
+    validate_campaign_expectations,
+    validate_scene_quality,
 )
-from .ui_payload_builder import build_ui_payload as build_full_ui_payload
+from .situation_classifier import REQUIRES_CONTRACT, classify_situation
 from .story_state import (
     derive_campaign_dna,
     load_story_state,
@@ -66,6 +65,7 @@ from .story_state import (
     update_state_after_scene,
 )
 from .story_validator import validate_story_quality as validate_story_structure
+from .ui_payload_builder import build_ui_payload as build_full_ui_payload
 from .visual_director import run_visual_pipeline
 from .visual_state import load_visual_state, save_visual_state
 
