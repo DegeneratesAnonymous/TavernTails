@@ -6,29 +6,29 @@ Coverage:
   - UI Payload Builder: resolution states, bundle mapping, validation
   - Validation blocks: incomplete content blocks prose, canon violations caught
 """
-import pytest
 import tempfile
 from pathlib import Path
 
-from server.agents.memory_extractor import extract_memory
-from server.agents.canon_manager import (
-    load_canon_index,
-    save_canon_index,
-    apply_memory_delta,
-    promote_entity,
-    expire_stale_background,
-    validate_canon,
-    check_backstory_boundaries,
-    make_canon_record,
-    can_promote,
-)
-from server.agents.ui_payload_builder import (
-    build_ui_payload,
-    validate_ui_payload,
-    resolution_state_for,
-    RESOLUTION_STATES,
-)
+import pytest
 
+from server.agents.canon_manager import (
+    apply_memory_delta,
+    can_promote,
+    check_backstory_boundaries,
+    expire_stale_background,
+    load_canon_index,
+    make_canon_record,
+    promote_entity,
+    save_canon_index,
+    validate_canon,
+)
+from server.agents.memory_extractor import extract_memory
+from server.agents.ui_payload_builder import (
+    RESOLUTION_STATES,
+    build_ui_payload,
+    resolution_state_for,
+    validate_ui_payload,
+)
 
 # ---------------------------------------------------------------------------
 # Memory Extractor
@@ -509,6 +509,7 @@ class TestValidationBlocks:
 class TestCampaignCreationOutput:
     def test_quick_start_produces_required_fields(self):
         from fastapi.testclient import TestClient
+
         import server.main as main
         from server import db
         from server.auth import create_access_token
