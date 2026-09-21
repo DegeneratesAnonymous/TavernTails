@@ -2,9 +2,9 @@ from fastapi.testclient import TestClient
 
 import server.main as main
 from server import db
-from server.auth import create_access_token
 from server.agents.campaign_interpretation import build_full_contract_package, interpret_imports
 from server.agents.scene_validator import validate_campaign_expectations
+from server.auth import create_access_token
 
 
 def _client() -> TestClient:
@@ -218,7 +218,7 @@ def test_imported_lore_creates_canon_and_provisional_entities():
     # Labelled entities must be player_canon
     canon_names = {e["name"] for e in result["canon_sensitive_entities"]}
     assert "Velara Ashveil" in canon_names, f"Expected 'Velara Ashveil' in canon entities, got {canon_names}"
-    assert "Thornwatch Keep" in canon_names, f"Expected 'Thornwatch Keep' in canon entities"
+    assert "Thornwatch Keep" in canon_names, "Expected 'Thornwatch Keep' in canon entities"
 
     # Inline-mentioned entities should be provisional
     all_names = {e["name"] for e in result["all_named_entities"]}
