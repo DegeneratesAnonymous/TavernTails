@@ -9,25 +9,24 @@ Coverage:
 """
 import pytest
 
-from server.agents.situation_classifier import classify_situation, REQUIRES_CONTRACT
+from server.agents.content_bundles import (
+    build_content_bundle,
+    build_ui_payload,
+    empty_freshness,
+    generate_starter_seed,
+)
+from server.agents.situation_classifier import REQUIRES_CONTRACT, classify_situation
 from server.agents.situation_contracts import (
-    validate_situation,
     validate_campaign_opening,
     validate_combat_setup,
     validate_interrogation,
     validate_investigation,
-    validate_travel,
-    validate_return_to_known_location,
     validate_npc_reappearance,
+    validate_return_to_known_location,
+    validate_situation,
     validate_social_conflict,
+    validate_travel,
 )
-from server.agents.content_bundles import (
-    build_content_bundle,
-    generate_starter_seed,
-    empty_freshness,
-    build_ui_payload,
-)
-
 
 # ---------------------------------------------------------------------------
 # Situation Classifier
