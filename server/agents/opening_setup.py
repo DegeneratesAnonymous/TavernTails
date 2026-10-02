@@ -4,7 +4,6 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import uuid
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -1244,8 +1243,8 @@ def _opening_pressure(required: dict[str, Any], npc_name: str) -> str:
     if "road" in lower or "pass" in lower or "close" in lower:
         return f"By dusk, the pass wardens will close the road and {npc_name} will lose the only cooperative witness."
     if "harbor" in lower or "envoy" in lower:
-        return f"When the tide turns, the harbor watch will seal the quay and the clearest lead will be moved."
-    return f"Before the next bell, someone here will leave with the clearest lead."
+        return "When the tide turns, the harbor watch will seal the quay and the clearest lead will be moved."
+    return "Before the next bell, someone here will leave with the clearest lead."
 
 
 def _opening_action_options(npc_name: str, object_name: str, location: str, visible_problem: str) -> list[str]:
