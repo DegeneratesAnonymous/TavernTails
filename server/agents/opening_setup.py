@@ -934,46 +934,51 @@ def _class_role_label(class_name: str) -> str:
 
 
 def _class_flavor_translation(name: str, class_name: str, object_name: str) -> str:
+    """Translate a class into an investigative lens, never into new world facts.
+
+    A character class tells us how a player *might approach* evidence. It does
+    not prove that an object is magical, cursed, illegal, familiar, tied to a
+    patron, or governed by some invented body of lore.
+    """
     lowered = class_name.lower()
     if "paladin" in lowered and "warlock" in lowered:
-        return f"{name} recognizes two kinds of power around the {object_name}: the lawful pull of an oath, and the colder pressure of a pact that answers when prayer goes too long."
+        return f"{name} can examine the {object_name} through both oath and pact, but neither establishes what the object means or who is responsible."
     if "paladin" in lowered:
-        return f"{name} feels a vow tighten around the {object_name}, the kind of sacred unease that turns judgment into duty."
+        return f"{name}'s experience with oaths may shape which promises and claims they question around the {object_name}; it does not establish that an oath was broken."
     if "warlock" in lowered:
-        return f"{name} feels the {object_name} answer with a private pressure, like a debt being named by something just out of sight."
+        return f"{name}'s pact may shape the questions they ask about the {object_name}, but no supernatural connection to it is assumed."
     if "wizard" in lowered:
-        return f"{name} notices the old formulae around the {object_name} do not agree with the story being told aloud."
+        return f"{name}'s training makes careful inspection of the {object_name} a natural approach, but no prior formula, law, or magical property is assumed."
     if "rogue" in lowered:
-        return f"{name} reads the tells around the {object_name}: blocked exits, careful hands, and lies rehearsed too cleanly."
+        return f"{name}'s experience with deception and access makes provenance, handling, exits, and opportunity useful questions around the {object_name}."
     if "ranger" in lowered:
-        return f"{name} notices the unnatural quiet around the {object_name}, where tracks, weather, and crowd movement should make more sense."
+        return f"{name}'s fieldcraft makes tracks, weather, movement, and physical disturbance useful things to inspect around the {object_name}."
     if "cleric" in lowered:
-        return f"{name} senses a rite around the {object_name} has been bent away from blessing and toward accusation."
+        return f"{name}'s religious experience may help them ask informed questions about any rites or claims involving the {object_name}, without assuming one occurred."
     if "fighter" in lowered:
-        return f"{name} reads the threat around the {object_name} in stance, spacing, and the way weapons are kept too close."
-    return f"{name} recognizes enough about the {object_name} to know the visible problem is only the first edge of it."
+        return f"{name}'s practical experience makes crowd position, weapons, and immediate danger useful things to watch while the {object_name} is examined."
+    return f"{name} can investigate the {object_name} using their established skills without assuming knowledge the campaign has not provided."
 
 
 def _character_reason_to_care(name: str, class_name: str, object_name: str, location: str) -> str:
     lowered = class_name.lower()
     if "paladin" in lowered and "warlock" in lowered:
-        return f"{name}'s oath demands judgment over the {object_name}, while the pact behind it whispers that {location} is hiding a debt older than the public vote."
+        return f"{name} has a useful perspective on promises and bargains around the {object_name}, but the player still decides whether oath, pact, or simple curiosity makes this personal."
     if "paladin" in lowered:
-        return f"{name}'s vows make the {object_name} impossible to ignore: someone has bent sworn law in a place where judgment still matters."
+        return f"{name} may choose to care about the claims surrounding the {object_name} because promises and accountability matter to them; no broken vow is assumed."
     if "warlock" in lowered:
-        return f"{name}'s patron stirs at the {object_name}, naming it as payment, warning, or bait before anyone else hears the bargain."
+        return f"{name} may choose to examine the {object_name} through the lens of their pact, but the campaign does not assume their patron knows or wants anything about it."
     if "wizard" in lowered:
-        return f"{name} recognizes an impossible pattern in the {object_name}, the kind of formula that should not survive outside a sealed archive."
+        return f"{name} has the training to inspect the {object_name} carefully, but no special prior knowledge of its material, history, or rules is assumed."
     if "rogue" in lowered:
-        return f"{name} recognizes the hand behind the {object_name}: someone moved it through blind corners, paid silence, and planned exits."
+        return f"{name} has useful skills for asking who handled the {object_name}, how it moved, and who had access, without assuming a culprit."
     if "ranger" in lowered:
-        return f"{name} reads the ground around the {object_name} and sees a trail that should continue but stops where nature would never stop it."
+        return f"{name} has useful skills for examining the physical trail around the {object_name}, without assuming what that trail will prove."
     if "cleric" in lowered:
-        return f"{name} feels a rite curdled around the {object_name}, turning a blessing into an accusation that cannot be left unanswered."
+        return f"{name} can evaluate religious claims around the {object_name} if they arise, but no rite, blessing, or corruption is assumed."
     if "fighter" in lowered:
-        return f"{name} reads the crowd around the {object_name} like a battlefield: the dangerous people are already choosing positions."
-    return f"{name} has seen enough trouble to know the {object_name} at {location} will name a victim before it names a culprit."
-
+        return f"{name} can read immediate physical danger around the {object_name} while the facts are still uncertain."
+    return f"{name} has a reason to look closely at the {object_name} at {location}, while the exact personal stake remains the player's choice."
 
 def _concrete_object(seed: dict[str, Any], contract: dict[str, Any], fallback: str) -> str:
     object_name = _opening_object_name(seed)
