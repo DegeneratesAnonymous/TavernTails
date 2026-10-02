@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import uuid
 from typing import Any
 
 from pydantic import BaseModel, Field
+
+from ..steward_llm import chat_complete
 
 
 class OpeningSetupOption(BaseModel):
@@ -474,6 +477,130 @@ def answers_to_anchor(
     return data
 
 
+def _safe_auto_answer(question: dict[str, Any], questionnaire: dict[str, Any]) -> str:
+    """Return a conservative setup answer when no LLM is available.
+
+    The fallback deliberately avoids inventing prior relationships, debts,
+    trauma, hidden obligations, or off-screen events.  It should connect the
+    character to what is visibly happening now, not manufacture a backstory.
+    """
+    qid = str(question.get("id") or "")
+    brief = questionnaire.get("campaign_brief") or {}
+    location = str(brief.get("location_name") or "this place").strip() or "this place"
+    facts = [str(f).strip() for f in (brief.get("known_facts") or []) if str(f).strip()]
+    concrete_fact = facts[1] if len(facts) > 1 else (facts[0] if facts else "something here is clearly wrong")
+
+    fallbacks = {
+        "arrival_reason": f"I came to understand what is happening at {location} before committing to a side.",
+        "personal_stake": f"If {concrete_fact[0].lower() + concrete_fact[1:] if concrete_fact else 'this problem is real'}, I want enough facts to choose what to do about it.",
+        "followed_complication": "No extra complication followed me here; the problem in front of me is enough.",
+        "fear_of_loss": "I do not want the clearest evidence or the chance to act on it to disappear.",
+        "npc_connection": "No one here has an assumed history with me; I will judge them by what they do now.",
+        "party_bond": "We agreed to face the immediate problem together until we understand what is actually happening.",
+    }
+    return fallbacks.get(qid, f"I will respond to the concrete situation at {location} without assuming facts that have not been established.")
+
+
+def _parse_ai_setup_answers(raw: str | None, allowed_ids: set[str]) -> dict[str, str]:
+    if not raw:
+        return {}
+    text = raw.strip()
+    start, end = text.find("{"), text.rfind("}")
+    if start < 0 or end <= start:
+        return {}
+    try:
+        payload = json.loads(text[start:end + 1])
+    except Exception:
+        return {}
+    if isinstance(payload.get("answers"), dict):
+        payload = payload["answers"]
+    if not isinstance(payload, dict):
+        return {}
+    cleaned: dict[str, str] = {}
+    for qid, value in payload.items():
+        qid = str(qid)
+        if qid not in allowed_ids:
+            continue
+        if isinstance(value, dict):
+            value = value.get("answer_text") or value.get("value") or ""
+        answer = " ".join(str(value or "").split()).strip()
+        if answer:
+            cleaned[qid] = answer[:320]
+    return cleaned
+
+
+def auto_generate_answers(
+    *,
+    questionnaire: dict[str, Any],
+    character: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Generate one coherent set of opening answers.
+
+    "Let AI build my setup" used to mean "pick option zero for every
+    question."  That created unrelated debts, fears, NPC histories, and motives
+    that merely happened to be first in their lists.  Generate the set as a
+    whole so the answers share one motive and remain grounded in approved facts.
+    """
+    questions = [q for q in (questionnaire.get("questions") or []) if q.get("id")]
+    if not questions:
+        return []
+
+    char = character or {}
+    allowed_ids = {str(q.get("id")) for q in questions}
+    brief = questionnaire.get("campaign_brief") or {}
+    prompt_payload = {
+        "campaign_brief": {
+            "title": brief.get("title"),
+            "location_name": brief.get("location_name"),
+            "known_facts": brief.get("known_facts") or [],
+            "brief_paragraphs": brief.get("brief_paragraphs") or [],
+        },
+        "character": {
+            "name": char.get("name") or "the party",
+            "class_name": char.get("class_name") or "",
+            "backstory": _character_backstory_text(char)[:1200],
+        },
+        "questions": [
+            {
+                "id": q.get("id"),
+                "question": q.get("question"),
+                "options": [
+                    str(opt.get("value") or opt.get("label") or "")
+                    for opt in (q.get("options") or [])
+                    if opt.get("id") != "ai_choose"
+                ],
+            }
+            for q in questions
+        ],
+    }
+    system = (
+        "Build one coherent tabletop campaign opening setup from the supplied facts. "
+        "Return ONLY a JSON object whose keys are the supplied question ids and whose values are short first-person answers. "
+        "Treat campaign_brief facts and explicit character backstory as canon. "
+        "Do not invent prior relationships, relatives, debts, trauma, secret obligations, previous encounters, named organizations, "
+        "or knowledge the character was never given. Do not force every offered option into the setup. "
+        "All answers must support one understandable reason for being present and must make sense together. "
+        "Prefer an observable present-tense motive over invented history. If the source does not establish a personal connection, say so."
+    )
+    raw = chat_complete(
+        [{"role": "system", "content": system}, {"role": "user", "content": json.dumps(prompt_payload, ensure_ascii=False)}],
+        task_scope="taverntails_setup",
+        max_tokens=500,
+        temperature=0.35,
+        timeout=60.0,
+    )
+    generated = _parse_ai_setup_answers(raw, allowed_ids)
+
+    return [
+        {
+            "question_id": str(q.get("id")),
+            "answer_source": "ai_choice",
+            "answer_text": generated.get(str(q.get("id"))) or _safe_auto_answer(q, questionnaire),
+        }
+        for q in questions
+    ]
+
+
 def auto_generate_anchor(
     *,
     session_id: str,
@@ -481,18 +608,18 @@ def auto_generate_anchor(
     questionnaire: dict[str, Any],
     character: dict[str, Any] | None = None,
     character_hook_override: str = "",
+    answers: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    answers = []
-    for q in questionnaire.get("questions", []):
-        options = [opt for opt in (q.get("options") or []) if opt.get("id") != "ai_choose"]
-        if options:
-            answers.append({"question_id": q.get("id"), "option_id": options[0].get("id")})
+    generated_answers = answers if answers is not None else auto_generate_answers(
+        questionnaire=questionnaire,
+        character=character,
+    )
     return answers_to_anchor(
         session_id=session_id,
         campaign_id=campaign_id,
         character=character,
         questionnaire=questionnaire,
-        answers=answers,
+        answers=generated_answers,
         source="auto_generated",
         character_hook_override=character_hook_override,
     )
