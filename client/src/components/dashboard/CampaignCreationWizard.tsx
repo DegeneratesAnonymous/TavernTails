@@ -564,10 +564,11 @@ function StepQuickDetails({
         </div>
 
         <div className="stack" style={{ gap: 6 }}>
-          <label style={{ fontSize: 12, color: 'var(--muted-text)', fontWeight: 600 }}>
+          <label htmlFor="quick-campaign-premise" style={{ fontSize: 12, color: 'var(--muted-text)', fontWeight: 600 }}>
             What is this campaign about? <span style={{ fontWeight: 400 }}>(recommended)</span>
           </label>
           <textarea
+            id="quick-campaign-premise"
             className="wizard-name-input"
             value={draft.quickPremise}
             onChange={(e) => onPremiseChange(e.target.value)}

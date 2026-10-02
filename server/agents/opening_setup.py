@@ -11,6 +11,37 @@ from pydantic import BaseModel, Field
 from ..steward_llm import chat_complete
 
 
+_PERSONAL_HISTORY_PATTERNS = (
+    re.compile(
+        r"\b(?:my|our)\s+(?:mother|father|sister|brother|parent|child|son|daughter|spouse|partner|friend|mentor|rival|ally|enemy|acquaintance)\b",
+        re.I,
+    ),
+    re.compile(
+        r"\b(?:i|we)\s+(?:already\s+)?(?:owe|owed|paid|repay|repaid|trust|distrust|know|knew|met|worked with|grew up with|was raised by|once helped|saved|betrayed|promised)\b[^.!?]{0,100}",
+        re.I,
+    ),
+    re.compile(r"\b(?:someone|somebody|a person)\s+(?:i|we)\s+(?:care about|love|miss)\b", re.I),
+    re.compile(r"\b(?:debt collector|old debt|former friend|old friend|old rival|old ally|old enemy)\b", re.I),
+)
+_GROUNDING_STOP_WORDS = {
+    "a", "about", "above", "after", "again", "against", "all", "also", "am", "an", "and", "any",
+    "are", "around", "as", "at", "back", "be", "because", "been", "before", "being", "between",
+    "both", "but", "by", "can", "could", "did", "do", "does", "down", "during", "each", "either",
+    "ever", "few", "for", "from", "had", "has", "have", "he", "her", "here", "him", "his", "how",
+    "i", "if", "in", "into", "is", "it", "its", "just", "least", "less", "many", "may", "me",
+    "might", "more", "most", "much", "must", "my", "neither", "never", "no", "not", "now", "of",
+    "off", "on", "once", "only", "or", "other", "our", "out", "over", "own", "same", "she",
+    "should", "so", "some", "such", "than", "that", "the", "their", "them", "then", "there",
+    "these", "they", "this", "those", "through", "to", "too", "under", "up", "very", "was", "we",
+    "were", "what", "when", "where", "which", "while", "who", "will", "with", "would", "you",
+    "your",
+}
+_SENTENCE_STARTERS = {
+    "a", "an", "and", "as", "at", "because", "before", "but", "if", "i", "in", "it", "my", "no",
+    "nothing", "one", "our", "someone", "the", "there", "they", "this", "we", "when",
+}
+
+
 class OpeningSetupOption(BaseModel):
     id: str
     label: str
@@ -504,17 +535,20 @@ def _parse_ai_setup_answers(raw: str | None, allowed_ids: set[str]) -> dict[str,
     if not raw:
         return {}
     text = raw.strip()
-    start, end = text.find("{"), text.rfind("}")
-    if start < 0 or end <= start:
-        return {}
     try:
-        payload = json.loads(text[start:end + 1])
+        payload = json.loads(text)
     except Exception:
+        start, end = text.find("{"), text.rfind("}")
+        if start < 0 or end <= start:
+            return {}
+        try:
+            payload = json.loads(text[start:end + 1])
+        except Exception:
+            return {}
+    if not isinstance(payload, dict):
         return {}
     if isinstance(payload.get("answers"), dict):
         payload = payload["answers"]
-    if not isinstance(payload, dict):
-        return {}
     cleaned: dict[str, str] = {}
     for qid, value in payload.items():
         qid = str(qid)
@@ -526,6 +560,51 @@ def _parse_ai_setup_answers(raw: str | None, allowed_ids: set[str]) -> dict[str,
         if answer:
             cleaned[qid] = answer[:320]
     return cleaned
+
+
+def _is_grounded_ai_answer(
+    answer: str,
+    questionnaire: dict[str, Any],
+    character: dict[str, Any],
+) -> bool:
+    brief = questionnaire.get("campaign_brief") or {}
+    context_parts = [
+        brief.get("title"),
+        brief.get("location_name"),
+        *(brief.get("known_facts") or []),
+        *(brief.get("brief_paragraphs") or []),
+        _character_backstory_text(character),
+    ]
+    context = " ".join(str(part) for part in context_parts if part).casefold()
+    source = f"{context} {character.get('name') or ''}".casefold()
+    context_tokens = set(re.findall(r"[a-z0-9]+", context))
+    source_tokens = set(re.findall(r"[a-z0-9]+", source))
+    answer_tokens = set(re.findall(r"[a-z0-9]+", answer.casefold()))
+    if not (answer_tokens - _GROUNDING_STOP_WORDS).intersection(context_tokens):
+        return False
+
+    source_claim_tokens = {
+        token[:-1] if token.endswith("s") and len(token) > 3 else token
+        for token in source_tokens
+    }
+    for pattern in _PERSONAL_HISTORY_PATTERNS:
+        for claim in pattern.findall(answer):
+            claim_tokens = {
+                token[:-1] if token.endswith("s") and len(token) > 3 else token
+                for token in re.findall(r"[a-z0-9]+", claim.casefold())
+                if token not in _GROUNDING_STOP_WORDS and len(token) > 2
+            }
+            if not claim_tokens.issubset(source_claim_tokens):
+                return False
+
+    for match in re.finditer(r"\b[A-Z][a-z]{2,}\b", answer):
+        prefix = answer[:match.start()].rstrip()
+        token = match.group().casefold()
+        if (not prefix or prefix[-1] in ".!?") and token in _SENTENCE_STARTERS:
+            continue
+        if token not in source_tokens:
+            return False
+    return True
 
 
 def auto_generate_answers(
@@ -594,9 +673,14 @@ def auto_generate_answers(
         {
             "question_id": str(q.get("id")),
             "answer_source": "ai_choice",
-            "answer_text": generated.get(str(q.get("id"))) or _safe_auto_answer(q, questionnaire),
+            "answer_text": (
+                generated_answer
+                if generated_answer and _is_grounded_ai_answer(generated_answer, questionnaire, char)
+                else _safe_auto_answer(q, questionnaire)
+            ),
         }
         for q in questions
+        for generated_answer in [generated.get(str(q.get("id")))]
     ]
 
 

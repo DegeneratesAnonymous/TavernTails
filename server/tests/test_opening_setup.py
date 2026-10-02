@@ -328,6 +328,57 @@ def test_ai_setup_fallback_does_not_invent_personal_history(monkeypatch):
     assert "no one here has an assumed history" in blob
 
 
+def test_ai_setup_rejects_ungrounded_history_and_non_object_json(monkeypatch):
+    questionnaire = {
+        "campaign_brief": {
+            "title": "Ashes of the Fallen Throne",
+            "location_name": "Royal Crypt of Varyn",
+            "known_facts": ["The public funeral is underway.", "The dead king's signet was found in a rebel camp."],
+            "brief_paragraphs": [],
+        },
+        "questions": [
+            {
+                "id": "arrival_reason",
+                "question": "What brought you here?",
+                "options": [{"id": "debt", "value": "My sister is being pursued by debt collectors."}],
+            },
+            {
+                "id": "npc_connection",
+                "question": "Who do you know here?",
+                "options": [{"id": "friend", "value": "Captain Vell is an old friend."}],
+            },
+        ],
+    }
+    monkeypatch.setattr(
+        opening_setup_module,
+        "chat_complete",
+        lambda *args, **kwargs: json.dumps(
+            {
+                "arrival_reason": "I came because my sister is being pursued by debt collectors.",
+                "npc_connection": "I already trust Captain Vell, an old friend from the royal crypt.",
+            }
+        ),
+    )
+
+    answers = auto_generate_answers(questionnaire=questionnaire, character={"name": "Yungmin"})
+
+    assert answers[0]["answer_text"] == opening_setup_module._safe_auto_answer(
+        questionnaire["questions"][0], questionnaire
+    )
+    assert "sister" not in answers[0]["answer_text"].lower()
+    assert answers[1]["answer_text"] == opening_setup_module._safe_auto_answer(
+        questionnaire["questions"][1], questionnaire
+    )
+    assert "captain vell" not in answers[1]["answer_text"].lower()
+    assert opening_setup_module._is_grounded_ai_answer(
+        "I came because my sister is being pursued by debt collectors.",
+        questionnaire,
+        {"backstory": "My sister is being pursued by debt collectors."},
+    )
+    for malformed in ('[{"arrival_reason": "not an object root"}]', '"answer"', "7", "null"):
+        assert opening_setup_module._parse_ai_setup_answers(malformed, {"arrival_reason"}) == {}
+
+
 def test_skip_generates_anchor_and_party_questionnaire_includes_bond():
     client = _client()
     owner = "opening-party@example.com"
