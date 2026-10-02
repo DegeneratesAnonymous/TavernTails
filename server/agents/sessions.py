@@ -44,6 +44,7 @@ from .scene_qa import apply_targeted_scene_repairs, load_recent_opening_shapes, 
 from .opening_setup import (
     answers_to_anchor,
     auto_generate_anchor,
+    auto_generate_answers,
     build_opening_scene_contract,
     generate_questionnaire,
     validate_first_scene_contract,
@@ -1772,23 +1773,24 @@ def skip_opening_setup(session_id: str, payload: OpeningSetupSkip | None = None,
         questionnaire.get("campaign_brief") or setup.get("campaign_brief") or {},
         (payload.character_hook_override if payload else ""),
     )
+    generated_answers = auto_generate_answers(
+        questionnaire=questionnaire,
+        character=character,
+    )
     anchor = auto_generate_anchor(
         session_id=session_id,
         campaign_id=str(meta.get("campaign_id") or ""),
         questionnaire=questionnaire,
         character=character,
         character_hook_override=(payload.character_hook_override if payload else "") or "",
+        answers=generated_answers,
     )
     bridge_answers = _normalized_bridge_answers(
         session_id=session_id,
         campaign_id=str(meta.get("campaign_id") or ""),
         character=character,
         questionnaire=questionnaire,
-        answers=[
-            {"question_id": q.get("id"), "option_id": "ai_choose", "answer_source": "ai_choice"}
-            for q in (questionnaire.get("questions") or [])
-            if q.get("id")
-        ],
+        answers=generated_answers,
     )
     setup.update({
         "required": bool(setup.get("required", True)),
