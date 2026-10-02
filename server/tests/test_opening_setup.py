@@ -7,8 +7,10 @@ from fastapi.testclient import TestClient
 
 import server.main as main
 from server import db
+from server.agents import opening_setup as opening_setup_module
 from server.agents import sessions as sessions_module
 from server.agents.opening_setup import (
+    auto_generate_answers,
     build_campaign_brief,
     build_opening_scene_contract,
     generate_provisional_character_anchor,
@@ -232,6 +234,98 @@ def test_provisional_character_anchor_naturalizes_class_and_validates_brief():
     assert "guild factions" in brief_blob
     assert "as a warlock" not in brief_blob
     assert "before the truth is public" not in brief_blob
+
+
+def test_ai_setup_builds_one_coherent_answer_set_instead_of_picking_first_options(monkeypatch):
+    questionnaire = {
+        "campaign_brief": {
+            "title": "Ashes of the Fallen Throne",
+            "location_name": "Royal Crypt of Varyn",
+            "known_facts": [
+                "The dead king's signet was found in a rebel camp.",
+                "The public funeral is already underway.",
+            ],
+            "brief_paragraphs": [
+                "The succession is disputed after the dead king's signet surfaced in a rebel camp.",
+            ],
+        },
+        "questions": [
+            {
+                "id": "arrival_reason",
+                "question": "What brought Yungmin here?",
+                "options": [
+                    {"id": "study", "value": "Study an urn before it is hidden"},
+                    {"id": "escort", "value": "Escort someone through the crypt"},
+                ],
+            },
+            {
+                "id": "personal_stake",
+                "question": "Why does this matter?",
+                "options": [
+                    {"id": "person", "value": "Someone I care about could be exposed"},
+                ],
+            },
+            {
+                "id": "followed_complication",
+                "question": "What followed you here?",
+                "options": [
+                    {"id": "debt", "value": "A debt collector is close behind"},
+                ],
+            },
+        ],
+    }
+    generated = {
+        "arrival_reason": "I came to see whether the signet displayed at the funeral matches the one found in the rebel camp.",
+        "personal_stake": "If the signet is genuine, choosing a side before I understand it could help crown the wrong claimant.",
+        "followed_complication": "Nothing followed me here; the disputed signet is the problem I am dealing with.",
+    }
+    monkeypatch.setattr(
+        opening_setup_module,
+        "chat_complete",
+        lambda *args, **kwargs: json.dumps(generated),
+    )
+
+    answers = auto_generate_answers(
+        questionnaire=questionnaire,
+        character={"name": "Yungmin", "class_name": "Wizard", "sheet": {}},
+    )
+
+    assert {answer["question_id"]: answer["answer_text"] for answer in answers} == generated
+    assert all(answer["answer_source"] == "ai_choice" for answer in answers)
+    blob = json.dumps(answers).lower()
+    assert "debt collector" not in blob
+    assert "someone i care about" not in blob
+
+
+def test_ai_setup_fallback_does_not_invent_personal_history(monkeypatch):
+    questionnaire = {
+        "campaign_brief": {
+            "title": "Ashes of the Fallen Throne",
+            "location_name": "Royal Crypt of Varyn",
+            "known_facts": [
+                "The succession is disputed.",
+                "The dead king's signet is the clearest physical evidence.",
+            ],
+            "brief_paragraphs": [],
+        },
+        "questions": [
+            {"id": "arrival_reason", "question": "Why are you here?", "options": [{"id": "debt", "value": "Repay an old debt"}]},
+            {"id": "personal_stake", "question": "Why care?", "options": [{"id": "family", "value": "Protect my sister"}]},
+            {"id": "followed_complication", "question": "What followed?", "options": [{"id": "rival", "value": "A rival followed me"}]},
+            {"id": "npc_connection", "question": "Who do you know?", "options": [{"id": "friend", "value": "The regent once helped me"}]},
+        ],
+    }
+    monkeypatch.setattr(opening_setup_module, "chat_complete", lambda *args, **kwargs: None)
+
+    answers = auto_generate_answers(questionnaire=questionnaire, character={"name": "Yungmin"})
+    blob = json.dumps(answers).lower()
+
+    assert len(answers) == 4
+    assert all(answer["answer_source"] == "ai_choice" for answer in answers)
+    for unsupported in ("old debt", "my sister", "a rival followed", "once helped me"):
+        assert unsupported not in blob
+    assert "no extra complication" in blob
+    assert "no one here has an assumed history" in blob
 
 
 def test_skip_generates_anchor_and_party_questionnaire_includes_bond():
