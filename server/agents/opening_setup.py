@@ -2,11 +2,44 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
-import uuid
 from typing import Any
 
 from pydantic import BaseModel, Field
+
+from ..steward_llm import chat_complete
+
+
+_PERSONAL_HISTORY_PATTERNS = (
+    re.compile(
+        r"\b(?:my|our)\s+(?:mother|father|sister|brother|parent|child|son|daughter|spouse|partner|friend|mentor|rival|ally|enemy|acquaintance)\b",
+        re.I,
+    ),
+    re.compile(
+        r"\b(?:i|we)\s+(?:already\s+)?(?:owe|owed|paid|repay|repaid|trust|distrust|know|knew|met|worked with|grew up with|was raised by|once helped|saved|betrayed|promised)\b[^.!?]{0,100}",
+        re.I,
+    ),
+    re.compile(r"\b(?:someone|somebody|a person)\s+(?:i|we)\s+(?:care about|love|miss)\b", re.I),
+    re.compile(r"\b(?:debt collector|old debt|former friend|old friend|old rival|old ally|old enemy)\b", re.I),
+)
+_GROUNDING_STOP_WORDS = {
+    "a", "about", "above", "after", "again", "against", "all", "also", "am", "an", "and", "any",
+    "are", "around", "as", "at", "back", "be", "because", "been", "before", "being", "between",
+    "both", "but", "by", "can", "could", "did", "do", "does", "down", "during", "each", "either",
+    "ever", "few", "for", "from", "had", "has", "have", "he", "her", "here", "him", "his", "how",
+    "i", "if", "in", "into", "is", "it", "its", "just", "least", "less", "many", "may", "me",
+    "might", "more", "most", "much", "must", "my", "neither", "never", "no", "not", "now", "of",
+    "off", "on", "once", "only", "or", "other", "our", "out", "over", "own", "same", "she",
+    "should", "so", "some", "such", "than", "that", "the", "their", "them", "then", "there",
+    "these", "they", "this", "those", "through", "to", "too", "under", "up", "very", "was", "we",
+    "were", "what", "when", "where", "which", "while", "who", "will", "with", "would", "you",
+    "your",
+}
+_SENTENCE_STARTERS = {
+    "a", "an", "and", "as", "at", "because", "before", "but", "if", "i", "in", "it", "my", "no",
+    "nothing", "one", "our", "someone", "the", "there", "they", "this", "we", "when",
+}
 
 
 class OpeningSetupOption(BaseModel):
@@ -279,13 +312,29 @@ def generate_provisional_character_anchor(
     institution_subject = _institution_subject(institution)
     class_flavor = _class_flavor_translation(name, class_name, object_name)
     backstory = _character_backstory_text(char)
+    # Provisional anchors must not manufacture character history.  These values
+    # are shown to the player before they have approved the opening, so an
+    # "old debt", prior loss, secret obligation, or hearsay connection becomes
+    # accidental canon.  Keep the provisional hook observable and reversible.
     if backstory:
-        reason = f"{name} has already lost enough to know the {object_name} cannot be treated as local gossip."
-        tension = f"{name} keeps one personal obligation private while weighing what the trouble at {location} might expose."
+        reason = (
+            f"{name}'s established background gives them a reason to pay attention to the "
+            f"{object_name}, but the campaign has not yet decided what personal history connects them to it."
+        )
+        tension = (
+            f"{name} can decide at {location} whether the {object_name} is personally important "
+            f"or simply the clearest sign that something is wrong."
+        )
     else:
         reason = _character_reason_to_care(name, class_name, object_name, location)
-        tension = f"{name} does not yet know whether helping {institution_subject} will settle an old debt or deepen it."
-    connection = f"{name} has heard that {institution_subject} is tied to the first dispute, and the {object_name} is the part no one can explain cleanly."
+        tension = (
+            f"{name} has no assumed debt or secret connection to {institution_subject}; "
+            f"their reason for becoming involved is still the player's choice."
+        )
+    connection = (
+        f"No prior relationship with {institution_subject} is assumed. "
+        f"The {object_name} is the first concrete reason for {name} to pay attention."
+    )
     return ProvisionalCharacterAnchor(
         public_identity=public_role,
         private_tension=_trim_sentence(tension),
@@ -458,6 +507,183 @@ def answers_to_anchor(
     return data
 
 
+def _safe_auto_answer(question: dict[str, Any], questionnaire: dict[str, Any]) -> str:
+    """Return a conservative setup answer when no LLM is available.
+
+    The fallback deliberately avoids inventing prior relationships, debts,
+    trauma, hidden obligations, or off-screen events.  It should connect the
+    character to what is visibly happening now, not manufacture a backstory.
+    """
+    qid = str(question.get("id") or "")
+    brief = questionnaire.get("campaign_brief") or {}
+    location = str(brief.get("location_name") or "this place").strip() or "this place"
+    facts = [str(f).strip() for f in (brief.get("known_facts") or []) if str(f).strip()]
+    concrete_fact = facts[1] if len(facts) > 1 else (facts[0] if facts else "something here is clearly wrong")
+
+    fallbacks = {
+        "arrival_reason": f"I came to understand what is happening at {location} before committing to a side.",
+        "personal_stake": f"If {concrete_fact[0].lower() + concrete_fact[1:] if concrete_fact else 'this problem is real'}, I want enough facts to choose what to do about it.",
+        "followed_complication": "No extra complication followed me here; the problem in front of me is enough.",
+        "fear_of_loss": "I do not want the clearest evidence or the chance to act on it to disappear.",
+        "npc_connection": "No one here has an assumed history with me; I will judge them by what they do now.",
+        "party_bond": "We agreed to face the immediate problem together until we understand what is actually happening.",
+    }
+    return fallbacks.get(qid, f"I will respond to the concrete situation at {location} without assuming facts that have not been established.")
+
+
+def _parse_ai_setup_answers(raw: str | None, allowed_ids: set[str]) -> dict[str, str]:
+    if not raw:
+        return {}
+    text = raw.strip()
+    try:
+        payload = json.loads(text)
+    except Exception:
+        start, end = text.find("{"), text.rfind("}")
+        if start < 0 or end <= start:
+            return {}
+        try:
+            payload = json.loads(text[start:end + 1])
+        except Exception:
+            return {}
+    if not isinstance(payload, dict):
+        return {}
+    if isinstance(payload.get("answers"), dict):
+        payload = payload["answers"]
+    cleaned: dict[str, str] = {}
+    for qid, value in payload.items():
+        qid = str(qid)
+        if qid not in allowed_ids:
+            continue
+        if isinstance(value, dict):
+            value = value.get("answer_text") or value.get("value") or ""
+        answer = " ".join(str(value or "").split()).strip()
+        if answer:
+            cleaned[qid] = answer[:320]
+    return cleaned
+
+
+def _is_grounded_ai_answer(
+    answer: str,
+    questionnaire: dict[str, Any],
+    character: dict[str, Any],
+) -> bool:
+    brief = questionnaire.get("campaign_brief") or {}
+    context_parts = [
+        brief.get("title"),
+        brief.get("location_name"),
+        *(brief.get("known_facts") or []),
+        *(brief.get("brief_paragraphs") or []),
+        _character_backstory_text(character),
+    ]
+    context = " ".join(str(part) for part in context_parts if part).casefold()
+    source = f"{context} {character.get('name') or ''}".casefold()
+    context_tokens = set(re.findall(r"[a-z0-9]+", context))
+    source_tokens = set(re.findall(r"[a-z0-9]+", source))
+    answer_tokens = set(re.findall(r"[a-z0-9]+", answer.casefold()))
+    if not (answer_tokens - _GROUNDING_STOP_WORDS).intersection(context_tokens):
+        return False
+
+    source_claim_tokens = {
+        token[:-1] if token.endswith("s") and len(token) > 3 else token
+        for token in source_tokens
+    }
+    for pattern in _PERSONAL_HISTORY_PATTERNS:
+        for claim in pattern.findall(answer):
+            claim_tokens = {
+                token[:-1] if token.endswith("s") and len(token) > 3 else token
+                for token in re.findall(r"[a-z0-9]+", claim.casefold())
+                if token not in _GROUNDING_STOP_WORDS and len(token) > 2
+            }
+            if not claim_tokens.issubset(source_claim_tokens):
+                return False
+
+    for match in re.finditer(r"\b[A-Z][a-z]{2,}\b", answer):
+        prefix = answer[:match.start()].rstrip()
+        token = match.group().casefold()
+        if (not prefix or prefix[-1] in ".!?") and token in _SENTENCE_STARTERS:
+            continue
+        if token not in source_tokens:
+            return False
+    return True
+
+
+def auto_generate_answers(
+    *,
+    questionnaire: dict[str, Any],
+    character: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Generate one coherent set of opening answers.
+
+    "Let AI build my setup" used to mean "pick option zero for every
+    question."  That created unrelated debts, fears, NPC histories, and motives
+    that merely happened to be first in their lists.  Generate the set as a
+    whole so the answers share one motive and remain grounded in approved facts.
+    """
+    questions = [q for q in (questionnaire.get("questions") or []) if q.get("id")]
+    if not questions:
+        return []
+
+    char = character or {}
+    allowed_ids = {str(q.get("id")) for q in questions}
+    brief = questionnaire.get("campaign_brief") or {}
+    prompt_payload = {
+        "campaign_brief": {
+            "title": brief.get("title"),
+            "location_name": brief.get("location_name"),
+            "known_facts": brief.get("known_facts") or [],
+            "brief_paragraphs": brief.get("brief_paragraphs") or [],
+        },
+        "character": {
+            "name": char.get("name") or "the party",
+            "class_name": char.get("class_name") or "",
+            "backstory": _character_backstory_text(char)[:1200],
+        },
+        "questions": [
+            {
+                "id": q.get("id"),
+                "question": q.get("question"),
+                "options": [
+                    str(opt.get("value") or opt.get("label") or "")
+                    for opt in (q.get("options") or [])
+                    if opt.get("id") != "ai_choose"
+                ],
+            }
+            for q in questions
+        ],
+    }
+    system = (
+        "Build one coherent tabletop campaign opening setup from the supplied facts. "
+        "Return ONLY a JSON object whose keys are the supplied question ids and whose values are short first-person answers. "
+        "Treat campaign_brief facts and explicit character backstory as canon. "
+        "Do not invent prior relationships, relatives, debts, trauma, secret obligations, previous encounters, named organizations, "
+        "or knowledge the character was never given. Do not force every offered option into the setup. "
+        "All answers must support one understandable reason for being present and must make sense together. "
+        "Prefer an observable present-tense motive over invented history. If the source does not establish a personal connection, say so."
+    )
+    raw = chat_complete(
+        [{"role": "system", "content": system}, {"role": "user", "content": json.dumps(prompt_payload, ensure_ascii=False)}],
+        task_scope="taverntails_setup",
+        max_tokens=500,
+        temperature=0.35,
+        timeout=60.0,
+    )
+    generated = _parse_ai_setup_answers(raw, allowed_ids)
+
+    return [
+        {
+            "question_id": str(q.get("id")),
+            "answer_source": "ai_choice",
+            "answer_text": (
+                generated_answer
+                if generated_answer and _is_grounded_ai_answer(generated_answer, questionnaire, char)
+                else _safe_auto_answer(q, questionnaire)
+            ),
+        }
+        for q in questions
+        for generated_answer in [generated.get(str(q.get("id")))]
+    ]
+
+
 def auto_generate_anchor(
     *,
     session_id: str,
@@ -465,18 +691,18 @@ def auto_generate_anchor(
     questionnaire: dict[str, Any],
     character: dict[str, Any] | None = None,
     character_hook_override: str = "",
+    answers: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    answers = []
-    for q in questionnaire.get("questions", []):
-        options = [opt for opt in (q.get("options") or []) if opt.get("id") != "ai_choose"]
-        if options:
-            answers.append({"question_id": q.get("id"), "option_id": options[0].get("id")})
+    generated_answers = answers if answers is not None else auto_generate_answers(
+        questionnaire=questionnaire,
+        character=character,
+    )
     return answers_to_anchor(
         session_id=session_id,
         campaign_id=campaign_id,
         character=character,
         questionnaire=questionnaire,
-        answers=answers,
+        answers=generated_answers,
         source="auto_generated",
         character_hook_override=character_hook_override,
     )
@@ -792,46 +1018,51 @@ def _class_role_label(class_name: str) -> str:
 
 
 def _class_flavor_translation(name: str, class_name: str, object_name: str) -> str:
+    """Translate a class into an investigative lens, never into new world facts.
+
+    A character class tells us how a player *might approach* evidence. It does
+    not prove that an object is magical, cursed, illegal, familiar, tied to a
+    patron, or governed by some invented body of lore.
+    """
     lowered = class_name.lower()
     if "paladin" in lowered and "warlock" in lowered:
-        return f"{name} recognizes two kinds of power around the {object_name}: the lawful pull of an oath, and the colder pressure of a pact that answers when prayer goes too long."
+        return f"{name} can examine the {object_name} through both oath and pact, but neither establishes what the object means or who is responsible."
     if "paladin" in lowered:
-        return f"{name} feels a vow tighten around the {object_name}, the kind of sacred unease that turns judgment into duty."
+        return f"{name}'s experience with oaths may shape which promises and claims they question around the {object_name}; it does not establish that an oath was broken."
     if "warlock" in lowered:
-        return f"{name} feels the {object_name} answer with a private pressure, like a debt being named by something just out of sight."
+        return f"{name}'s pact may shape the questions they ask about the {object_name}, but no supernatural connection to it is assumed."
     if "wizard" in lowered:
-        return f"{name} notices the old formulae around the {object_name} do not agree with the story being told aloud."
+        return f"{name}'s training makes careful inspection of the {object_name} a natural approach, but no prior formula, law, or magical property is assumed."
     if "rogue" in lowered:
-        return f"{name} reads the tells around the {object_name}: blocked exits, careful hands, and lies rehearsed too cleanly."
+        return f"{name}'s experience with deception and access makes provenance, handling, exits, and opportunity useful questions around the {object_name}."
     if "ranger" in lowered:
-        return f"{name} notices the unnatural quiet around the {object_name}, where tracks, weather, and crowd movement should make more sense."
+        return f"{name}'s fieldcraft makes tracks, weather, movement, and physical disturbance useful things to inspect around the {object_name}."
     if "cleric" in lowered:
-        return f"{name} senses a rite around the {object_name} has been bent away from blessing and toward accusation."
+        return f"{name}'s religious experience may help them ask informed questions about any rites or claims involving the {object_name}, without assuming one occurred."
     if "fighter" in lowered:
-        return f"{name} reads the threat around the {object_name} in stance, spacing, and the way weapons are kept too close."
-    return f"{name} recognizes enough about the {object_name} to know the visible problem is only the first edge of it."
+        return f"{name}'s practical experience makes crowd position, weapons, and immediate danger useful things to watch while the {object_name} is examined."
+    return f"{name} can investigate the {object_name} using their established skills without assuming knowledge the campaign has not provided."
 
 
 def _character_reason_to_care(name: str, class_name: str, object_name: str, location: str) -> str:
     lowered = class_name.lower()
     if "paladin" in lowered and "warlock" in lowered:
-        return f"{name}'s oath demands judgment over the {object_name}, while the pact behind it whispers that {location} is hiding a debt older than the public vote."
+        return f"{name} has a useful perspective on promises and bargains around the {object_name}, but the player still decides whether oath, pact, or simple curiosity makes this personal."
     if "paladin" in lowered:
-        return f"{name}'s vows make the {object_name} impossible to ignore: someone has bent sworn law in a place where judgment still matters."
+        return f"{name} may choose to care about the claims surrounding the {object_name} because promises and accountability matter to them; no broken vow is assumed."
     if "warlock" in lowered:
-        return f"{name}'s patron stirs at the {object_name}, naming it as payment, warning, or bait before anyone else hears the bargain."
+        return f"{name} may choose to examine the {object_name} through the lens of their pact, but the campaign does not assume their patron knows or wants anything about it."
     if "wizard" in lowered:
-        return f"{name} recognizes an impossible pattern in the {object_name}, the kind of formula that should not survive outside a sealed archive."
+        return f"{name} has the training to inspect the {object_name} carefully, but no special prior knowledge of its material, history, or rules is assumed."
     if "rogue" in lowered:
-        return f"{name} recognizes the hand behind the {object_name}: someone moved it through blind corners, paid silence, and planned exits."
+        return f"{name} has useful skills for asking who handled the {object_name}, how it moved, and who had access, without assuming a culprit."
     if "ranger" in lowered:
-        return f"{name} reads the ground around the {object_name} and sees a trail that should continue but stops where nature would never stop it."
+        return f"{name} has useful skills for examining the physical trail around the {object_name}, without assuming what that trail will prove."
     if "cleric" in lowered:
-        return f"{name} feels a rite curdled around the {object_name}, turning a blessing into an accusation that cannot be left unanswered."
+        return f"{name} can evaluate religious claims around the {object_name} if they arise, but no rite, blessing, or corruption is assumed."
     if "fighter" in lowered:
-        return f"{name} reads the crowd around the {object_name} like a battlefield: the dangerous people are already choosing positions."
-    return f"{name} has seen enough trouble to know the {object_name} at {location} will name a victim before it names a culprit."
-
+        return f"{name} can read immediate physical danger around the {object_name} while the facts are still uncertain."
+    return f"{name} has a reason to look closely at the {object_name} at {location}, while the exact personal stake remains the player's choice."
 
 def _concrete_object(seed: dict[str, Any], contract: dict[str, Any], fallback: str) -> str:
     object_name = _opening_object_name(seed)
@@ -1101,8 +1332,8 @@ def _opening_pressure(required: dict[str, Any], npc_name: str) -> str:
     if "road" in lower or "pass" in lower or "close" in lower:
         return f"By dusk, the pass wardens will close the road and {npc_name} will lose the only cooperative witness."
     if "harbor" in lower or "envoy" in lower:
-        return f"When the tide turns, the harbor watch will seal the quay and the clearest lead will be moved."
-    return f"Before the next bell, someone here will leave with the clearest lead."
+        return "When the tide turns, the harbor watch will seal the quay and the clearest lead will be moved."
+    return "Before the next bell, someone here will leave with the clearest lead."
 
 
 def _opening_action_options(npc_name: str, object_name: str, location: str, visible_problem: str) -> list[str]:
