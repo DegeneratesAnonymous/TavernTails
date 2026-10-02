@@ -279,13 +279,29 @@ def generate_provisional_character_anchor(
     institution_subject = _institution_subject(institution)
     class_flavor = _class_flavor_translation(name, class_name, object_name)
     backstory = _character_backstory_text(char)
+    # Provisional anchors must not manufacture character history.  These values
+    # are shown to the player before they have approved the opening, so an
+    # "old debt", prior loss, secret obligation, or hearsay connection becomes
+    # accidental canon.  Keep the provisional hook observable and reversible.
     if backstory:
-        reason = f"{name} has already lost enough to know the {object_name} cannot be treated as local gossip."
-        tension = f"{name} keeps one personal obligation private while weighing what the trouble at {location} might expose."
+        reason = (
+            f"{name}'s established background gives them a reason to pay attention to the "
+            f"{object_name}, but the campaign has not yet decided what personal history connects them to it."
+        )
+        tension = (
+            f"{name} can decide at {location} whether the {object_name} is personally important "
+            f"or simply the clearest sign that something is wrong."
+        )
     else:
         reason = _character_reason_to_care(name, class_name, object_name, location)
-        tension = f"{name} does not yet know whether helping {institution_subject} will settle an old debt or deepen it."
-    connection = f"{name} has heard that {institution_subject} is tied to the first dispute, and the {object_name} is the part no one can explain cleanly."
+        tension = (
+            f"{name} has no assumed debt or secret connection to {institution_subject}; "
+            f"their reason for becoming involved is still the player's choice."
+        )
+    connection = (
+        f"No prior relationship with {institution_subject} is assumed. "
+        f"The {object_name} is the first concrete reason for {name} to pay attention."
+    )
     return ProvisionalCharacterAnchor(
         public_identity=public_role,
         private_tension=_trim_sentence(tension),
