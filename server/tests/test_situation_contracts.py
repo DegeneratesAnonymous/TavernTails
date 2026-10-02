@@ -481,6 +481,35 @@ class TestStarterSeedGenerator:
         locations = {generate_starter_seed(seed=i)["starting_location"] for i in range(6)}
         assert len(locations) > 1
 
+    def test_single_generic_keyword_does_not_replace_premise_with_canned_template(self):
+        seed = generate_starter_seed(
+            campaign_settings={
+                "genre": "fantasy",
+                "setting_summary": (
+                    "A royal election is thrown into doubt when a relic from the dead queen "
+                    "appears during her funeral."
+                ),
+            },
+            seed=4,
+        )
+        assert seed["starting_location"] != "The Cinder Vote Hall"
+        assert "guild" not in seed.get("immediate_problem", "").lower()
+        assert "volcan" not in " ".join(str(v) for v in seed.values()).lower()
+
+    def test_canned_template_requires_its_theme_anchor(self):
+        seed = generate_starter_seed(
+            campaign_settings={
+                "genre": "fantasy",
+                "setting_summary": (
+                    "At a volcano parliament, an ash guild election is halted when a relic "
+                    "seal appears inside the ballot count."
+                ),
+            },
+            seed=4,
+        )
+        assert seed["starting_location"] == "The Cinder Vote Hall"
+        assert seed["generated_by"] == "premise_seed"
+
 
 # ---------------------------------------------------------------------------
 # Content Bundle Builder
