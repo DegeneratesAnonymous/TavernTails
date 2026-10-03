@@ -20,6 +20,7 @@ const LoginSignupAgent: React.FC<Props> = ({ initialMode = 'login' }) => {
   const [errorType, setErrorType] = useState<'error' | 'info'>('error');
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [autoLoginLoading, setAutoLoginLoading] = useState(() => Boolean(localStorage.getItem('access_token')));
   const [verificationToken, setVerificationToken] = useState('');
   const [unverifiedEmail, setUnverifiedEmail] = useState('');
 
@@ -46,7 +47,10 @@ const LoginSignupAgent: React.FC<Props> = ({ initialMode = 'login' }) => {
   React.useEffect(() => {
     if (profile) return;
     const token = localStorage.getItem('access_token');
-    if (!token) return;
+    if (!token) {
+      setAutoLoginLoading(false);
+      return;
+    }
     let canceled = false;
     const headers: any = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
     fetch(buildApiUrl('/player/me'), { headers })
@@ -63,6 +67,9 @@ const LoginSignupAgent: React.FC<Props> = ({ initialMode = 'login' }) => {
       .catch(() => {
         if (canceled) return;
         localStorage.removeItem('access_token');
+      })
+      .finally(() => {
+        if (!canceled) setAutoLoginLoading(false);
       });
     return () => {
       canceled = true;
@@ -249,6 +256,7 @@ const LoginSignupAgent: React.FC<Props> = ({ initialMode = 'login' }) => {
     localStorage.removeItem('access_token');
     localStorage.removeItem('user_email')
     localStorage.removeItem('user_username')
+    localStorage.removeItem('tt:view')
     setProfile(null);
     setLoginEmail('');
     setLoginPassword('');
@@ -259,6 +267,14 @@ const LoginSignupAgent: React.FC<Props> = ({ initialMode = 'login' }) => {
     setUnverifiedEmail('');
     setVerificationToken('');
   };
+
+  if (autoLoginLoading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <HamsterWheel />
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: '100vh' }}>

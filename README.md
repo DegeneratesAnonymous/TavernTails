@@ -138,6 +138,8 @@ cp server/.env.example server/.env
 
 **📚 For detailed setup instructions, troubleshooting, and development workflows, see [docs/LOCAL_DEV.md](docs/LOCAL_DEV.md)**
 
+**🧭 For a maintainer map of the codebase, key files, event flow, and tuning knobs, see [docs/CODEBASE_GUIDE.md](docs/CODEBASE_GUIDE.md).**
+
 ### Alternative: Manual Start
 
 #### Frontend

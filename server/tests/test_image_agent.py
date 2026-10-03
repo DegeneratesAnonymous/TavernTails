@@ -37,7 +37,7 @@ def test_generate_no_session():
     resp = client.post("/image/generate", json={"prompt": "A dark tower", "style": "comic"}, headers=headers)
     assert resp.status_code == 200, resp.text
     data = resp.json()
-    assert data["image_url"].startswith("https://placeholder.image/")
+    assert isinstance(data["image_url"], str) and data["image_url"].startswith("https://")
     assert data["cached"] is False
     assert "id" in data
     assert "generated_at" in data

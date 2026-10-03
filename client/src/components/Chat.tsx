@@ -34,10 +34,15 @@ type Props = {
   sessionId?: string | null
   variant?: 'full' | 'dock'
   aboveComposer?: React.ReactNode
+  promptLabel?: string
   currentUserId?: number | null
   composerInject?: string | null
   onComposerInjectConsumed?: () => void
   character?: CharacterSummary | null
+  compactLog?: boolean
+  onExpandLog?: () => void
+  onMessageSent?: () => void
+  showSystemTab?: boolean
 }
 
 // Resolve @tag to a roll result string. Returns original match if no roll needed.
@@ -126,7 +131,11 @@ const ADVANCED_TOOLS: AdvancedTool[] = [
 
 const ADVANCED_TOOLS_FOR_PANEL = ADVANCED_TOOLS.map((t) => ({ id: t.id, label: t.label, description: t.description }))
 
-export default function Chat({sessionId, variant = 'full', aboveComposer, currentUserId, composerInject, onComposerInjectConsumed, character}: Props){
+type ChatFilter = 'all' | 'story' | 'player' | 'dice' | 'system'
+
+export default function Chat({sessionId, variant = 'full', aboveComposer, promptLabel, currentUserId, composerInject, onComposerInjectConsumed, character, compactLog = false, onExpandLog, onMessageSent, showSystemTab = false}: Props){
+  // Chat owns both persisted messages and local-only status/tool messages.
+  // The dock variant hides heavy tools so GameplayLayout can use it as a log.
   const [messages, setMessages] = useState<Msg[]>([])
   const [pinnedMessages, setPinnedMessages] = useState<Msg[]>([])
   const [value, setValue] = useState('')
@@ -137,6 +146,7 @@ export default function Chat({sessionId, variant = 'full', aboveComposer, curren
   const [showInviteForm, setShowInviteForm] = useState(false)
   const [showToolsPanel, setShowToolsPanel] = useState(false)
   const [showImageGallery, setShowImageGallery] = useState(false)
+  const [activeFilter, setActiveFilter] = useState<ChatFilter>('all')
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteNote, setInviteNote] = useState('')
   const [inviteBusy, setInviteBusy] = useState(false)
@@ -192,6 +202,55 @@ export default function Chat({sessionId, variant = 'full', aboveComposer, curren
   },[appendMessage])
 
   useEffect(()=>{
+    const handler = (event: Event) => {
+      const data = (event as CustomEvent).detail || {}
+      if(data.source !== 'tray') return
+      const res = data?.result || data
+      if(!res) return
+      const expression = res.expression || data.expression || 'Roll'
+      const total = res.total ?? data.total
+      if(total === undefined || total === null) return
+      const actor = data.characterName || character?.name || data.by || res.by || 'Character'
+      const attempted = String(data.skill || data.attemptedAction || data.reason || res.reason || expression || 'Roll')
+        .replace(/\bcheck\b/ig, '')
+        .replace(/^for:\s*/i, '')
+        .trim() || 'Roll'
+      const breakdown = Array.isArray(res.rolls) && res.rolls.length ? res.rolls.join(' + ') : ''
+      const modText = res.mod ? (res.mod > 0 ? ` + ${res.mod}` : ` - ${Math.abs(res.mod)}`) : ''
+      const detail = `${breakdown}${modText}`.trim()
+      const outcome = typeof data.success === 'boolean'
+        ? (data.success ? 'Succeeded' : 'Failed')
+        : (typeof data.dc === 'number' && Number.isFinite(Number(total))
+          ? (Number(total) >= data.dc ? 'Succeeded' : 'Failed')
+          : '')
+      const detailText = detail ? ` (${detail} = ${total})` : ''
+      const outcomeText = outcome ? ` - ${outcome}` : ''
+      appendMessage({
+        id:`event-roll-${Date.now()}`,
+        who:'system',
+        text:`${actor} rolled ${attempted}: ${total}${detailText}${outcomeText}`,
+      })
+    }
+    window.addEventListener('rolls:result', handler)
+    return ()=>window.removeEventListener('rolls:result', handler)
+  },[appendMessage, character?.name])
+
+  useEffect(()=>{
+    const handler = (event: Event) => {
+      const data = (event as CustomEvent).detail || {}
+      const text = String(data.text || '').trim()
+      if(!text) return
+      appendMessage({
+        id: data.id || `private-${Date.now()}`,
+        who: data.who || 'system',
+        text,
+      })
+    }
+    window.addEventListener('chat:private-note', handler)
+    return ()=>window.removeEventListener('chat:private-note', handler)
+  }, [appendMessage])
+
+  useEffect(()=>{
     if(!sessionId){
       setMessages([])
       setPinnedMessages([])
@@ -206,7 +265,14 @@ export default function Chat({sessionId, variant = 'full', aboveComposer, curren
           apiFetch(`/chat?session_id=${sessionId}`),
           apiFetch(`/chat/pinned?session_id=${sessionId}`),
         ])
-        if(!chatRes.ok) throw new Error('Failed to load chat log')
+        if(!chatRes.ok) {
+          // 404 = new session with no messages yet — show empty state, not an error
+          if(chatRes.status === 404) {
+            if(!canceled) setMessages([])
+            return
+          }
+          throw new Error('Failed to load chat log')
+        }
         const data = await chatRes.json()
         const pinnedIds: Set<number> = new Set()
         if(pinnedRes.ok){
@@ -262,6 +328,15 @@ export default function Chat({sessionId, variant = 'full', aboveComposer, curren
     return ()=>clearTimeout(timer)
   },[toolbarMessage])
 
+  useEffect(()=>{
+    const handler = (e: Event) => {
+      const action = (e as CustomEvent).detail?.action
+      if(typeof action === 'string' && action.trim()) setValue(action.trim())
+    }
+    window.addEventListener('narrative:suggest-action', handler)
+    return ()=>window.removeEventListener('narrative:suggest-action', handler)
+  }, [])
+
   async function sendToBackend(text: string){
     if(!sessionId){
       appendMessage({id:`warn-${Date.now()}`,who:'system',text:'Create or load a session to send messages.'})
@@ -279,6 +354,7 @@ export default function Chat({sessionId, variant = 'full', aboveComposer, curren
       const saved = await res.json()
       appendMessage({ id: saved.id, who:'you', text:saved.message, createdAt:saved.created_at, mentions: saved.mentions || [], senderId: saved.sender_id ?? null })
       notifyMentions(saved.mentions)
+      onMessageSent?.()
     }catch(err:any){
       const msg = err?.message || 'Unable to send message'
       if(variant === 'dock'){
@@ -307,8 +383,13 @@ export default function Chat({sessionId, variant = 'full', aboveComposer, curren
       }
       const data = await res.json()
       const result = data?.result
-      const summary = result ? `${result.expression} → ${result.rolls?.join(' + ')} ${result.mod ? (result.mod>0?`+ ${result.mod}`:`- ${Math.abs(result.mod)}`) : ''} = ${result.total}` : `Roll complete (${expr})`
+      const actor = character?.name || 'Character'
+      const breakdown = result?.rolls?.length ? `${result.rolls.join(' + ')}${result.mod ? (result.mod>0?` + ${result.mod}`:` - ${Math.abs(result.mod)}`) : ''}` : ''
+      const summary = result
+        ? `${actor} rolled ${result.expression || normalized}: ${result.total}${breakdown ? ` (${breakdown} = ${result.total})` : ''}`
+        : `${actor} rolled ${normalized}: complete`
       appendMessage({id:`roll-${Date.now()}`,who:'system',text:summary})
+      onMessageSent?.()
     }catch(err:any){
       appendMessage({id:`roll-${Date.now()}`,who:'system',text:`Roll error: ${err?.message || 'unknown error'}`})
     }
@@ -480,6 +561,10 @@ export default function Chat({sessionId, variant = 'full', aboveComposer, curren
   }
 
   async function handleSend(override?: string){
+    // Send pipeline:
+    // 1. !notes commands stay local to chat tooling.
+    // 2. Dice-looking text routes to /rolls.
+    // 3. @Ability/@Skill tags are resolved before sending normal chat text.
     const pending = typeof override === 'string' ? override : value
     if(!pending.trim()) return
     const text = pending.trim()
@@ -579,8 +664,38 @@ export default function Chat({sessionId, variant = 'full', aboveComposer, curren
     }
   },[sessionId, appendMessage, notifyMentions])
 
+  // Compact filters hide low-level system chatter by default while keeping dice
+  // results visible in the main session log.
+  const isDiceMessage = (message: Msg) => {
+    const text = message.text || ''
+    return message.who === 'system' && (/roll/i.test(text) || /→/.test(text) || /\b\d+d\d+/i.test(text))
+  }
+  const visibleMessages = messages.filter(message => {
+    if(activeFilter === 'story') return message.who === 'gm'
+    if(activeFilter === 'player') return message.who === 'you' || message.who === 'ally'
+    if(activeFilter === 'dice') return isDiceMessage(message)
+    if(activeFilter === 'system') return message.who === 'system'
+    if(message.who === 'system') return isDiceMessage(message)
+    return true
+  })
+  const compactMessages = visibleMessages.slice(-4)
+  const filterCounts: Record<ChatFilter, number> = {
+    all: messages.filter(message => message.who !== 'system' || isDiceMessage(message)).length,
+    story: messages.filter(message => message.who === 'gm').length,
+    player: messages.filter(message => message.who === 'you' || message.who === 'ally').length,
+    dice: messages.filter(isDiceMessage).length,
+    system: messages.filter(message => message.who === 'system').length,
+  }
+  const filterTabs: Array<[ChatFilter, string]> = [
+    ['all', 'All'],
+    ['story', 'Story'],
+    ['player', 'Actions'],
+    ['dice', 'Rolls'],
+    ...(showSystemTab ? [['system', 'System'] as [ChatFilter, string]] : []),
+  ]
+
   return (
-    <div className={`chat-root ${variant === 'dock' ? 'chat-root--dock' : ''}`}>
+    <div className={`chat-root ${variant === 'dock' ? 'chat-root--dock' : ''} ${messages.length === 0 ? 'chat-root--empty' : ''}`}>
       <NpcSnapshotModal
         open={npcModalOpen}
         onCancel={() => {
@@ -656,24 +771,65 @@ export default function Chat({sessionId, variant = 'full', aboveComposer, curren
         onUnpin={sessionId ? handleUnpinMessage : undefined}
       />
 
-      <MessageList
-        ref={listRef}
-        loading={loading}
-        messages={messages}
-        currentUserId={currentUserId ?? null}
-        onPin={sessionId ? handlePinMessage : undefined}
-        onDelete={sessionId ? handleDeleteMessage : undefined}
-        character={character}
-      />
+      <div className="chat-log-header">
+        <div className="chat-log-tabs" role="tablist" aria-label="Chat log filters">
+          {filterTabs.map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={activeFilter === key}
+              className={`chat-log-tab ${activeFilter === key ? 'chat-log-tab--active' : ''}`}
+              onClick={() => setActiveFilter(key)}
+            >
+              {label}
+              <span>{filterCounts[key]}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {compactLog ? (
+        <button className="chat-compact-log" type="button" onClick={onExpandLog} aria-label="Expand chat log">
+          <span className="chat-compact-log-header">
+            <span>Chat Log</span>
+            <strong>{messages.length}</strong>
+          </span>
+          <span className="chat-compact-log-items">
+            {compactMessages.length ? compactMessages.map((message) => (
+              <span key={message.id} className={`chat-compact-line chat-compact-line--${message.who}`}>
+                <b>{message.who === 'you' ? 'You' : message.who === 'gm' ? 'TavernTails' : message.who}</b>
+                <span>{message.text}</span>
+              </span>
+            )) : (
+              <span className="chat-compact-empty">No messages in this scene yet.</span>
+            )}
+          </span>
+        </button>
+      ) : (
+        <MessageList
+          ref={listRef}
+          loading={loading}
+          messages={visibleMessages}
+          currentUserId={currentUserId ?? null}
+          onPin={sessionId ? handlePinMessage : undefined}
+          onDelete={sessionId ? handleDeleteMessage : undefined}
+          character={character}
+        />
+      )}
 
       {error ? <div className="inline-alert inline-alert-error" style={{ marginTop: 10 }}>{error}</div> : null}
+      {!loading && !error && messages.length === 0 && sessionId ? (
+        <div className="chat-empty-state">No table activity yet. Describe an action below.</div>
+      ) : null}
 
       {aboveComposer ? (
-        <div className="chat-above-composer" aria-label="Suggested actions">
+        <div className="chat-above-composer" aria-label="Composer context">
           {aboveComposer}
         </div>
       ) : null}
 
+      {promptLabel ? <div className="chat-composer-prompt">{promptLabel}</div> : null}
       <Composer sessionId={sessionId} value={value} onChange={setValue} onSend={() => handleSend()} rolling={rolling} character={character} />
     </div>
   )

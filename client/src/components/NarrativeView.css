@@ -1,142 +1,892 @@
-.narrative-view{
-  height: 100%;
-  min-height: 0;
+/* NarrativeView — 1080p image fills container, narrative card overlays the bottom.
+   Parent (.scene-area) scrolls; this element is a fixed-height block. */
+
+/* ── Opening approach selection ─────────────────────────────────────────── */
+.opening-approach-view {
   display: flex;
   flex-direction: column;
-  box-sizing: border-box;
-  padding: 8px;
-  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  padding: 48px 24px 32px;
+  text-align: center;
+  gap: 0;
 }
 
-.narrative-scene{
-  flex: 1;
-  min-height: 0;
+.opening-approach-star {
+  font-size: 2rem;
+  color: var(--tt-gold, #f5c842);
+  opacity: 0.6;
+  margin-bottom: 20px;
+  animation: opening-pulse 3s ease-in-out infinite;
+}
+
+@keyframes opening-pulse {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 0.85; transform: scale(1.12); }
+}
+
+.opening-approach-title {
+  font-size: 1.6rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  margin: 0 0 10px;
+  letter-spacing: 0.02em;
+}
+
+.opening-approach-subtitle {
+  font-size: 0.95rem;
+  color: var(--tt-muted, #6c7086);
+  margin: 0 0 36px;
+  max-width: 400px;
+}
+
+.opening-approach-cards {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-bottom: 28px;
+}
+
+.opening-approach-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 160px;
+  max-width: 200px;
+  padding: 20px 18px;
+  background: var(--tt-surface, #0f0f11);
+  border: 1px solid rgba(245, 200, 66, 0.25);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease, transform 0.15s ease;
+  text-align: center;
+}
+
+.opening-approach-card:hover {
+  border-color: var(--tt-gold, #f5c842);
+  background: rgba(245, 200, 66, 0.07);
+  transform: translateY(-2px);
+}
+
+.opening-approach-card:active {
+  transform: translateY(0);
+}
+
+.opening-approach-card-label {
+  font-size: 0.92rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.88);
+  line-height: 1.3;
+}
+
+.opening-approach-hint {
+  font-size: 0.8rem;
+  color: rgba(108, 112, 134, 0.7);
+  margin: 0;
+}
+
+.narrative-loading {
+  padding: 24px;
+  color: var(--tt-muted, #6c7086);
+  font-size: 0.9rem;
+}
+
+.narrative-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* Takes up available space in .scene-area; height is fixed by .narrative-scene */
+}
+
+/* ── Scene container: image + overlaid card ─────────────────────────── */
+
+.narrative-scene {
+  /* Tall enough to show significant art above the text card.
+     Constrained so chat input stays visible without scrolling. */
+  width: 100%;
+  height: min(430px, 47vh);
+  min-height: 300px;
+  flex-shrink: 0;
   position: relative;
   border-radius: 12px;
   overflow: hidden;
-  background: var(--bg-color, #0f0f11);
+  background: var(--tt-surface, #0f0f11);
   border: 1px solid var(--tt-border);
 }
 
-.narrative-scene img{
+.narrative-scene--no-image {
+  height: min(410px, 45vh);
+  min-height: 280px;
+}
+
+/* 1080p image — displayed smaller than native so it looks crisp */
+.narrative-scene img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  filter: brightness(0.8);
+  object-position: center 25%;
+  /* Rendered at ~2-3× pixel density relative to container — looks sharp */
+  image-rendering: auto;
+  display: block;
 }
 
-.narrative-image-placeholder{
+.narrative-image-placeholder {
   width: 100%;
   height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(255,255,255,0.35);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  color: rgba(245, 200, 66, 0.2);
+  font-size: 2.5rem;
 }
 
-.narrative-overlay{
+/* Cinematic gradient: image shows clearly at top, darkens heavily at bottom
+   so the narrative card text is always readable */
+.narrative-scene::after {
+  content: '';
   position: absolute;
   inset: 0;
-  padding: 16px;
+  background: linear-gradient(
+    to bottom,
+    rgba(0,0,0,0.05) 0%,
+    rgba(0,0,0,0.0)  25%,
+    rgba(0,0,0,0.36) 46%,
+    rgba(0,0,0,0.84) 72%,
+    rgba(0,0,0,0.94) 100%
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ── Location + mood chip — top-left ──────────────────────────────────── */
+
+.scene-location-chip {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.scene-location-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.9);
+  letter-spacing: 0.06em;
+  text-shadow: 0 1px 8px rgba(0,0,0,0.9);
+  text-transform: uppercase;
+  background: rgba(0,0,0,0.35);
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.scene-mood-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(245,200,66,0.15);
+  color: rgba(245,200,66,0.9);
+  border: 1px solid rgba(245,200,66,0.3);
+  text-transform: capitalize;
+  letter-spacing: 0.03em;
+}
+
+/* ── Narrative overlay — sits over the bottom 55% of the image ─────── */
+
+.narrative-overlay {
+  position: absolute;
+  /* Start partway down — image is visible above, text below */
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  height: 78%;
+  padding: 18px 22px 22px;
+  box-sizing: border-box;
+  max-height: 78%;
   display: flex;
   align-items: flex-start;
+}
+
+/* ── Narrative card ─────────────────────────────────────────────────── */
+
+.narrative-card {
+  width: 100%;
+  max-width: 880px;
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px 18px 18px;
+  border-radius: 8px;
+  background: rgba(5,4,3,0.58);
+  box-shadow: 0 18px 70px rgba(0,0,0,0.45);
+  box-sizing: border-box;
+}
+
+/* ── Book-style chapter header ─────────────────────────────────────── */
+.narrative-chapter-header {
+  margin-bottom: 5px;
+}
+
+.narrative-chapter-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--tt-gold, #f5c842);
+  opacity: 0.6;
+  margin-bottom: 4px;
+  text-shadow: 0 1px 6px rgba(0,0,0,0.9);
+}
+
+.narrative-chapter-location {
+  font-size: clamp(1.35rem, 2.2vw, 2rem);
+  font-weight: 700;
+  color: rgba(255,255,255,0.95);
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  text-shadow: 0 2px 12px rgba(0,0,0,0.9);
+}
+
+/* ❖ ❖ ❖ decorative divider */
+.narrative-divider {
+  color: var(--tt-gold, #f5c842);
+  opacity: 0.35;
+  font-size: 0.75rem;
+  letter-spacing: 0.7em;
+  padding-left: 0.7em;
+  margin: 7px 0 8px;
+  text-align: left;
+  text-shadow: 0 0 10px rgba(245,200,66,0.3);
+}
+
+.narrative-text {
+  margin: 0 0 1.05em;
+  white-space: pre-wrap;
+  line-height: 1.76;
+  font-size: clamp(1rem, 1.15vw, 1.12rem);
+  color: rgba(255,255,255,0.92);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  text-shadow: 0 1px 8px rgba(0,0,0,0.7);
+}
+
+.narrative-prose-flow {
+  max-width: 72ch;
+}
+
+.narrative-prose-flow .narrative-text {
+  break-inside: avoid;
+}
+
+.narrative-prose-flow .narrative-text:last-child {
+  margin-bottom: 0;
+}
+
+.session-mode-read .narrative-view,
+.focus-mode .narrative-view {
+  align-items: stretch;
+}
+
+.session-mode-read .narrative-scene,
+.focus-mode .narrative-scene {
+  height: auto;
+  min-height: 0;
+  max-width: 960px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  background: rgba(10,8,5,0.86);
+}
+
+.session-mode-read .narrative-scene img,
+.focus-mode .narrative-scene img {
+  flex: 0 0 auto;
+  height: min(310px, 34vh);
+  object-position: center 34%;
+}
+
+.session-mode-read .narrative-scene--no-image,
+.focus-mode .narrative-scene--no-image {
+  min-height: 0;
+}
+
+.session-mode-read .narrative-image-placeholder,
+.focus-mode .narrative-image-placeholder {
+  height: min(240px, 28vh);
+}
+
+.session-mode-read .narrative-scene::after,
+.focus-mode .narrative-scene::after {
+  display: none;
+}
+
+.session-mode-read .scene-location-chip,
+.focus-mode .scene-location-chip {
+  top: 12px;
+  left: 12px;
+}
+
+.session-mode-read .narrative-overlay,
+.focus-mode .narrative-overlay {
+  position: relative;
+  inset: auto;
+  height: auto;
+  z-index: 2;
+  padding: 20px 26px 24px;
+  max-height: none;
+  display: block;
+  background:
+    linear-gradient(to bottom, rgba(0,0,0,0.34), rgba(0,0,0,0)),
+    rgba(9,7,4,0.92);
+}
+
+.session-mode-read .narrative-card,
+.focus-mode .narrative-card {
+  max-width: 760px;
+  margin: 0 auto;
+  max-height: none;
+  overflow: visible;
+}
+
+.session-mode-read .narrative-text,
+.focus-mode .narrative-text {
+  font-size: 1.04rem;
+  line-height: 1.78;
+  text-shadow: none;
+}
+
+.session-mode-read .narrative-chapter-eyebrow,
+.session-mode-read .narrative-chapter-location,
+.session-mode-read .narrative-divider,
+.session-mode-read .narrative-player-prompt,
+.focus-mode .narrative-chapter-eyebrow,
+.focus-mode .narrative-chapter-location,
+.focus-mode .narrative-divider,
+.focus-mode .narrative-player-prompt {
+  text-shadow: none;
+}
+
+.session-mode-play .narrative-card {
+  max-width: 920px;
+}
+
+.session-mode-play .narrative-view {
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+}
+
+/* Image fills the full scene container as a fixed background */
+.session-mode-play .narrative-scene {
+  height: 100%;
+  min-height: 0;
+  display: block;
+  position: relative;
+  overflow: hidden;
+}
+
+.session-mode-play .narrative-scene img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 25%;
+  flex: none;
+}
+
+/* Re-enable the cinematic gradient over the image */
+.session-mode-play .narrative-scene::after {
+  display: block;
+}
+
+/* Overlay covers bottom 72%; text scrolls inside it while image stays fixed */
+.session-mode-play .narrative-overlay {
+  position: absolute;
+  top: 12%;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: auto;
+  max-height: none;
+  overflow: hidden;
+  overflow-x: hidden;
+  padding: 20px 24px 24px;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(6,4,2,0.36) 16%,
+    rgba(6,4,2,0.72) 48%,
+    rgba(6,4,2,0.9) 100%
+  );
+}
+
+.session-mode-play .narrative-card {
+  width: min(1050px, 72%);
+  max-width: none;
+  max-height: none;
+  overflow: visible;
+  padding: 28px 32px;
+  background: rgba(8,5,3,0.78);
+  backdrop-filter: blur(1px);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.session-mode-play .narrative-text {
+  font-size: 15.5px;
+  line-height: 1.65;
+  letter-spacing: 0;
+}
+
+@media (min-width: 1200px) {
+  .session-mode-play .narrative-prose-flow--columns {
+    max-width: 100%;
+    column-count: 2;
+    column-gap: 44px;
+    column-rule: 1px solid rgba(255,255,255,0.08);
+  }
+}
+
+@media (max-width: 1200px) {
+  .session-mode-play .narrative-prose-flow {
+    column-count: 1;
+  }
+}
+
+@media (max-width: 1600px), (max-height: 900px) {
+  .session-mode-play .narrative-overlay {
+    top: 6%;
+    padding: 14px 16px 16px;
+  }
+
+  .session-mode-play .narrative-card {
+    width: min(1120px, 88%);
+    padding: 20px 24px;
+    max-height: 100%;
+    overflow-y: auto;
+  }
+
+  .session-mode-play .narrative-prose-flow--columns {
+    column-count: 1;
+    max-width: 86ch;
+  }
+
+  .session-mode-play .narrative-text {
+    font-size: 14.5px;
+    line-height: 1.55;
+  }
+
+  .narrative-chapter-location {
+    font-size: clamp(1.22rem, 1.8vw, 1.68rem);
+  }
+
+  .narrative-divider {
+    margin: 5px 0 6px;
+  }
+}
+
+.book-read-view {
+  width: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 12px;
+}
+
+.book-spread {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  width: min(1180px, 100%);
+  margin: 0 auto;
+}
+
+.book-spread--single {
+  grid-template-columns: minmax(0, min(620px, 100%));
   justify-content: center;
 }
 
-.narrative-card{
-  width: min(920px, 92%);
-  margin-top: 4vh;
-  padding: 18px 18px;
-  border-radius: 14px;
-  background: rgba(0,0,0,0.72);
-  border: 1px solid var(--tt-border);
-  box-shadow: 0 16px 70px rgba(0,0,0,0.55);
-  max-height: calc(100% - 8vh);
-  overflow: auto;
-  overscroll-behavior: contain;
+.book-page {
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: 8px;
+  border: 1px solid rgba(245,200,66,0.18);
+  background:
+    linear-gradient(90deg, rgba(245,200,66,0.05), transparent 7%, transparent 93%, rgba(245,200,66,0.04)),
+    radial-gradient(circle at 20% 0%, rgba(245,200,66,0.08), transparent 32%),
+    rgba(20,15,9,0.96);
+  box-shadow: 0 18px 70px rgba(0,0,0,0.38);
+  overflow: hidden;
 }
 
-.narrative-title{
-  margin: 0 0 10px 0;
-  font-weight: 800;
-  letter-spacing: 0.01em;
+.book-page-image {
+  flex: 0 0 auto;
+  height: min(230px, 28vh);
+  width: 100%;
+  object-fit: cover;
+  object-position: center 34%;
+  opacity: 0.9;
 }
 
-.narrative-text{
+.book-page-content {
+  min-height: 0;
+  flex: 1;
+  padding: 26px 34px 38px;
+  overflow: hidden;
+}
+
+.session-mode-read .book-page-content,
+.focus-mode .book-page-content {
+  overflow: hidden;
+}
+
+.book-page-eyebrow {
+  color: rgba(245,200,66,0.72);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.book-page-title {
   margin: 0;
-  white-space: pre-wrap;
-  line-height: 1.55;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  font-size: 0.98rem;
+  color: rgba(255,255,255,0.94);
+  font-size: clamp(1.75rem, 2vw, 2.45rem);
+  line-height: 1.12;
 }
 
-.narrative-choices{
-  margin-top: 10px;
+.book-page-divider {
+  color: rgba(245,200,66,0.34);
+  font-size: 0.72rem;
+  letter-spacing: 0.72em;
+  padding-left: 0.72em;
+  margin: 14px 0 18px;
+}
+
+.book-page-prose {
+  margin: 0;
+  color: rgba(255,255,255,0.88);
+  white-space: pre-wrap;
+  font-size: clamp(17px, 1.08vw, 19px);
+  line-height: 1.76;
+  font-family: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+}
+
+.book-page-prose--opening::first-letter {
+  float: left;
+  color: rgba(245,200,66,0.8);
+  font-size: 3.4em;
+  line-height: 0.84;
+  padding: 8px 7px 0 0;
+}
+
+.book-page-prompt {
+  margin-top: 22px;
+  padding: 13px 15px;
+  border-left: 3px solid rgba(245,200,66,0.5);
+  background: rgba(0,0,0,0.2);
+  color: rgba(245,200,66,0.94);
+  font-size: 1rem;
+  font-style: italic;
+  line-height: 1.5;
+}
+
+.book-page-actions {
+  margin-top: 14px;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 7px;
 }
 
-.narrative-choices-wrap{
+.book-page-actions-label {
+  flex: 1 0 100%;
+  color: rgba(255,255,255,0.42);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.book-action-chip {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(245,200,66,0.25);
+  background: rgba(245,200,66,0.07);
+  color: rgba(245,200,66,0.9);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.book-page-number {
+  position: absolute;
+  right: 18px;
+  bottom: 12px;
+  color: rgba(245,200,66,0.42);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.book-page-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  color: rgba(255,255,255,0.52);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.book-page-controls button {
+  min-height: 32px;
+  padding: 6px 12px;
+  border-radius: 7px;
+  border: 1px solid rgba(245,200,66,0.18);
+  background: rgba(245,200,66,0.055);
+  color: rgba(245,200,66,0.86);
+}
+
+.book-page-controls button:disabled {
+  opacity: 0.35;
+}
+
+/* ── Entity name hover tooltips ─────────────────────────────────────────── */
+.entity-mention {
+  appearance: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  color: rgba(245,200,66,0.85);
+  border-bottom: 1px dotted rgba(245,200,66,0.5);
+  border-left: 0;
+  border-right: 0;
+  border-top: 0;
+  cursor: pointer;
+  position: relative;
+  display: inline;
+  white-space: nowrap;
+}
+
+.entity-mention:hover,
+.entity-mention:focus-visible {
+  color: rgba(255,221,92,0.98);
+}
+
+.entity-tooltip {
+  display: none;
+  position: absolute;
+  z-index: 200;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 160px;
+  max-width: 260px;
+  background: rgba(14,14,18,0.97);
+  border: 1px solid rgba(245,200,66,0.3);
+  border-radius: 10px;
+  padding: 10px 12px;
+  pointer-events: none;
+  white-space: normal;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.65);
+  text-align: left;
+  font-family: inherit;
+  text-shadow: none;
+}
+
+.entity-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: rgba(245,200,66,0.3);
+}
+
+.entity-mention:hover .entity-tooltip {
+  display: block;
+}
+
+.entity-tooltip-name {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: rgba(245,200,66,0.95);
+  margin-bottom: 4px;
+  letter-spacing: 0.02em;
+}
+
+.entity-tooltip-role {
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.55);
+  font-style: italic;
+  margin-bottom: 4px;
+}
+
+.entity-tooltip-desc {
+  font-size: 0.8rem;
+  color: rgba(255,255,255,0.8);
+  line-height: 1.45;
+}
+
+/* Player-facing prompt — gold italic, separated from narration */
+.narrative-player-prompt {
+  margin-top: 14px;
+  padding: 11px 14px;
+  border-left: 3px solid rgba(245,200,66,0.5);
+  background: rgba(0,0,0,0.3);
+  border-radius: 0 6px 6px 0;
+  font-size: 0.96rem;
+  font-style: italic;
+  color: rgba(245,200,66,0.95);
+  line-height: 1.5;
+  text-shadow: 0 1px 6px rgba(0,0,0,0.7);
+}
+
+.narrative-suggestions-block {
+  margin-top: 12px;
+}
+
+.narrative-suggestions-label {
+  color: rgba(255,255,255,0.48);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 7px;
+}
+
+/* Suggested action chips — quick-pick prompts from Narrative Composer */
+.narrative-suggested-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.narrative-action-chip {
+  display: inline-block;
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1px solid rgba(245,200,66,0.35);
+  background: rgba(0,0,0,0.35);
+  color: rgba(245,200,66,0.85);
+  font-size: 0.78rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.6);
+}
+
+.narrative-action-chip:hover {
+  background: rgba(245,200,66,0.15);
+  border-color: rgba(245,200,66,0.7);
+  color: rgba(245,200,66,1);
+}
+
+/* Citations */
+.narrative-citations {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+.narrative-citations-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.4);
+  margin-bottom: 4px;
+}
+
+.narrative-citations ul {
+  margin: 0;
+  padding: 0 0 0 14px;
+  list-style: none;
+}
+
+.narrative-citations li {
+  margin-bottom: 3px;
+  font-size: 11px;
+  color: rgba(255,255,255,0.6);
+}
+
+/* Choices */
+.narrative-choices {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.narrative-choices-wrap {
   margin-top: 12px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
-.narrative-choices-toggle{
+.narrative-choices-toggle {
   align-self: flex-start;
-  padding: 6px 10px;
+  padding: 6px 12px;
   border-radius: 999px;
-  background: rgba(255,255,255,0.05);
+  background: rgba(255,255,255,0.08);
   color: rgba(255,255,255,0.85);
-  border: 1px solid rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.15);
   font-weight: 650;
-  font-size: 0.85rem;
+  font-size: 0.83rem;
 }
 
-.narrative-choices-toggle:hover{
-  border-color: var(--tt-border-strong);
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
+.narrative-choices-toggle:hover {
+  background: rgba(255,255,255,0.12);
 }
 
-.narrative-choice-btn{
+.narrative-choice-btn {
   padding: 8px 14px;
-  border-radius: 10px;
-  background: rgba(255,255,255,0.06);
-  color: inherit;
-  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 8px;
+  background: rgba(0,0,0,0.45);
+  color: rgba(255,255,255,0.9);
+  border: 1px solid rgba(255,255,255,0.15);
   font-weight: 600;
+  font-size: 0.88rem;
+  backdrop-filter: blur(4px);
 }
 
-.narrative-choice-btn:hover{
-  border-color: var(--tt-border-strong);
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
+.narrative-choice-btn:hover {
+  background: rgba(245,200,66,0.12);
+  border-color: rgba(245,200,66,0.3);
 }
 
+/* ── Visual state dev chip ────────────────────────────────────────────── */
 
-/* ── Mobile ≤600px ─────────────────────────────────────────────────────── */
+.narrative-visual-meta { display: none; }
+
+/* ── Mobile ≤600px ────────────────────────────────────────────────────── */
+
 @media (max-width: 600px) {
+  .narrative-scene {
+    height: min(320px, 45vh);
+    min-height: 200px;
+  }
+
   .narrative-overlay {
-    padding: 8px;
-  }
-
-  .narrative-card {
-    width: 94%;
-    margin-top: 2vh;
-    padding: 14px 14px;
-    max-height: calc(100% - 4vh);
-  }
-
-  .narrative-title {
-    font-size: 1rem;
-    margin-bottom: 8px;
+    padding: 0 12px 12px;
+    max-height: 70%;
   }
 
   .narrative-text {
-    font-size: 0.93rem;
-    line-height: 1.5;
+    font-size: 0.9rem;
+    line-height: 1.6;
   }
 
   .narrative-choice-btn {
@@ -149,53 +899,26 @@
 
   .narrative-choices {
     flex-direction: column;
-    gap: 6px;
-  }
-
-  .narrative-choices-toggle {
-    min-height: 44px;
-    padding: 10px 14px;
-    font-size: 0.88rem;
+    gap: 5px;
   }
 }
 
-/* ── Atmospheric image backdrop improvements ───────────────────────────── */
-.narrative-scene img {
-  filter: brightness(0.6) saturate(0.85);
-  transition: opacity 0.6s ease;
-}
+@media (max-width: 860px) {
+  .book-spread {
+    grid-template-columns: 1fr;
+    width: min(640px, 100%);
+  }
 
-/* Gradient from transparent at top to dark at bottom — text reads over it */
-.narrative-scene::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    to bottom,
-    rgba(0,0,0,0.15) 0%,
-    rgba(0,0,0,0.05) 30%,
-    rgba(0,0,0,0.35) 70%,
-    rgba(0,0,0,0.65) 100%
-  );
-  pointer-events: none;
-  z-index: 1;
-}
+  .book-spread .book-page:nth-child(2) {
+    display: none;
+  }
 
-/* ── Visual state debug chip (dev mode only) ───────────────────────────── */
-.narrative-visual-meta {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 10;
-  background: rgba(0,0,0,0.65);
-  color: rgba(255,255,255,0.75);
-  font-size: 10px;
-  font-family: monospace;
-  padding: 4px 8px;
-  border-radius: 4px;
-  pointer-events: none;
-  max-width: 260px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  .book-page-content {
+    padding: 22px 22px 34px;
+  }
+
+  .book-page-prose {
+    font-size: 16px;
+    line-height: 1.7;
+  }
 }

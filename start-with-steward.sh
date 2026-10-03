@@ -39,6 +39,9 @@ export TAVERNTAILS_SECRET="${TAVERNTAILS_SECRET:-dev-secret-change-me}"
 
 mkdir -p "${SCRIPT_DIR}/data"
 
+# Keep acceptance-test campaigns out of the user-facing campaign list.
+python3 -m server.scripts.purge_qa_campaigns --commit --quiet || true
+
 # Build React frontend if build/ is missing or src/ is newer than index.html
 CLIENT_DIR="$SCRIPT_DIR/client"
 BUILD_DIR="$CLIENT_DIR/build"

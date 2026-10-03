@@ -57,45 +57,6 @@ class Roll(SQLModel, table=True):
     created_at: str | None = None
 
 
-class CampaignEntity(SQLModel, table=True):
-    id: str | None = Field(default=None, primary_key=True)
-    campaign_id: str = Field(foreign_key="campaign.id", index=True)
-    name: str
-    entity_type: str = Field(default="npc")
-    status: str = Field(default="active")
-    data: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
-    updated_at: str | None = None
-
-
-class CampaignHook(SQLModel, table=True):
-    id: str | None = Field(default=None, primary_key=True)
-    campaign_id: str = Field(foreign_key="campaign.id", index=True)
-    title: str
-    description: str | None = None
-    hook_type: str = Field(default="open")
-    priority: int = Field(default=0)
-    deadline: str | None = None
-    status: str = Field(default="active")
-
-
-class CampaignRelationship(SQLModel, table=True):
-    id: str | None = Field(default=None, primary_key=True)
-    campaign_id: str = Field(foreign_key="campaign.id", index=True)
-    source_entity_id: str
-    target_entity_id: str
-    relation_type: str | None = None
-    description: str | None = None
-
-
-class CampaignChangeLog(SQLModel, table=True):
-    id: str | None = Field(default=None, primary_key=True)
-    campaign_id: str = Field(foreign_key="campaign.id", index=True)
-    entity_id: str | None = None
-    summary: str | None = None
-    caused_by_player_action: bool = Field(default=False)
-    created_at: str | None = None
-
-
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
 
@@ -372,6 +333,23 @@ def set_campaign_variables(campaign_id: str, owner_id: int, variables: Dict[str,
         return camp
 
 
+def set_campaign_metadata_keys(campaign_id: str, owner_id: int, values: Dict[str, Any]) -> Campaign | None:
+    """Merge top-level campaign metadata keys without requiring a schema migration."""
+    with Session(engine) as session:
+        stmt = select(Campaign).where(Campaign.id == campaign_id, Campaign.owner_id == owner_id)
+        camp = session.exec(stmt).first()
+        if not camp:
+            return None
+        meta = dict(camp.metadata_json or {})
+        for key, value in values.items():
+            meta[key] = value
+        camp.metadata_json = meta
+        session.add(camp)
+        session.commit()
+        session.refresh(camp)
+        return camp
+
+
 def delete_campaign(campaign_id: str, owner_id: int) -> bool:
     with Session(engine) as session:
         stmt = select(Campaign).where(Campaign.id == campaign_id, Campaign.owner_id == owner_id)
@@ -381,6 +359,16 @@ def delete_campaign(campaign_id: str, owner_id: int) -> bool:
         session.delete(camp)
         session.commit()
         return True
+
+
+def delete_campaign_memory(campaign_id: str) -> None:
+    """Remove all CampaignEntity, CampaignRelationship, CampaignHook, and CampaignChangeLog rows for a campaign."""
+    with Session(engine) as session:
+        session.exec(delete(CampaignChangeLog).where(CampaignChangeLog.campaign_id == campaign_id))
+        session.exec(delete(CampaignHook).where(CampaignHook.campaign_id == campaign_id))
+        session.exec(delete(CampaignRelationship).where(CampaignRelationship.campaign_id == campaign_id))
+        session.exec(delete(CampaignEntity).where(CampaignEntity.campaign_id == campaign_id))
+        session.commit()
 
 
 def purge_campaigns(owner_id: int, name_tokens: List[str] | None = None) -> int:

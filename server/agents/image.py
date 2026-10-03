@@ -76,7 +76,7 @@ def _pollinations_url(prompt: str, style: str) -> str:
     import urllib.parse
     safe = urllib.parse.quote(prompt[:400], safe='')
     portrait = style in ('portrait', 'vertical')
-    width, height = (512, 832) if portrait else (832, 512)
+    width, height = (1080, 1920) if portrait else (1920, 1080)
     params = f"width={width}&height={height}&nologo=true&enhance=true&model=flux"
     return f"https://image.pollinations.ai/prompt/{safe}?{params}"
 
@@ -91,7 +91,7 @@ def _steward_generate(prompt: str, style: str, session_id: str | None) -> str | 
 
         import httpx
         portrait = style in ('portrait', 'vertical')
-        width, height = (512, 832) if portrait else (832, 512)
+        width, height = (1080, 1920) if portrait else (1920, 1080)
         r = httpx.post(
             f"{steward_host}/api/image/generate",
             json={"prompt": prompt, "width": width, "height": height},
@@ -218,7 +218,7 @@ def clear_gallery(session_id: str, current_user=Depends(get_current_user)) -> No
 
 
 @router.get("/api/image-file/{session_id}/{filename}")
-def serve_image_file(session_id: str, filename: str) -> Response:
+def serve_image_file(session_id: str, filename: str):
     """Serve a locally generated scene image (produced by Steward's ComfyUI)."""
     from fastapi.responses import FileResponse
     from fastapi.responses import Response as FResponse
