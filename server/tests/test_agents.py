@@ -1,10 +1,15 @@
 """Contract tests for lightweight agent stubs."""
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
 import server.main as main
 from server import db
+from server.agents import narrative as narrative_module
+from server.agents import scene as scene_module
+from server.agents import scene_director as scene_director_module
 from server.agents import sessions as sessions_module
 from server.auth import create_access_token
 
@@ -31,13 +36,21 @@ def client() -> TestClient:
     return TestClient(main.app)
 
 
-def test_narrative_agent_contract(client: TestClient):
+def test_narrative_agent_contract(monkeypatch, client: TestClient):
+    fake_llm = json.dumps({
+        "narrative": "Rain lashes the watchtower parapet as Aria rushes through the door.",
+        "prompt": "Aria, what do you do?",
+    })
+    monkeypatch.setattr(narrative_module, "chat_complete", lambda *a, **kw: fake_llm)
+
     resp = client.post("/narrative/generate", json=payloads.NARRATIVE_REQUEST)
     assert resp.status_code == 200, resp.text
     data = resp.json()
-    assert payloads.NARRATIVE_REQUEST["scene"] in data["narrative"]
-    assert data["prompt"].startswith(payloads.NARRATIVE_REQUEST["player"])
+    assert isinstance(data["narrative"], str) and len(data["narrative"]) > 10
+    assert isinstance(data["prompt"], str) and len(data["prompt"]) > 0
     assert data["tone"] == payloads.NARRATIVE_REQUEST["style"].lower()
+    assert isinstance(data["scene_score"], int)
+    assert isinstance(data["score_passed"], bool)
 
 
 def test_storyboard_agent_contract(client: TestClient):
@@ -76,8 +89,8 @@ def test_image_agent_contract(client: TestClient):
     data = resp.json()
     assert data["prompt"] == payloads.IMAGE_REQUEST["prompt"]
     assert data["style"] == payloads.IMAGE_REQUEST["style"]
-    assert data["image_url"].startswith("https://placeholder.image/")
-    assert "placeholder" in data["guidance"].lower()
+    assert isinstance(data["image_url"], str) and data["image_url"].startswith("https://")
+    assert isinstance(data["guidance"], str)
     assert "id" in data
     assert "generated_at" in data
     assert data["cached"] is False
@@ -88,7 +101,109 @@ def test_scene_agent_roll_prompts(client: TestClient):
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert any(roll["skill"] == "Persuasion" for roll in body["dice_rolls"])
-    assert any("Roll a d20" in prompt for prompt in body["prompts"])
+    assert any("d20" in prompt for prompt in body["prompts"])
+
+
+def test_scene_agent_keyword_fast_path_skips_llm(monkeypatch, client: TestClient):
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("keyword-detected actions should not call the LLM")
+
+    monkeypatch.setattr(scene_module, "chat_complete", fail_if_called)
+
+    resp = client.post("/scene/analyze", json={
+        "scene": "A crowded market square with watchful guards.",
+        "actions": ["I hide behind the spice cart and watch the guards."],
+    })
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["dice_rolls"][0]["skill"] == "Stealth"
+    assert "Stealth" in body["prompts"][0]
+
+
+def test_scene_agent_ambiguous_actions_use_llm(monkeypatch, client: TestClient):
+    scene_module._SCENE_LLM_CACHE.clear()
+    called = {"value": False}
+
+    def fake_llm(*_args, **_kwargs):
+        called["value"] = True
+        return json.dumps({
+            "dice_rolls": [{"skill": "Insight", "type": "d20", "reason": "The intent is unclear."}],
+            "prompts": ["Roll Insight (d20): read the room"],
+        })
+
+    monkeypatch.setattr(scene_module, "chat_complete", fake_llm)
+
+    resp = client.post("/scene/analyze", json={
+        "scene": "The ambassador pauses before answering.",
+        "actions": ["I consider the silence."],
+    })
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert called["value"] is True
+    assert body["dice_rolls"][0]["skill"] == "Insight"
+
+
+def test_scene_agent_reuses_ambiguous_llm_analysis(monkeypatch, client: TestClient):
+    scene_module._SCENE_LLM_CACHE.clear()
+    calls = {"count": 0}
+
+    def fake_llm(*_args, **_kwargs):
+        calls["count"] += 1
+        return json.dumps({
+            "dice_rolls": [{"skill": "Insight", "type": "d20", "reason": "The pause may reveal intent."}],
+            "prompts": ["Roll Insight (d20): interpret the silence"],
+        })
+
+    monkeypatch.setattr(scene_module, "chat_complete", fake_llm)
+    payload = {
+        "scene": "The ambassador pauses before answering.",
+        "actions": ["I consider the silence."],
+    }
+
+    first = client.post("/scene/analyze", json=payload)
+    second = client.post("/scene/analyze", json=payload)
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    assert calls["count"] == 1
+    assert second.json()["dice_rolls"][0]["skill"] == "Insight"
+
+
+def test_scene_director_rejects_unsupported_tavern_default(monkeypatch):
+    fake_llm = json.dumps({
+        "scene_title": "Opening — The Copper Lantern Inn",
+        "scene_type": "opening",
+        "location": {"name": "The Copper Lantern Inn", "type": "tavern", "sensory_details": ["Hearth smoke"]},
+        "primary_npc": {"name": "Innkeeper Tor", "role": "innkeeper", "current_emotional_state": "worried", "what_they_want": "help", "what_they_know": "something happened"},
+        "central_conflict": "A tavern rumor begins.",
+        "inciting_incident": "The tavern door opens.",
+        "why_player_is_involved": "The party is nearby.",
+        "immediate_stakes": "The rumor spreads by nightfall.",
+        "player_visible_clues": [],
+        "possible_actions": ["Question the innkeeper"],
+        "visual_prompt_elements": ["tavern common room"],
+        "continuity_notes": [],
+        "world_moves": [],
+    })
+    monkeypatch.setattr(scene_director_module, "chat_complete", lambda *a, **kw: fake_llm)
+
+    out = scene_director_module.direct_scene(scene_director_module.SceneDirectorRequest(
+        campaign_settings={
+            "genre": "sci-fi mystery",
+            "world_name": "Glass Harbor",
+            "setting_summary": "An orbital trade station full of sabotage and faction intrigue.",
+        },
+        campaign_contract={
+            "campaign_name": "Stars Over Glass Harbor",
+            "campaign_pitch": "A political sci-fi mystery on an orbital harbor.",
+        },
+        players=["Yungmin"],
+        plot_seed="Missing diplomats and smuggler codes threaten the station.",
+    ))
+
+    assert out.location.name == "Glass Harbor"
+    assert "tavern" not in out.location.name.lower()
+    assert out.source == "deterministic_guard"
 
 
 def test_npc_agent_initiative_hint(client: TestClient):

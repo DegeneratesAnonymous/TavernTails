@@ -7,12 +7,30 @@ and profile updates. Login returns a dev JWT in `access_token`.
 from datetime import timezone
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from .. import db
 from ..auth import create_access_token, get_current_user
 
 router = APIRouter()
+
+STEWARD_VALIDATE_URL = "http://localhost:5555/api/games/taverntails/validate-sso"
+
+
+@router.post("/player/steward-sso")
+def steward_sso_login(sso_token: str = Body(..., embed=True)):
+    """Exchange a Steward Dashboard SSO token for a TavernTails JWT."""
+    try:
+        resp = httpx.get(STEWARD_VALIDATE_URL, params={"token": sso_token}, timeout=3.0)
+        data = resp.json()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Steward SSO validation unavailable") from exc
+    if not data.get("valid"):
+        raise HTTPException(status_code=401, detail="Invalid or expired SSO token")
+    user = db.get_or_create_steward_user(data["profile_id"], data["display_name"])
+    token = create_access_token(subject=user.email)
+    return {"access_token": token, "token_type": "bearer", "profile": db._profile_with_identity(user)}
 
 
 @router.post("/player/friends")

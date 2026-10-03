@@ -1,9 +1,64 @@
-import React, {useMemo, useRef, useState} from 'react'
-import CharacterIconStrip, {CharacterSnapshot, CharacterStripKey} from './CharacterIconStrip'
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react'
+import { apiFetch } from '../api'
+import {CharacterSnapshot} from './CharacterIconStrip'
 import EmptyState from './ui/EmptyState'
+import SourceRef from './ui/SourceRef'
 import './CharacterPanel.css'
 
 const WEAPON_KEYWORDS = /sword|axe|bow|dagger|mace|hammer|spear|lance|staff|wand|blade|club|flail|glaive|halberd|maul|pike|rapier|scimitar|shortsword|longbow|crossbow|trident|whip|handaxe|greataxe|battleaxe|greatsword|longsword/i
+
+// Standard D&D 5e spell slot tables indexed by character level
+const _FULL_CASTER_SLOTS: number[][] = [
+  [],                        // 0 unused
+  [2],                       // 1
+  [3],                       // 2
+  [4,2],                     // 3
+  [4,3],                     // 4
+  [4,3,2],                   // 5
+  [4,3,3],                   // 6
+  [4,3,3,1],                 // 7
+  [4,3,3,2],                 // 8
+  [4,3,3,3,1],               // 9
+  [4,3,3,3,2],               // 10
+  [4,3,3,3,2,1],             // 11
+  [4,3,3,3,2,1],             // 12
+  [4,3,3,3,2,1,1],           // 13
+  [4,3,3,3,2,1,1],           // 14
+  [4,3,3,3,2,1,1,1],         // 15
+  [4,3,3,3,2,1,1,1],         // 16
+  [4,3,3,3,2,1,1,1,1],       // 17
+  [4,3,3,3,3,1,1,1,1],       // 18
+  [4,3,3,3,3,2,1,1,1],       // 19
+  [4,3,3,3,3,2,2,1,1],       // 20
+]
+const _HALF_CASTER_SLOTS: number[][] = [
+  [],[],[2],[3],[3],[4,2],[4,2],[4,3],[4,3],[4,3,2],[4,3,2],
+  [4,3,3],[4,3,3],[4,3,3,1],[4,3,3,1],[4,3,3,2],[4,3,3,2],
+  [4,3,3,3,1],[4,3,3,3,1],[4,3,3,3,2],[4,3,3,3,2],
+]
+const _THIRD_CASTER_SLOTS: number[][] = [
+  [],[],[],[2],[3],[3],[3],[4,2],[4,2],[4,2],[4,3],
+  [4,3],[4,3],[4,3,2],[4,3,2],[4,3,2],[4,3,3],[4,3,3],
+  [4,3,3],[4,3,3,1],[4,3,3,1],
+]
+
+function computeStandardSlots(
+  className: string | null | undefined,
+  level: number | undefined
+): Record<string, {max: number; used: number}> {
+  const cn = (className ?? '').toLowerCase()
+  const lvl = Math.max(1, Math.min(20, level ?? 1))
+  if (!cn) return {}
+  let table: number[][] | null = null
+  if (/wizard|cleric|druid|bard|sorcerer/.test(cn)) table = _FULL_CASTER_SLOTS
+  else if (/paladin|ranger|artificer/.test(cn)) table = _HALF_CASTER_SLOTS
+  else if (/eldritch knight|arcane trickster/.test(cn)) table = _THIRD_CASTER_SLOTS
+  if (!table) return {}
+  const slots = table[lvl] ?? []
+  const result: Record<string, {max: number; used: number}> = {}
+  slots.forEach((max, i) => { if (max > 0) result[String(i + 1)] = { max, used: 0 } })
+  return result
+}
 
 export type SceneCue = {
   id: string
@@ -15,10 +70,13 @@ export type SceneCue = {
   }
 }
 
+export type FeatureItem = { name: string; source?: string; description?: string }
+
 export type CharacterSummary = CharacterSnapshot & {
   id: string
   name: string
   level: number
+  class_name?: string | null
   hp: { current: number; max: number; temp?: number }
   ac: number
   spellSave: number
@@ -28,6 +86,10 @@ export type CharacterSummary = CharacterSnapshot & {
   exhaustion?: number
   deathSaves?: { successes: number; failures: number }
   spellSlots?: Record<string, { max: number; used: number; level?: number }>
+  classFeatures?: FeatureItem[]
+  racialFeatures?: FeatureItem[]
+  otherFeatures?: FeatureItem[]
+  preparedOverrides?: Record<string, boolean>
 }
 
 type Props = {
@@ -35,14 +97,27 @@ type Props = {
   selectedId?: string | null
   onSelect?: (id: string) => void
   sceneCues?: SceneCue[]
+  requestedSkillNames?: string[]
   npcSpotlight?: {name: string; initiative_hint?: string}[]
   onCueRoll?: (cue: SceneCue) => Promise<void>
   title?: string
   showRoster?: boolean
   onGoToCharacters?: () => void
   onGoToImport?: () => void
-  /** Called when the player uses a Quick Action in-session */
   onQuickAction?: (action: {type: 'attack' | 'cast' | 'short_rest' | 'long_rest'; detail?: string}) => void
+  onSheetUpdate?: (characterId: string, patch: Record<string, any>) => void
+  sessionId?: string | null
+}
+
+type SheetTab = 'skills' | 'spells' | 'features' | 'inventory' | 'lore'
+
+type LoreData = {
+  backstory: string
+  personality_traits: string
+  ideals: string
+  bonds: string
+  flaws: string
+  appearance: string
 }
 
 export default function CharacterPanel({
@@ -50,6 +125,7 @@ export default function CharacterPanel({
   selectedId,
   onSelect,
   sceneCues = [],
+  requestedSkillNames = [],
   npcSpotlight = [],
   onCueRoll,
   title = 'Characters',
@@ -57,12 +133,41 @@ export default function CharacterPanel({
   onGoToCharacters,
   onGoToImport,
   onQuickAction,
+  onSheetUpdate,
+  sessionId,
 }: Props){
-  const [drawerKey, setDrawerKey] = useState<CharacterStripKey | null>(null)
+  const [sheetTab, setSheetTab] = useState<SheetTab | null>('skills')
   const containerRef = useRef<HTMLDivElement|null>(null)
   const [rollingCueId, setRollingCueId] = useState<string | null>(null)
   const [cueError, setCueError] = useState<string | null>(null)
-  const [castPickOpen, setCastPickOpen] = useState(false)
+
+  // Local session-time overrides (reset when character changes)
+  const prevIdRef = useRef<string | undefined>(undefined)
+  const [hpLocal, setHpLocal] = useState<{current: number; max: number; temp?: number} | null>(null)
+  const [slotsLocal, setSlotsLocal] = useState<Record<string, {max: number; used: number; level?: number}> | null>(null)
+  const [invLocal, setInvLocal] = useState<string[] | null>(null)
+  // HP edit UI
+  const [hpEditOpen, setHpEditOpen] = useState(false)
+  const [hpAdjInput, setHpAdjInput] = useState('')
+  // Add-item UI
+  const [addItemInput, setAddItemInput] = useState('')
+  // Expanded spell (for inline cast flow)
+  const [expandedSpell, setExpandedSpell] = useState<string | null>(null)
+  const [spellUpcastOptions, setSpellUpcastOptions] = useState<{spell: string; minLevel: number; options: number[]} | null>(null)
+  // Concentration tracking
+  const [concentratingOn, setConcentratingOn] = useState<string | null>(null)
+  const [concWarning, setConcWarning] = useState<{spell: string; action: () => void} | null>(null)
+  // Spell filter + preparation management
+  const [spellFilter, setSpellFilter] = useState<'castable' | 'all' | 'ritual'>('castable')
+  const [preparedOverridesLocal, setPreparedOverridesLocal] = useState<Record<string, boolean> | null>(null)
+  const [showAllKnown, setShowAllKnown] = useState(false)
+  const [showAddSpell, setShowAddSpell] = useState(false)
+  const [addSpellName, setAddSpellName] = useState('')
+  const [addSpellLevel, setAddSpellLevel] = useState(1)
+  // Lore tab state
+  const [loreData, setLoreData] = useState<LoreData | null>(null)
+  const [loreLoading, setLoreLoading] = useState(false)
+  const loreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const selected = useMemo(() => {
     if(!roster.length) return undefined
@@ -70,63 +175,173 @@ export default function CharacterPanel({
     return roster.find(r => r.id === selectedId) ?? roster[0]
   }, [roster, selectedId])
 
+  // Reset local overrides when active character changes
+  useEffect(() => {
+    if (selected?.id !== prevIdRef.current) {
+      setHpLocal(null)
+      setSlotsLocal(null)
+      setInvLocal(null)
+      setHpEditOpen(false)
+      setHpAdjInput('')
+      setExpandedSpell(null)
+      setSpellUpcastOptions(null)
+      setConcentratingOn(null)
+      setConcWarning(null)
+      setSpellFilter('castable')
+      setPreparedOverridesLocal(null)
+      setShowAllKnown(false)
+      setShowAddSpell(false)
+      setSheetTab('skills')
+      setAddSpellName('')
+      setAddSpellLevel(1)
+      setLoreData(null)
+      setLoreLoading(false)
+      prevIdRef.current = selected?.id
+    }
+  }, [selected?.id])
+
+  // Load lore data on demand when the Lore tab is opened
+  useEffect(() => {
+    if (sheetTab !== 'lore' || !selected?.id || loreData !== null || loreLoading) return
+    setLoreLoading(true)
+    apiFetch(`/characters/${selected.id}`)
+      .then(r => r.json())
+      .then((data: any) => {
+        const sheet = data?.sheet || {}
+        setLoreData({
+          backstory: String(sheet.backstory || ''),
+          personality_traits: String(sheet.personality_traits || ''),
+          ideals: String(sheet.ideals || ''),
+          bonds: String(sheet.bonds || ''),
+          flaws: String(sheet.flaws || ''),
+          appearance: String(sheet.appearance || ''),
+        })
+      })
+      .catch(() => {
+        setLoreData({ backstory: '', personality_traits: '', ideals: '', bonds: '', flaws: '', appearance: '' })
+      })
+      .finally(() => setLoreLoading(false))
+  }, [sheetTab, selected?.id, loreData, loreLoading])
+
+  const saveLoreField = (field: keyof LoreData, value: string) => {
+    if (loreTimerRef.current) clearTimeout(loreTimerRef.current)
+    loreTimerRef.current = setTimeout(() => {
+      pushSheetPatch({ [field]: value })
+    }, 1200)
+  }
+
+  const effectiveHp = hpLocal ?? selected?.hp ?? { current: 0, max: 0 }
+  const effectiveSlots: Record<string, {max: number; used: number; level?: number}> = (() => {
+    if (slotsLocal) return slotsLocal
+    const fromSheet = selected?.spellSlots ?? {}
+    if (Object.keys(fromSheet).length > 0) return fromSheet
+    return computeStandardSlots(selected?.class_name, selected?.level)
+  })()
+  const effectiveInv: string[] = invLocal ?? (selected?.inventory ?? [])
+
+  // Prepared overrides: local changes layered on top of server-persisted overrides
+  const effectivePreparedOverrides: Record<string, boolean> = {
+    ...(selected?.preparedOverrides ?? {}),
+    ...(preparedOverridesLocal ?? {}),
+  }
+  const getPrepared = (spellName: string, basePrepared: boolean | null): boolean | null => {
+    if (spellName in effectivePreparedOverrides) return effectivePreparedOverrides[spellName]
+    return basePrepared
+  }
+  const togglePrepared = (spellName: string, currentPrepared: boolean | null) => {
+    const next = !(currentPrepared === true)
+    const newOverrides = { ...effectivePreparedOverrides, [spellName]: next }
+    setPreparedOverridesLocal(newOverrides)
+    pushSheetPatch({ prepared_spell_overrides: newOverrides })
+  }
+  const ORD_LEVELS = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th']
+  const addSpellToBook = (name?: string, level?: number) => {
+    const spellName = (name ?? addSpellName).trim()
+    const spellLevel = level ?? addSpellLevel
+    if (!spellName || !selected?.id) return
+    const currentBook = Array.isArray(selected?.spellbook) ? [...selected.spellbook] : []
+    const levelHeader = spellLevel === 0 ? 'Cantrips' : `${ORD_LEVELS[spellLevel] ?? `${spellLevel}th`} Level`
+    const newEntry = { name: spellName, header: levelHeader, prepared: null, concentration: false, ritual: false }
+    pushSheetPatch({ spellbook: [...currentBook, newEntry] })
+    setAddSpellName('')
+    setShowAddSpell(false)
+  }
+
+  // Session document content for content-aware search
+  const [sessionDocContent, setSessionDocContent] = useState('')
+  const [docsFetched, setDocsFetched] = useState(false)
+  useEffect(() => {
+    if (!sessionId || docsFetched) return
+    setDocsFetched(true)
+    apiFetch(`/documents/${sessionId}`).then(async r => {
+      if (!r.ok) return
+      const docs = await r.json() as any[]
+      const shared = docs.filter(d => d.visibility !== 'hidden').slice(0, 12)
+      const texts = await Promise.allSettled(
+        shared.map(async (d: any) => {
+          const dr = await apiFetch(`/documents/${sessionId}/${d.id}`)
+          if (!dr.ok) return ''
+          const dd = await dr.json()
+          return String(dd.content ?? '')
+        })
+      )
+      setSessionDocContent(
+        texts.filter(r => r.status === 'fulfilled').map(r => (r as PromiseFulfilledResult<string>).value).join('\n')
+      )
+    }).catch(() => {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, docsFetched])
+
+  const pushSheetPatch = useCallback((patch: Record<string, any>) => {
+    if (!selected?.id) return
+    apiFetch(`/characters/${selected.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ sheet_patch: patch }),
+    }).then(() => {
+      onSheetUpdate?.(selected.id, patch)
+    }).catch(() => {})
+  }, [selected?.id, onSheetUpdate])
+
+  const applyHp = useCallback((next: {current: number; max: number; temp?: number}) => {
+    const clamped = { ...next, current: Math.max(0, Math.min(next.max, next.current)) }
+    setHpLocal(clamped)
+    pushSheetPatch({ hp: clamped })
+  }, [pushSheetPatch])
+
+  const applySlots = useCallback((next: Record<string, {max: number; used: number; level?: number}>) => {
+    setSlotsLocal(next)
+    pushSheetPatch({ spell_slots: next })
+  }, [pushSheetPatch])
+
+  const markSlotUsed = useCallback((lvl: string) => {
+    const slot = effectiveSlots[lvl]
+    if (!slot || slot.used >= slot.max) return
+    applySlots({ ...effectiveSlots, [lvl]: { ...slot, used: slot.used + 1 } })
+  }, [effectiveSlots, applySlots])
+
+  const computeMod = (score: number) => Math.floor((score - 10) / 2)
+  const fmtMod = (mod: number) => (mod >= 0 ? `+${mod}` : `${mod}`)
+
   const abilities = useMemo(() => {
     const stats = selected?.stats
     if(!stats) return []
-    const computeMod = (score: number) => Math.floor((score - 10) / 2)
-    const formatMod = (mod: number) => (mod >= 0 ? `+${mod}` : `${mod}`)
     const str = typeof stats.str === 'number' ? stats.str : 10
     const dex = typeof stats.dex === 'number' ? stats.dex : 10
     const con = typeof (stats as any).con === 'number' ? (stats as any).con : 10
     const int = typeof (stats as any).int === 'number' ? (stats as any).int : 10
     const wis = typeof stats.wis === 'number' ? stats.wis : 10
     const cha = typeof (stats as any).cha === 'number' ? (stats as any).cha : 10
-    const rows = [
+    return [
       { key: 'STR', score: str, mod: computeMod(str) },
       { key: 'DEX', score: dex, mod: computeMod(dex) },
       { key: 'CON', score: con, mod: computeMod(con) },
       { key: 'INT', score: int, mod: computeMod(int) },
       { key: 'WIS', score: wis, mod: computeMod(wis) },
       { key: 'CHA', score: cha, mod: computeMod(cha) },
-    ]
-    return rows.map(r => ({ ...r, modLabel: formatMod(r.mod) }))
+    ].map(r => ({ ...r, modLabel: fmtMod(r.mod) }))
   }, [selected?.stats])
 
-  const overview = useMemo(() => {
-    if(!selected) return null
-    const hpCurrent = typeof selected.hp?.current === 'number' ? selected.hp.current : 0
-    const hpMax = typeof selected.hp?.max === 'number' ? selected.hp.max : 0
-    const tempHp = typeof selected.hp?.temp === 'number' ? selected.hp.temp : 0
-    const ac = typeof selected.ac === 'number' ? selected.ac : 0
-    const level = typeof selected.level === 'number' ? selected.level : 0
-    const spellSave = typeof selected.spellSave === 'number' ? selected.spellSave : 0
-
-    const dexRow = abilities.find(r => r.key === 'DEX')
-    const initMod = dexRow ? dexRow.mod : 0
-
-    const inventoryCount = Array.isArray(selected.inventory) ? selected.inventory.length : 0
-    const featuresCount = Array.isArray(selected.features) ? selected.features.length : 0
-    const skillsCount = Array.isArray(selected.skills) ? selected.skills.length : 0
-    const exhaustion = typeof selected.exhaustion === 'number' ? selected.exhaustion : 0
-    const deathSaves = selected.deathSaves ?? { successes: 0, failures: 0 }
-    const spellSlots = selected.spellSlots ?? {}
-
-    return {
-      hpCurrent,
-      hpMax,
-      tempHp,
-      ac,
-      level,
-      spellSave,
-      initMod,
-      inventoryCount,
-      featuresCount,
-      skillsCount,
-      exhaustion,
-      deathSaves,
-      spellSlots,
-    }
-  }, [abilities, selected])
+  const dexMod = abilities.find(r => r.key === 'DEX')?.mod ?? 0
 
   const quickActions = useMemo(() => {
     const equippedWeapons = (selected?.inventory || []).filter(name => WEAPON_KEYWORDS.test(name))
@@ -134,201 +349,17 @@ export default function CharacterPanel({
     return { equippedWeapons, hasSpells }
   }, [selected?.inventory, selected?.spells])
 
-  const drawerTitle = useMemo(() => {
-    if(drawerKey === 'abilities') return 'Abilities'
-    if(drawerKey === 'features') return 'Features'
-    if(drawerKey === 'inventory') return 'Inventory'
-    if(drawerKey === 'journal') return 'Journal'
-    if(drawerKey === 'skills') return 'Skills'
-    if(drawerKey === 'spells') return 'Spells'
-    return 'Overview'
-  }, [drawerKey])
-
-  const drawerContent = useMemo(() => {
-    if(drawerKey === 'abilities'){
-      return (
-        <div className="character-abilities character-abilities--tiles">
-          {abilities.map(row => (
-            <div key={row.key} className="character-ability-tile">
-              <div className="character-ability-key">{row.key}</div>
-              <div className="character-ability-mod">{row.modLabel}</div>
-              <div className="character-ability-score">{row.score}</div>
-            </div>
-          ))}
-          {!abilities.length ? <div className="muted">No ability scores available.</div> : null}
-        </div>
-      )
-    }
-
-    if(drawerKey === 'features'){
-      return selected?.features?.length ? (
-        <ul className="character-section-ul">
-          {selected.features.map((feature) => (
-            <li key={feature}>{feature}</li>
-          ))}
-        </ul>
-      ) : (
-        <div className="muted">No features listed.</div>
-      )
-    }
-
-    if(drawerKey === 'inventory'){
-      return selected?.inventory?.length ? (
-        <ul className="character-section-ul">
-          {selected.inventory.map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-        </ul>
-      ) : (
-        <div className="muted">No inventory items.</div>
-      )
-    }
-
-    if(drawerKey === 'journal'){
-      return (
-        <div>
-          <div className="muted" style={{marginBottom: 8}}>
-            {typeof selected?.journalEntries === 'number' ? `${selected.journalEntries} entries` : 'No journal data'}
-          </div>
-          <div className="muted">Journal entry contents aren’t wired up yet.</div>
-        </div>
-      )
-    }
-
-    if(drawerKey === 'skills'){
-      return (
-        <div className="character-section-list character-section-list--skills" style={{marginTop: 0}}>
-          <ul className="character-section-ul character-section-ul--skills">
-            {selected?.skills?.map(skill => (
-              <li key={skill.name} className="character-skill-item">
-                <span className="character-skill-name">{skill.name}</span>
-                <span className="character-skill-mod">
-                  {skill.mod >= 0 ? '+' : ''}{skill.mod}
-                </span>
-              </li>
-            ))}
-          </ul>
-          {!selected?.skills?.length ? <div className="muted">No skills listed.</div> : null}
-        </div>
-      )
-    }
-
-    if(drawerKey === 'spells'){
-      const spellList = selected?.spells || []
-      const spellSlots = selected?.spellSlots ?? {}
-      const slotLevels = Object.keys(spellSlots).filter(k => k !== 'pact').sort((a,b) => Number(a)-Number(b))
-      const pactSlot = spellSlots['pact']
-      return (
-        <div>
-          {(slotLevels.length > 0 || pactSlot) ? (
-            <div className="spell-slots-grid" aria-label="Spell slots">
-              {slotLevels.map(lvl => {
-                const slot = spellSlots[lvl]
-                return (
-                  <div key={lvl} className="spell-slot-row">
-                    <span className="spell-slot-label">Lvl {lvl}</span>
-                    <span className="spell-slot-pips">
-                      {Array.from({length: slot.max}).map((_, i) => (
-                        <span key={i} className={`spell-slot-pip ${i < slot.used ? 'spell-slot-pip--used' : ''}`} />
-                      ))}
-                    </span>
-                    <span className="spell-slot-count muted">{slot.max - slot.used}/{slot.max}</span>
-                  </div>
-                )
-              })}
-              {pactSlot ? (
-                <div className="spell-slot-row">
-                  <span className="spell-slot-label">Pact (L{pactSlot.level})</span>
-                  <span className="spell-slot-pips">
-                    {Array.from({length: pactSlot.max}).map((_, i) => (
-                      <span key={i} className={`spell-slot-pip ${i < pactSlot.used ? 'spell-slot-pip--used' : ''}`} />
-                    ))}
-                  </span>
-                  <span className="spell-slot-count muted">{pactSlot.max - pactSlot.used}/{pactSlot.max}</span>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-          {spellList.length ? (
-            <ul className="character-section-ul" style={{marginTop: slotLevels.length || pactSlot ? 10 : 0}}>
-              {spellList.map(spell => (
-                <li key={spell}>{spell}</li>
-              ))}
-            </ul>
-          ) : (
-            <div className="muted">No spells listed.</div>
-          )}
-        </div>
-      )
-    }
-
-    return null
-  }, [abilities, drawerKey, selected])
-
-  const previewContent = useMemo(() => {
-    if(!selected) return null
-    const features = Array.isArray(selected.features) ? selected.features : []
-    const inventory = Array.isArray(selected.inventory) ? selected.inventory : []
-    const skills = Array.isArray(selected.skills) ? selected.skills : []
-
-    const topFeatures = features.slice(0, 6)
-    const topInventory = inventory.slice(0, 6)
-    const topSkills = skills.slice(0, 12)
-
-    return (
-      <div className="character-sheet-preview">
-        <div className="character-sheet-preview-row">
-          <div className="character-sheet-preview-col">
-            <div className="character-sheet-subhead">Skills</div>
-            {topSkills.length ? (
-              <ul className="character-sheet-mini-list">
-                {topSkills.map(s => (
-                  <li key={s.name}>
-                    <span className="character-sheet-mini-name">{s.name}</span>
-                    <span className="character-sheet-mini-mod">{s.mod >= 0 ? '+' : ''}{s.mod}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="muted">No skills listed.</div>
-            )}
-          </div>
-
-          <div className="character-sheet-preview-col">
-            <div className="character-sheet-subhead">Features</div>
-            {topFeatures.length ? (
-              <ul className="character-sheet-mini-list">
-                {topFeatures.map(f => (<li key={f}>{f}</li>))}
-              </ul>
-            ) : (
-              <div className="muted">No features listed.</div>
-            )}
-
-            <div className="character-sheet-subhead" style={{marginTop: 12}}>Inventory</div>
-            {topInventory.length ? (
-              <ul className="character-sheet-mini-list">
-                {topInventory.map(i => (<li key={i}>{i}</li>))}
-              </ul>
-            ) : (
-              <div className="muted">No inventory items.</div>
-            )}
-          </div>
-        </div>
-      </div>
-    )
-  }, [selected])
+  const slotEntries = Object.entries(effectiveSlots)
+    .filter(([, slot]) => slot.max > 0)
+    .sort(([a],[b]) => a === 'pact' ? 1 : b === 'pact' ? -1 : Number(a) - Number(b))
 
   async function handleCueRoll(cue: SceneCue){
     if(!onCueRoll || !cue.roll) return
     setCueError(null)
     setRollingCueId(cue.id)
-    try{
-      await onCueRoll(cue)
-    }catch(err:any){
-      setCueError(err?.message || 'Failed to trigger roll')
-    }finally{
-      setRollingCueId(null)
-    }
+    try{ await onCueRoll(cue) }
+    catch(err:any){ setCueError(err?.message || 'Failed to trigger roll') }
+    finally{ setRollingCueId(null) }
   }
 
   if(!roster.length){
@@ -341,14 +372,10 @@ export default function CharacterPanel({
           actions={!showRoster && (onGoToCharacters || onGoToImport) ? (
             <div style={{display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap'}}>
               {onGoToCharacters ? (
-                <button className="btn" type="button" onClick={onGoToCharacters}>
-                  Manage Characters
-                </button>
+                <button className="btn" type="button" onClick={onGoToCharacters}>Manage Characters</button>
               ) : null}
               {onGoToImport ? (
-                <button className="btn btn-secondary" type="button" onClick={onGoToImport}>
-                  Import Character
-                </button>
+                <button className="btn btn-secondary" type="button" onClick={onGoToImport}>Import Character</button>
               ) : null}
             </div>
           ) : null}
@@ -357,376 +384,993 @@ export default function CharacterPanel({
     )
   }
 
-  // Player-sheet mode: BG3/D&D Beyond-inspired, space-efficient layout
+  // In-session character sheet.
+  // This compact render path is what Play mode uses. Keep always-visible
+  // survival/session data here; put deeper sheet details behind section toggles.
   if(!showRoster){
+    const hp = effectiveHp
+    const hpPct = hp.max > 0 ? Math.max(0, Math.min(1, hp.current / hp.max)) : 0
+    const hpColor = hpPct > 0.6 ? '#4caf82' : hpPct > 0.3 ? '#e0a352' : '#e05252'
+    const exhaustion = selected?.exhaustion ?? 0
+    const deathSaves = selected?.deathSaves ?? { successes: 0, failures: 0 }
+    const showDeathSaves = hp.current <= 0
+    const showExhaustion = exhaustion > 0
+    const requestedNames = new Set(requestedSkillNames.map(name => String(name || '').toLowerCase()))
+
+    const subtitle = [
+      `Lv${selected?.level ?? 0}`,
+      selected?.class_name ?? null,
+    ].filter(Boolean).join(' ')
+
+    const featureName = (f: any): string => {
+      if(typeof f === 'string') return f
+      if(f && typeof f === 'object') return String(f.name || '').trim()
+      return String(f || '')
+    }
+    const featureSource = (f: any): string | null => {
+      if(f && typeof f === 'object') return String(f.source || '').trim() || null
+      return null
+    }
+    const featureDesc = (f: any): string | null => {
+      if(f && typeof f === 'object') return String(f.description || '').trim() || null
+      return null
+    }
+
     return (
-      <div className="character-panel-root character-panel-root--sheet">
-        <div className="character-sheet-header">
-          <div className="character-sheet-portrait" aria-hidden="true">
-            <div className="character-sheet-portrait-initial">{(selected?.name || '?').slice(0, 1).toUpperCase()}</div>
+      <div className="cs-root">
+
+        {/* ── Header ── */}
+        <header className="cs-header">
+          <div className="cs-portrait" aria-hidden="true">
+            {(selected?.name || '?').slice(0, 1).toUpperCase()}
           </div>
-          <div className="character-sheet-title">
-            <div className="character-sheet-name">{selected?.name}</div>
-            <div className="character-sheet-subtitle muted">Level {selected?.level ?? 0}</div>
+          <div className="cs-identity">
+            <div className="cs-name">{selected?.name ?? 'Character'}</div>
+            <div className="cs-subtitle">{subtitle}</div>
+          </div>
+        </header>
+
+        {/* ── Combat vitals ── */}
+        <div className="cs-vitals">
+          <div className="cs-vital cs-vital--hp">
+            <span className="cs-vital-label">HP</span>
+            <button
+              type="button"
+              className="cs-hp-display"
+              style={{ color: hpColor }}
+              onClick={() => { setHpEditOpen(v => !v); setHpAdjInput('') }}
+              title="Click to adjust HP"
+            >
+              {hp.current}<span className="cs-vital-denom">/{hp.max}</span>
+              {hp.temp ? <span className="cs-vital-temp">+{hp.temp}</span> : null}
+              <span className="cs-hp-edit-icon">✎</span>
+            </button>
+          </div>
+          <div className="cs-vital">
+            <span className="cs-vital-label">AC</span>
+            <span className="cs-vital-value">{selected?.ac ?? '—'}</span>
+          </div>
+          <div className="cs-vital">
+            <span className="cs-vital-label">Init</span>
+            <span className="cs-vital-value">{dexMod >= 0 ? '+' : ''}{dexMod}</span>
+          </div>
+          {(selected?.spellSave ?? 0) > 0 ? (
+            <div className="cs-vital">
+              <span className="cs-vital-label">DC</span>
+              <span className="cs-vital-value">{selected!.spellSave}</span>
+            </div>
+          ) : null}
+        </div>
+
+        {/* HP bar */}
+        <div className="cs-hp-bar-track">
+          <div className="cs-hp-bar-fill" style={{ width: `${hpPct * 100}%`, background: hpColor }} />
+        </div>
+
+        {/* HP edit row (toggle via ✎ click) */}
+        {hpEditOpen ? (
+          <div className="cs-hp-edit-row">
+            <div className="cs-hp-edit-group">
+              <span className="cs-hp-edit-label" style={{ color: '#e05252' }}>Damage</span>
+              <div className="cs-hp-edit-adj">
+                <input
+                  className="cs-hp-edit-input"
+                  type="number"
+                  min={0}
+                  placeholder="0"
+                  value={hpAdjInput}
+                  onChange={e => setHpAdjInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      const n = parseInt(hpAdjInput, 10)
+                      if (!isNaN(n) && n > 0) {
+                        applyHp({ ...hp, current: hp.current - n })
+                        setHpAdjInput('')
+                        setHpEditOpen(false)
+                      }
+                    }
+                  }}
+                />
+                <button type="button" className="cs-hp-edit-btn cs-hp-edit-btn--dmg"
+                  onClick={() => {
+                    const n = parseInt(hpAdjInput, 10)
+                    if (!isNaN(n) && n > 0) { applyHp({ ...hp, current: hp.current - n }); setHpAdjInput(''); setHpEditOpen(false) }
+                  }}>
+                  Apply
+                </button>
+              </div>
+            </div>
+            <div className="cs-hp-edit-group">
+              <span className="cs-hp-edit-label" style={{ color: '#4caf82' }}>Heal</span>
+              <div className="cs-hp-edit-adj">
+                <input
+                  className="cs-hp-edit-input"
+                  type="number"
+                  min={0}
+                  placeholder="0"
+                  value={hpAdjInput}
+                  onChange={e => setHpAdjInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      const n = parseInt(hpAdjInput, 10)
+                      if (!isNaN(n) && n > 0) {
+                        applyHp({ ...hp, current: hp.current + n })
+                        setHpAdjInput('')
+                        setHpEditOpen(false)
+                      }
+                    }
+                  }}
+                />
+                <button type="button" className="cs-hp-edit-btn cs-hp-edit-btn--heal"
+                  onClick={() => {
+                    const n = parseInt(hpAdjInput, 10)
+                    if (!isNaN(n) && n > 0) { applyHp({ ...hp, current: hp.current + n }); setHpAdjInput(''); setHpEditOpen(false) }
+                  }}>
+                  Apply
+                </button>
+              </div>
+            </div>
+            <button type="button" className="cs-hp-edit-close" onClick={() => setHpEditOpen(false)}>✕</button>
+          </div>
+        ) : null}
+
+        {/* Status indicators (exhaustion / concentration / death saves — only when relevant) */}
+        {(showDeathSaves || showExhaustion || concentratingOn) ? (
+          <div className="cs-status-row">
+            {concentratingOn ? (
+              <div className="cs-status-badge cs-status-badge--conc">
+                <span className="cs-conc-label">Conc:</span> {concentratingOn}
+                <button type="button" className="cs-status-clear" onClick={() => setConcentratingOn(null)} title="Drop concentration">✕</button>
+              </div>
+            ) : null}
+            {showExhaustion ? (
+              <div className="cs-status-badge cs-status-badge--warn">
+                Exhaustion {exhaustion}/6
+              </div>
+            ) : null}
+            {showDeathSaves ? (
+              <div className="cs-status-badge cs-status-badge--danger">
+                <span>
+                  {Array.from({length: 3}).map((_,i) => (
+                    <span key={i} className={`cs-ds-pip ${i < deathSaves.successes ? 'cs-ds-pip--success' : ''}`} />
+                  ))}
+                </span>
+                <span className="cs-ds-sep">·</span>
+                <span>
+                  {Array.from({length: 3}).map((_,i) => (
+                    <span key={i} className={`cs-ds-pip ${i < deathSaves.failures ? 'cs-ds-pip--failure' : ''}`} />
+                  ))}
+                </span>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {/* ── Spell slots (always visible for casters) ── */}
+        {slotEntries.length > 0 ? (
+          <div className="cs-slots">
+            {slotEntries.map(([lvl, slot]) => (
+              <div key={lvl} className="cs-slot-row">
+                <span className="cs-slot-label">{lvl === 'pact' ? 'Pact' : `L${lvl}`}</span>
+                <span className="cs-slot-pips">
+                  {Array.from({length: slot.max}).map((_,i) => {
+                    const isUsed = i < slot.used
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        className={`cs-slot-pip cs-slot-pip--btn ${isUsed ? 'cs-slot-pip--used' : ''}`}
+                        title={isUsed ? 'Mark slot available' : 'Mark slot used'}
+                        onClick={() => {
+                          const newUsed = isUsed ? i : i + 1
+                          applySlots({ ...effectiveSlots, [lvl]: { ...slot, used: newUsed } })
+                        }}
+                      />
+                    )
+                  })}
+                </span>
+                <span className="cs-slot-count">{slot.max - slot.used}/{slot.max}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        <div className="cs-quick-section">
+          <div className="cs-quick-section-title">Conditions</div>
+          <div className="cs-quick-muted">
+            {concentratingOn ? `Concentrating on ${concentratingOn}` : showExhaustion ? `Exhaustion ${exhaustion}` : 'None'}
           </div>
         </div>
 
-        {overview ? (
-          <section className="player-status" aria-label="Player stats" style={{padding: 10, borderRadius: 12, border: '1px solid rgba(255,255,255,0.06)', marginBottom: 10}}>
-            <div className="player-status-grid">
-              <div>
-                <div className="player-status-label">Armor Class</div>
-                <div className="player-status-value">{overview.ac}</div>
+        {/* ── Quick Actions ── */}
+        <div className="cs-actions">
+          {quickActions.equippedWeapons.length > 0 ? (
+            <>
+              <span className="cs-actions-label">Weapons</span>
+              <div className="cs-actions-row">
+                {quickActions.equippedWeapons.map(weapon => (
+                  <button
+                    key={weapon}
+                    type="button"
+                    className="cs-action-btn cs-action-btn--attack"
+                    onClick={() => onQuickAction?.({ type: 'attack', detail: weapon })}
+                    title={`Attack with ${weapon}`}
+                  >
+                    ⚔ {weapon}
+                  </button>
+                ))}
               </div>
-              <div>
-                <div className="player-status-label">Hit Points</div>
-                <div className="player-status-value">{overview.hpCurrent} / {overview.hpMax}{overview.tempHp ? <span className="player-status-temp"> +{overview.tempHp}</span> : null}</div>
-              </div>
-              <div>
-                <div className="player-status-label">Initiative</div>
-                <div className="player-status-value">{overview.initMod >= 0 ? '+' : ''}{overview.initMod}</div>
-              </div>
-              <div>
-                <div className="player-status-label">Spell Save DC</div>
-                <div className="player-status-value">{overview.spellSave}</div>
-              </div>
-              <div>
-                <div className="player-status-label">Exhaustion</div>
-                <div className="player-status-value">{overview.exhaustion} / 6</div>
-              </div>
-              <div>
-                <div className="player-status-label">Death Saves</div>
-                <div className="player-status-value player-status-death-saves">
-                  <span className="death-saves-success" title="Successes">
-                    {Array.from({length: 3}).map((_, i) => (
-                      <span key={i} className={`death-save-pip ${i < overview.deathSaves.successes ? 'death-save-pip--success' : ''}`} aria-label={i < overview.deathSaves.successes ? 'success' : 'empty'} />
-                    ))}
-                  </span>
-                  <span className="death-saves-sep">·</span>
-                  <span className="death-saves-failure" title="Failures">
-                    {Array.from({length: 3}).map((_, i) => (
-                      <span key={i} className={`death-save-pip ${i < overview.deathSaves.failures ? 'death-save-pip--failure' : ''}`} aria-label={i < overview.deathSaves.failures ? 'failure' : 'empty'} />
-                    ))}
-                  </span>
-                </div>
-              </div>
-            </div>
-            {/* Spell slots mini-display */}
-            {Object.keys(overview.spellSlots).length > 0 ? (
-              <div className="spell-slots-summary" aria-label="Spell slots">
-                {Object.entries(overview.spellSlots)
-                  .sort(([a],[b]) => a === 'pact' ? 1 : b === 'pact' ? -1 : Number(a) - Number(b))
-                  .map(([lvl, slot]) => (
-                    <div key={lvl} className="spell-slot-mini">
-                      <span className="spell-slot-mini-label">{lvl === 'pact' ? `Pact` : `L${lvl}`}</span>
-                      <span className="spell-slot-mini-pips">
-                        {Array.from({length: slot.max}).map((_, i) => (
-                          <span key={i} className={`spell-slot-pip spell-slot-pip--sm ${i < slot.used ? 'spell-slot-pip--used' : ''}`} />
-                        ))}
+            </>
+          ) : null}
+        </div>
+
+        <div className="cs-sheet-sections" role="list" aria-label="Character sheet sections">
+          {(['skills', 'spells', 'features', 'inventory', 'lore'] as SheetTab[]).map(tab => {
+            const counts: Record<SheetTab, number> = {
+              skills: selected?.skills?.length ?? 0,
+              spells: selected?.spells?.length ?? 0,
+              features: (selected?.classFeatures?.length ?? 0) + (selected?.racialFeatures?.length ?? 0) + (selected?.otherFeatures?.length ?? 0) || (selected?.features?.length ?? 0),
+              inventory: selected?.inventory?.length ?? 0,
+              lore: 0,
+            }
+            const labels: Record<SheetTab, string> = {
+              skills: 'Full Skills',
+              spells: 'Spells',
+              features: 'Features',
+              inventory: 'Inventory',
+              lore: 'Lore',
+            }
+            return (
+              <button
+                key={tab}
+                type="button"
+                aria-expanded={sheetTab === tab}
+                className={`cs-section-toggle ${sheetTab === tab ? 'cs-section-toggle--active' : ''}`}
+                onClick={() => setSheetTab(prev => prev === tab ? null : tab)}
+              >
+                <span>{labels[tab]}</span>
+                <span className="cs-section-toggle-meta">
+                  {counts[tab] > 0 ? counts[tab] : null}
+                  <span className="cs-section-chevron">{sheetTab === tab ? '▲' : '▼'}</span>
+                </span>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* ── Tab content ── */}
+        {sheetTab ? (
+          <div className="cs-tab-body" ref={containerRef}>
+
+            {sheetTab === 'skills' ? (
+              <div className="cs-skill-list">
+                {(selected?.skills || []).length === 0 ? (
+                  <div className="cs-empty">No skills recorded</div>
+                ) : (
+                  (selected?.skills || []).map(s => (
+                    <div key={s.name} className={`cs-skill-item ${requestedNames.has(String(s.name || '').toLowerCase()) ? 'cs-skill-item--requested' : ''}`}>
+                      <span className="cs-skill-name">
+                        {s.name}
+                        {requestedNames.has(String(s.name || '').toLowerCase()) ? <em>Requested</em> : null}
                       </span>
+                      <span className="cs-skill-mod">{s.mod >= 0 ? '+' : ''}{s.mod}</span>
                     </div>
-                  ))}
+                  ))
+                )}
               </div>
             ) : null}
-          </section>
-        ) : null}
 
-        {/* Quick Actions — only in session mode */}
-        {(quickActions.equippedWeapons.length || quickActions.hasSpells) ? (
-          <div className="character-quick-actions" aria-label="Quick Actions">
-            <div className="character-quick-actions-title">Actions</div>
-            <div className="character-quick-actions-row">
-              {quickActions.equippedWeapons.map(weapon => (
-                <button
-                  key={weapon}
-                  type="button"
-                  className="btn btn-sm character-quick-action-btn character-quick-action-btn--attack"
-                  onClick={() => onQuickAction?.({ type: 'attack', detail: weapon })}
-                  title={`Attack with ${weapon}`}
-                >
-                  ⚔ {weapon}
-                </button>
-              ))}
-              {quickActions.hasSpells ? (
-                <div style={{ position: 'relative' }}>
-                  <button
-                    type="button"
-                    className="btn btn-sm character-quick-action-btn character-quick-action-btn--cast"
-                    onClick={() => setCastPickOpen(v => !v)}
-                  >
-                    ✦ Cast Spell
-                  </button>
-                  {castPickOpen ? (
-                    <div className="character-cast-picker">
-                      {(selected?.spells || []).map(spell => (
-                        <button
-                          key={spell}
-                          type="button"
-                          className="character-cast-picker-item"
-                          onClick={() => { onQuickAction?.({ type: 'cast', detail: spell }); setCastPickOpen(false) }}
-                        >
-                          {spell}
-                        </button>
-                      ))}
+            {sheetTab === 'spells' ? (() => {
+              // Caster type detection
+              const KNOWN_CASTERS = /sorcerer|bard|ranger|warlock|eldritch\s*knight|arcane\s*trickster/i
+              const PREPARED_CASTERS = /cleric|druid|paladin|wizard|artificer/i
+              const PACT_CASTERS = /warlock/i
+              const cn = selected?.class_name ?? ''
+              const casterType: 'prepared' | 'known' | 'unknown' =
+                PREPARED_CASTERS.test(cn) ? 'prepared' :
+                KNOWN_CASTERS.test(cn) ? 'known' : 'unknown'
+              const isPactCaster = PACT_CASTERS.test(cn)
+
+              // Build spell entries
+              const book = Array.isArray(selected?.spellbook) ? selected!.spellbook : []
+              const ORDINAL: Record<string, number> = {
+                cantrip: 0, cantrips: 0,
+                '1st': 1, '2nd': 2, '3rd': 3, '4th': 4, '5th': 5,
+                '6th': 6, '7th': 7, '8th': 8, '9th': 9,
+              }
+              const parseLevelFromHeader = (h: string): number => {
+                const lc = h.toLowerCase()
+                const m = lc.match(/(\d+)(?:st|nd|rd|th)?\s*level/)
+                if (m) return Number(m[1])
+                if (lc.includes('cantrip')) return 0
+                const w = lc.split(/\s+/)[0]
+                return ORDINAL[w] ?? 99
+              }
+
+              type SpellEntry = {
+                name: string; level: number; prepared: boolean | null
+                concentration: boolean; ritual: boolean
+                save_hit?: string; time?: string; range?: string
+                components?: string; duration?: string; notes?: string
+              }
+
+              let entries: SpellEntry[] = []
+              if (book.length > 0) {
+                let currentLevel = 1
+                for (const e of book) {
+                  if (!e) continue
+                  if (e.header) currentLevel = parseLevelFromHeader(String(e.header))
+                  if (!e.name) continue
+                  const p = e.prepared
+                  const basePrepared: boolean | null =
+                    p === true || p === 'yes' || p === 1 ? true :
+                    p === false || p === 'no' || p === 0 ? false : null
+                  entries.push({
+                    name: String(e.name), level: currentLevel,
+                    prepared: getPrepared(String(e.name), basePrepared),
+                    concentration: Boolean(e.concentration),
+                    ritual: Boolean(e.ritual),
+                    save_hit: e.save_hit ? String(e.save_hit) : undefined,
+                    time: e.time ? String(e.time) : undefined,
+                    range: e.range ? String(e.range) : undefined,
+                    components: e.components ? String(e.components) : undefined,
+                    duration: e.duration ? String(e.duration) : undefined,
+                    notes: e.notes ? String(e.notes) : undefined,
+                  })
+                }
+              } else {
+                entries = (selected?.spells ?? []).map((name: string) => ({
+                  name, level: 1, prepared: null, concentration: false, ritual: false,
+                }))
+              }
+
+              if (!entries.length) return <div className="cs-empty">No spells recorded</div>
+
+              const isCastable = (spell: SpellEntry): boolean => {
+                if (spell.level === 0) return true
+                if (casterType === 'known') return true
+                if (casterType === 'prepared') return spell.prepared === true
+                return true
+              }
+              // Group entries by level for the Known section
+              const knownByLevel = new Map<number, SpellEntry[]>()
+              for (const e of entries) {
+                if (!knownByLevel.has(e.level)) knownByLevel.set(e.level, [])
+                knownByLevel.get(e.level)!.push(e)
+              }
+              const knownLevels = Array.from(knownByLevel.keys()).sort((a, b) => a - b)
+
+              const filteredEntries = entries.filter(spell => {
+                if (spellFilter === 'ritual') return spell.ritual
+                if (spellFilter === 'castable') return isCastable(spell)
+                return true
+              })
+
+              const grouped = new Map<number, SpellEntry[]>()
+              for (const e of filteredEntries) {
+                if (!grouped.has(e.level)) grouped.set(e.level, [])
+                grouped.get(e.level)!.push(e)
+              }
+              const levels = Array.from(grouped.keys()).sort((a, b) => a - b)
+
+              const levelLabel = (n: number) => {
+                if (n === 0) return 'Cantrips'
+                const ord = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th'][n] ?? `${n}th`
+                return `${ord} Level`
+              }
+
+              // Core cast execution (slot marked + concentration tracked)
+              const doCast = (spell: SpellEntry, slotLevel: number | null) => {
+                if (slotLevel !== null && slotLevel > 0) {
+                  const pactEntry = Object.entries(effectiveSlots).find(([k]) => k === 'pact')
+                  const pactLevel = pactEntry ? (pactEntry[1].level ?? 0) : 0
+                  const slotKey = isPactCaster && pactLevel === slotLevel ? 'pact' : String(slotLevel)
+                  markSlotUsed(slotKey)
+                }
+                if (spell.concentration) setConcentratingOn(spell.name)
+                onQuickAction?.({ type: 'cast', detail: spell.name })
+                setExpandedSpell(null)
+                setSpellUpcastOptions(null)
+                setConcWarning(null)
+              }
+
+              // Guard concentration conflict, then execute
+              const withConcCheck = (spell: SpellEntry, action: () => void) => {
+                if (spell.concentration && concentratingOn && concentratingOn !== spell.name) {
+                  setConcWarning({ spell: spell.name, action })
+                } else {
+                  action()
+                }
+              }
+
+              const handleCastFromDetail = (spell: SpellEntry, isRitual: boolean = false) => {
+                if (isRitual) {
+                  withConcCheck(spell, () => {
+                    if (spell.concentration) setConcentratingOn(spell.name)
+                    onQuickAction?.({ type: 'cast', detail: `${spell.name} (ritual)` })
+                    setExpandedSpell(null)
+                    setConcWarning(null)
+                  })
+                  return
+                }
+                if (spell.level === 0) { withConcCheck(spell, () => doCast(spell, null)); return }
+                const available = Object.entries(effectiveSlots)
+                  .filter(([lvl, s]) => {
+                    const n = lvl === 'pact' ? (s.level ?? 0) : Number(lvl)
+                    return n >= spell.level && s.used < s.max
+                  })
+                  .map(([lvl, s]) => lvl === 'pact' ? (s.level ?? 0) : Number(lvl))
+                  .filter(n => n > 0)
+                  .sort((a, b) => a - b)
+                if (!available.length) { withConcCheck(spell, () => doCast(spell, null)); return }
+                if (available.length === 1) { withConcCheck(spell, () => doCast(spell, available[0])); return }
+                setSpellUpcastOptions({ spell: spell.name, minLevel: spell.level, options: available })
+              }
+
+              const preparedCount = casterType === 'prepared'
+                ? entries.filter(e => e.level > 0 && e.prepared === true).length : null
+
+              return (
+                <div className="cs-spell-book">
+                  {/* Filter bar */}
+                  <div className="cs-spell-filter-bar">
+                    {(['castable', 'all', 'ritual'] as const).map(f => (
+                      <button
+                        key={f}
+                        type="button"
+                        className={`cs-spell-filter-btn ${spellFilter === f ? 'cs-spell-filter-btn--active' : ''}`}
+                        onClick={() => { setSpellFilter(f); setExpandedSpell(null); setSpellUpcastOptions(null) }}
+                      >
+                        {f === 'castable' ? 'Castable' : f === 'all' ? 'All' : 'Rituals'}
+                      </button>
+                    ))}
+                    {preparedCount !== null ? (
+                      <span className="cs-spell-prep-count">{preparedCount} prepared</span>
+                    ) : null}
+                  </div>
+
+                  {/* Concentration conflict warning */}
+                  {concWarning ? (
+                    <div className="cs-conc-warning">
+                      <span>End <em>{concentratingOn}</em> to cast <em>{concWarning.spell}</em>?</span>
+                      <div className="cs-conc-warning-btns">
+                        <button type="button" className="cs-conc-confirm" onClick={() => {
+                          setConcentratingOn(null)
+                          concWarning.action()
+                        }}>Confirm</button>
+                        <button type="button" className="cs-conc-cancel" onClick={() => setConcWarning(null)}>Cancel</button>
+                      </div>
                     </div>
                   ) : null}
+
+                  {!filteredEntries.length ? (
+                    <div className="cs-empty">No spells match this filter</div>
+                  ) : null}
+
+                  {levels.map(lvl => {
+                    const spellsAtLevel = grouped.get(lvl)!
+                    const pactEntry = Object.entries(effectiveSlots).find(([k]) => k === 'pact')
+                    const pactLevel = pactEntry ? (pactEntry[1].level ?? 0) : 0
+                    const usePactSlot = isPactCaster && lvl > 0 && pactLevel === lvl
+                    const slot = lvl > 0 ? (effectiveSlots[usePactSlot ? 'pact' : String(lvl)] ?? null) : null
+                    const slotsAvail = slot ? slot.max - slot.used : null
+
+                    return (
+                      <div key={lvl} className="cs-spell-level-group">
+                        <div className="cs-spell-level-header">
+                          <span className="cs-spell-level-label">{levelLabel(lvl)}</span>
+                          {slot && slot.max > 0 ? (
+                            <div className={`cs-spell-slot-pips-row ${usePactSlot ? 'cs-spell-slot-pips-row--pact' : ''}`}>
+                              {usePactSlot ? <span className="cs-spell-slot-label-sm">Pact</span> : null}
+                              {Array.from({length: slot.max}).map((_, i) => {
+                                const isUsed = i < slot.used
+                                const slotK = usePactSlot ? 'pact' : String(lvl)
+                                return (
+                                  <button
+                                    key={i}
+                                    type="button"
+                                    className={`cs-spell-slot-pip ${isUsed ? 'cs-spell-slot-pip--used' : ''}`}
+                                    title={isUsed ? 'Restore slot' : 'Use slot'}
+                                    onClick={e => {
+                                      e.stopPropagation()
+                                      const newUsed = isUsed ? i : i + 1
+                                      applySlots({...effectiveSlots, [slotK]: {...slot, used: newUsed}})
+                                    }}
+                                  />
+                                )
+                              })}
+                              <span className="cs-spell-slot-count">{slotsAvail}/{slot.max}</span>
+                            </div>
+                          ) : null}
+                        </div>
+                        {spellsAtLevel.map(spell => {
+                          const isExpanded = expandedSpell === spell.name
+                          const isUpcastTarget = spellUpcastOptions?.spell === spell.name
+                          const castable = isCastable(spell)
+                          return (
+                            <div key={spell.name} className={`cs-spell-item ${isExpanded ? 'cs-spell-item--open' : ''} ${!castable ? 'cs-spell-item--dim' : ''}`}>
+                              <button
+                                type="button"
+                                className="cs-spell-name-btn"
+                                onClick={() => {
+                                  setExpandedSpell(prev => prev === spell.name ? null : spell.name)
+                                  setSpellUpcastOptions(null)
+                                  setConcWarning(null)
+                                }}
+                              >
+                                <span className="cs-spell-name">{spell.name}</span>
+                                <span className="cs-spell-badges">
+                                  {spell.prepared === true ? <span className="cs-spell-badge cs-spell-badge--prep" title="Prepared">◆</span> : null}
+                                  {spell.prepared === false && spellFilter === 'all' ? <span className="cs-spell-badge cs-spell-badge--unprep" title="Not prepared">◇</span> : null}
+                                  {spell.concentration ? <span className="cs-spell-badge cs-spell-badge--conc" title="Concentration">C</span> : null}
+                                  {spell.ritual ? <span className="cs-spell-badge cs-spell-badge--ritual" title="Ritual">R</span> : null}
+                                </span>
+                                {spell.save_hit ? <span className="cs-spell-tag">{spell.save_hit}</span> : null}
+                                <span className="cs-spell-chevron">{isExpanded ? '▲' : '▼'}</span>
+                              </button>
+
+                              {isExpanded ? (
+                                <div className="cs-spell-detail">
+                                  <div className="cs-spell-meta-row">
+                                    {spell.time ? <span className="cs-spell-meta"><span className="cs-spell-meta-key">Cast</span> {spell.time}</span> : null}
+                                    {spell.range ? <span className="cs-spell-meta"><span className="cs-spell-meta-key">Range</span> {spell.range}</span> : null}
+                                    {spell.duration ? <span className="cs-spell-meta"><span className="cs-spell-meta-key">Dur</span> {spell.duration}</span> : null}
+                                    {spell.components ? <span className="cs-spell-meta"><span className="cs-spell-meta-key">Comp</span> {spell.components}</span> : null}
+                                  </div>
+                                  {spell.notes ? <div className="cs-spell-notes">{spell.notes}</div> : null}
+                                  {!castable && casterType === 'prepared' ? (
+                                    <div className="cs-spell-not-prepared">Not prepared — cannot cast this rest</div>
+                                  ) : isUpcastTarget ? (
+                                    <div className="cs-spell-upcast">
+                                      <div className="cs-spell-upcast-label">Cast at level:</div>
+                                      <div className="cs-spell-upcast-options">
+                                        {spellUpcastOptions!.options.map(lvlOpt => (
+                                          <button
+                                            key={lvlOpt}
+                                            type="button"
+                                            className="cs-spell-upcast-btn"
+                                            onClick={() => withConcCheck(spell, () => doCast(spell, lvlOpt))}
+                                          >
+                                            {lvlOpt === spellUpcastOptions!.minLevel ? `Level ${lvlOpt}` : `Level ${lvlOpt} ↑`}
+                                          </button>
+                                        ))}
+                                        <button
+                                          type="button"
+                                          className="cs-spell-upcast-btn cs-spell-upcast-btn--cancel"
+                                          onClick={() => setSpellUpcastOptions(null)}
+                                        >
+                                          Cancel
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="cs-spell-actions">
+                                      <button
+                                        type="button"
+                                        className="cs-spell-cast-btn"
+                                        onClick={() => handleCastFromDetail(spell)}
+                                      >
+                                        {spell.level === 0 ? '✦ Cast Cantrip' : slotsAvail === 0 ? '✦ Cast (no slots)' : '✦ Cast'}
+                                      </button>
+                                      {spell.ritual ? (
+                                        <button
+                                          type="button"
+                                          className="cs-spell-cast-btn cs-spell-cast-btn--ritual"
+                                          onClick={() => handleCastFromDetail(spell, true)}
+                                          title="No slot required — takes 10 extra minutes"
+                                        >
+                                          Ritual
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : null}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  })}
+
+                  {/* All Known Spells — collapsible management section */}
+                  {spellFilter !== 'ritual' ? (
+                    <div className="cs-known-section">
+                      <button
+                        type="button"
+                        className="cs-known-toggle"
+                        onClick={() => setShowAllKnown(v => !v)}
+                      >
+                        <span>All Known Spells ({entries.length})</span>
+                        <span className="cs-known-chevron">{showAllKnown ? '▲' : '▼'}</span>
+                      </button>
+                      {showAllKnown ? (
+                        <div className="cs-known-list">
+                          {knownLevels.map(lvl => (
+                            <div key={lvl} className="cs-known-level-group">
+                              <div className="cs-known-level-label">{levelLabel(lvl)}</div>
+                              {knownByLevel.get(lvl)!.map(spell => (
+                                <div key={spell.name} className="cs-known-row">
+                                  <span className="cs-known-name">{spell.name}</span>
+                                  {spell.concentration ? <span className="cs-spell-badge cs-spell-badge--conc" title="Concentration">C</span> : null}
+                                  {spell.ritual ? <span className="cs-spell-badge cs-spell-badge--ritual" title="Ritual">R</span> : null}
+                                  {lvl > 0 && casterType === 'prepared' ? (
+                                    <button
+                                      type="button"
+                                      className={`cs-prep-toggle ${spell.prepared === true ? 'cs-prep-toggle--prepared' : ''}`}
+                                      onClick={() => togglePrepared(spell.name, spell.prepared)}
+                                      title={spell.prepared === true ? 'Click to unprepare' : 'Click to prepare'}
+                                    >
+                                      {spell.prepared === true ? '◆ Prepared' : '◇ Prepare'}
+                                    </button>
+                                  ) : null}
+                                </div>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {/* Add spell — content browser */}
+                  <div className="cs-add-spell-section">
+                    {showAddSpell ? (() => {
+                      const q = addSpellName.toLowerCase()
+                      const existingNames = new Set(entries.map(e => e.name.toLowerCase()))
+                      // Spells from character's PDF (may not be in active list)
+                      const allBookEntries: SpellEntry[] = (() => {
+                        const book = Array.isArray(selected?.spellbook) ? selected!.spellbook : []
+                        const seen = new Set<string>()
+                        const out: SpellEntry[] = []
+                        let lvl = 1
+                        for (const e of book) {
+                          if (!e) continue
+                          if (e.header) lvl = parseLevelFromHeader(String(e.header))
+                          if (!e.name) continue
+                          const nm = String(e.name)
+                          if (!seen.has(nm)) {
+                            seen.add(nm)
+                            out.push({ name: nm, level: lvl, prepared: null, concentration: false, ritual: false })
+                          }
+                        }
+                        return out
+                      })()
+                      const sheetMatches = q
+                        ? allBookEntries.filter(e => e.name.toLowerCase().includes(q)).slice(0, 8)
+                        : []
+                      // Spells from session documents (text search for lines matching query)
+                      const docMatches: string[] = q && sessionDocContent
+                        ? Array.from(new Set(
+                            sessionDocContent.split('\n')
+                              .map(l => l.trim())
+                              .filter(l => l.length > 2 && l.length < 70 && l.toLowerCase().includes(q) && !existingNames.has(l.toLowerCase()))
+                          )).slice(0, 6)
+                        : []
+                      return (
+                        <div className="cs-content-browser">
+                          <div className="cs-content-browser-header">
+                            <input
+                              autoFocus
+                              className="cs-content-search"
+                              type="text"
+                              placeholder="Search your sheet & session docs…"
+                              value={addSpellName}
+                              onChange={e => setAddSpellName(e.target.value)}
+                            />
+                            <button type="button" className="cs-content-browser-close" onClick={() => { setShowAddSpell(false); setAddSpellName('') }}>✕</button>
+                          </div>
+                          {sheetMatches.length > 0 ? (
+                            <div className="cs-content-section">
+                              <div className="cs-content-section-label">From your character sheet</div>
+                              {sheetMatches.map(spell => (
+                                <button
+                                  key={spell.name}
+                                  type="button"
+                                  className="cs-content-result"
+                                  onClick={() => addSpellToBook(spell.name, spell.level)}
+                                >
+                                  <span className="cs-content-result-name">{spell.name}</span>
+                                  <span className="cs-content-result-meta">{levelLabel(spell.level)}</span>
+                                </button>
+                              ))}
+                            </div>
+                          ) : null}
+                          {docMatches.length > 0 ? (
+                            <div className="cs-content-section">
+                              <div className="cs-content-section-label">From session documents</div>
+                              {docMatches.map(name => (
+                                <button
+                                  key={name}
+                                  type="button"
+                                  className="cs-content-result"
+                                  onClick={() => addSpellToBook(name, addSpellLevel)}
+                                >
+                                  <span className="cs-content-result-name">{name}</span>
+                                  <span className="cs-content-result-meta cs-content-result-meta--doc">doc</span>
+                                </button>
+                              ))}
+                            </div>
+                          ) : null}
+                          {/* Manual add at bottom */}
+                          <div className="cs-content-manual">
+                            <select
+                              className="cs-add-spell-level"
+                              value={addSpellLevel}
+                              onChange={e => setAddSpellLevel(Number(e.target.value))}
+                            >
+                              <option value={0}>Cantrip</option>
+                              {[1,2,3,4,5,6,7,8,9].map(l => <option key={l} value={l}>Level {l}</option>)}
+                            </select>
+                            <button
+                              type="button"
+                              className="cs-add-spell-btn"
+                              disabled={!addSpellName.trim()}
+                              onClick={() => addSpellToBook()}
+                            >
+                              + Add {addSpellName.trim() ? `"${addSpellName.trim()}"` : 'spell'}
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })() : (
+                      <button
+                        type="button"
+                        className="cs-add-spell-trigger"
+                        onClick={() => setShowAddSpell(true)}
+                      >+ Add Spell</button>
+                    )}
+                  </div>
                 </div>
-              ) : null}
-              <button
-                type="button"
-                className="btn btn-sm btn-quiet character-quick-action-btn"
-                onClick={() => onQuickAction?.({ type: 'short_rest' })}
-                title="Take a short rest"
-              >
-                Short Rest
-              </button>
-              <button
-                type="button"
-                className="btn btn-sm btn-quiet character-quick-action-btn"
-                onClick={() => onQuickAction?.({ type: 'long_rest' })}
-                title="Take a long rest"
-              >
-                Long Rest
-              </button>
-            </div>
-          </div>
-        ) : null}
+              )
+            })() : null}
 
-        <CharacterIconStrip
-          character={selected}
-          activeKey={drawerKey}
-          variant="tabs"
-          hiddenKeys={['abilities']}
-          onSelect={(key) => {
-            setDrawerKey(prev => (prev === key ? null : key))
-            setTimeout(() => {
-              if(containerRef.current) containerRef.current.scrollTop = 0
-            }, 0)
-          }}
-        />
+            {sheetTab === 'features' ? (() => {
+              const cf = selected?.classFeatures ?? []
+              const rf = selected?.racialFeatures ?? []
+              const of_ = selected?.otherFeatures ?? []
+              const hasGroups = cf.length > 0 || rf.length > 0 || of_.length > 0
+              // Fallback: use flat features array if no categorized data
+              const fallback = hasGroups ? [] : (selected?.features ?? []).map((f: any) => featureSource(f) ? { name: featureName(f), source: featureSource(f) ?? undefined, description: featureDesc(f) ?? undefined } : { name: featureName(f) })
+              const groups: Array<{ label: string; items: FeatureItem[] }> = hasGroups
+                ? [
+                    ...(cf.length ? [{ label: 'Class Features', items: cf }] : []),
+                    ...(rf.length ? [{ label: 'Racial / Species Features', items: rf }] : []),
+                    ...(of_.length ? [{ label: 'Other Features', items: of_ }] : []),
+                  ]
+                : (fallback.length ? [{ label: 'Features', items: fallback }] : [])
 
-        <div className="character-panel-scroll" ref={containerRef}>
-          <div className="character-sheet-abilities" aria-label="Ability scores">
-            {abilities.map(row => (
-              <button
-                key={row.key}
-                type="button"
-                className="character-ability-tile character-ability-tile--button"
-                onClick={() => setDrawerKey(prev => (prev === 'abilities' ? null : 'abilities'))}
-                aria-label={`View abilities details (${row.key})`}
-              >
-                <div className="character-ability-key">{row.key}</div>
-                <div className="character-ability-mod">{row.modLabel}</div>
-                <div className="character-ability-score">{row.score}</div>
-              </button>
-            ))}
-          </div>
+              if (!groups.length) return <div className="cs-empty">No features recorded</div>
 
-          <div className="character-sheet-grid">
-            <div className="character-sheet-card" aria-label="Skills">
-              <div className="character-sheet-card-header">
-                <div className="character-sheet-card-title">Skills</div>
-                <button
-                  type="button"
-                  className={`character-sheet-card-action ${drawerKey === 'skills' ? 'active' : ''}`}
-                  onClick={() => setDrawerKey(prev => (prev === 'skills' ? null : 'skills'))}
-                >
-                  {drawerKey === 'skills' ? 'Hide' : 'Show all'}
-                </button>
-              </div>
-              {drawerKey === 'skills' ? drawerContent : (
-                <div className="character-sheet-mini-skills">
-                  <ul className="character-sheet-mini-list">
-                    {(selected?.skills || []).slice(0, 14).map(s => (
-                      <li key={s.name}>
-                        <span className="character-sheet-mini-name">{s.name}</span>
-                        <span className="character-sheet-mini-mod">{s.mod >= 0 ? '+' : ''}{s.mod}</span>
+              const renderItem = (f: FeatureItem, idx: number) => (
+                <div key={`${f.name}-${idx}`} className="cs-feature-item">
+                  <div className="cs-feature-name">
+                    {f.name}
+                    {f.source ? <SourceRef source={f.source} style={{ marginLeft: 6, color: 'var(--accent, #c8941a)', fontSize: 10 }} /> : null}
+                  </div>
+                  {f.description ? <div className="cs-feature-desc">{f.description}</div> : null}
+                </div>
+              )
+
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {groups.map(group => (
+                    <div key={group.label}>
+                      {groups.length > 1 ? (
+                        <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--accent, #c8941a)', opacity: 0.8, marginBottom: 4, paddingBottom: 3, borderBottom: '1px solid rgba(200,148,26,0.2)' }}>
+                          {group.label}
+                        </div>
+                      ) : null}
+                      <div className="cs-feature-list">
+                        {group.items.map(renderItem)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            })() : null}
+
+            {sheetTab === 'inventory' ? (
+              <div className="cs-inv-wrapper">
+                {effectiveInv.length === 0 ? (
+                  <div className="cs-empty">No items recorded</div>
+                ) : (
+                  <ul className="cs-inv-list">
+                    {effectiveInv.map((item, idx) => (
+                      <li key={`${item}-${idx}`} className="cs-inv-item">
+                        <span className="cs-inv-name">{item}</span>
+                        <button
+                          type="button"
+                          className="cs-inv-remove"
+                          title="Remove item"
+                          onClick={() => {
+                            const next = effectiveInv.filter((_, i) => i !== idx)
+                            setInvLocal(next)
+                            pushSheetPatch({ inventory: next })
+                          }}
+                        >
+                          ×
+                        </button>
                       </li>
                     ))}
                   </ul>
-                  {!selected?.skills?.length ? <div className="muted">No skills listed.</div> : null}
-                </div>
-              )}
-            </div>
-
-            <div className="character-sheet-card" aria-label="Character details">
-              <div className="character-sheet-card-header">
-                <div className="character-sheet-card-title">{drawerTitle}</div>
-                {drawerKey ? (
-                  <button
-                    type="button"
-                    className="character-panel-drawer-close"
-                    onClick={() => setDrawerKey(null)}
-                    aria-label="Close details"
-                  >
-                    ✕
-                  </button>
-                ) : null}
-              </div>
-              <div className="character-sheet-card-body">
-                {drawerKey ? drawerContent : previewContent}
-              </div>
-            </div>
-          </div>
-
-          {sceneCues.length > 0 && (
-            <div className="character-panel-block">
-              <div className="character-panel-block-title character-panel-block-title--scene">Scene Cues</div>
-              <ul className="character-panel-cues">
-                {sceneCues.map((cue)=>(
-                  <li key={cue.id} className="character-panel-cue">
-                    <div className="character-panel-cue-prompt">{cue.prompt}</div>
-                    {cue.roll ? (
-                      <button
-                        className="btn btn-quiet btn-sm"
-                        type="button"
-                        onClick={()=>handleCueRoll(cue)}
-                        disabled={rollingCueId === cue.id}
-                      >
-                        {rollingCueId === cue.id ? 'Rolling…' : `Roll ${cue.roll.skill || cue.roll.type || 'd20'}`}
-                      </button>
-                    ) : (
-                      <div className="character-panel-cue-muted">Awaiting clarification</div>
-                    )}
-                  </li>
-                ))}
-              </ul>
-              {cueError && <div className="character-panel-error">{cueError}</div>}
-            </div>
-          )}
-
-          {npcSpotlight.length > 0 && (
-            <div className="character-panel-block">
-              <div className="character-panel-block-title character-panel-block-title--npc">NPC Spotlight</div>
-              <ul className="character-panel-npcs">
-                {npcSpotlight.map(npc => (
-                  <li key={npc.name}>
-                    <strong>{npc.name}</strong>{npc.initiative_hint ? ` · ${npc.initiative_hint}` : ''}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="character-panel-root">
-      <h3 className="character-panel-title">{title}</h3>
-      <CharacterIconStrip
-        character={selected}
-        activeKey={drawerKey}
-        onSelect={(key) => {
-          setDrawerKey(prev => (prev === key ? null : key))
-          // keep the drawer area visible when toggled
-          setTimeout(() => {
-            if(containerRef.current) containerRef.current.scrollTop = 0
-          }, 0)
-        }}
-      />
-      <div className="character-panel-scroll" ref={containerRef}>
-        <div className={`character-panel-layout ${drawerKey ? 'character-panel-layout--drawer' : ''}`}>
-          {drawerKey ? (
-            <aside className="character-panel-drawer" aria-label="Character details drawer">
-              <div className="character-panel-drawer-header">
-                <div className="character-panel-drawer-title">
-                  {drawerTitle}
-                </div>
-                <button className="character-panel-drawer-close" type="button" onClick={() => setDrawerKey(null)} aria-label="Close drawer">
-                  ✕
-                </button>
-              </div>
-
-              <div className="character-panel-drawer-body">
-                {drawerContent}
-              </div>
-            </aside>
-          ) : null}
-
-          <div className="character-panel-main">
-            {!drawerKey && overview ? (
-              <div className="character-overview">
-                <div className="character-overview-header">
-                  <div>
-                    <div className="character-overview-name">{selected?.name}</div>
-                    <div className="character-overview-subtitle muted">Level {selected?.level} {selected?.features?.length ? `· ${selected.features.length} features` : ''}</div>
-                  </div>
-                </div>
-
-                <div className="character-overview-grid">
-                  <div className="character-overview-card">
-                    <div className="character-overview-label">HP</div>
-                    <div className="character-overview-value">
-                      {overview.hpCurrent}/{overview.hpMax}
-                      {overview.tempHp ? <span className="character-overview-muted"> (+{overview.tempHp} temp)</span> : null}
-                    </div>
-                  </div>
-
-                  <div className="character-overview-card">
-                    <div className="character-overview-label">AC</div>
-                    <div className="character-overview-value">{overview.ac}</div>
-                  </div>
-
-                  <div className="character-overview-card">
-                    <div className="character-overview-label">Level</div>
-                    <div className="character-overview-value">{overview.level}</div>
-                  </div>
-
-                  <div className="character-overview-card">
-                    <div className="character-overview-label">Initiative</div>
-                    <div className="character-overview-value">
-                      {overview.initMod >= 0 ? '+' : ''}{overview.initMod}
-                    </div>
-                  </div>
-
-                  <div className="character-overview-card">
-                    <div className="character-overview-label">Spell Save DC</div>
-                    <div className="character-overview-value">{overview.spellSave}</div>
-                  </div>
-                </div>
-
-                <div className="character-overview-meta">
-                  <div className="character-overview-pill">Features: {overview.featuresCount}</div>
-                  <div className="character-overview-pill">Inventory: {overview.inventoryCount}</div>
-                  <div className="character-overview-pill">Skills: {overview.skillsCount}</div>
-                  {(selected?.spells?.length ?? 0) > 0 ? (
-                    <div className="character-overview-pill">Spells: {selected!.spells!.length}</div>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
-
-            {showRoster ? (
-              <div className="character-roster">
-                {roster.map(entry => (
-                  <div key={entry.id} className={`character-card ${entry.id === selected?.id ? 'active' : ''}`}>
-                    <button onClick={() => onSelect?.(entry.id)}>
-                      <div className="character-name">{entry.name}</div>
-                      <div className="character-meta">HP {entry.hp.current}/{entry.hp.max} • Level {entry.level}</div>
+                )}
+                <div className="cs-inv-add">
+                  <div className="cs-inv-add-row">
+                    <input
+                      className="cs-inv-add-input"
+                      type="text"
+                      placeholder="Add item from sheet or session…"
+                      value={addItemInput}
+                      onChange={e => setAddItemInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          const val = addItemInput.trim()
+                          if (!val) return
+                          const next = [...effectiveInv, val]
+                          setInvLocal(next)
+                          pushSheetPatch({ inventory: next })
+                          setAddItemInput('')
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="cs-inv-add-btn"
+                      disabled={!addItemInput.trim()}
+                      onClick={() => {
+                        const val = addItemInput.trim()
+                        if (!val) return
+                        const next = [...effectiveInv, val]
+                        setInvLocal(next)
+                        pushSheetPatch({ inventory: next })
+                        setAddItemInput('')
+                      }}
+                    >
+                      +
                     </button>
                   </div>
-                ))}
+                  {/* Content suggestions from session documents */}
+                  {addItemInput.trim().length >= 2 && sessionDocContent ? (() => {
+                    const q = addItemInput.trim().toLowerCase()
+                    const currentSet = new Set(effectiveInv.map(i => i.toLowerCase()))
+                    const suggestions = Array.from(new Set(
+                      sessionDocContent.split('\n')
+                        .map(l => l.trim())
+                        .filter(l => l.length > 2 && l.length < 60 && l.toLowerCase().includes(q) && !currentSet.has(l.toLowerCase()))
+                    )).slice(0, 6)
+                    if (!suggestions.length) return null
+                    return (
+                      <div className="cs-content-section cs-inv-suggestions">
+                        <div className="cs-content-section-label">From session documents</div>
+                        {suggestions.map(item => (
+                          <button
+                            key={item}
+                            type="button"
+                            className="cs-content-result"
+                            onClick={() => {
+                              const next = [...effectiveInv, item]
+                              setInvLocal(next)
+                              pushSheetPatch({ inventory: next })
+                              setAddItemInput('')
+                            }}
+                          >
+                            <span className="cs-content-result-name">{item}</span>
+                            <span className="cs-content-result-meta cs-content-result-meta--doc">doc</span>
+                          </button>
+                        ))}
+                      </div>
+                    )
+                  })() : null}
+                </div>
               </div>
             ) : null}
-          </div>
-        </div>
 
-        {sceneCues.length > 0 && (
-          <div className="character-panel-block">
-            <div className="character-panel-block-title character-panel-block-title--scene">Scene Cues</div>
+            {sheetTab === 'lore' ? (
+              <div className="cs-lore-wrapper">
+                {loreLoading ? (
+                  <div className="cs-empty">Loading…</div>
+                ) : loreData !== null ? (
+                  <>
+                    {/* Backstory */}
+                    <div className="cs-lore-section">
+                      <label className="cs-lore-label">Backstory</label>
+                      <p className="cs-lore-hint">Your character's history, motivations, and what shaped them. The AI Game Master uses this to create personal story hooks.</p>
+                      <textarea
+                        className="cs-lore-textarea cs-lore-textarea--tall"
+                        placeholder="Who are you? Where do you come from? What drove you to adventure? What do you regret?"
+                        value={loreData.backstory}
+                        onChange={e => {
+                          const val = e.target.value
+                          setLoreData(prev => prev ? { ...prev, backstory: val } : prev)
+                          saveLoreField('backstory', val)
+                        }}
+                      />
+                    </div>
+
+                    {/* Appearance */}
+                    <div className="cs-lore-section">
+                      <label className="cs-lore-label">Appearance</label>
+                      <textarea
+                        className="cs-lore-textarea"
+                        placeholder="Physical description — age, build, notable features, how others perceive you at first glance…"
+                        value={loreData.appearance}
+                        onChange={e => {
+                          const val = e.target.value
+                          setLoreData(prev => prev ? { ...prev, appearance: val } : prev)
+                          saveLoreField('appearance', val)
+                        }}
+                      />
+                    </div>
+
+                    {/* Character Pillars */}
+                    <div className="cs-lore-section">
+                      <div className="cs-lore-section-header">
+                        <span className="cs-lore-label cs-lore-label--pillars">Character Pillars</span>
+                        <span className="cs-lore-pillar-hint">Used by the AI to create personal stakes and moral dilemmas</span>
+                      </div>
+                      {([
+                        { key: 'personality_traits' as const, label: 'Personality Traits', placeholder: 'How does your character act, speak, and move through the world day to day?' },
+                        { key: 'ideals' as const, label: 'Ideals', placeholder: 'What principle or belief does your character hold above all else?' },
+                        { key: 'bonds' as const, label: 'Bonds', placeholder: 'Who or what does your character love, owe, or feel responsible for?' },
+                        { key: 'flaws' as const, label: 'Flaws', placeholder: 'What weakness, fear, or vice might betray your character at the worst moment?' },
+                      ]).map(({ key, label, placeholder }) => (
+                        <div key={key} className="cs-lore-pillar">
+                          <label className="cs-lore-pillar-label">{label}</label>
+                          <textarea
+                            className="cs-lore-textarea"
+                            placeholder={placeholder}
+                            value={loreData[key]}
+                            onChange={e => {
+                              const val = e.target.value
+                              setLoreData(prev => prev ? { ...prev, [key]: val } : prev)
+                              saveLoreField(key, val)
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+
+                    <p className="cs-lore-footer">Changes save automatically · Used by the AI Game Master for richer, more personal storytelling</p>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+
+          </div>
+        ) : null}
+
+        {/* ── Scene Cues ── */}
+        {sceneCues.length > 0 ? (
+          <div className="cs-block">
+            <div className="cs-block-title cs-block-title--scene">Scene Cues</div>
             <ul className="character-panel-cues">
-              {sceneCues.map((cue)=>(
+              {sceneCues.map(cue => (
                 <li key={cue.id} className="character-panel-cue">
                   <div className="character-panel-cue-prompt">{cue.prompt}</div>
                   {cue.roll ? (
-                    <button
-                      className="btn btn-quiet btn-sm"
-                      type="button"
-                      onClick={()=>handleCueRoll(cue)}
-                      disabled={rollingCueId === cue.id}
-                    >
+                    <button className="btn btn-quiet btn-sm" type="button"
+                      onClick={() => handleCueRoll(cue)} disabled={rollingCueId === cue.id}>
                       {rollingCueId === cue.id ? 'Rolling…' : `Roll ${cue.roll.skill || cue.roll.type || 'd20'}`}
                     </button>
                   ) : (
@@ -735,11 +1379,67 @@ export default function CharacterPanel({
                 </li>
               ))}
             </ul>
-            {cueError && <div className="character-panel-error">{cueError}</div>}
+            {cueError ? <div className="character-panel-error">{cueError}</div> : null}
           </div>
-        )}
+        ) : null}
 
-        {npcSpotlight.length > 0 && (
+        {/* ── NPC Spotlight ── */}
+        {npcSpotlight.length > 0 ? (
+          <div className="cs-block">
+            <div className="cs-block-title cs-block-title--npc">NPC Spotlight</div>
+            <ul className="character-panel-npcs">
+              {npcSpotlight.map(npc => (
+                <li key={npc.name}>
+                  <strong>{npc.name}</strong>{npc.initiative_hint ? ` · ${npc.initiative_hint}` : ''}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+      </div>
+    )
+  }
+
+  // ── Roster / GM view ──────────────────────────────────────────────────────
+  return (
+    <div className="character-panel-root">
+      <h3 className="character-panel-title">{title}</h3>
+      <div className="character-panel-scroll" ref={containerRef}>
+        <div className="character-roster">
+          {roster.map(entry => (
+            <div key={entry.id} className={`character-card ${entry.id === selected?.id ? 'active' : ''}`}>
+              <button onClick={() => onSelect?.(entry.id)}>
+                <div className="character-name">{entry.name}</div>
+                <div className="character-meta">HP {entry.hp.current}/{entry.hp.max} · AC {entry.ac} · Level {entry.level}{entry.class_name ? ` ${entry.class_name}` : ''}</div>
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {sceneCues.length > 0 ? (
+          <div className="character-panel-block">
+            <div className="character-panel-block-title character-panel-block-title--scene">Scene Cues</div>
+            <ul className="character-panel-cues">
+              {sceneCues.map(cue => (
+                <li key={cue.id} className="character-panel-cue">
+                  <div className="character-panel-cue-prompt">{cue.prompt}</div>
+                  {cue.roll ? (
+                    <button className="btn btn-quiet btn-sm" type="button"
+                      onClick={() => handleCueRoll(cue)} disabled={rollingCueId === cue.id}>
+                      {rollingCueId === cue.id ? 'Rolling…' : `Roll ${cue.roll.skill || cue.roll.type || 'd20'}`}
+                    </button>
+                  ) : (
+                    <div className="character-panel-cue-muted">Awaiting clarification</div>
+                  )}
+                </li>
+              ))}
+            </ul>
+            {cueError ? <div className="character-panel-error">{cueError}</div> : null}
+          </div>
+        ) : null}
+
+        {npcSpotlight.length > 0 ? (
           <div className="character-panel-block">
             <div className="character-panel-block-title character-panel-block-title--npc">NPC Spotlight</div>
             <ul className="character-panel-npcs">
@@ -750,7 +1450,7 @@ export default function CharacterPanel({
               ))}
             </ul>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   )

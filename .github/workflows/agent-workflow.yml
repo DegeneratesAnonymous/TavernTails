@@ -1,0 +1,159 @@
+name: Agent Workflow Orchestration
+
+on:
+  issues:
+    types: [opened, assigned, labeled]
+  pull_request:
+    types: [opened]
+
+jobs:
+  post-workflow-checklist:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Ensure qa-failed label exists
+        uses: actions/github-script@v7
+        with:
+          script: |
+            try {
+              await github.rest.issues.getLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: 'qa-failed',
+              });
+            } catch (e) {
+              if (e.status === 404) {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: 'qa-failed',
+                  color: 'd93f0b',
+                  description: 'QA found blocking defects; re-run the Orchestrator with QA findings as additional context.',
+                });
+              }
+            }
+
+      - name: Post / update Orchestrator checklist
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const MARKER = '<!-- orchestrator-workflow-marker -->';
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const isPR = context.eventName === 'pull_request';
+            const number = isPR
+              ? context.payload.pull_request.number
+              : context.payload.issue.number;
+
+            // Guard: for issue events, only run when:
+            // - issue opened (always), OR
+            // - assigned to copilot, OR
+            // - qa-failed label applied (restart)
+            if (!isPR) {
+              const action = context.payload.action;
+
+              if (action === 'assigned') {
+                const assignee = context.payload.assignee?.login;
+                if (assignee !== 'copilot') {
+                  core.info(`Assigned to ${assignee}; not copilot. Skipping.`);
+                  return;
+                }
+              }
+
+              if (action === 'labeled') {
+                const label = context.payload.label?.name;
+                if (label !== 'qa-failed') {
+                  core.info(`Labeled with ${label}; not qa-failed. Skipping.`);
+                  return;
+                }
+              }
+            }
+
+            // Use the repository default branch for all links
+            const defaultBranch = context.payload.repository?.default_branch ?? 'main';
+            const link = (path) => `/${owner}/${repo}/blob/${defaultBranch}/${path}`;
+
+            const type = isPR ? 'pull request' : 'issue';
+            // After the guard above, the only labeled event that reaches here is 'qa-failed'.
+            const isRestart = !isPR && context.payload.action === 'labeled';
+
+            const header = isRestart
+              ? '## 🔁 Orchestrator Workflow Restarted (QA Failed)'
+              : '## 🤖 Orchestrator Workflow Initiated';
+
+            const restartNote = isRestart ? [
+              '',
+              '> ⚠️ **QA found blocking defects on the previous run.**',
+              '> Include the full QA findings comment as **Required Input §6** when re-running the Orchestrator.',
+              '',
+            ] : [];
+
+            const body = [
+              MARKER,
+              header,
+              '',
+              `This ${type} has been picked up by the automated agent workflow (Option A — single Orchestrator run).`,
+              '',
+              ...restartNote,
+              '---',
+              '',
+              '### How to proceed',
+              '',
+              '1. Open the Orchestrator prompt: [`docs/dev-agents/ORCHESTRATOR.md`](' + link('docs/dev-agents/ORCHESTRATOR.md') + ')',
+              '2. Fill in **all Required Inputs** from this issue/PR (goal, scope, acceptance criteria, constraints, links' + (isRestart ? ', QA findings' : '') + ').',
+              '3. Run the prompt in a single Copilot/LLM invocation.',
+              '4. Paste the full structured output as a comment here.',
+              '',
+              '#### Required Inputs checklist',
+              '',
+              '- [ ] **Issue / PR goal** — one-paragraph description of what must be done and why',
+              '- [ ] **Scope** — what is in scope and out of scope',
+              '- [ ] **Acceptance criteria** — numbered, testable list',
+              '- [ ] **Constraints** — performance, security, backwards-compatibility limits',
+              '- [ ] **Relevant links** — issue URL, related PRs, `PROJECT_PLAN.md` package number',
+              ...(isRestart ? ['- [ ] **QA findings** — full QA findings comment from the failed run'] : []),
+              '',
+              '#### Expected output sections (produced by a single Orchestrator run)',
+              '',
+              '- [ ] 🔬 Research',
+              '- [ ] 🗺️ Tech Lead Plan (interfaces/contracts + task breakdown)',
+              '- [ ] ⚙️ Backend Plan',
+              '- [ ] 🖥️ Frontend Plan',
+              '- [ ] 🚀 DevOps Plan',
+              '- [ ] 🔒 Security Review',
+              '- [ ] 🧪 QA Plan (test matrix + acceptance checklist)',
+              '- [ ] 📚 Documentation Updates',
+              '',
+              '---',
+              '',
+              `> 📖 Full workflow guide: [\`docs/DEV_AGENTS.md\`](${link('docs/DEV_AGENTS.md')})`,
+            ].join('\n');
+
+            // De-dupe: update existing checklist comment if present; otherwise create it.
+            const { data: comments } = await github.rest.issues.listComments({
+              owner,
+              repo,
+              issue_number: number,
+              per_page: 100,
+            });
+
+            const existing = comments.find(c => (c.body || '').includes(MARKER));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: number,
+                body,
+              });
+            }

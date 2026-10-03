@@ -36,6 +36,7 @@ uvicorn_*_err.log
 
 # Local session data (generated at runtime/tests)
 server/sessions/
+server/campaigns/
 
 # Stray local docs/screenshots
 *.pdf

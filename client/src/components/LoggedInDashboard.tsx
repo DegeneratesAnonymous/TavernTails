@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import '../LoggedIn.css';
 import './LoggedInDashboard.css';
+import SourceRef from './ui/SourceRef'
 import GameplayLayout from './GameplayLayout'
 import SessionSettings from './SessionSettings'
 import { apiFetch, buildApiUrl } from '../api'
@@ -43,8 +44,14 @@ type NotificationItem = {
   actionData?: Record<string, any>
 }
 
+const PERSISTENT_VIEWS = new Set(['gameplay', 'home', 'campaign-setup', 'view-characters', 'account', 'admin', 'documents', 'explore', 'guides'])
+
 const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
-  const [view, setView] = useState<string>('home');
+  const [view, setView] = useState<string>(() => {
+    if (typeof window === 'undefined') return 'home'
+    const saved = window.localStorage.getItem('tt:view')
+    return (saved && PERSISTENT_VIEWS.has(saved)) ? saved : 'home'
+  });
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [contactModalOpen, setContactModalOpen] = useState(false)
   const [blockReportModalOpen, setBlockReportModalOpen] = useState(false)
@@ -55,9 +62,15 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [moderationSearchBusy, setModerationSearchBusy] = useState(false)
   const [importInitialMode, setImportInitialMode] = useState<'pdf' | 'beyond20' | null>(null)
   const [campaigns, setCampaigns] = useState<Array<any>>([])
-  const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null)
+  const [activeCampaignId, setActiveCampaignId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null
+    return window.localStorage.getItem('tt:lastCampaignId') || null
+  })
   const [sessionMetaById, setSessionMetaById] = useState<Record<string, any>>({})
-  const [activeSession, setActiveSession] = useState<string | null>(null)
+  const [activeSession, setActiveSession] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null
+    return window.localStorage.getItem('tt:lastSessionId') || null
+  })
   const [settingsSession, setSettingsSession] = useState<string| null>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [createCampaignBusy, setCreateCampaignBusy] = useState(false)
@@ -68,9 +81,21 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [newCampaignTone, setNewCampaignTone] = useState('balanced')
   const [newCampaignPacing, setNewCampaignPacing] = useState('moderate')
   const [newCampaignContentRating, setNewCampaignContentRating] = useState('pg-13')
+  const [newCampaignOwnerRole, setNewCampaignOwnerRole] = useState<'player' | 'dm'>('player')
+  const [newCampaignOwnerCharacterId, setNewCampaignOwnerCharacterId] = useState<string>('')
 
   const [quickstartBusy, setQuickstartBusy] = useState(false)
   const [startPlayBusy, setStartPlayBusy] = useState(false)
+  const [openingSetupSessionId, setOpeningSetupSessionId] = useState<string | null>(null)
+  const [openingSetupData, setOpeningSetupData] = useState<any | null>(null)
+  const [openingSetupAnswers, setOpeningSetupAnswers] = useState<Record<string, { option_id?: string; custom_value?: string; answer_source?: 'user_choice' | 'ai_choice' | 'custom'; answer_text?: string; question_text?: string }>>({})
+  const [openingSetupStep, setOpeningSetupStep] = useState(-1)
+  const [openingSetupReview, setOpeningSetupReview] = useState(false)
+  const [openingSetupCustomOpen, setOpeningSetupCustomOpen] = useState<Record<string, boolean>>({})
+  const [openingSetupBusy, setOpeningSetupBusy] = useState(false)
+  const [openingSetupError, setOpeningSetupError] = useState<string | null>(null)
+  const [openingSetupCharacterHook, setOpeningSetupCharacterHook] = useState('')
+  const [openingSetupHookEditing, setOpeningSetupHookEditing] = useState(false)
 
   const [showQuickstartSetup, setShowQuickstartSetup] = useState(false)
   const [quickstartCampaignName, setQuickstartCampaignName] = useState('')
@@ -91,7 +116,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [characterSettingsOpen, setCharacterSettingsOpen] = useState(false)
   const [characterPanelMode, setCharacterPanelMode] = useState<'summary' | 'spells' | 'features' | 'journal' | 'inventory'>('summary')
   const [selectedSpellRow, setSelectedSpellRow] = useState<any | null>(null)
-  const [showAllFeatures, setShowAllFeatures] = useState(false)
   const [selectedFeatureRow, setSelectedFeatureRow] = useState<any | null>(null)
   const [showAllSummaryInventory, setShowAllSummaryInventory] = useState(false)
   const [showAllSummarySkills, setShowAllSummarySkills] = useState(false)
@@ -123,6 +147,9 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [globalToast, setGlobalToast] = useState<string | null>(null)
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>([])
   const [pendingFriendRequests, setPendingFriendRequests] = useState<Array<any>>([])
+  const [pendingCampaignInvites, setPendingCampaignInvites] = useState<Array<any>>([])
+  const [campaignInviteBusyId, setCampaignInviteBusyId] = useState<string | null>(null)
+  const [campaignInviteMessage, setCampaignInviteMessage] = useState<string | null>(null)
   const [accountSection, setAccountSection] = useState<'profile' | 'invites' | null>(null)
   const [accountTab, setAccountTab] = useState<'profile' | 'inbox' | 'tickets'>('profile')
   const [accountEditName, setAccountEditName] = useState<string | null>(null)
@@ -175,8 +202,17 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
         actionData: { from_id: req?.from_id, from_profile: fromProfile },
       }
     })
-    return [...profileNotifs, ...friendNotifs]
-  }, [profile?.notifications, pendingFriendRequests, readNotificationIds])
+    const campaignNotifs: NotificationItem[] = pendingCampaignInvites.map((invite: any) => ({
+      id: `campaign-invite-${invite.session_id}-${invite.email}`,
+      title: `Campaign invite: ${invite.campaign_name || invite.session_name || 'Campaign'}`,
+      body: 'Choose a character to join.',
+      createdAt: null,
+      read: readNotificationIds.includes(`campaign-invite-${invite.session_id}-${invite.email}`),
+      type: 'campaign_invite' as const,
+      actionData: invite,
+    }))
+    return [...profileNotifs, ...friendNotifs, ...campaignNotifs]
+  }, [profile?.notifications, pendingFriendRequests, pendingCampaignInvites, readNotificationIds])
 
   const sortedNotifications = useMemo(() => {
     return [...notifications].sort((a, b) => {
@@ -249,6 +285,12 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     return (activeCampaign?.sessions || [])
   }, [activeCampaign])
 
+  const activeSessionForCampaign = useMemo(() => {
+    if (!activeSession) return null
+    const belongs = activeCampaignSessions.some((s) => String(s.id) === String(activeSession))
+    return belongs ? activeSession : null
+  }, [activeSession, activeCampaignSessions])
+
   const characterRoster: CharacterSummary[] = useMemo(() => {
     const toNum = (value: any): number | null => {
       const parsed = typeof value === 'number' ? value : Number(value)
@@ -297,26 +339,59 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       const spellbook = Array.isArray(sheet?.spellbook) ? sheet.spellbook : []
       const features = toStringArray(sheet?.features)
       const skills = toSkillArray(sheet?.skills)
+
+      const toFeatureItems = (raw: any): Array<{ name: string; source?: string; description?: string }> => {
+        if (!Array.isArray(raw)) return []
+        return raw.flatMap((v: any) => {
+          if (!v) return []
+          if (typeof v === 'string') {
+            const s = v.trim()
+            if (!s || /^={2,}.*={2,}$/.test(s)) return []
+            const bullet = s.indexOf(' • ')
+            if (bullet !== -1) return [{ name: s.slice(0, bullet).trim(), source: s.slice(bullet + 3).trim() || undefined }]
+            return [{ name: s }]
+          }
+          if (typeof v === 'object') {
+            const name = String(v.name || '').trim()
+            if (!name || /^={2,}.*={2,}$/.test(name)) return []
+            return [{ name, source: v.source ? String(v.source) : undefined, description: v.description ? String(v.description) : undefined }]
+          }
+          return []
+        })
+      }
+      const classFeatures = toFeatureItems(sheet?.classFeatures)
+      const racialFeatures = toFeatureItems(sheet?.racialFeatures)
+      const otherFeatures = toFeatureItems(sheet?.otherFeatures)
       const exhaustion = typeof sheet?.exhaustion === 'number' ? sheet.exhaustion : 0
       const rawDs = sheet?.death_saves ?? sheet?.deathSaves
       const deathSaves = rawDs && typeof rawDs === 'object'
         ? { successes: toNum(rawDs.successes) ?? 0, failures: toNum(rawDs.failures) ?? 0 }
         : { successes: 0, failures: 0 }
       const spellSlots = (sheet?.spell_slots && typeof sheet.spell_slots === 'object') ? sheet.spell_slots : undefined
+      const preparedOverrides = (sheet?.prepared_spell_overrides && typeof sheet.prepared_spell_overrides === 'object' && !Array.isArray(sheet.prepared_spell_overrides))
+        ? sheet.prepared_spell_overrides as Record<string, boolean>
+        : undefined
 
       return {
         id: String(c?.id ?? ''),
         name: String(c?.name ?? 'Unnamed'),
         level: toNum(c?.level) ?? 1,
+        class_name: c?.class_name ? String(c.class_name) : null,
         hp: { current: hpCurrent, max: hpMax, temp: hpTemp || undefined },
         ac,
         spellSave,
         stats: {
           str: toNum(stats?.str) ?? 10,
           dex: toNum(stats?.dex) ?? 10,
+          con: toNum(stats?.con) ?? 10,
+          int: toNum(stats?.int) ?? 10,
           wis: toNum(stats?.wis) ?? 10,
+          cha: toNum(stats?.cha) ?? 10,
         },
         features,
+        classFeatures,
+        racialFeatures,
+        otherFeatures,
         inventoryCount: typeof sheet?.inventoryCount === 'number' ? sheet.inventoryCount : inventory.length,
         journalEntries: typeof sheet?.journalEntries === 'number' ? sheet.journalEntries : 0,
         skills,
@@ -326,6 +401,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
         exhaustion,
         deathSaves,
         spellSlots,
+        preparedOverrides,
       }
     }).filter((c: any) => Boolean(c?.id))
   }, [characters])
@@ -345,7 +421,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       setCharacterPanelMode('summary')
       setSelectedSpellRow(null)
       setSelectedFeatureRow(null)
-      setShowAllFeatures(false)
       setShowAllSummaryInventory(false)
       setShowAllSummarySkills(false)
       setShowAllInventoryPanel(false)
@@ -379,21 +454,36 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       return value
         .map((v) => {
           if (typeof v === 'string') {
-            const name = v.trim()
-            if (!name) return null
+            const raw = v.trim()
+            if (!raw) return null
+            // Filter DDB section delimiter lines: "=== WIZARD FEATURES ===" etc.
+            if (/^={2,}.*={2,}$/.test(raw)) return null
+            // Parse "Feature Name • PHB 114" or "Feature Name (PHB p.114)" source notation
+            let name = raw
+            let source: string | undefined
+            const bulletIdx = raw.indexOf(' • ')
+            if (bulletIdx !== -1) {
+              name = raw.slice(0, bulletIdx).trim()
+              source = raw.slice(bulletIdx + 3).trim() || undefined
+            } else {
+              const parenM = raw.match(/^(.+?)\s+\(([^)]+p\.\s*\d+[^)]*)\)\s*$/)
+              if (parenM) {
+                name = parenM[1].trim()
+                source = parenM[2].trim()
+              }
+            }
             const lower = name.toLowerCase()
-            // Skip bare container category names with no real feature info
             if (FEATURE_SKIP_NAMES.has(lower)) return null
             if (FEATURE_CATEGORY_PATTERN.test(name) && !name.includes(':')) return null
-            return { name }
+            return { name, source }
           }
           if (v && typeof v === 'object') {
             const name = String(v.name || '').trim()
             if (!name) return null
+            if (/^={2,}.*={2,}$/.test(name)) return null
             const lower = name.toLowerCase()
             const desc = v.description ? String(v.description) : undefined
             if (FEATURE_SKIP_NAMES.has(lower)) return null
-            // Filter container category names only when they have no description
             if (!desc && FEATURE_CATEGORY_PATTERN.test(name) && !name.includes(':')) return null
             return { name, source: v.source ? String(v.source) : undefined, description: desc }
           }
@@ -424,9 +514,13 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
 
     const classFeatures = uniqFeatures(toFeatureList((sheet as any)?.classFeatures))
     const racialFeatures = uniqFeatures(toFeatureList((sheet as any)?.racialFeatures))
+    const structuredOther = toFeatureList((sheet as any)?.otherFeatures)
+    // Only pull in the flat features_from_widgets list when the structured arrays are all empty
+    // — otherwise it duplicates entries that already appear in class/racial/otherFeatures.
+    const hasStructured = classFeatures.length > 0 || racialFeatures.length > 0 || structuredOther.length > 0
     const otherFeaturesSrc = uniqFeatures([
-      ...toFeatureList((sheet as any)?.otherFeatures),
-      ...toFeatureList(sheet?.features),
+      ...structuredOther,
+      ...(hasStructured ? [] : toFeatureList(sheet?.features)),
     ])
     // Deduplicate: remove items already in class/racial by name+source composite key
     const classOrRaceKeys = new Set([
@@ -435,22 +529,8 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     ])
     const otherFeatures = otherFeaturesSrc.filter(f => !classOrRaceKeys.has(`${f.name}::${f.source || ''}`))
 
-    // Group class features by source (class name) if source info is available
-    const classFeatureGroups: Array<{ label: string; items: Array<{ name: string; source?: string; description?: string }> }> = []
-    const classFeaturesBySource = new Map<string, Array<{ name: string; source?: string; description?: string }>>()
-    for (const f of classFeatures) {
-      const src = f.source || 'Class Features'
-      if (!classFeaturesBySource.has(src)) classFeaturesBySource.set(src, [])
-      classFeaturesBySource.get(src)!.push(f)
-    }
-    if (classFeaturesBySource.size > 1) {
-      classFeaturesBySource.forEach((items, label) => classFeatureGroups.push({ label, items }))
-    } else if (classFeatures.length) {
-      classFeatureGroups.push({ label: 'Class Features', items: classFeatures })
-    }
-
     const featureGroups: Array<{ label: string; items: Array<{ name: string; source?: string; description?: string }> }> = [
-      ...classFeatureGroups,
+      ...(classFeatures.length ? [{ label: 'Class Features', items: classFeatures }] : []),
       ...(racialFeatures.length ? [{ label: 'Racial / Species Features', items: racialFeatures }] : []),
       ...(otherFeatures.length ? [{ label: 'Other Features', items: otherFeatures }] : []),
     ]
@@ -589,6 +669,34 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       }
     } catch (e) { /* ignore */ }
   }, [])
+
+  const fetchPendingCampaignInvites = useCallback(async () => {
+    try {
+      const res = await apiFetch('/sessions')
+      if (!res.ok) return
+      const rows = await res.json().catch(() => [])
+      const identifier = String(profile?.email || profile?.username || '').trim().toLowerCase()
+      const invites: any[] = []
+      for (const session of Array.isArray(rows) ? rows : []) {
+        const sessionInvites = Array.isArray(session?.invites) ? session.invites : []
+        for (const invite of sessionInvites) {
+          const inviteEmail = String(invite?.email || '').trim().toLowerCase()
+          if (inviteEmail === identifier && !invite?.accepted) {
+            invites.push({
+              ...invite,
+              session_id: String(session?.id || ''),
+              session_name: session?.name || '',
+              campaign_id: session?.campaign_id || null,
+              campaign_name: campaigns.find((c) => String(c.id) === String(session?.campaign_id))?.name || session?.name || '',
+            })
+          }
+        }
+      }
+      setPendingCampaignInvites(invites.filter((invite) => invite.session_id))
+    } catch {
+      // ignore; invite discovery is best-effort
+    }
+  }, [campaigns, profile?.email, profile?.username])
 
   const fetchCharacters = useCallback(async () => {
     try{
@@ -760,6 +868,10 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     fetchPendingFriends()
   },[fetchCampaigns, fetchCharacters, fetchPendingFriends, profile])
 
+  useEffect(() => {
+    fetchPendingCampaignInvites()
+  }, [fetchPendingCampaignInvites])
+
   // Single source of truth: whenever activeCampaignId or the campaigns list changes,
   // align activeSession to a session that actually belongs to the active campaign.
   // If there are no sessions yet, auto-create one then align.
@@ -772,7 +884,12 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       return
     }
     const nextCampaign = campaigns.find(c => String(c.id) === String(activeCampaignId))
-    if(!nextCampaign) return
+    if(!nextCampaign) {
+      // Campaign no longer exists (e.g. was deleted) — clear stale session
+      setActiveCampaignId(null)
+      setActiveSession(null)
+      return
+    }
     const sessionsList: Array<any> = nextCampaign.sessions || []
 
     // If activeSession already belongs to this campaign keep it — no thrash.
@@ -802,9 +919,10 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const handleSetActiveCampaignId = useCallback((id: string | null) => {
     // Only update the campaign ID. The useEffect above owns session alignment.
     setActiveCampaignId(id)
-    // Eagerly clear the session so stale sessions from the previous campaign
-    // are never briefly visible while the effect re-runs.
+    // Eagerly clear the session and character so stale state from the previous
+    // campaign is never briefly visible while the effect re-runs.
     setActiveSession(null)
+    setActiveCharacterId(null)
   }, [])
 
   useEffect(()=>{
@@ -842,7 +960,11 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
         const username = (localStorage.getItem('user_username') || '').trim().toLowerCase()
         const identifier = email || username
         const members = Array.isArray(meta?.members) ? meta.members : []
-        const me = members.find((m: any) => String(m?.email || '').trim().toLowerCase() === identifier)
+        const me = members.find((m: any) => {
+          const memberEmail = String(m?.email || '').trim().toLowerCase()
+          const memberUsername = String(m?.username || '').trim().toLowerCase()
+          return Boolean(identifier && (memberEmail === identifier || memberUsername === identifier || memberEmail === email || memberUsername === username))
+        })
         if(me && (me.character_id === null || typeof me.character_id === 'number')){
           setActiveCharacterId(me.character_id)
         }
@@ -957,6 +1079,43 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
           throw new Error(err?.detail || 'Failed to bootstrap scene')
         }
         const bootData = await boot.json().catch(() => ({} as any))
+        if (bootData?.requires_opening_setup && sessionId) {
+          setOpeningSetupBusy(true)
+          setOpeningSetupError(null)
+          const setupRes = await apiFetch(`/sessions/${sessionId}/opening-setup`)
+          if (!setupRes.ok) {
+            const err = await setupRes.json().catch(() => null)
+            throw new Error(err?.detail || 'Failed to load quickstart setup')
+          }
+          const setupData = await setupRes.json().catch(() => ({} as any))
+          setOpeningSetupSessionId(sessionId)
+          setOpeningSetupData(setupData)
+          const questions = setupData?.questionnaire?.questions || []
+          const generatedHook = String(
+            setupData?.questionnaire?.campaign_brief?.character_anchor?.reason_to_care
+            || setupData?.questionnaire?.campaign_brief?.known_facts?.[5]
+            || ''
+          )
+          setOpeningSetupCharacterHook(generatedHook)
+          setOpeningSetupHookEditing(false)
+          const nextAnswers: Record<string, { option_id?: string; custom_value?: string; answer_source?: 'user_choice' | 'ai_choice' | 'custom'; answer_text?: string; question_text?: string }> = {}
+          for (const question of questions || []) {
+            const first = Array.isArray(question.options) ? question.options.find((opt: any) => opt?.id !== 'ai_choose') : null
+            if (first?.id) nextAnswers[question.id] = {
+              option_id: first.id,
+              answer_source: 'user_choice',
+              answer_text: String(first.value || first.label || ''),
+              question_text: String(question.question || ''),
+            }
+          }
+          setOpeningSetupAnswers(nextAnswers)
+          setOpeningSetupCustomOpen({})
+          setOpeningSetupStep(-1)
+          setOpeningSetupReview(false)
+          setOpeningSetupBusy(false)
+          setView('opening-setup')
+          return
+        }
         if (bootData?.scene) {
           window.dispatchEvent(new CustomEvent('narrative:scene', { detail: { scene: bootData.scene } }))
         }
@@ -977,6 +1136,144 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     quickstartBusy,
     assignCharacterToSession,
   ])
+
+  const buildOpeningAnswer = useCallback((question: any, option: any, source: 'user_choice' | 'ai_choice' | 'custom' = 'user_choice', customValue = '') => {
+    const isCustom = source === 'custom'
+    return {
+      option_id: isCustom ? undefined : String(option?.id || ''),
+      custom_value: isCustom ? customValue : undefined,
+      answer_source: source,
+      answer_text: isCustom ? customValue : String(option?.value || option?.label || ''),
+      question_text: String(question?.question || ''),
+    }
+  }, [])
+
+  const defaultOpeningAnswers = useCallback((questions: any[]) => {
+    const nextAnswers: Record<string, { option_id?: string; custom_value?: string; answer_source?: 'user_choice' | 'ai_choice' | 'custom'; answer_text?: string; question_text?: string }> = {}
+    for (const question of questions || []) {
+      const first = Array.isArray(question.options) ? question.options.find((opt: any) => opt?.id !== 'ai_choose') : null
+      if (first?.id) nextAnswers[question.id] = buildOpeningAnswer(question, first, 'user_choice')
+    }
+    return nextAnswers
+  }, [buildOpeningAnswer])
+
+  const loadOpeningSetup = useCallback(async (sessionId: string) => {
+    setOpeningSetupBusy(true)
+    setOpeningSetupError(null)
+    try {
+      const res = await apiFetch(`/sessions/${sessionId}/opening-setup`)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({} as any))
+        throw new Error(err?.detail || 'Failed to load opening setup')
+      }
+      const data = await res.json().catch(() => ({} as any))
+      setOpeningSetupSessionId(sessionId)
+      setOpeningSetupData(data)
+      const questions = data?.questionnaire?.questions || []
+      const generatedHook = String(
+        data?.questionnaire?.campaign_brief?.character_anchor?.reason_to_care
+        || data?.questionnaire?.campaign_brief?.known_facts?.[5]
+        || ''
+      )
+      setOpeningSetupCharacterHook(generatedHook)
+      setOpeningSetupHookEditing(false)
+      setOpeningSetupAnswers(defaultOpeningAnswers(questions))
+      setOpeningSetupCustomOpen({})
+      setOpeningSetupStep(-1)
+      setOpeningSetupReview(false)
+      setView('opening-setup')
+    } catch (err: any) {
+      setOpeningSetupError(err?.message || 'Failed to load opening setup')
+      setView('opening-setup')
+    } finally {
+      setOpeningSetupBusy(false)
+    }
+  }, [defaultOpeningAnswers])
+
+  const finishOpeningSetup = useCallback(async () => {
+    if (!openingSetupSessionId || openingSetupBusy) return
+    const questionnaire = openingSetupData?.questionnaire
+    if (!questionnaire?.questionnaire_id) return
+    setOpeningSetupBusy(true)
+    setOpeningSetupError(null)
+    try {
+      const answers = Object.entries(openingSetupAnswers).map(([question_id, answer]) => ({
+        question_id,
+        option_id: answer.option_id,
+        custom_value: answer.custom_value,
+        question_text: answer.question_text,
+        answer_source: answer.answer_source,
+        answer_text: answer.answer_text,
+        character_id: activeCharacterId ?? undefined,
+        campaign_id: activeCampaignId ?? undefined,
+        session_id: openingSetupSessionId,
+      }))
+      const submit = await apiFetch(`/sessions/${openingSetupSessionId}/opening-setup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          questionnaire_id: questionnaire.questionnaire_id,
+          answers,
+          character_hook_override: openingSetupCharacterHook.trim(),
+        }),
+      })
+      if (!submit.ok) {
+        const err = await submit.json().catch(() => ({} as any))
+        throw new Error(err?.detail || 'Failed to save opening setup')
+      }
+      setView('gameplay')
+      const boot = await apiFetch(`/sessions/${openingSetupSessionId}/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      const bootData = await boot.json().catch(() => ({} as any))
+      if (bootData?.scene && typeof bootData.scene === 'object') {
+        window.dispatchEvent(new CustomEvent('narrative:scene', { detail: { scene: bootData.scene } }))
+      }
+      if (bootData?.context_debug) {
+        window.dispatchEvent(new CustomEvent('context:debug', { detail: bootData.context_debug }))
+      }
+      if (bootData?.story_debug) {
+        window.dispatchEvent(new CustomEvent('story:debug', { detail: bootData.story_debug }))
+      }
+    } catch (err: any) {
+      setOpeningSetupError(err?.message || 'Failed to start the session')
+    } finally {
+      setOpeningSetupBusy(false)
+    }
+  }, [activeCampaignId, activeCharacterId, openingSetupAnswers, openingSetupBusy, openingSetupCharacterHook, openingSetupData, openingSetupSessionId])
+
+  const skipOpeningSetup = useCallback(async () => {
+    if (!openingSetupSessionId || openingSetupBusy) return
+    setOpeningSetupBusy(true)
+    setOpeningSetupError(null)
+    try {
+      const res = await apiFetch(`/sessions/${openingSetupSessionId}/opening-setup/skip`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ character_hook_override: openingSetupCharacterHook.trim() }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({} as any))
+        throw new Error(err?.detail || 'Failed to skip opening setup')
+      }
+      setView('gameplay')
+      const boot = await apiFetch(`/sessions/${openingSetupSessionId}/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      const bootData = await boot.json().catch(() => ({} as any))
+      if (bootData?.scene && typeof bootData.scene === 'object') {
+        window.dispatchEvent(new CustomEvent('narrative:scene', { detail: { scene: bootData.scene } }))
+      }
+    } catch (err: any) {
+      setOpeningSetupError(err?.message || 'Failed to skip opening setup')
+    } finally {
+      setOpeningSetupBusy(false)
+    }
+  }, [openingSetupBusy, openingSetupCharacterHook, openingSetupSessionId])
 
   const startPlaying = useCallback(async (targetCampaignId?: string) => {
     if (startPlayBusy) return
@@ -1013,16 +1310,9 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
 
       if (!sessionId) throw new Error('No session available')
 
-      // Ensure we have a character selected and assigned.
+      // Use the already-selected character; don't silently auto-pick one —
+      // the GameplaySetupChecklist handles prompting when none is selected.
       let selectedId: number | null = activeCharacterId
-      if (selectedId === null && characters.length > 0) {
-        const first = characters[0]
-        const parsed = typeof first?.id === 'number' ? first.id : Number(first?.id)
-        if (Number.isFinite(parsed)) {
-          selectedId = parsed
-          setActiveCharacterId(parsed)
-        }
-      }
 
       if (selectedId === null && characters.length === 0) {
         // Create a lightweight demo character for a smooth first-play loop.
@@ -1053,32 +1343,52 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
         }
       }
 
-      if (selectedId !== null) {
-        await assignCharacterToSession(selectedId)
+      if (selectedId !== null && sessionId) {
+        // Use sessionId directly to avoid the stale activeSession closure — React state
+        // updates are async so activeSession may still be null when this runs after
+        // setActiveSession(sid) above.
+        try {
+          await apiFetch(`/sessions/${sessionId}/character`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ character_id: selectedId }),
+          })
+        } catch (_e) { /* non-fatal */ }
+        if (cid) {
+          await updateCharacterCampaignAssociation(selectedId, cid).catch(() => {})
+        }
       }
 
-      if (playerRunMode) {
-        alert('Player-run mode is enabled for this campaign. AI scene generation was skipped.')
-        setView('gameplay')
-        return
-      }
+      // Navigate to gameplay immediately — don't block on bootstrap.
+      // Bootstrap calls the LLM which can take 10–60 s; the gameplay view
+      // receives the scene via WebSocket (narrative.scene) when it arrives.
+      setView('gameplay')
 
-      // Bootstrap (generates narrative scene + emits suggestions/cues)
-      const boot = await apiFetch(`/sessions/${sessionId}/bootstrap`, {
+      if (playerRunMode) return
+
+      // Fire full session start in the background — LLM pipeline runs here (10–60 s).
+      // The scene arrives via WebSocket (narrative.scene); the HTTP response is a fallback.
+      apiFetch(`/sessions/${sessionId}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
-      })
-      if (!boot.ok) {
-        const err = await boot.json().catch(() => null)
-        throw new Error(err?.detail || 'Failed to bootstrap scene')
-      }
-      const bootData = await boot.json().catch(() => ({} as any))
-      if (bootData?.scene) {
-        window.dispatchEvent(new CustomEvent('narrative:scene', { detail: { scene: bootData.scene } }))
-      }
-
-      setView('gameplay')
+      }).then(async (boot) => {
+        if (!boot.ok) return
+        const bootData = await boot.json().catch(() => ({} as any))
+        if (bootData?.requires_opening_setup) {
+          await loadOpeningSetup(sessionId as string)
+          return
+        }
+        if (bootData?.scene && typeof bootData.scene === 'object') {
+          window.dispatchEvent(new CustomEvent('narrative:scene', { detail: { scene: bootData.scene } }))
+        }
+        if (bootData?.context_debug) {
+          window.dispatchEvent(new CustomEvent('context:debug', { detail: bootData.context_debug }))
+        }
+        if (bootData?.story_debug) {
+          window.dispatchEvent(new CustomEvent('story:debug', { detail: bootData.story_debug }))
+        }
+      }).catch(() => {/* silent — WS will deliver the scene */})
     } catch (e: any) {
       alert(e?.message || 'Failed to start playing')
     } finally {
@@ -1091,7 +1401,8 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     characters,
     fetchCampaigns,
     fetchCharacters,
-    assignCharacterToSession,
+    loadOpeningSetup,
+    updateCharacterCampaignAssociation,
     playerRunMode,
     startPlayBusy,
   ])
@@ -1100,11 +1411,22 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     if (typeof window === 'undefined') return
     if (activeCampaignId) {
       window.localStorage.setItem('tt:lastCampaignId', String(activeCampaignId))
+    } else {
+      window.localStorage.removeItem('tt:lastCampaignId')
     }
     if (activeSession) {
       window.localStorage.setItem('tt:lastSessionId', String(activeSession))
+    } else {
+      window.localStorage.removeItem('tt:lastSessionId')
     }
   }, [activeCampaignId, activeSession])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (PERSISTENT_VIEWS.has(view)) {
+      window.localStorage.setItem('tt:view', view)
+    }
+  }, [view])
 
   const lastSessionLabel = useMemo(() => {
     if (!activeSession) return null
@@ -1132,7 +1454,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   return (
     <div className="dashboard-root">
       {/* Global top bar */}
-      <header className="dashboard-topbar">
+      <header className={`dashboard-topbar${view === 'gameplay' ? ' dashboard-topbar--gameplay' : ''}`}>
         <button
           className="drawer-toggle"
           type="button"
@@ -1143,7 +1465,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
           <span className="drawer-toggle-icon" />
           <span className="drawer-toggle-icon" />
         </button>
-        <span className="topbar-brand">TavernTails</span>
+        {view !== 'gameplay' ? <span className="topbar-brand">TavernTails</span> : null}
         <div className="topbar-right">
           <ThemeToggle />
           <button
@@ -1196,13 +1518,13 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
           <button className="btn-logout" onClick={onLogout}>Sign out</button>
         </div>
       </aside>
-      <main className="dashboard-main">
+      <main className={`dashboard-main${view === 'gameplay' ? ' gameplay-mode' : ''}`}>
         {view === 'gameplay' && (
           <section className="gameplay-panel">
             <div className="gameplay-content">
               <div className="gameplay-stage">
                 <GameplayLayout
-                  sessionId={activeSession}
+                  sessionId={activeSessionForCampaign}
                   roster={characterRoster}
                   selectedCharId={activeCharacterId === null ? null : String(activeCharacterId)}
                   currentUserEmail={profile?.email || null}
@@ -1215,7 +1537,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                   startCampaignBusy={startPlayBusy}
                   campaigns={campaigns}
                   onSelectCampaign={handleSetActiveCampaignId}
-                  onNewCampaign={() => setShowCreateModal(true)}
+                  onNewCampaign={() => setView('campaign-creation-wizard')}
                   onQuickstart={quickstartPlaytest}
                   activeCharacterId={activeCharacterId}
                   onGoToCharacters={() => {
@@ -1236,6 +1558,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                   }}
                   isAdmin={isAdmin}
                   onLogout={onLogout}
+                  onRefreshRoster={fetchCharacters}
                   onSelectCharId={async (idStr) => {
                     const parsed = Number(idStr)
                     if(!Number.isFinite(parsed)) return
@@ -1246,6 +1569,311 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
               </div>
             </div>
           </section>
+        )}
+        {view === 'opening-setup' && (
+          (() => {
+            const questions = openingSetupData?.questionnaire?.questions || []
+            const campaignBrief = openingSetupData?.questionnaire?.campaign_brief || openingSetupData?.opening_setup?.campaign_brief || {}
+            const briefParagraphs = Array.isArray(campaignBrief?.brief_paragraphs) ? campaignBrief.brief_paragraphs.filter(Boolean) : []
+            const knownFacts = Array.isArray(campaignBrief?.known_facts) ? campaignBrief.known_facts.filter(Boolean) : []
+            const stepLabels: Record<string, string> = {
+              arrival_reason: 'Arrival',
+              personal_stake: 'Stakes',
+              followed_complication: 'Complication',
+              fear_of_loss: 'Fear',
+              npc_connection: 'Trust',
+              party_bond: 'Trust',
+            }
+            const activeQuestion = questions[Math.min(openingSetupStep, Math.max(0, questions.length - 1))]
+            const current = activeQuestion ? (openingSetupAnswers[activeQuestion.id] || {}) : {}
+            const nonAiOptions = activeQuestion?.options?.filter((option: any) => option.id !== 'ai_choose') || []
+            const canContinue = Boolean(activeQuestion && (
+              current.answer_source === 'ai_choice'
+              || (current.answer_source === 'custom' && String(current.custom_value || '').trim())
+              || (current.option_id && current.option_id !== 'ai_choose')
+            ))
+            const bridgeCharacterName = characters.find(c => Number(c.id) === Number(activeCharacterId))?.name || 'your character'
+            const answerFor = (question: any) => {
+              const answer = openingSetupAnswers[question.id] || {}
+              if (answer.answer_source === 'ai_choice') return 'AI will decide based on your character.'
+              return String(answer.answer_text || answer.custom_value || 'No answer selected')
+            }
+            const reviewRows = [
+              ['arrival_reason', `What brought ${bridgeCharacterName} here`],
+              ['personal_stake', 'Why it matters'],
+              ['followed_complication', 'What followed'],
+              ['fear_of_loss', 'What could be lost'],
+              ['npc_connection', 'Trust or distrust'],
+              ['party_bond', 'Party bond'],
+            ].map(([id, label]) => {
+              const q = questions.find((question: any) => question.id === id)
+              return q ? { id, label, text: answerFor(q) } : null
+            }).filter(Boolean) as Array<{ id: string; label: string; text: string }>
+            const answerAllWithAi = () => {
+              const next = { ...openingSetupAnswers }
+              for (const question of questions) {
+                next[question.id] = {
+                  option_id: 'ai_choose',
+                  answer_source: 'ai_choice',
+                  answer_text: '',
+                  question_text: question.question,
+                }
+              }
+              setOpeningSetupAnswers(next)
+              setOpeningSetupReview(true)
+            }
+            return (
+              <section className="opening-bridge-shell">
+                <div className="opening-bridge-card">
+                  <PageHeader
+                    title="Before the First Scene"
+                    subtitle={openingSetupStep < 0
+                      ? `First, here is what ${bridgeCharacterName} knows before arriving.`
+                      : (openingSetupData?.questionnaire?.intro_text || 'Choose what ties your character to the opening moment.')}
+                  />
+                  {openingSetupError && (
+                    <div className="alert alert-error">{openingSetupError}</div>
+                  )}
+                  {openingSetupBusy && !openingSetupData?.questionnaire && (
+                    <div className="opening-bridge-loading">Loading opening setup...</div>
+                  )}
+                  {!openingSetupReview && openingSetupStep < 0 && (
+                    <div className="opening-brief">
+                      <div className="opening-bridge-progress">
+                        <span>Step 0 of {questions.length}</span>
+                        <strong>Campaign Brief</strong>
+                      </div>
+                      <div className="opening-brief-title">
+                        <h2>{campaignBrief?.title || activeCampaign?.name || 'World Context'}</h2>
+                        <span>{campaignBrief?.location_name || 'Starting location'}</span>
+                      </div>
+                      <div className="opening-brief-grid">
+                        <section>
+                          <h3>The Place</h3>
+                          <p>{briefParagraphs[0] || knownFacts[0] || 'The campaign begins where the first public trouble has surfaced.'}</p>
+                        </section>
+                        <section>
+                          <h3>The Trouble</h3>
+                          <p>{briefParagraphs[1] || knownFacts[1] || 'The first problem is already visible, but the truth is not settled.'}</p>
+                        </section>
+                        <section>
+                          <h3>Why It Matters</h3>
+                          <p>{knownFacts[2] || briefParagraphs[2] || 'Before the next bell, the sealed letter may be locked away by whoever claims authority here.'}</p>
+                        </section>
+                        <section>
+                          <h3>What {bridgeCharacterName} Knows</h3>
+                          <p>{briefParagraphs[3] || knownFacts[5] || campaignBrief?.character_entry_prompt || `${bridgeCharacterName} arrives before the truth is known.`}</p>
+                        </section>
+                      </div>
+                      {knownFacts.length ? (
+                        <div className="opening-known-facts">
+                          {knownFacts.slice(0, 4).map((fact: string, idx: number) => (
+                            <span key={`${idx}-${fact}`}>{fact}</span>
+                          ))}
+                        </div>
+                      ) : null}
+                      <div className="opening-hook-editor">
+                        <div className="opening-hook-editor-head">
+                          <strong>{bridgeCharacterName} is involved because...</strong>
+                          <button
+                            type="button"
+                            className="opening-custom-toggle"
+                            onClick={() => setOpeningSetupHookEditing(value => !value)}
+                          >
+                            {openingSetupHookEditing ? 'Done' : `Edit ${bridgeCharacterName}'s reason for being here`}
+                          </button>
+                        </div>
+                        {openingSetupHookEditing ? (
+                          <textarea
+                            className="opening-hook-input"
+                            value={openingSetupCharacterHook}
+                            rows={3}
+                            placeholder={`${bridgeCharacterName} is involved because...`}
+                            onChange={(event) => setOpeningSetupCharacterHook(event.target.value)}
+                          />
+                        ) : (
+                          <p>{openingSetupCharacterHook || campaignBrief?.character_anchor?.reason_to_care || `${bridgeCharacterName} has a personal reason to care about the opening trouble.`}</p>
+                        )}
+                      </div>
+                      <p className="opening-entry-prompt">{campaignBrief?.character_entry_prompt || `${bridgeCharacterName} arrives before the truth is known. Decide why this mystery has pulled them here.`}</p>
+                      <div className="opening-bridge-actions opening-bridge-actions--review">
+                        <button className="btn btn-secondary" type="button" disabled={openingSetupBusy} onClick={() => setView('gameplay')}>
+                          Back
+                        </button>
+                        <button
+                          className="opening-ai-all-btn"
+                          type="button"
+                          disabled={openingSetupBusy}
+                          onClick={answerAllWithAi}
+                        >
+                          Let AI Build My Setup
+                        </button>
+                        <button className="btn btn-primary" type="button" disabled={openingSetupBusy || !questions.length} onClick={() => setOpeningSetupStep(0)}>
+                          Begin Setup
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {!openingSetupReview && activeQuestion ? (
+                    <>
+                      <div className="opening-bridge-progress">
+                        <span>Step {openingSetupStep + 1} of {questions.length}</span>
+                        <strong>{stepLabels[activeQuestion.id] || activeQuestion.kind || 'Bridge'}</strong>
+                      </div>
+                      <div className="opening-bridge-question">
+                        <div>
+                          <h2>{activeQuestion.question}</h2>
+                          {activeQuestion.helper_text ? <p className="opening-question-helper">{activeQuestion.helper_text}</p> : null}
+                        </div>
+                        <button
+                          className={`opening-ai-link ${current.answer_source === 'ai_choice' ? 'opening-ai-link--active' : ''}`}
+                          type="button"
+                          onClick={() => setOpeningSetupAnswers(prev => ({
+                            ...prev,
+                            [activeQuestion.id]: {
+                              option_id: 'ai_choose',
+                              answer_source: 'ai_choice',
+                              answer_text: '',
+                              question_text: activeQuestion.question,
+                            },
+                          }))}
+                        >
+                          Let AI decide
+                        </button>
+                      </div>
+                      <div className="opening-choice-list">
+                        {nonAiOptions.map((option: any) => {
+                          const selected = current.option_id === option.id && current.answer_source !== 'custom'
+                          return (
+                            <button
+                              key={option.id}
+                              type="button"
+                              className={`opening-choice-card ${selected ? 'opening-choice-card--selected' : ''}`}
+                              onClick={() => {
+                                setOpeningSetupCustomOpen(prev => ({ ...prev, [activeQuestion.id]: false }))
+                                setOpeningSetupAnswers(prev => ({
+                                  ...prev,
+                                  [activeQuestion.id]: buildOpeningAnswer(activeQuestion, option, 'user_choice'),
+                                }))
+                              }}
+                            >
+                              <span className="opening-choice-radio">{selected ? 'x' : ''}</span>
+                              <span>{option.label}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                      {activeQuestion.allow_custom ? (
+                        <div className="opening-custom-block">
+                          <button
+                            type="button"
+                            className={`opening-custom-toggle ${current.answer_source === 'custom' ? 'opening-custom-toggle--active' : ''}`}
+                            onClick={() => setOpeningSetupCustomOpen(prev => ({ ...prev, [activeQuestion.id]: !prev[activeQuestion.id] }))}
+                          >
+                            Write my own answer
+                          </button>
+                          {openingSetupCustomOpen[activeQuestion.id] || current.answer_source === 'custom' ? (
+                            <input
+                              className="opening-custom-input"
+                              value={current.custom_value || ''}
+                              placeholder="Write a short answer..."
+                              onChange={(event) => {
+                                const value = event.target.value
+                                setOpeningSetupAnswers(prev => ({
+                                  ...prev,
+                                  [activeQuestion.id]: {
+                                    custom_value: value,
+                                    answer_source: value.trim() ? 'custom' : undefined,
+                                    answer_text: value,
+                                    question_text: activeQuestion.question,
+                                  },
+                                }))
+                              }}
+                            />
+                          ) : null}
+                        </div>
+                      ) : null}
+                      <div className="opening-bridge-actions">
+                        <button
+                          className="btn btn-secondary"
+                          type="button"
+                          disabled={openingSetupBusy}
+                          onClick={() => setOpeningSetupStep(step => Math.max(-1, step - 1))}
+                        >
+                          Back
+                        </button>
+                        <button
+                          className="opening-ai-all-btn"
+                          type="button"
+                          disabled={openingSetupBusy}
+                          onClick={answerAllWithAi}
+                        >
+                          Let AI answer all
+                        </button>
+                        <button
+                          className="btn btn-primary"
+                          type="button"
+                          disabled={!canContinue || openingSetupBusy}
+                          onClick={() => {
+                            if (openingSetupStep >= questions.length - 1) setOpeningSetupReview(true)
+                            else setOpeningSetupStep(step => Math.min(questions.length - 1, step + 1))
+                          }}
+                        >
+                          {openingSetupStep >= questions.length - 1 ? 'Review Answers' : 'Continue'}
+                        </button>
+                      </div>
+                      <button className="opening-skip-btn" type="button" disabled={openingSetupBusy} onClick={skipOpeningSetup}>
+                        Skip bridge setup
+                      </button>
+                    </>
+                  ) : null}
+                  {openingSetupReview && questions.length ? (
+                    <div className="opening-review">
+                      <div className="opening-bridge-progress">
+                        <span>Review</span>
+                        <strong>Bridge Summary</strong>
+                      </div>
+                      <h2>First scene setup</h2>
+                      <div className="opening-review-brief">
+                        <h3>Campaign Brief Summary</h3>
+                        <ul>
+                          {(knownFacts.length ? knownFacts : briefParagraphs).slice(0, 3).map((fact: string, idx: number) => (
+                            <li key={`${idx}-${fact}`}>{fact}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      {openingSetupCharacterHook.trim() ? (
+                        <div className="opening-review-brief">
+                          <h3>{bridgeCharacterName}'s Hook</h3>
+                          <p>{openingSetupCharacterHook.trim()}</p>
+                        </div>
+                      ) : null}
+                      <h3 className="opening-review-subhead">{bridgeCharacterName}'s Setup</h3>
+                      <div className="opening-review-list">
+                        {reviewRows.map(row => (
+                          <article key={row.id} className="opening-review-row">
+                            <span>{row.label}</span>
+                            <strong>{row.text}</strong>
+                          </article>
+                        ))}
+                      </div>
+                      <div className="opening-bridge-actions opening-bridge-actions--review">
+                        <button className="btn btn-secondary" type="button" disabled={openingSetupBusy} onClick={() => {
+                          setOpeningSetupReview(false)
+                          setOpeningSetupStep(-1)
+                        }}>
+                          Edit Brief/Answers
+                        </button>
+                        <button className="btn btn-primary" type="button" disabled={openingSetupBusy} onClick={finishOpeningSetup}>
+                          {openingSetupBusy ? 'Starting...' : 'Start Session'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </section>
+            )
+          })()
         )}
         {view === 'home' && (
           <DashboardHome
@@ -1290,7 +1918,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             characters={characters}
             onSelectCampaign={handleSetActiveCampaignId}
             onCampaignUpdated={fetchCampaigns}
-            onCreateCampaign={() => setShowCreateModal(true)}
+            onCreateCampaign={() => setView('campaign-creation-wizard')}
             onPlay={startPlaying}
             playBusy={startPlayBusy}
             showAdminControls={isAdmin && adminMode}
@@ -1541,12 +2169,10 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                                   const rawSkillList: any[] = Array.isArray((selectedCharacter?.sheet as any)?.skills) ? (selectedCharacter?.sheet as any).skills : []
                                   const hasObjects = rawSkillList.some((s) => s && typeof s === 'object' && 'name' in s)
                                   if (hasObjects) {
-                                    const visibleSkills = showAllSummarySkills ? rawSkillList : rawSkillList.slice(0, 8)
-                                    const more = rawSkillList.length - visibleSkills.length
                                     return (
                                       <>
                                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 8px' }}>
-                                          {visibleSkills.map((s: any) => {
+                                          {rawSkillList.map((s: any) => {
                                             const name = typeof s === 'string' ? s : String(s?.name || '')
                                             if (!name) return null
                                             const mod = typeof s?.modifier === 'number' ? s.modifier : (typeof s?.mod === 'number' ? s.mod : null)
@@ -1560,15 +2186,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                                             )
                                           })}
                                         </div>
-                                        {!showAllSummarySkills && more > 0 ? (
-                                          <button className="btn btn-quiet" style={{ fontSize: 12, marginTop: 6, padding: '2px 0', color: 'var(--tt-accent, #c084fc)' }} onClick={() => setShowAllSummarySkills(true)}>
-                                            + {more} more — Show all
-                                          </button>
-                                        ) : showAllSummarySkills && rawSkillList.length > 8 ? (
-                                          <button className="btn btn-quiet" style={{ fontSize: 12, marginTop: 6, padding: '2px 0', color: 'var(--tt-accent, #c084fc)' }} onClick={() => setShowAllSummarySkills(false)}>
-                                            ▲ Show less
-                                          </button>
-                                        ) : null}
                                       </>
                                     )
                                   }
@@ -1668,10 +2285,34 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                                 ? spellbook
                                 : spellNames.map((name: any) => ({ name: String(name) }))
 
+                              // If no explicit slot data, derive slot counts from slot_header fields
+                              // in the spellbook (DDB PDF format: "4 Slots OOOO" on a spell row that
+                              // also has a header like "1st Level").
+                              const derivedSlots: Array<{ level: number; max: number; used: number }> = rawSlots.length === 0
+                                ? (() => {
+                                    const seen = new Set<number>()
+                                    const derived: Array<{ level: number; max: number; used: number }> = []
+                                    for (const row of rows) {
+                                      if (!row?.slot_header || !row?.header) continue
+                                      const lvlM = String(row.header).match(/(\d+)/)
+                                      const cntM = String(row.slot_header).match(/(\d+)/)
+                                      if (!lvlM || !cntM) continue
+                                      const level = parseInt(lvlM[1], 10)
+                                      const max = parseInt(cntM[1], 10)
+                                      if (level >= 1 && level <= 9 && max > 0 && !seen.has(level)) {
+                                        seen.add(level)
+                                        derived.push({ level, max, used: 0 })
+                                      }
+                                    }
+                                    return derived
+                                  })()
+                                : []
+
                               // Build slot map: level -> {max, used}, filtering out zero-max levels
                               // (e.g. a Fighter with SlotsTotal1: "0" should not show an empty row).
+                              const effectiveSlots = rawSlots.length > 0 ? rawSlots : derivedSlots
                               const slotMap = new Map<number, { max: number; used: number }>(
-                                rawSlots
+                                effectiveSlots
                                   .filter(s => (s.max ?? 0) > 0)
                                   .map(s => [s.level, { max: s.max ?? 0, used: s.used ?? 0 }])
                               )
@@ -1692,7 +2333,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                                 // Clicking an available slot (index >= used) uses slots up to and including it.
                                 const newUsed = slotIndex < current.used ? slotIndex : slotIndex + 1
                                 // Optimistically update local state
-                                const updatedSlots = rawSlots.map(s =>
+                                const updatedSlots = effectiveSlots.map(s =>
                                   s.level === level ? { ...s, used: newUsed } : s
                                 )
                                 // Persist to server
@@ -1814,7 +2455,6 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                                                           onClick={() => setSelectedSpellRow(isExpanded ? null : row)}
                                                         >
                                                           <span style={{ fontWeight: 600, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row?.name || '—'}</span>
-                                                          {row?.slot_header ? <span className="muted" style={{ fontSize: 10 }}>{row.slot_header}</span> : null}
                                                         </button>
                                                         {isExpanded && hasDetails ? (
                                                           <div className="card card-pad" style={{ fontSize: 12, background: 'rgba(0,0,0,0.15)', gridColumn: 'span 2', marginLeft: 0 }}>
@@ -1858,78 +2498,68 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                           {selectedSheetSummary ? (
                             <>
                               {selectedSheetSummary.featureGroups.length > 0 ? (
-                                (() => {
-                                  const FEATURE_LIMIT = 15
-                                  const allItems = selectedSheetSummary.features.items
-                                  const visibleItems = showAllFeatures ? allItems : allItems.slice(0, FEATURE_LIMIT)
-                                  const hiddenCount = allItems.length - visibleItems.length
-                                  const visibleNames = new Set(visibleItems.map(f => f.name))
-                                  return (
-                                    <div className="stack" style={{ gap: 8 }}>
-                                      {selectedSheetSummary.featureGroups.map((group, gi) => {
-                                        const groupItems = showAllFeatures
-                                          ? group.items
-                                          : group.items.filter(f => visibleNames.has(f.name))
-                                        if (!groupItems.length) return null
-                                        return (
-                                          <div key={`group-${gi}`}>
-                                            <div style={{ fontWeight: 700, fontSize: 11, padding: '4px 0 4px', opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{group.label}</div>
-                                            <div className="stack" style={{ gap: 4 }}>
-                                              {groupItems.map((f, idx) => {
-                                                const isExpanded = selectedFeatureRow?.name === f.name
-                                                const hasDetails = Boolean(f.description || f.source)
-                                                return (
-                                                  <React.Fragment key={`${f.name}-${idx}`}>
-                                                    <button
-                                                      type="button"
-                                                      className="btn btn-quiet"
-                                                      style={{
-                                                        textAlign: 'left',
-                                                        justifyContent: 'space-between',
-                                                        background: isExpanded ? 'rgba(173,136,95,0.20)' : undefined,
-                                                        borderRadius: 6,
-                                                        padding: '6px 10px',
-                                                        fontSize: 13,
-                                                      }}
-                                                      onClick={() => setSelectedFeatureRow(isExpanded ? null : f)}
-                                                    >
-                                                      <span style={{ fontWeight: 600 }}>{f.name}</span>
-                                                      {hasDetails ? <span className="muted" style={{ fontSize: 11 }}>{isExpanded ? '▲' : '▼'}</span> : null}
-                                                    </button>
-                                                    {isExpanded && hasDetails ? (
-                                                      <div className="card card-pad" style={{ fontSize: 12, background: 'rgba(0,0,0,0.15)', marginLeft: 8 }}>
-                                                        {f.description ? <div style={{ lineHeight: 1.5 }}>{f.description}</div> : null}
-                                                      </div>
+                                <div className="stack" style={{ gap: 12 }}>
+                                  {selectedSheetSummary.featureGroups.map((group, gi) => {
+                                    if (!group.items.length) return null
+                                    return (
+                                      <div key={`group-${gi}`}>
+                                        <div style={{
+                                          fontWeight: 700,
+                                          fontSize: 10,
+                                          padding: '3px 0 6px',
+                                          color: 'var(--accent, #c8941a)',
+                                          textTransform: 'uppercase',
+                                          letterSpacing: '0.08em',
+                                          borderBottom: '1px solid rgba(200,148,26,0.25)',
+                                          marginBottom: 6,
+                                        }}>
+                                          {group.label}
+                                        </div>
+                                        <div className="stack" style={{ gap: 3 }}>
+                                          {group.items.map((f, idx) => {
+                                            const isExpanded = selectedFeatureRow?.name === f.name
+                                            const hasDetails = Boolean(f.description)
+                                            return (
+                                              <React.Fragment key={`${f.name}-${idx}`}>
+                                                <button
+                                                  type="button"
+                                                  className="btn btn-quiet"
+                                                  style={{
+                                                    textAlign: 'left',
+                                                    justifyContent: 'space-between',
+                                                    alignItems: 'flex-start',
+                                                    background: isExpanded ? 'rgba(200,148,26,0.12)' : 'rgba(255,255,255,0.03)',
+                                                    borderRadius: 5,
+                                                    padding: '5px 8px',
+                                                    fontSize: 12,
+                                                    border: isExpanded ? '1px solid rgba(200,148,26,0.3)' : '1px solid transparent',
+                                                    gap: 6,
+                                                  }}
+                                                  onClick={() => setSelectedFeatureRow(isExpanded ? null : f)}
+                                                >
+                                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                                    <span style={{ fontWeight: 600 }}>{f.name}</span>
+                                                    {f.source ? (
+                                                      <SourceRef source={f.source} style={{ marginLeft: 6, color: 'var(--accent, #c8941a)' }} />
                                                     ) : null}
-                                                  </React.Fragment>
-                                                )
-                                              })}
-                                            </div>
-                                          </div>
-                                        )
-                                      })}
-                                      {hiddenCount > 0 ? (
-                                        <button
-                                          type="button"
-                                          className="btn btn-quiet"
-                                          style={{ fontSize: 12, padding: '4px 10px', color: 'var(--tt-accent, #c084fc)' }}
-                                          onClick={() => setShowAllFeatures(true)}
-                                        >
-                                          + {hiddenCount} more — Show all
-                                        </button>
-                                      ) : allItems.length > FEATURE_LIMIT ? (
-                                        <button
-                                          type="button"
-                                          className="btn btn-quiet"
-                                          style={{ fontSize: 12, padding: '4px 10px', color: 'var(--tt-accent, #c084fc)' }}
-                                          onClick={() => setShowAllFeatures(false)}
-                                        >
-                                          ▲ Show less
-                                        </button>
-                                      ) : null}
-                                    </div>
-                                  )
-                                })()
+                                                  </div>
+                                                  {hasDetails ? (
+                                                    <span className="muted" style={{ fontSize: 10, flexShrink: 0, marginTop: 1 }}>{isExpanded ? '▲' : '▼'}</span>
+                                                  ) : null}
+                                                </button>
+                                                {isExpanded && hasDetails ? (
+                                                  <div style={{ fontSize: 12, lineHeight: 1.55, padding: '6px 10px 8px', background: 'rgba(0,0,0,0.2)', borderRadius: '0 0 5px 5px', marginTop: -3, whiteSpace: 'pre-wrap' }}>
+                                                    {f.description}
+                                                  </div>
+                                                ) : null}
+                                              </React.Fragment>
+                                            )
+                                          })}
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
                               ) : (
                                 <div className="muted">No features parsed.</div>
                               )}
@@ -2124,7 +2754,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                           setCharacterSettingsOpen(false)
                         }}
                       >
-                        {isSelected ? 'Assigned to session' : 'Assign to session'}
+                        {isSelected ? 'Joined with this character' : 'Join session as this character'}
                       </button>
                     )
                   })()}
@@ -2138,7 +2768,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                       setCharacterSettingsOpen(false)
                     }}
                   >
-                    Clear session character
+                    Leave character seat
                   </button>
                   <button
                     className="btn btn-quiet"
@@ -2282,8 +2912,35 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
 
         {view === 'campaign-creation-wizard' && (
           <CampaignCreationWizard
+            characters={characters}
             onDone={() => setView('campaign-setup')}
-            onCampaignCreated={async (campaignId) => {
+            onCampaignCreated={async (campaignId, sessionId, ownerCharacterId) => {
+              const sid = sessionId ? String(sessionId) : null
+              const selectedOwnerCharacterId =
+                typeof ownerCharacterId === 'number' && Number.isFinite(ownerCharacterId)
+                  ? ownerCharacterId
+                  : null
+              setActiveSession(sid)
+              setActiveCharacterId(selectedOwnerCharacterId)
+              if (sid && selectedOwnerCharacterId !== null) {
+                const assignRes = await apiFetch(`/sessions/${sid}/character`, {
+                  method: 'POST',
+                  body: JSON.stringify({ character_id: selectedOwnerCharacterId }),
+                }).catch(() => null)
+                if (assignRes && assignRes.ok) {
+                  setSessionMetaById(prev => {
+                    const existing = prev[sid]
+                    if (!existing) return prev
+                    const members = Array.isArray(existing.members)
+                      ? existing.members.map((member: any) => {
+                          if (member?.role === 'owner') return { ...member, character_id: selectedOwnerCharacterId }
+                          return member
+                        })
+                      : existing.members
+                    return { ...prev, [sid]: { ...existing, members } }
+                  })
+                }
+              }
               await fetchCampaigns()
               setActiveCampaignId(campaignId)
               setView('campaign-setup')
@@ -2737,14 +3394,85 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                     >
                       <div style={{ fontWeight: 750, marginBottom: 8 }}>
                         Pending Invites
-                        {pendingFriendRequests.length > 0 && (
-                          <span className="notif-badge-inline">{pendingFriendRequests.length}</span>
+                        {(pendingFriendRequests.length + pendingCampaignInvites.length) > 0 && (
+                          <span className="notif-badge-inline">{pendingFriendRequests.length + pendingCampaignInvites.length}</span>
                         )}
                       </div>
-                      {pendingFriendRequests.length === 0 ? (
+                      {campaignInviteMessage ? (
+                        <div className="inline-alert" style={{ marginBottom: 8 }}>{campaignInviteMessage}</div>
+                      ) : null}
+                      {pendingFriendRequests.length === 0 && pendingCampaignInvites.length === 0 ? (
                         <div className="muted" style={{ fontSize: 13 }}>No pending invites.</div>
                       ) : (
                         <div className="stack" style={{ gap: 8 }}>
+                          {pendingCampaignInvites.map((invite: any) => {
+                            const rowId = `campaign-invite-${invite.session_id}-${invite.email}`
+                            const selectedValue = String(invite.selected_character_id || activeCharacterId || '')
+                            return (
+                              <div key={rowId} className="stack" style={{ gap: 8, padding: '8px 0', borderBottom: '1px solid var(--tt-border)' }}>
+                                <div>
+                                  <div style={{ fontWeight: 600 }}>{invite.campaign_name || invite.session_name || 'Campaign invite'}</div>
+                                  <div className="muted" style={{ fontSize: 12 }}>Campaign invite</div>
+                                </div>
+                                <div className="row-wrap" style={{ gap: 8 }}>
+                                  <select
+                                    className="input"
+                                    value={selectedValue}
+                                    onChange={(e) => {
+                                      const value = e.target.value
+                                      setPendingCampaignInvites((prev) => prev.map((item: any) => (
+                                        item.session_id === invite.session_id && item.email === invite.email
+                                          ? { ...item, selected_character_id: value }
+                                          : item
+                                      )))
+                                    }}
+                                    style={{ minWidth: 220, flex: '1 1 220px' }}
+                                  >
+                                    <option value="">Choose character</option>
+                                    {characters.map((character: any) => (
+                                      <option key={character.id} value={String(character.id)}>
+                                        {character.name} L{character.level}{character.class_name ? ` ${character.class_name}` : ''}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <button
+                                    className="btn btn-sm"
+                                    type="button"
+                                    disabled={!selectedValue || campaignInviteBusyId === rowId}
+                                    onClick={async () => {
+                                      const characterId = Number(selectedValue)
+                                      if (!Number.isFinite(characterId)) return
+                                      setCampaignInviteBusyId(rowId)
+                                      setCampaignInviteMessage(null)
+                                      try {
+                                        const res = await apiFetch(`/sessions/${invite.session_id}/join`, {
+                                          method: 'POST',
+                                          body: JSON.stringify({ character_id: characterId }),
+                                        })
+                                        if (!res.ok) {
+                                          const err = await res.json().catch(() => null)
+                                          throw new Error(err?.detail || 'Failed to accept campaign invite')
+                                        }
+                                        setActiveSession(String(invite.session_id))
+                                        if (invite.campaign_id) setActiveCampaignId(String(invite.campaign_id))
+                                        setActiveCharacterId(characterId)
+                                        await fetchPendingCampaignInvites()
+                                        await fetchCampaigns()
+                                        setReadNotificationIds((prev) => prev.includes(rowId) ? prev : [...prev, rowId])
+                                        setCampaignInviteMessage('Campaign invite accepted.')
+                                      } catch (e: any) {
+                                        setCampaignInviteMessage(e?.message || 'Unable to accept campaign invite.')
+                                      } finally {
+                                        setCampaignInviteBusyId(null)
+                                      }
+                                    }}
+                                  >
+                                    {campaignInviteBusyId === rowId ? 'Joining...' : 'Accept'}
+                                  </button>
+                                </div>
+                              </div>
+                            )
+                          })}
                           {pendingFriendRequests.map((req: any) => {
                             const fromProfile = req?.from_profile || {}
                             const fromName = fromProfile?.name || fromProfile?.username || fromProfile?.email || `User ${req?.from_id}`
@@ -3122,6 +3850,8 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             setNewCampaignTone('balanced')
             setNewCampaignPacing('moderate')
             setNewCampaignContentRating('pg-13')
+            setNewCampaignOwnerRole('player')
+            setNewCampaignOwnerCharacterId('')
             setCreateCampaignError(null)
           }}
         >
@@ -3201,6 +3931,49 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
               </div>
             </div>
 
+            <div className="card card-pad" style={{ display: 'grid', gap: 10 }}>
+              <div style={{ fontWeight: 750 }}>Your seat</div>
+              <div className="row-wrap" style={{ gap: 8 }}>
+                <label className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                  <input
+                    type="radio"
+                    checked={newCampaignOwnerRole === 'player'}
+                    onChange={() => setNewCampaignOwnerRole('player')}
+                    disabled={createCampaignBusy}
+                  />
+                  Join as character
+                </label>
+                <label className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                  <input
+                    type="radio"
+                    checked={newCampaignOwnerRole === 'dm'}
+                    onChange={() => setNewCampaignOwnerRole('dm')}
+                    disabled={createCampaignBusy}
+                  />
+                  I am the DM
+                </label>
+              </div>
+              {newCampaignOwnerRole === 'player' ? (
+                characters.length ? (
+                  <select
+                    className="input"
+                    value={newCampaignOwnerCharacterId}
+                    onChange={(e) => setNewCampaignOwnerCharacterId(e.target.value)}
+                    disabled={createCampaignBusy}
+                  >
+                    <option value="">Select a character</option>
+                    {characters.map((character: any) => (
+                      <option key={character.id} value={String(character.id)}>
+                        {character.name} L{character.level}{character.class_name ? ` ${character.class_name}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="inline-alert">Create or import a character first, or designate yourself as DM.</div>
+                )
+              ) : null}
+            </div>
+
             <div className="row-wrap" style={{ justifyContent: 'flex-end' }}>
               <button
                 className="btn"
@@ -3210,6 +3983,10 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                   const name = newCampaignName.trim()
                   if (!name) {
                     setCreateCampaignError('Enter a campaign name.')
+                    return
+                  }
+                  if (newCampaignOwnerRole === 'player' && !newCampaignOwnerCharacterId) {
+                    setCreateCampaignError('Choose which character you are joining with, or designate yourself as DM.')
                     return
                   }
 
@@ -3222,6 +3999,16 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                         name,
                         description: newCampaignDescription.trim(),
                         create_session: true,
+                        owner_role: newCampaignOwnerRole,
+                        owner_character_id: newCampaignOwnerRole === 'player' ? Number(newCampaignOwnerCharacterId) : null,
+                        creation_posture: 'quick_create_modal',
+                        preferences: {
+                          genre: newCampaignGenre,
+                          tone: newCampaignTone,
+                          pacing: newCampaignPacing,
+                          content_rating: newCampaignContentRating,
+                          setting_summary: newCampaignDescription.trim(),
+                        },
                       }),
                     })
 
@@ -3238,7 +4025,11 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                       // Save initial required settings (genre, tone) and variables (pacing, content_rating)
                       const settingsRes = await apiFetch(`/campaigns/${campaignId}/settings`, {
                         method: 'PUT',
-                        body: JSON.stringify({ genre: newCampaignGenre, tone: newCampaignTone }),
+                        body: JSON.stringify({
+                          genre: newCampaignGenre,
+                          tone: newCampaignTone,
+                          setting_summary: newCampaignDescription.trim(),
+                        }),
                       }).catch(() => null)
                       const varsRes = await apiFetch(`/campaigns/${campaignId}/variables`, {
                         method: 'PUT',
@@ -3254,6 +4045,28 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                           ? String(campaign.sessions[0].id)
                           : null
                       setActiveSession(firstSession)
+                      if (firstSession && newCampaignOwnerRole === 'player' && newCampaignOwnerCharacterId) {
+                        const selectedOwnerCharacterId = Number(newCampaignOwnerCharacterId)
+                        const assignRes = await apiFetch(`/sessions/${firstSession}/character`, {
+                          method: 'POST',
+                          body: JSON.stringify({ character_id: selectedOwnerCharacterId }),
+                        }).catch(() => null)
+                        if (assignRes && !assignRes.ok) {
+                          throw new Error('Campaign created but the selected character could not be joined to the opening session.')
+                        }
+                        setActiveCharacterId(selectedOwnerCharacterId)
+                        setSessionMetaById(prev => {
+                          const existing = prev[firstSession]
+                          if (!existing) return prev
+                          const members = Array.isArray(existing.members)
+                            ? existing.members.map((member: any) => {
+                                if (member?.role === 'owner') return { ...member, character_id: selectedOwnerCharacterId }
+                                return member
+                              })
+                            : existing.members
+                          return { ...prev, [firstSession]: { ...existing, members } }
+                        })
+                      }
                     }
 
                     // Creating a campaign should immediately take you somewhere visible.
@@ -3266,7 +4079,10 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                     setNewCampaignTone('balanced')
                     setNewCampaignPacing('moderate')
                     setNewCampaignContentRating('pg-13')
+                    setNewCampaignOwnerRole('player')
+                    setNewCampaignOwnerCharacterId('')
                     await fetchCampaigns()
+                    await fetchPendingCampaignInvites()
                   } catch (e: any) {
                     setCreateCampaignError(e?.message || 'Network error creating campaign')
                   } finally {

@@ -4,18 +4,31 @@ TavernTAIls already has *gameplay* agents (Narrative/Scene/NPC/etc). This docume
 
 These dev agents are **process helpers**. They should not change product scope without you explicitly approving it.
 
-## Quick Start
-1. Pick a role below.
-2. Copy the role prompt into a new Copilot Chat.
-3. Give the agent a Work Order (see template) and a constraint like “small PR, tests required”.
+## Option A — Orchestrator Workflow (default)
 
-Recommended cadence:
-- PM Agent creates/updates 1–3 Work Orders.
-- **Research Agent** performs web research + best-practice lookup; delivers a Research Briefing to the Tech Lead.
-- Tech Lead Agent plans execution using the Research Briefing.
-- Backend/Frontend Agent executes a Work Order.
-- QA Agent runs/extends tests.
-- Reviewer Agent does a final pass and creates a concise merge checklist.
+The recommended approach is **Option A**: a single Orchestrator prompt that internally executes every role in order and emits one structured, multi-section response.
+
+### How it works
+
+1. An issue or PR is opened (or assigned to `copilot`, or the `qa-failed` label is applied).
+2. The **Agent Workflow** (`.github/workflows/agent-workflow.yml`) automatically posts a checklist comment with a link to the Orchestrator prompt and a Required Inputs checklist.
+3. You fill in the Required Inputs (goal, scope, acceptance criteria, constraints, links — plus QA findings on a restart) and run the Orchestrator prompt in a single Copilot/LLM invocation.
+4. The Orchestrator produces one structured output with sections for Research, Tech Lead Plan, Backend, Frontend, DevOps, Security, QA, and Documentation.
+5. Paste the full output as a comment on the issue/PR and work through the resulting plan.
+
+**Orchestrator prompt:** `docs/dev-agents/ORCHESTRATOR.md`
+
+### QA failure / restart
+
+If QA finds blocking defects:
+1. Document findings in an issue/PR comment.
+2. Apply the `qa-failed` label.
+3. The workflow will post a restart comment prompting you to re-run the Orchestrator with QA findings included as Required Input §6.
+
+### Quick Start
+1. Open [`docs/dev-agents/ORCHESTRATOR.md`](dev-agents/ORCHESTRATOR.md).
+2. Fill in all Required Inputs from the issue/PR.
+3. Run the prompt once; paste the full structured output as a comment.
 
 ## Canonical Docs to Reference
 - Planning & architecture (canonical): `PROJECT_PLAN.md`

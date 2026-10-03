@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react'
 
-import { apiFetch, API_BASE, buildApiUrl } from '../../api'
+import { apiFetch, API_BASE } from '../../api'
 import PageHeader from '../ui/PageHeader'
 import Modal from '../ui/Modal'
+import SourceRef from '../ui/SourceRef'
+import './ImportCharacterView.css'
 
 // Known TTRPG systems available for the game-system selector.
 // Listing these names in a UI dropdown is purely referential – the same as
@@ -86,7 +88,7 @@ export default function ImportCharacterView({
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [messageKind, setMessageKind] = useState<'ok' | 'error'>('ok')
-  const [autoAssignToSession, setAutoAssignToSession] = useState(true)
+  const [autoAssignToSession, setAutoAssignToSession] = useState(false)
 
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [confirmBusy, setConfirmBusy] = useState(false)
@@ -116,15 +118,31 @@ export default function ImportCharacterView({
     const hasPath = (path: string) => Boolean(backendPaths && Object.prototype.hasOwnProperty.call(backendPaths, path))
     return {
       importJson: hasPath('/characters/import/preview') || hasPath('/characters/import') || hasPath('/characters/import/file'),
-      importPdf: hasPath('/characters/import/pdf/preview') || hasPath('/characters/import/pdf'),
+      importPdf: backendPaths === null || hasPath('/characters/import/pdf/preview') || hasPath('/characters/import/pdf'),
     }
   }, [backendPaths])
 
-  function shortPreview(text: string, limit = 140) {
-    if (!text) return ''
-    const collapsed = text.replace(/\s+/g, ' ').trim()
-    if (collapsed.length <= limit) return collapsed
-    return collapsed.slice(0, limit).trim() + '…'
+  function featureParts(f: any): { name: string; source: string | null } {
+    if (typeof f === 'string') {
+      const bullet = f.indexOf(' • ')
+      if (bullet !== -1) return { name: f.slice(0, bullet).trim(), source: f.slice(bullet + 3).trim() || null }
+      return { name: f, source: null }
+    }
+    if (f && typeof f === 'object') {
+      return { name: String(f.name || '').trim(), source: f.source ? String(f.source).trim() : null }
+    }
+    return { name: String(f || ''), source: null }
+  }
+
+  function featureDetailText(f: any): string {
+    if (typeof f === 'string') return f
+    if (f && typeof f === 'object') {
+      const name = String(f.name || '').trim()
+      const src = f.source ? ` (${f.source})` : ''
+      const desc = f.description ? `\n\n${f.description}` : ''
+      return `${name}${src}${desc}`
+    }
+    return String(f || '')
   }
 
   const pdfPreview = useMemo(() => {
@@ -181,12 +199,14 @@ export default function ImportCharacterView({
       setBackendChecked(false)
       setBackendCheckError(null)
       try {
-        const res = await fetch(buildApiUrl('/openapi.json'), { method: 'GET' })
+        const res = await apiFetch('/characters/import/systems', { method: 'GET' })
         if (!res.ok) throw new Error(`Backend returned ${res.status}`)
-        const data = await res.json().catch(() => null)
-        const paths = data?.paths && typeof data.paths === 'object' ? data.paths : null
+        await res.json().catch(() => null)
         if (!canceled) {
-          setBackendPaths(paths)
+          setBackendPaths({
+            '/characters/import/pdf/preview': true,
+            '/characters/import/pdf': true,
+          })
           setBackendChecked(true)
         }
       } catch (e: any) {
@@ -462,11 +482,11 @@ export default function ImportCharacterView({
     setPdfClassName('')
     await onRefreshCharacters()
 
-    // If auto-assign is enabled and session is active, assign but still go to Manage Characters.
+    // Only bind an import to gameplay when the player explicitly opts in.
     if (activeSessionId && characterId !== null && autoAssignToSession) {
       onSetActiveCharacterId(characterId)
       await onAssignCharacterToSession(characterId)
-      showMessage('ok', `Character ${verb} and assigned to active session.`)
+      showMessage('ok', `Character ${verb} and assigned to the active session.`)
       // Do NOT auto-navigate to gameplay; bring user to Manage characters so they can see the list.
       if (typeof onDone === 'function') {
         onDone()
@@ -486,6 +506,7 @@ export default function ImportCharacterView({
       <Modal
         open={confirmOpen}
         title="Review Import"
+        className="import-review-modal"
         onClose={() => {
           if (confirmBusy) return
           resetConfirmState()
@@ -503,7 +524,7 @@ export default function ImportCharacterView({
               </div>
             ) : null}
 
-            <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)' }}>
+            <div className="card card-pad stack" style={{ background: 'var(--muted-surface)' }}>
               <div style={{ fontWeight: 750 }}>Basic info</div>
               <div className="row-wrap" style={{ gap: 10 }}>
                 <div className="stack" style={{ gap: 6, minWidth: 240, flex: 1 }}>
@@ -537,7 +558,7 @@ export default function ImportCharacterView({
               </div>
             </div>
 
-            <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)' }}>
+            <div className="card card-pad stack" style={{ background: 'var(--muted-surface)' }}>
               <div style={{ fontWeight: 750 }}>What to include</div>
 
               {previewSource === 'paste' || previewSource === 'file' ? (
@@ -556,7 +577,7 @@ export default function ImportCharacterView({
             </div>
 
             {pdfPreview ? (
-              <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)' }}>
+              <div className="card card-pad stack" style={{ background: 'var(--muted-surface)' }}>
                 <div style={{ fontWeight: 750 }}>PDF extraction summary</div>
 
                 {pdfPreview.sheetType === 'ship' ? (
@@ -578,10 +599,10 @@ export default function ImportCharacterView({
                   {pdfPreview.staAttributes ? (
                     <>
                       <div className="stack" style={{ gap: 6, minWidth: 200 }}>
-                        <div className="muted">Attributes</div>
+                        <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--accent, #c8941a)', opacity: 0.85 }}>Attributes</div>
                         <div className="row-wrap" style={{ gap: 8 }}>
                           {(['control', 'daring', 'fitness', 'insight', 'presence', 'reason'] as const).map((k) => (
-                            <div key={k} className="input input-mono" style={{ padding: '6px 8px' }}>
+                            <div key={k} style={{ padding: '5px 8px', background: 'rgba(200,148,26,0.1)', border: '1px solid rgba(200,148,26,0.2)', borderRadius: 5, fontFamily: 'monospace', fontSize: 13 }}>
                               <strong>{k.slice(0, 3).charAt(0).toUpperCase() + k.slice(1, 3)}:</strong> {typeof (pdfPreview.staAttributes as any)[k] === 'number' ? (pdfPreview.staAttributes as any)[k] : '—'}
                             </div>
                           ))}
@@ -589,10 +610,10 @@ export default function ImportCharacterView({
                       </div>
                       {pdfPreview.staDisciplines ? (
                         <div className="stack" style={{ gap: 6, minWidth: 200 }}>
-                          <div className="muted">Disciplines</div>
+                          <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--accent, #c8941a)', opacity: 0.85 }}>Disciplines</div>
                           <div className="row-wrap" style={{ gap: 8 }}>
                             {(['command', 'conn', 'engineering', 'medicine', 'science', 'security'] as const).map((k) => (
-                              <div key={k} className="input input-mono" style={{ padding: '6px 8px' }}>
+                              <div key={k} style={{ padding: '5px 8px', background: 'rgba(200,148,26,0.1)', border: '1px solid rgba(200,148,26,0.2)', borderRadius: 5, fontFamily: 'monospace', fontSize: 13 }}>
                                 <strong>{k.slice(0, 3).charAt(0).toUpperCase() + k.slice(1, 3)}:</strong> {typeof (pdfPreview.staDisciplines as any)[k] === 'number' ? (pdfPreview.staDisciplines as any)[k] : '—'}
                               </div>
                             ))}
@@ -602,18 +623,18 @@ export default function ImportCharacterView({
                     </>
                   ) : (
                     <div className="stack" style={{ gap: 6, minWidth: 200 }}>
-                      <div className="muted">Ability scores</div>
+                      <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--accent, #c8941a)', opacity: 0.85 }}>Ability scores</div>
                       <div className="row-wrap" style={{ gap: 8 }}>
                         {(['str', 'dex', 'con', 'int', 'wis', 'cha'] as const).map((k) => (
-                          <div key={k} className="input input-mono" style={{ padding: '6px 8px' }}>
-                            <strong>{k.toUpperCase()}:</strong> {typeof (pdfPreview.stats as any)[k] === 'number' ? (pdfPreview.stats as any)[k] : '—'}
+                          <div key={k} style={{ padding: '5px 8px', background: 'rgba(200,148,26,0.1)', border: '1px solid rgba(200,148,26,0.2)', borderRadius: 5, fontFamily: 'monospace', fontSize: 13 }}>
+                            <strong style={{ color: 'var(--accent, #c8941a)' }}>{k.toUpperCase()}</strong> {typeof (pdfPreview.stats as any)[k] === 'number' ? (pdfPreview.stats as any)[k] : '—'}
                           </div>
                         ))}
                       </div>
                     </div>
                   )}
                   <div className="stack" style={{ gap: 6, minWidth: 180 }}>
-                    <div className="muted">Combat</div>
+                    <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--accent, #c8941a)', opacity: 0.85 }}>Combat</div>
                     <div><strong>AC:</strong> {pdfPreview.ac ?? '—'}</div>
                     <div><strong>HP:</strong> {pdfPreview.hp?.current ?? '—'} / {pdfPreview.hp?.max ?? '—'}</div>
                     <div><strong>Temp:</strong> {pdfPreview.hp?.temp ?? '—'}</div>
@@ -623,11 +644,11 @@ export default function ImportCharacterView({
                     ) : null}
                   </div>
                   <div className="stack" style={{ gap: 6, minWidth: 160 }}>
-                    <div className="muted">Features</div>
+                    <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--accent, #c8941a)', opacity: 0.85 }}>Features</div>
                     <div>{pdfPreview.featuresCount} detected</div>
                   </div>
                   <div className="stack" style={{ gap: 6, minWidth: 180 }}>
-                    <div className="muted">Extraction</div>
+                    <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--accent, #c8941a)', opacity: 0.85 }}>Extraction</div>
                     <div><strong>Widgets:</strong> {pdfPreview.widgetCount ?? '—'}</div>
                     <div><strong>Text chars:</strong> {pdfPreview.rawTextLen ?? '—'}</div>
                   </div>
@@ -658,19 +679,23 @@ export default function ImportCharacterView({
               (Array.isArray(preview?.sheet?.spells) && preview.sheet.spells.length > 0)) ? (
               <>
                 {(Array.isArray(preview?.sheet?.classFeatures) && preview.sheet.classFeatures.length > 0) ? (
-                  <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)' }}>
-                    <div style={{ fontWeight: 750 }}>{preview?.class_name ? `${preview.class_name} Features` : 'Class Features'}</div>
-                    <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>Click a feature to view more details.</div>
-                    <div style={{ maxHeight: 220, overflowY: 'auto', display: 'grid', gap: 6 }}>
+                  <div className="card card-pad stack" style={{ background: 'var(--muted-surface)' }}>
+                    <div style={{ fontWeight: 700, fontSize: 10, color: 'var(--accent, #c8941a)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{preview?.class_name ? `${preview.class_name} Features` : 'Class Features'}</div>
+                    <div style={{ display: 'grid', gap: 4 }}>
                       {preview.sheet.classFeatures.map((f: any, idx: number) => (
                         <button
                           key={`class-${idx}`}
                           type="button"
-                          className="btn btn-ghost"
-                          style={{ textAlign: 'left', padding: '8px 10px' }}
-                          onClick={() => handleFeatureClick(typeof f === 'string' ? f : JSON.stringify(f, null, 2))}
+                          onClick={() => handleFeatureClick(featureDetailText(f))}
+                          style={{ textAlign: 'left', padding: '6px 10px', background: 'rgba(200,148,26,0.06)', border: '1px solid rgba(200,148,26,0.15)', borderRadius: 5, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}
                         >
-                          <div style={{ whiteSpace: 'normal', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortPreview(String(f || ''))}</div>
+                          <span style={{ flex: 1, minWidth: 0 }}>
+                            <span style={{ fontWeight: 600, fontSize: 12 }}>{featureParts(f).name}</span>
+                            {featureParts(f).source ? (
+                              <SourceRef source={featureParts(f).source!} style={{ marginLeft: 6, color: 'var(--accent, #c8941a)', fontSize: 11 }} />
+                            ) : null}
+                          </span>
+                          {(f && typeof f === 'object' && f.description) ? <span style={{ fontSize: 10, opacity: 0.5, flexShrink: 0 }}>▼</span> : null}
                         </button>
                       ))}
                     </div>
@@ -678,19 +703,23 @@ export default function ImportCharacterView({
                 ) : null}
 
                 {(Array.isArray(preview?.sheet?.racialFeatures) && preview.sheet.racialFeatures.length > 0) ? (
-                  <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)' }}>
-                    <div style={{ fontWeight: 750 }}>{preview?.sheet?.import?.extracted?.class_name ? `${preview.sheet.import.extracted.class_name} Species Traits` : 'Species Traits'}</div>
-                    <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>Click a trait to view more details.</div>
-                    <div style={{ maxHeight: 220, overflowY: 'auto', display: 'grid', gap: 6 }}>
+                  <div className="card card-pad stack" style={{ background: 'var(--muted-surface)' }}>
+                    <div style={{ fontWeight: 700, fontSize: 10, color: 'var(--accent, #c8941a)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Species Traits</div>
+                    <div style={{ display: 'grid', gap: 4 }}>
                       {preview.sheet.racialFeatures.map((f: any, idx: number) => (
                         <button
                           key={`race-${idx}`}
                           type="button"
-                          className="btn btn-ghost"
-                          style={{ textAlign: 'left', padding: '8px 10px' }}
-                          onClick={() => handleFeatureClick(typeof f === 'string' ? f : JSON.stringify(f, null, 2))}
+                          onClick={() => handleFeatureClick(featureDetailText(f))}
+                          style={{ textAlign: 'left', padding: '6px 10px', background: 'rgba(200,148,26,0.06)', border: '1px solid rgba(200,148,26,0.15)', borderRadius: 5, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}
                         >
-                          <div style={{ whiteSpace: 'normal', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortPreview(String(f || ''))}</div>
+                          <span style={{ flex: 1, minWidth: 0 }}>
+                            <span style={{ fontWeight: 600, fontSize: 12 }}>{featureParts(f).name}</span>
+                            {featureParts(f).source ? (
+                              <SourceRef source={featureParts(f).source!} style={{ marginLeft: 6, color: 'var(--accent, #c8941a)', fontSize: 11 }} />
+                            ) : null}
+                          </span>
+                          {(f && typeof f === 'object' && f.description) ? <span style={{ fontSize: 10, opacity: 0.5, flexShrink: 0 }}>▼</span> : null}
                         </button>
                       ))}
                     </div>
@@ -698,27 +727,32 @@ export default function ImportCharacterView({
                 ) : null}
 
                 {(Array.isArray(preview?.sheet?.otherFeatures) && preview.sheet.otherFeatures.length > 0) ? (
-                  <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)' }}>
-                    <div style={{ fontWeight: 750 }}>Other Features</div>
-                    <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>Click a feature to view more details.</div>
-                    <div style={{ maxHeight: 220, overflowY: 'auto', display: 'grid', gap: 6 }}>
+                  <div className="card card-pad stack" style={{ background: 'var(--muted-surface)' }}>
+                    <div style={{ fontWeight: 700, fontSize: 10, color: 'var(--accent, #c8941a)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Other Features</div>
+                    <div style={{ maxHeight: 260, overflowY: 'auto', display: 'grid', gap: 4 }}>
                       {preview.sheet.otherFeatures.map((f: any, idx: number) => (
                         <button
                           key={`other-${idx}`}
                           type="button"
-                          className="btn btn-ghost"
-                          style={{ textAlign: 'left', padding: '8px 10px' }}
-                          onClick={() => handleFeatureClick(typeof f === 'string' ? f : JSON.stringify(f, null, 2))}
+                          onClick={() => handleFeatureClick(featureDetailText(f))}
+                          style={{ textAlign: 'left', padding: '6px 10px', background: 'rgba(200,148,26,0.06)', border: '1px solid rgba(200,148,26,0.15)', borderRadius: 5, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}
                         >
-                          <div style={{ whiteSpace: 'normal', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortPreview(String(f || ''))}</div>
+                          <span style={{ flex: 1, minWidth: 0 }}>
+                            <span style={{ fontWeight: 600, fontSize: 12 }}>{featureParts(f).name}</span>
+                            {featureParts(f).source ? (
+                              <SourceRef source={featureParts(f).source!} style={{ marginLeft: 6, color: 'var(--accent, #c8941a)', fontSize: 11 }} />
+                            ) : null}
+                          </span>
+                          {(f && typeof f === 'object' && f.description) ? <span style={{ fontSize: 10, opacity: 0.5, flexShrink: 0 }}>▼</span> : null}
                         </button>
                       ))}
                     </div>
                   </div>
                 ) : null}
 
+
                 {(Array.isArray(preview?.sheet?.spellbook) && preview.sheet.spellbook.length > 0) ? (
-                  <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                  <div className="card card-pad stack" style={{ background: 'var(--muted-surface)' }}>
                     <div style={{ fontWeight: 750 }}>Detected spellbook</div>
                     <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>
                       Spells parsed from the PDF table (name + columns).
@@ -755,7 +789,7 @@ export default function ImportCharacterView({
                     </div>
                   </div>
                 ) : (Array.isArray(preview?.sheet?.spells) && preview.sheet.spells.length > 0) ? (
-                  <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                  <div className="card card-pad stack" style={{ background: 'var(--muted-surface)' }}>
                     <div style={{ fontWeight: 750 }}>Detected spells</div>
                     <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>Spells extracted from the PDF (one per line).</div>
                     <div style={{ maxHeight: 220, overflowY: 'auto' }}>
@@ -771,7 +805,7 @@ export default function ImportCharacterView({
             ) : null}
 
             {nameConflict ? (
-              <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)' }}>
+              <div className="card card-pad stack" style={{ background: 'var(--muted-surface)' }}>
                 <div style={{ fontWeight: 750 }}>Name conflict</div>
                 <div className="muted" style={{ fontSize: 13 }}>
                   Choose whether to overwrite the existing character or create a new one.
@@ -903,7 +937,7 @@ export default function ImportCharacterView({
               onChange={(e) => setAutoAssignToSession(e.target.checked)}
               disabled={!activeSessionId}
             />
-            <span className="muted">Auto-select for active session</span>
+            <span className="muted">Assign imported character to active session</span>
           </label>
         </div>
 
@@ -912,7 +946,7 @@ export default function ImportCharacterView({
             <div className="inline-alert">
               Beyond 20 is a free browser extension that reads your D&amp;D Beyond rolls and sends them to TavernTails. The only install required is the Beyond 20 extension itself — no additional software needed.
             </div>
-            <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)', gap: 8 }}>
+            <div className="card card-pad stack" style={{ background: 'var(--muted-surface)', gap: 8 }}>
               <div style={{ fontWeight: 750 }}>Step 1 — Install the Beyond 20 extension</div>
               <div className="muted" style={{ fontSize: 13 }}>
                 Install Beyond 20 from the Chrome Web Store or Firefox Add-ons. Once installed, it will automatically detect rolls on your D&amp;D Beyond character sheet.
@@ -936,7 +970,7 @@ export default function ImportCharacterView({
                 </a>
               </div>
             </div>
-            <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)', gap: 8 }}>
+            <div className="card card-pad stack" style={{ background: 'var(--muted-surface)', gap: 8 }}>
               <div style={{ fontWeight: 750 }}>Step 2 — Roll on D&amp;D Beyond</div>
               <div className="muted" style={{ fontSize: 13 }}>
                 With a session open in TavernTails, click any roll button on your D&amp;D Beyond character sheet. Beyond 20 will relay the result directly into your TavernTails session chat.
@@ -952,7 +986,7 @@ export default function ImportCharacterView({
               We only parse files you upload. No D&amp;D Beyond scraping. PDF parsing is best-effort; some DDB PDFs don’t contain extractable text. Use overrides if needed.
             </div>
 
-            <div className="card card-pad stack" style={{ background: 'rgba(255,255,255,0.03)' }}>
+            <div className="card card-pad stack" style={{ background: 'var(--muted-surface)' }}>
               <div style={{ fontWeight: 750 }}>How to get the PDF from D&amp;D Beyond</div>
               <div className="muted" style={{ fontSize: 13 }}>
                 On your D&amp;D Beyond character sheet, use the print/export option to download a PDF, then upload it here.
@@ -1036,7 +1070,7 @@ export default function ImportCharacterView({
         ) : null}
 
         <div className="muted" style={{ fontSize: 12 }}>
-          Tip: Select a session in Gameplay first if you want one-click auto-select.
+          Tip: assigning an import joins the current session with that character and remembers that campaign for the character.
         </div>
       </div>
     </section>

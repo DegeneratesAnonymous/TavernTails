@@ -3,20 +3,14 @@ const inferApiBase = () => {
     return process.env.REACT_APP_API_URL.trim().replace(/\/$/, '')
   }
   if (typeof window !== 'undefined') {
-    const origin = window.location.origin
-    // If running on localhost (any port), map to backend port 8000 for dev
-    try {
-      const url = new URL(origin)
-      if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
-        return `${url.protocol}//${url.hostname}:8000`
-      }
-    } catch (e) {
-      // fallback
-      if (/localhost|127\.0\.0\.1/.test(origin)) return origin.replace(/:\d+$/,'') + ':8000'
+    // When served behind Steward's /taverntails/ reverse proxy, API calls must
+    // include that prefix so nginx can route them to the TavernTails port.
+    if (window.location.pathname.startsWith('/taverntails')) {
+      return window.location.origin + '/taverntails'
     }
-    return origin
+    return window.location.origin
   }
-  return 'http://localhost:8000'
+  return 'http://localhost:8002'
 }
 
 export const API_BASE = inferApiBase()
@@ -32,7 +26,10 @@ export const buildWsUrl = (path: string) => {
   const normalized = path.startsWith('/') ? path : `/${path}`
   const url = new URL(API_BASE)
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${url.origin}${normalized}`
+  // Preserve the path prefix (e.g. /taverntails) so WebSocket connections
+  // route through nginx correctly when proxied behind Steward.
+  const basePath = url.pathname.replace(/\/$/, '')
+  return `${url.origin}${basePath}${normalized}`
 }
 
 export async function apiFetch(path: string, opts: RequestInit = {}) {

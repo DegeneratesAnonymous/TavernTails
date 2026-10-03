@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { apiFetch } from '../../api'
 import PageHeader from '../ui/PageHeader'
@@ -16,6 +16,13 @@ type CampaignSettings = {
   ruleset: string
   starting_level: number
   house_rules: string
+}
+
+type SessionZeroData = {
+  session_zero?: any
+  campaign_interpretation?: any
+  campaign_contract?: any
+  confirmed?: boolean
 }
 
 type Props = {
@@ -61,6 +68,18 @@ function asNumber(v: any, fallback: number): number {
   return Number.isFinite(n) ? n : fallback
 }
 
+function listText(value: any, fallback = 'Not specified'): string {
+  if (Array.isArray(value)) return value.filter(Boolean).join(', ') || fallback
+  if (typeof value === 'string') return value || fallback
+  return fallback
+}
+
+function policyLabel(value: any, key: string, fallback = 'Not specified'): string {
+  const raw = value?.[key]
+  if (typeof raw === 'string') return raw.replace(/_/g, ' ')
+  return fallback
+}
+
 type StepKey = 'details' | 'world' | 'ready'
 
 export default function CampaignSetupWizard({
@@ -79,9 +98,32 @@ export default function CampaignSetupWizard({
 
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [sessionZero, setSessionZero] = useState<SessionZeroData | null>(null)
+  const [sessionZeroLoading, setSessionZeroLoading] = useState(false)
+  const [sessionZeroBusy, setSessionZeroBusy] = useState(false)
   const [message, setMessage] = useState<{ kind: 'info' | 'error'; text: string } | null>(null)
 
   const canEdit = Boolean(activeCampaignId)
+
+  const loadSessionZero = useCallback(async () => {
+    if (!activeCampaignId) {
+      setSessionZero(null)
+      return null
+    }
+    setSessionZeroLoading(true)
+    try {
+      const res = await apiFetch(`/campaigns/${activeCampaignId}/session-zero`)
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(err?.detail || 'Failed to load Session Zero')
+      }
+      const data = await res.json().catch(() => ({} as SessionZeroData))
+      setSessionZero(data)
+      return data
+    } finally {
+      setSessionZeroLoading(false)
+    }
+  }, [activeCampaignId])
 
   useEffect(() => {
     setName(asString(activeCampaign?.name))
@@ -129,6 +171,12 @@ export default function CampaignSetupWizard({
     }
   }, [activeCampaignId])
 
+  useEffect(() => {
+    void loadSessionZero().catch(() => {
+      setSessionZero(null)
+    })
+  }, [loadSessionZero])
+
   const stepIndex = useMemo(() => {
     if (step === 'details') return 0
     if (step === 'world') return 1
@@ -169,6 +217,7 @@ export default function CampaignSetupWizard({
       }
 
       await onCampaignUpdated()
+      await loadSessionZero().catch(() => null)
       setMessage({ kind: 'info', text: 'Saved.' })
     } finally {
       setSaving(false)
@@ -178,12 +227,54 @@ export default function CampaignSetupWizard({
   async function saveAndPlay() {
     try {
       await saveAll()
+      if (activeCampaignId && !sessionZero?.confirmed) {
+        await confirmSessionZero()
+      }
       await onPlay()
       onClose()
     } catch (e: any) {
       setMessage({ kind: 'error', text: e?.message || 'Failed to start playing' })
     }
   }
+
+  async function confirmSessionZero() {
+    if (!activeCampaignId) return
+    setSessionZeroBusy(true)
+    setMessage(null)
+    try {
+      const res = await apiFetch(`/campaigns/${activeCampaignId}/contract/confirm`, { method: 'POST' })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(err?.detail || 'Failed to confirm Session Zero')
+      }
+      await loadSessionZero()
+      setMessage({ kind: 'info', text: 'Session Zero confirmed.' })
+    } finally {
+      setSessionZeroBusy(false)
+    }
+  }
+
+  async function regenerateSessionZero() {
+    if (!activeCampaignId) return
+    setSessionZeroBusy(true)
+    setMessage(null)
+    try {
+      const res = await apiFetch(`/campaigns/${activeCampaignId}/interpretation/regenerate`, { method: 'POST' })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(err?.detail || 'Failed to regenerate Session Zero')
+      }
+      await loadSessionZero()
+      setMessage({ kind: 'info', text: 'Session Zero regenerated.' })
+    } finally {
+      setSessionZeroBusy(false)
+    }
+  }
+
+  const sessionZeroSummary = sessionZero?.session_zero?.summary || {}
+  const sessionZeroHooks = sessionZero?.session_zero?.character_hooks || []
+  const campaignContract = sessionZero?.campaign_contract || {}
+  const campaignInterpretation = sessionZero?.campaign_interpretation || {}
 
   return (
     <div className="stack" style={{ gap: 12 }}>
@@ -353,15 +444,84 @@ export default function CampaignSetupWizard({
 
         {step === 'ready' ? (
           <div className="stack" style={{ gap: 10 }}>
-            <div style={{ fontWeight: 750 }}>Ready</div>
-            <div className="muted">
-              When you click Start, TavernTails will generate your opening scene and begin the campaign.
+            <div style={{ fontWeight: 750 }}>Session Zero Review</div>
+            <div className="muted">Confirm how TavernTails understands this campaign before play begins.</div>
+
+            <div className="card card-pad stack" style={{ gap: 10, background: 'rgba(0,0,0,0.18)' }}>
+              {sessionZeroLoading ? (
+                <div className="muted">Loading interpretation…</div>
+              ) : (
+                <>
+                  <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontWeight: 750 }}>Campaign Contract</div>
+                      <div className="muted" style={{ fontSize: 12 }}>
+                        {sessionZero?.confirmed ? 'Confirmed' : 'Needs confirmation'}
+                      </div>
+                    </div>
+                    <div className="row-wrap" style={{ justifyContent: 'flex-end' }}>
+                      <button className="btn btn-secondary" type="button" disabled={!canEdit || sessionZeroBusy} onClick={regenerateSessionZero}>
+                        Regenerate
+                      </button>
+                      <button className="btn" type="button" disabled={!canEdit || sessionZeroBusy || sessionZero?.confirmed} onClick={confirmSessionZero}>
+                        {sessionZeroBusy ? 'Working…' : sessionZero?.confirmed ? 'Confirmed' : 'Confirm'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="wizard-review-grid">
+                    <div className="wizard-review-row">
+                      <span className="wizard-review-label">Tone</span>
+                      <span className="wizard-review-value">{policyLabel(sessionZeroSummary, 'tone')}</span>
+                    </div>
+                    <div className="wizard-review-row">
+                      <span className="wizard-review-label">Creation Flow</span>
+                      <span className="wizard-review-value">{policyLabel(campaignInterpretation, 'creation_posture')}</span>
+                    </div>
+                    <div className="wizard-review-row">
+                      <span className="wizard-review-label">Canon</span>
+                      <span className="wizard-review-value">{policyLabel(campaignContract?.canon_policy, 'mode')}</span>
+                    </div>
+                    <div className="wizard-review-row">
+                      <span className="wizard-review-label">AI Creativity</span>
+                      <span className="wizard-review-value">{policyLabel(campaignContract?.ai_creativity_policy, 'level')}</span>
+                    </div>
+                    <div className="wizard-review-row">
+                      <span className="wizard-review-label">Play Pillars</span>
+                      <span className="wizard-review-value">{listText(campaignInterpretation?.primary_play_pillars)}</span>
+                    </div>
+                    <div className="wizard-review-row">
+                      <span className="wizard-review-label">UI Emphasis</span>
+                      <span className="wizard-review-value">{listText(campaignContract?.ui_policy?.primary_widgets)}</span>
+                    </div>
+                  </div>
+
+                  {sessionZeroHooks.length ? (
+                    <div className="stack" style={{ gap: 6 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>Backstory Hooks</div>
+                      {sessionZeroHooks.slice(0, 4).map((item: any, idx: number) => (
+                        <div key={`${item?.character || idx}`} className="muted" style={{ fontSize: 12 }}>
+                          <strong>{item?.character || 'Character'}:</strong> {listText(item?.hooks, 'No hooks yet')}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {Array.isArray(sessionZero?.session_zero?.low_confidence_items) && sessionZero.session_zero.low_confidence_items.length ? (
+                    <div className="inline-alert">
+                      {sessionZero.session_zero.low_confidence_items.length} assumption(s) should be reviewed in campaign settings.
+                    </div>
+                  ) : null}
+                </>
+              )}
             </div>
+
+            <div className="muted">When you start, TavernTails will generate the opening scene using this contract.</div>
             <div className="row-wrap" style={{ justifyContent: 'space-between' }}>
               <button className="btn btn-secondary" type="button" onClick={() => setStep('world')}>
                 Back
               </button>
-              <button className="btn" type="button" disabled={!canEdit || Boolean(playBusy)} onClick={saveAndPlay}>
+              <button className="btn" type="button" disabled={!canEdit || Boolean(playBusy) || sessionZeroBusy} onClick={saveAndPlay}>
                 {playBusy ? 'Starting…' : 'Start Campaign'}
               </button>
             </div>

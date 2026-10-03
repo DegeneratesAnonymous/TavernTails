@@ -14,6 +14,7 @@ from .agents import references as references_router
 from .agents import srd as srd_router
 from .agents import ws as ws_router
 from .agents.admin import router as admin_router
+from .agents.campaign_memory import router as campaign_memory_router
 from .agents.campaigns import router as campaigns_router
 from .agents.characters import router as characters_router
 from .agents.chat import router as chat_router
@@ -107,6 +108,11 @@ async def log_requests(request, call_next):
     logger.info(f"--> {request.method} {request.url}")
     response = await call_next(request)
     logger.info(f"<-- {response.status_code} {request.method} {request.url}")
+    # Allow embedding in the Steward dashboard iframe.
+    # frame-ancestors * is permissive but safe for a locally-run private tool.
+    response.headers["Content-Security-Policy"] = "frame-ancestors *"
+    if "X-Frame-Options" in response.headers:
+        del response.headers["X-Frame-Options"]
     return response
 
 
@@ -129,6 +135,8 @@ app.add_middleware(
 )
 
 
+# Router registration is the backend table of contents. Keep feature behavior
+# inside server/agents/* routers; main.py should stay limited to app wiring.
 app.include_router(player_router)
 app.include_router(admin_router)
 app.include_router(users_router)
@@ -154,8 +162,11 @@ app.include_router(scene_router)
 app.include_router(npc_router)
 app.include_router(references_router.router)
 app.include_router(srd_router.router)
+app.include_router(campaign_memory_router)
 
-# Serve static build (if present) so the app is reachable at the backend port.
+# Static hosting for production/self-hosted runs.
+# In local development, CRA serves the client separately; when `client/build`
+# exists, FastAPI can serve that bundle from the same process as the API.
 build_dir = Path(__file__).resolve().parents[1] / 'client' / 'build'
 if build_dir.exists():
     app.mount('/', StaticFiles(directory=str(build_dir), html=True), name='static')

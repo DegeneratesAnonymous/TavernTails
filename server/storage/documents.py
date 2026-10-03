@@ -89,8 +89,8 @@ KNOWN_CATEGORIES: frozenset[str] = _GM_CATEGORIES | _PLAYER_CATEGORIES
 
 #: Default visibility per category.  Anything not listed here falls back to "shared".
 CATEGORY_DEFAULT_VISIBILITY: dict[str, str] = {
-    **{cat: "hidden" for cat in _GM_CATEGORIES},
-    **{cat: "shared" for cat in _PLAYER_CATEGORIES},
+    **dict.fromkeys(_GM_CATEGORIES, "hidden"),
+    **dict.fromkeys(_PLAYER_CATEGORIES, "shared"),
 }
 
 

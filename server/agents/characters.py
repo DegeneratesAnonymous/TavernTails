@@ -3475,6 +3475,24 @@ def _extract_spellbook_from_text(text: str | None, debug: bool = False) -> list[
         m = re.search(r"\b(self|touch|sight|special|\d+\s*ft\.?|\d+\s*feet|\d+\s*mi\.?|\d+\s*miles?)\b", line, re.I)
         return m.group(1) if m else None
 
+    def _concentration(duration: str | None) -> bool:
+        return bool(duration and re.search(r'\bconcentration\b', duration, re.I))
+
+    def _ritual(components: str | None, notes: str | None) -> bool:
+        text = f"{components or ''} {notes or ''}"
+        return bool(re.search(r'\(R\)|\britual\b', text, re.I))
+
+    def _prepared_bool(raw: str | None) -> bool | None:
+        if raw is None:
+            return None
+        if isinstance(raw, bool):
+            return raw
+        if str(raw).lower() in {"yes", "true", "1", "o", "○", "◯", "•"}:
+            return True
+        if str(raw).lower() in {"no", "false", "0", "x"}:
+            return False
+        return None
+
     for raw in lines:
         line = raw.strip()
         if re.match(r"^[=\-]{2,}\s*.*\s*[=\-]{2,}$", line):
@@ -3551,7 +3569,8 @@ def _extract_spellbook_from_text(text: str | None, debug: bool = False) -> list[
                     continue
 
                 # If it passed all filters, treat as spell name
-                entries.append({"name": line, "header": current_header})
+                entries.append({"name": line, "header": current_header,
+                                 "prepared": None, "concentration": False, "ritual": False})
                 if len(entries) >= 500:
                     break
             continue
@@ -3588,7 +3607,9 @@ def _extract_spellbook_from_text(text: str | None, debug: bool = False) -> list[
                     "duration": duration,
                     "page": page,
                     "notes": notes,
-                    "prepared": prepared,
+                    "prepared": _prepared_bool(prepared),
+                    "concentration": _concentration(duration),
+                    "ritual": _ritual(components, notes),
                     "header": current_header,
                 }
             )
@@ -3642,7 +3663,9 @@ def _extract_spellbook_from_text(text: str | None, debug: bool = False) -> list[
                 "duration": duration,
                 "page": page,
                 "notes": None,
-                "prepared": prep,
+                "prepared": _prepared_bool(prep),
+                "concentration": _concentration(duration),
+                "ritual": _ritual(components, None),
                 "header": current_header,
             }
         )
@@ -3849,24 +3872,88 @@ def _build_character_import_sheet_from_pdf(
         elif any(x in kn for x in ("feature", "trait")) and len(stripped) > 10:
             other_blobs.append(v)
 
-    def _lines_from_blobs(blobs: list[str]) -> list[str]:
-        out: list[str] = []
-        seen: set[str] = set()
+    # Matches a trailing source reference like "PHB 114", "EGTW 184", "SOTDQ,26", "TCOE 80", "PHB"
+    _src_ref_pat = re.compile(r"\s+([A-Z][A-Za-z0-9&]{1,7}(?:[,\s]\s*\d{1,4}(?:-\d+)?)?)\s*$")
+    # Usage info lines: start with a digit + "/" (e.g. "1 / Long Rest Special")
+    _usage_line_pat = re.compile(r"^\d+\s*/", re.I)
+
+    def _is_feature_name(s: str) -> bool:
+        """Heuristic: is this line a feature header rather than description text?"""
+        if len(s) > 80 or s.endswith("."):
+            return False
+        if _src_ref_pat.search(s):
+            return True
+        # Short ALL-CAPS line with no sentence structure → sub-heading like "CHRONURGY MAGIC"
+        if len(s) <= 50 and s == s.upper() and re.search(r"[A-Z]{2}", s):
+            return True
+        return False
+
+    def _lines_from_blobs(blobs: list[str]) -> list[dict]:
+        """Parse PDF text blobs into grouped feature objects {name, source?, description?}."""
+        features: list[dict] = []
+        seen_names: set[str] = set()
+        current: dict | None = None
+
+        def _flush() -> None:
+            if current is None:
+                return
+            name = current.get("name", "").strip()
+            if not name or len(name) < 2:
+                return
+            key = name.lower()
+            if key not in seen_names:
+                seen_names.add(key)
+                features.append(dict(current))
+
         for blob in blobs:
-            for line in re.split(r"\r?\n", blob):
-                s = re.sub(r"^[ \t\r\n•\-*_\u2022]+|[ \t\r\n•\-*_\u2022]+$", "", line)
-                if not s:
+            for raw in re.split(r"\r?\n", blob):
+                line = re.sub(r"^[ \t\r\n•\-*_\u2022]+|[ \t\r\n•\-*_\u2022]+$", "", raw)
+                if not line:
                     continue
-                key = s.lower()
-                if key in seen:
+                # Skip DDB section delimiter lines like "=== CLASS FEATURES ==="
+                if re.match(r"^={2,}.*={2,}$", line):
                     continue
-                seen.add(key)
-                out.append(s if len(s) <= 200 else s[:200].rstrip() + "…")
-                if len(out) >= 200:
+                # Lines starting with "|" are sub-items/usage — always attach as description
+                if line.startswith("|"):
+                    sub = line.lstrip("| \t")
+                    if current is not None:
+                        existing = current.get("description") or ""
+                        current["description"] = (existing + "\n" + sub).strip() if existing else sub
+                    continue
+
+                if _is_feature_name(line):
+                    _flush()
+                    m = _src_ref_pat.search(line)
+                    if m:
+                        name_part = line[:m.start()].strip().rstrip(" •·")
+                        src_part = m.group(1).strip() or None
+                    else:
+                        name_part = line
+                        src_part = None
+                    current = {"name": name_part, "source": src_part}
+                elif _usage_line_pat.match(line):
+                    if current is None:
+                        current = {"name": line}
+                    else:
+                        existing = current.get("description") or ""
+                        current["description"] = (existing + "\n" + line).strip() if existing else line
+                else:
+                    # Description / continuation text
+                    if current is None:
+                        current = {"name": line[:80].rstrip()}
+                    else:
+                        existing = current.get("description") or ""
+                        snippet = line if len(line) <= 400 else line[:400].rstrip() + "…"
+                        current["description"] = (existing + "\n" + snippet).strip() if existing else snippet
+
+                if len(features) >= 150:
                     break
-            if len(out) >= 200:
+            _flush()
+            current = None
+            if len(features) >= 150:
                 break
-        return out
+
+        return features
 
     text = _read_pdf_text(content)
     # Combine extracted page text + widget key/value lines for better downstream parsing.
@@ -3906,22 +3993,103 @@ def _build_character_import_sheet_from_pdf(
         if _wfrp_career:
             final_class_name = _wfrp_career
 
-    class_features = _lines_from_blobs(class_blobs)
-    racial_features = _lines_from_blobs(race_blobs)
-    other_features = _lines_from_blobs(other_blobs)
-    # If grouping failed, fall back to the general extracted features list.
-    if not class_features and features_from_widgets:
-        # try to pick entries that mention the class name
-        if final_class_name:
-            cands = [f for f in features_from_widgets if final_class_name.lower() in f.lower()]
-            class_features = cands
-    if not racial_features and features_from_widgets:
-        # rough heuristic: look for common race/species words or short lists near top
-        cands = [f for f in features_from_widgets if any(x in f.lower() for x in ("elf", "dwarf", "halfling", "human", "tiefling", "dragonborn", "gnome", "goliath", "aasimar"))]
-        racial_features = cands
-    # remaining go to other_features
-    remaining = [f for f in features_from_widgets if f not in class_features and f not in racial_features]
-    other_features = other_features or remaining
+    # Parse blobs using === section headers to categorize features.
+    # DDB PDFs put all features in one "FeaturesTraits" blob with headers like
+    # "=== WIZARD FEATURES ===" and "=== KENDER SPECIES TRAITS ===".
+    class_hdr = re.compile(
+        r"===\s*(?:\w+\s+)*(?:FEATURES?|SUBCLASS(?:\s+FEATURES?)?)\s*===", re.I
+    )
+    racial_hdr = re.compile(
+        r"===\s*(?:\w+\s+)*(?:SPECIES|RACIAL|RACE)(?:\s+TRAITS?|FEATURES?)?\s*===", re.I
+    )
+    feats_hdr = re.compile(r"===\s*FEATS?\s*===", re.I)
+
+    def _parse_categorized(blobs: list[str]) -> tuple[list[dict], list[dict], list[dict]]:
+        """Route features to class/racial/other by parsing === section headers."""
+        buckets: dict[str, list[dict]] = {"class": [], "racial": [], "other": []}
+        seen: set[str] = set()
+        cat = "other"
+        current: dict | None = None
+
+        def _flush(dest: str) -> None:
+            if current is None:
+                return
+            name = current.get("name", "").strip()
+            if not name or len(name) < 2:
+                return
+            key = name.lower()
+            if key not in seen:
+                seen.add(key)
+                buckets[dest].append(dict(current))
+
+        for blob in blobs:
+            for raw in re.split(r"\r?\n", blob):
+                line = re.sub(r"^[ \t\r\n•\-*_\u2022]+|[ \t\r\n•\-*_\u2022]+$", "", raw)
+                if not line:
+                    continue
+                # Section header → change category
+                if re.match(r"^={2,}.*={2,}$", line):
+                    _flush(cat)
+                    current = None
+                    if racial_hdr.search(line):
+                        cat = "racial"
+                    elif feats_hdr.search(line):
+                        cat = "other"
+                    elif class_hdr.search(line):
+                        cat = "class"
+                    else:
+                        cat = "other"
+                    continue
+                # Lines starting with "|" are sub-items/usage — always attach as description
+                if line.startswith("|"):
+                    sub = line.lstrip("| \t")
+                    if current is not None:
+                        existing = current.get("description") or ""
+                        current["description"] = (existing + "\n" + sub).strip() if existing else sub
+                    continue
+                # Feature name or description (same logic as _lines_from_blobs)
+                if _is_feature_name(line):
+                    _flush(cat)
+                    m = _src_ref_pat.search(line)
+                    if m:
+                        name_part = line[:m.start()].strip().rstrip(" •·")
+                        src_part = m.group(1).strip() or None
+                    else:
+                        name_part = line
+                        src_part = None
+                    current = {"name": name_part, "source": src_part}
+                elif _usage_line_pat.match(line):
+                    if current is not None:
+                        existing = current.get("description") or ""
+                        current["description"] = (existing + "\n" + line).strip() if existing else line
+                    # else: orphaned usage line before any feature — skip
+                else:
+                    if current is not None:
+                        existing = current.get("description") or ""
+                        snippet = line if len(line) <= 400 else line[:400].rstrip() + "…"
+                        current["description"] = (existing + "\n" + snippet).strip() if existing else snippet
+                    # else: orphaned description text before any feature — skip
+            # Do NOT reset cat or current between blobs.
+            # Two-column PDFs produce separate blobs where the second column
+            # continues the same section without repeating the === header.
+        _flush(cat)
+        return buckets["class"], buckets["racial"], buckets["other"]
+
+    # If other_blobs have === headers, use the categorized parser; else fall back to flat.
+    has_section_headers = any(re.search(r"={2,}.*={2,}", b) for b in other_blobs)
+    if has_section_headers:
+        cf_other, rf_other, of_other = _parse_categorized(other_blobs)
+        class_features = _lines_from_blobs(class_blobs) + cf_other
+        racial_features = _lines_from_blobs(race_blobs) + rf_other
+        other_features = of_other
+    else:
+        class_features = _lines_from_blobs(class_blobs)
+        racial_features = _lines_from_blobs(race_blobs)
+        other_features = _lines_from_blobs(other_blobs)
+
+    # Last resort: no blobs at all — use the flat feature title list from widget extraction.
+    if not class_features and not racial_features and not other_features and features_from_widgets:
+        other_features = [{"name": f} for f in features_from_widgets]
 
     safe_level = final_level if isinstance(final_level, int) else 1
     safe_level = max(1, min(20, safe_level))
@@ -4636,6 +4804,7 @@ class CharacterUpdate(BaseModel):
     level: int | None = Field(default=None, ge=1, le=20)
     class_name: str | None = None
     sheet: dict[str, Any] | None = None
+    sheet_patch: dict[str, Any] | None = None
 
 
 class CharacterImport(BaseModel):

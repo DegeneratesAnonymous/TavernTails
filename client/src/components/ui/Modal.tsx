@@ -8,9 +8,10 @@ type Props = {
   title?: string
   children: React.ReactNode
   onClose: () => void
+  className?: string
 }
 
-export default function Modal({ open, title, children, onClose }: Props) {
+export default function Modal({ open, title, children, onClose, className }: Props) {
   useEffect(() => {
     if (!open) return
     const onKeyDown = (e: KeyboardEvent) => {
@@ -24,7 +25,7 @@ export default function Modal({ open, title, children, onClose }: Props) {
 
   return ReactDOM.createPortal(
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={title || 'Dialog'} onMouseDown={onClose}>
-      <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
+      <div className={`modal${className ? ` ${className}` : ''}`} onMouseDown={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div className="modal-title">{title || ''}</div>
           <button className="btn btn-quiet btn-sm" type="button" onClick={onClose} aria-label="Close dialog">
@@ -37,4 +38,3 @@ export default function Modal({ open, title, children, onClose }: Props) {
     document.body
   )
 }
-

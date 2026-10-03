@@ -1,6 +1,8 @@
 import json
 import random
 import re
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 from fastapi import APIRouter, Body, Depends, Header, HTTPException
@@ -235,6 +237,58 @@ def _normalize_beyond20_dom_event(payload: Dict[str, Any], *, fallback_by: str) 
     }
 
 
+def _campaign_id_for_session(session_id: str | None) -> str | None:
+    if not session_id:
+        return None
+    meta_path = Path(__file__).resolve().parents[1] / "sessions" / session_id / "meta.json"
+    try:
+        meta = json.loads(meta_path.read_text())
+    except Exception:
+        return None
+    campaign_id = meta.get("campaign_id")
+    return str(campaign_id) if campaign_id else None
+
+
+def _append_session_roll_story(session_id: str | None, result: dict[str, Any], reason: str | None = None) -> None:
+    if not session_id:
+        return
+    folder = Path(__file__).resolve().parents[1] / "sessions" / session_id
+    if not folder.exists():
+        return
+    story_path = folder / "story.json"
+    try:
+        cur = json.loads(story_path.read_text()) if story_path.exists() else []
+    except Exception:
+        cur = []
+    if not isinstance(cur, list):
+        cur = [cur] if isinstance(cur, dict) else []
+    rolls = result.get("rolls") or []
+    dice = ", ".join(str(v) for v in rolls if v is not None)
+    expression = result.get("expression") or "roll"
+    mod = int(result.get("mod") or 0)
+    total = int(result.get("total") or 0)
+    detail = f"{expression}"
+    if dice:
+        detail += f" [{dice}]"
+    if mod:
+        detail += f" {'+' if mod > 0 else ''}{mod}"
+    suffix = f" for {reason}" if reason else ""
+    cur.append({
+        "type": "roll",
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "text": f"{result.get('by') or 'Player'} rolled {detail}: {total}{suffix}.",
+        "roll": {
+            "expression": expression,
+            "rolls": rolls,
+            "mod": mod,
+            "total": total,
+            "by": result.get("by"),
+            "reason": reason,
+        },
+    })
+    story_path.write_text(json.dumps(cur))
+
+
 @router.post('/rolls')
 async def do_roll(req: RollRequest, current_user=Depends(get_current_user)):
     try:
@@ -253,11 +307,15 @@ async def do_roll(req: RollRequest, current_user=Depends(get_current_user)):
     # persist the roll
     from .. import db
     by = result.get('by')
-    campaign_id = None
+    campaign_id = _campaign_id_for_session(req.session_id)
     try:
         db.create_roll(campaign_id=campaign_id, expression=req.expression, rolls=rolls, mod=parsed['mod'], total=total, by=by)
     except Exception:
         # non-fatal on persistence failure
+        pass
+    try:
+        _append_session_roll_story(req.session_id, result, req.reason)
+    except Exception:
         pass
     if req.session_id:
         await broadcaster.broadcast_json(req.session_id, {
@@ -282,6 +340,10 @@ async def ingest_beyond20(payload: dict[str, Any] = Body(...)):
             total=result['total'],
             by=result['by'],
         )
+    except Exception:
+        pass
+    try:
+        _append_session_roll_story(session_id, result, result.get('reason') or payload.get('reason'))
     except Exception:
         pass
     envelope = {
@@ -332,6 +394,10 @@ async def ingest_beyond20_relay(
             total=result['total'],
             by=result['by'],
         )
+    except Exception:
+        pass
+    try:
+        _append_session_roll_story(session_id, result, result.get('reason'))
     except Exception:
         pass
 

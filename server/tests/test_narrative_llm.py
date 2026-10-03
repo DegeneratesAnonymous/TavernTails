@@ -9,50 +9,32 @@ import pytest
 from server.agents import narrative
 
 
-def make_fake_openai_module(captured):
-    class DummyChat:
-        @staticmethod
-        def create(*args, **kwargs):
-            # capture call for assertions
-            captured['last'] = {'args': args, 'kwargs': kwargs}
-            # Default fake returns raw text
-            return {'choices': [{'message': {'content': 'FAKE LLM SCENE OUTPUT. Ask: What do you do?'}}]}
-
-    fake = type('m', (), {})()
-    fake.ChatCompletion = DummyChat
-    return fake
+def make_fake_chat_complete(response_text: str, captured: dict | None = None):
+    def _fake(messages, **kwargs):
+        if captured is not None:
+            captured['last'] = {'kwargs': {'messages': messages, **kwargs}}
+        return response_text
+    return _fake
 
 
 def test_generate_narrative_uses_openai(monkeypatch):
-    # Ensure OPENAI key appears set so code path imports openai
-    monkeypatch.setenv('OPENAI_API_KEY', 'test-key')
     captured = {}
-    fake = make_fake_openai_module(captured)
-    sys.modules['openai'] = fake
+    monkeypatch.setattr(narrative, 'chat_complete', make_fake_chat_complete('FAKE LLM SCENE OUTPUT. Ask: What do you do?', captured))
 
     req = narrative.NarrativeRequest(scene='A dark road', player='Alice')
     resp = narrative.generate_narrative(req)
     assert isinstance(resp.narrative, str)
     assert 'FAKE LLM SCENE OUTPUT' in resp.narrative
-    # Ensure ChatCompletion.create was called with messages containing our scene
+    # Ensure chat_complete was called with messages containing our scene
     assert 'last' in captured
-    msgs = captured['last']['kwargs'].get('messages') or captured['last']['kwargs'].get('messages')
+    msgs = captured['last']['kwargs'].get('messages')
     assert msgs and any('A dark road' in (m.get('content') or '') for m in msgs)
 
 
 def test_generate_narrative_parses_json_response(monkeypatch):
-    monkeypatch.setenv('OPENAI_API_KEY', 'test-key')
     captured = {}
-
-    class JSONDummy:
-        @staticmethod
-        def create(*args, **kwargs):
-            captured['last'] = {'args': args, 'kwargs': kwargs}
-            # Model returns markdown with embedded JSON
-            body = '\nSome intro text\n```json\n{\n  "narrative": "You enter a hall lit by sconces.",\n  "prompt": "What do you examine?",\n  "citations": [{"source_id":"PHB","page":77,"snippet":"Light sources"}]\n}\n```\n'
-            return {'choices': [{'message': {'content': body}}]}
-
-    sys.modules['openai'] = type('m', (), {'ChatCompletion': JSONDummy})()
+    json_body = '\nSome intro text\n```json\n{\n  "narrative": "You enter a hall lit by sconces.",\n  "prompt": "What do you examine?",\n  "citations": [{"source_id":"PHB","page":77,"snippet":"Light sources"}]\n}\n```\n'
+    monkeypatch.setattr(narrative, 'chat_complete', make_fake_chat_complete(json_body, captured))
 
     req = narrative.NarrativeRequest(scene='Hall', player='Bryn')
     resp = narrative.generate_narrative(req)
@@ -81,11 +63,8 @@ def test_continue_narrative_includes_references(monkeypatch, tmp_path):
     (folder / 'pcs.json').write_text(json.dumps([{'name': 'Rog'}, {'name': 'Mira'}]))
     (folder / 'npcs.json').write_text(json.dumps([{'name': 'Keeper'}]))
 
-    # Monkeypatch narrative sessions dir resolution to use our tmp sessions folder
-    monkeypatch.setenv('OPENAI_API_KEY', 'test-key')
     captured = {}
-    fake = make_fake_openai_module(captured)
-    sys.modules['openai'] = fake
+    monkeypatch.setattr(narrative, 'chat_complete', make_fake_chat_complete('FAKE LLM SCENE OUTPUT. Ask: What do you do?', captured))
 
     # Monkeypatch the sessions folder used by narrative.continue_narrative
     monkeypatch.setattr(narrative, 'Path', Path)
@@ -144,10 +123,8 @@ def test_regenerate_narrative_skips_story_history(monkeypatch, tmp_path):
     (folder / 'pcs.json').write_text(json.dumps([{'name': 'Arion'}]))
     (folder / 'npcs.json').write_text(json.dumps([]))
 
-    monkeypatch.setenv('OPENAI_API_KEY', 'test-key')
     captured = {}
-    fake = make_fake_openai_module(captured)
-    sys.modules['openai'] = fake
+    monkeypatch.setattr(narrative, 'chat_complete', make_fake_chat_complete('FAKE LLM SCENE OUTPUT. Ask: What do you do?', captured))
 
     real_sessions_dir = Path(__file__).resolve().parents[1] / 'sessions'
     target = real_sessions_dir / session_id

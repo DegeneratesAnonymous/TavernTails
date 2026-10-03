@@ -1,0 +1,37 @@
+.src-ref {
+  display: inline;
+}
+
+.src-ref[data-tooltip] {
+  cursor: help;
+  border-bottom: 1px dotted currentColor;
+  position: relative;
+  text-decoration: none;
+}
+
+.src-ref[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 5px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1a1008;
+  border: 1px solid rgba(200, 148, 26, 0.55);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 5px 9px;
+  border-radius: 5px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.08s ease;
+  z-index: 300;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  font-style: normal;
+  font-weight: normal;
+}
+
+.src-ref[data-tooltip]:hover::after {
+  opacity: 1;
+}

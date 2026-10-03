@@ -177,12 +177,77 @@ class BannedEmail(SQLModel, table=True):
     """A banned or suspended email / email pattern."""
 
     id: int | None = Field(default=None, primary_key=True)
-    email: str = Field(index=True)  # exact email or @domain.com pattern
+    email: str = Field(index=True)
     reason: str = Field(default="")
-    ban_type: str = Field(default="ban")  # ban | suspend
-    suspended_until: datetime | None = None  # for suspensions; None = permanent
+    ban_type: str = Field(default="ban")
+    suspended_until: datetime | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     created_by_id: int | None = Field(default=None, foreign_key="user.id")
+
+
+# ---------------------------------------------------------------------------
+# Campaign Memory System
+# ---------------------------------------------------------------------------
+
+class CampaignEntity(SQLModel, table=True):
+    """A named entity in the campaign world (NPC, location, faction, backstory, story_thread, world_event)."""
+
+    id: str = Field(primary_key=True)
+    campaign_id: str = Field(index=True, foreign_key="campaign.id")
+    entity_type: str = Field(index=True)  # npc | location | faction | backstory | story_thread | world_event
+    name: str = Field(index=True)
+    status: str = Field(default="active")  # active | resolved | archived
+    visibility: str = Field(default="gm_only")  # gm_only | shared
+    tags: list[str] = Field(default_factory=list, sa_column=Column(JSON))
+    data: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class CampaignRelationship(SQLModel, table=True):
+    """A directional link between two CampaignEntity records."""
+
+    id: str = Field(primary_key=True)
+    campaign_id: str = Field(index=True, foreign_key="campaign.id")
+    source_entity_id: str = Field(index=True)
+    target_entity_id: str = Field(index=True)
+    relationship_type: str = Field(default="")
+    description: str = Field(default="")
+    scores: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    secrecy_level: str = Field(default="public")  # public | private | hidden
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class CampaignHook(SQLModel, table=True):
+    """An unresolved story hook, ticking clock, or consequence attached to the campaign."""
+
+    id: str = Field(primary_key=True)
+    campaign_id: str = Field(index=True, foreign_key="campaign.id")
+    entity_id: str | None = Field(default=None, index=True)
+    title: str
+    description: str = Field(default="")
+    hook_type: str = Field(default="unresolved")  # unresolved | ticking_clock | escalation | consequence
+    priority: int = Field(default=5)  # 1 (low) – 10 (critical)
+    status: str = Field(default="active")  # active | triggered | resolved
+    deadline: str | None = Field(default=None)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class CampaignChangeLog(SQLModel, table=True):
+    """Immutable record of a significant change to a campaign entity."""
+
+    id: str = Field(primary_key=True)
+    campaign_id: str = Field(index=True, foreign_key="campaign.id")
+    entity_id: str = Field(index=True)
+    session_id: str | None = Field(default=None)
+    change_type: str = Field(default="update")  # create | update | resolve | reveal | damage | death
+    summary: str
+    before_data: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    after_data: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    caused_by_player_action: bool = Field(default=False)
+    related_event_id: str | None = Field(default=None)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 def _profile_with_identity(user: User) -> dict[str, Any]:
@@ -268,6 +333,23 @@ def set_campaign_variables(campaign_id: str, owner_id: int, variables: Dict[str,
         return camp
 
 
+def set_campaign_metadata_keys(campaign_id: str, owner_id: int, values: Dict[str, Any]) -> Campaign | None:
+    """Merge top-level campaign metadata keys without requiring a schema migration."""
+    with Session(engine) as session:
+        stmt = select(Campaign).where(Campaign.id == campaign_id, Campaign.owner_id == owner_id)
+        camp = session.exec(stmt).first()
+        if not camp:
+            return None
+        meta = dict(camp.metadata_json or {})
+        for key, value in values.items():
+            meta[key] = value
+        camp.metadata_json = meta
+        session.add(camp)
+        session.commit()
+        session.refresh(camp)
+        return camp
+
+
 def delete_campaign(campaign_id: str, owner_id: int) -> bool:
     with Session(engine) as session:
         stmt = select(Campaign).where(Campaign.id == campaign_id, Campaign.owner_id == owner_id)
@@ -277,6 +359,16 @@ def delete_campaign(campaign_id: str, owner_id: int) -> bool:
         session.delete(camp)
         session.commit()
         return True
+
+
+def delete_campaign_memory(campaign_id: str) -> None:
+    """Remove all CampaignEntity, CampaignRelationship, CampaignHook, and CampaignChangeLog rows for a campaign."""
+    with Session(engine) as session:
+        session.exec(delete(CampaignChangeLog).where(CampaignChangeLog.campaign_id == campaign_id))
+        session.exec(delete(CampaignHook).where(CampaignHook.campaign_id == campaign_id))
+        session.exec(delete(CampaignRelationship).where(CampaignRelationship.campaign_id == campaign_id))
+        session.exec(delete(CampaignEntity).where(CampaignEntity.campaign_id == campaign_id))
+        session.commit()
 
 
 def purge_campaigns(owner_id: int, name_tokens: List[str] | None = None) -> int:
@@ -820,6 +912,16 @@ def get_character_for_owner(character_id: int, owner_id: int) -> Character | Non
         return session.exec(stmt).first()
 
 
+def _apply_sheet_patch(sheet: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, Any]:
+    result = dict(sheet)
+    for k, v in patch.items():
+        if isinstance(v, dict) and isinstance(result.get(k), dict):
+            result[k] = {**result[k], **v}
+        else:
+            result[k] = v
+    return result
+
+
 def update_character(character_id: int, owner_id: int, updates: Dict[str, Any]) -> Character | None:
     with Session(engine) as session:
         stmt = select(Character).where(Character.id == character_id, Character.owner_id == owner_id)
@@ -835,6 +937,9 @@ def update_character(character_id: int, owner_id: int, updates: Dict[str, Any]) 
             char.level = max(1, int(updates['level']))
         if 'sheet' in updates and isinstance(updates['sheet'], dict):
             char.sheet = updates['sheet']
+        if 'sheet_patch' in updates and isinstance(updates['sheet_patch'], dict):
+            existing = dict(char.sheet) if isinstance(char.sheet, dict) else {}
+            char.sheet = _apply_sheet_patch(existing, updates['sheet_patch'])
         session.add(char)
         session.commit()
         session.refresh(char)
@@ -981,6 +1086,49 @@ def get_user_by_beyond20_relay_token(token: str) -> User | None:
             if relay == token:
                 return user
         return None
+
+
+# ---------------------------------------------------------------------------
+# Steward Dashboard SSO integration
+# ---------------------------------------------------------------------------
+
+def _unique_username(session, base: str) -> str:
+    """Return base username, appending a counter if already taken."""
+    candidate = base.strip() or "Player"
+    stmt = select(User).where(func.lower(User.username) == candidate.lower())
+    if not session.exec(stmt).first():
+        return candidate
+    for i in range(2, 100):
+        suffixed = f"{candidate}{i}"
+        stmt2 = select(User).where(func.lower(User.username) == suffixed.lower())
+        if not session.exec(stmt2).first():
+            return suffixed
+    return candidate + secrets.token_hex(4)
+
+
+def get_or_create_steward_user(profile_id: str, display_name: str) -> User:
+    """Find or create a TavernTails user linked to a Steward Dashboard profile."""
+    email = f"{profile_id}@steward.local"
+    with Session(engine) as session:
+        user = session.exec(select(User).where(func.lower(User.email) == email.lower())).first()
+        if user:
+            return user
+        user = User(
+            email=email,
+            username=_unique_username(session, display_name),
+            password_hash=hash_password(secrets.token_hex(32)),
+            verified=True,
+            profile={
+                "name": display_name,
+                "email": email,
+                "steward_profile_id": profile_id,
+                "source": "steward_sso",
+            },
+        )
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+        return user
 
 
 # ---------------------------------------------------------------------------
