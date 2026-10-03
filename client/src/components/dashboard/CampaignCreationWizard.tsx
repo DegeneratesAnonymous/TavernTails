@@ -52,6 +52,7 @@ type CampaignDraft = {
   // Quick Start
   quickGenre: string
   quickTone: string
+  quickPremise: string
   // Import
   importLore: string
   importBackstory: string
@@ -73,6 +74,7 @@ const EMPTY_DRAFT: CampaignDraft = {
   playstyle: 'balanced',
   quickGenre: 'fantasy',
   quickTone: 'balanced',
+  quickPremise: '',
   importLore: '',
   importBackstory: '',
   seedId: '',
@@ -524,10 +526,12 @@ function StepQuickDetails({
   draft,
   onNameChange,
   onGenreChange,
+  onPremiseChange,
 }: {
   draft: CampaignDraft
   onNameChange: (v: string) => void
   onGenreChange: (genre: string, tone: string) => void
+  onPremiseChange: (v: string) => void
 }) {
   const randomizeName = useCallback(() => onNameChange(pickRandomName()), [onNameChange])
 
@@ -556,6 +560,25 @@ function StepQuickDetails({
                 <span className="wizard-option-desc">{g.summary}</span>
               </button>
             ))}
+          </div>
+        </div>
+
+        <div className="stack" style={{ gap: 6 }}>
+          <label htmlFor="quick-campaign-premise" style={{ fontSize: 12, color: 'var(--muted-text)', fontWeight: 600 }}>
+            What is this campaign about? <span style={{ fontWeight: 400 }}>(recommended)</span>
+          </label>
+          <textarea
+            id="quick-campaign-premise"
+            className="wizard-name-input"
+            value={draft.quickPremise}
+            onChange={(e) => onPremiseChange(e.target.value)}
+            placeholder="One or two concrete sentences. Example: The royal succession is disputed after the dead king's signet appears in a rebel camp. I want the opening to begin during the public funeral."
+            maxLength={700}
+            rows={4}
+            style={{ resize: 'vertical' }}
+          />
+          <div style={{ fontSize: 11, color: 'var(--muted-text)' }}>
+            This becomes the creative brief. Specific people, places, conflicts, and opening situations give the AI facts to build from instead of guessing from the title.
           </div>
         </div>
 
@@ -1140,17 +1163,21 @@ function StepReview({
 // ─────────────────────────────────────────────
 
 async function submitQuickStart(draft: CampaignDraft): Promise<CreatedCampaignResult> {
+  const genre = QUICK_GENRES.find((item) => item.id === draft.quickGenre)
+  const premise = draft.quickPremise.trim()
+  const creativeBrief = premise || genre?.summary || `${draft.quickGenre} campaign`
   const res = await apiFetch('/campaigns', {
     method: 'POST',
     body: JSON.stringify({
       name: draft.name.trim(),
-      description: '',
+      description: creativeBrief,
       create_session: true,
       ...ownerParticipationPayload(draft),
       creation_posture: 'player_fast_start',
       preferences: {
         genre: draft.quickGenre,
         tone: draft.quickTone,
+        setting_summary: creativeBrief,
         ...interpretationPayload(draft),
       },
     }),
@@ -1473,6 +1500,7 @@ export default function CampaignCreationWizard({ onDone, onCampaignCreated, char
               draft={draft}
               onNameChange={(v) => setDraft((d) => ({ ...d, name: v }))}
               onGenreChange={(genre, tone) => setDraft((d) => ({ ...d, quickGenre: genre, quickTone: tone }))}
+              onPremiseChange={(v) => setDraft((d) => ({ ...d, quickPremise: v }))}
             />
             <InterpretationControls
               draft={draft}
