@@ -407,6 +407,7 @@ def build_opening_intent(
     pitch = clean_text(contract.get("campaign_pitch") or settings.get("setting_summary") or "")
     summary = clean_text(settings.get("setting_summary") or "")
     name = clean_text(contract.get("campaign_name") or "")
+    world_name = clean_text(settings.get("world_name") or "")
     premise_bits = unique([summary, pitch])
     if premise_bits:
         intent.add(make_fact("premise", " ".join(premise_bits), "user", source="settings/campaign_pitch"))
@@ -418,6 +419,11 @@ def build_opening_intent(
         else:
             intent.allowed_names.append(name)
 
+    if world_name:
+        # The setting's name may be spoken in prose; it is not a place to start in.
+        intent.allowed_names.append(world_name)
+        if intent.premise is not None:
+            intent.premise = intent.premise.model_copy(update={"text": f"{intent.premise.text} {world_name}".strip()})
     for source, value in (
         ("settings.starting_location", settings.get("starting_location")),
         ("campaign_dna.starting_location", dna.get("starting_location")),
@@ -505,8 +511,12 @@ def seed_provenance(seed: dict[str, Any]) -> str:
     return _SEED_PROVENANCE.get(str(seed.get("generated_by") or ""), "generated_provisional")
 
 
-def _covering_fact(text: str, intent: OpeningIntent, *, threshold: float = 0.8) -> Fact | None:
-    """The established fact that already says (nearly) all of ``text``."""
+def _covering_fact(text: str, intent: OpeningIntent, *, threshold: float = 1.0) -> Fact | None:
+    """The established fact that already says all of ``text``.
+
+    Anything short of full coverage adds new detail, and new detail is a
+    guess: it must not borrow the authority of the fact it elaborates.
+    """
     tokens = content_tokens(text)
     if not tokens:
         return None
@@ -612,13 +622,12 @@ def intent_from_opening(
         text = clean_text(fact_text)
         if not text:
             continue
-        covering = _covering_fact(text, intent, threshold=0.6)
+        # The brief is generated from the seed: its sentences are elaborations. They
+        # record the established fact they build on, but never inherit its authority.
+        related = _covering_fact(text, intent, threshold=0.6)
         intent.add(make_fact(
-            "conflict",
-            text,
-            covering.provenance if covering else "generated_provisional",
-            source="brief.known_facts",
-            derived_from=[covering.id] if covering else [],
+            "conflict", text, "generated_provisional", source="brief.known_facts",
+            derived_from=[related.id] if related else [],
         ))
     intent.allowed_names = list(dict.fromkeys(intent.allowed_names))
     return intent
@@ -760,7 +769,7 @@ _MALFORMED_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("first_person_splice", re.compile(r"\b(?:because|that|until) I (?:came|am|was|want|will|do)\b")),
     ("lowercase_pronoun_i", re.compile(r"\b(?:to|and|but|because|that) i (?:came|am|was|want|will|do)\b")),
     ("title_splice", re.compile(r"\bbegins at [^.!?\n]{1,60}\b(?:is|are) (?:a|an|the|where)\b")),
-    ("article_a_before_vowel", re.compile(r"\b[Aa] (?:underground|surface|enemy|animal|army|axe|inn|ally|artifact)\b")),
+    ("article_a_before_vowel", re.compile(r"\b[Aa] (?:underground|enemy|animal|army|axe|inn|ally|artifact)\b")),
     ("article_an_before_consonant", re.compile(r"\b[Aa]n (?:surface|road|crowd|guard|witness|clerk|seal|bell)\b")),
     ("repeated_word", re.compile(r"\b(?!had\b|that\b)(\w{3,})\s+\1\b", re.I)),
 )
@@ -832,6 +841,7 @@ _DISCLAIMER = re.compile(
     r"\bnothing (?:has |yet )?establish\w*|\bnot (?:yet )?establish\w*|\bassum(?:e|es|ed|ing|ption)\b|\bno\b[^.!?]{0,40}\b(?:is|has been|are) established\b",
     re.I,
 )
+_EXISTENCE_NEGATION = re.compile(r"\b(?:no|without|neither|nor)\s+(?:\w+\s+){0,2}$", re.I)
 _MODAL = re.compile(
     r"\b(?:unless|if|whether|may|might|could|can decide|can choose|player'?s choice)\b",
     re.I,
@@ -899,7 +909,12 @@ _SENTENCE_STARTERS = frozenset(w.lower() for w in (
     "wet", "dry", "old", "new", "fresh", "heavy", "thin", "quiet", "slowly", "quickly", "carefully", "gently",
 ))
 # A name is usually followed by a verb: "Vell watches the gate", "Mara slammed the door".
-_VERB_AFTER_NAME = re.compile(r"^\s+[a-z]+(?:s|ed|es)\b")
+_IRREGULAR_VERBS = (
+    "was|were|is|are|had|has|did|does|said|says|stood|sat|ran|came|went|saw|took|gave|held|kept|left|met|knew|spoke|"
+    "began|thought|told|felt|found|brought|fell|rose|drew|wore|heard|lay|led|made|paid|put|read|sent|set|shook|sang|"
+    "slept|struck|swore|threw|woke|wrote|would|will|could|can|must|might|should|never|always|still|then|just"
+)
+_VERB_AFTER_NAME = re.compile(rf"^\s+(?:[a-z]+(?:s|ed|es)|{_IRREGULAR_VERBS})\b")
 
 
 def _sentence_start(body: str, index: int) -> bool:
@@ -970,6 +985,11 @@ def find_unsupported_claims(
     def negated(sentence: str, start: int) -> bool:
         return bool(_NEGATION.search(sentence[max(0, start - 40):start]))
 
+    def existence_negated(sentence: str, start: int) -> bool:
+        # "no old debt" denies the fact.  "never repaid the old debt" or "did not
+        # betray his old friend" negate an action and still presuppose the fact.
+        return bool(_EXISTENCE_NEGATION.search(sentence[max(0, start - 30):start]))
+
     for sentence in split_sentences(body):
         if _DISCLAIMER.search(sentence):
             continue
@@ -978,7 +998,7 @@ def find_unsupported_claims(
 
         for pattern, strong in _HISTORY_PATTERNS:
             for match in pattern.finditer(sentence):
-                if negated(sentence, match.start()) or (modal and not strong):
+                if existence_negated(sentence, match.start()) or (modal and not strong):
                     continue
                 span = match.group(0)
                 if not _supported(content_tokens(span), established, 0.7):

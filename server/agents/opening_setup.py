@@ -64,6 +64,8 @@ class CampaignBrief(BaseModel):
     known_facts: list[str] = Field(default_factory=list)
     character_entry_prompt: str = ""
     character_anchor: dict[str, str] = Field(default_factory=dict)
+    # Fields the brief could not establish ("conflict", "stakes", "actor", "object").
+    unknowns: list[str] = Field(default_factory=list)
     quality_debug: dict[str, Any] = Field(default_factory=dict)
 
 

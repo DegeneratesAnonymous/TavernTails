@@ -965,3 +965,118 @@ def test_ordinary_regeneration_vocabulary_is_not_an_internal_leak(text):
 ])
 def test_retry_phrasing_is_still_an_internal_leak(text):
     assert find_internal_language(text)
+
+
+# ---------------------------------------------------------------------------
+# Third review round on #182
+# ---------------------------------------------------------------------------
+
+def test_a_surface_is_correct_english_but_an_surface_is_not():
+    assert find_malformed_sentences("A surface crack catches the light.") == []
+    assert find_malformed_sentences("An surface crack catches the light.")[0]["defect"] == "article_an_before_consonant"
+    qa = run_scene_qa(scene=_scene("The Frostmark Road Shrine waits. A surface crack catches the light. Hadwin Crowe watches."),
+                      content_bundle=_bundle(), recent_opening_shapes=[])
+    assert qa["malformed_sentences"] == []
+
+
+def test_an_established_npc_keeps_its_own_identity_without_an_invented_role():
+    contract = {"campaign_name": "Crown", "campaign_pitch": "A succession dispute.",
+                "player_canon": [{"name": "Queen Elara", "type": "npc", "source": "labelled_lore"}]}
+    seed = generate_starter_seed({"starting_location": "Varyn Keep"}, contract, seed=5)
+    assert seed["named_npc_or_visible_threat"] == "Queen Elara"
+    assert "(" not in seed["named_npc_or_visible_threat"]
+    npc = [u for u in seed["memory_updates"] if u["type"] == "npc"][0]
+    assert npc["name"] == "Queen Elara" and "role" not in npc and npc["status"] == "campaign_opening"
+    assert seed["immediate_problem"].startswith("Queen Elara is trying")
+    # an NPC the table invents still gets a role
+    invented = generate_starter_seed({}, {}, seed=5)
+    assert "(" in invented["named_npc_or_visible_threat"]
+
+
+def test_brief_elaborations_never_inherit_the_authority_of_the_fact_they_extend():
+    backstory = "Mara owes an old debt."
+    brief = {"known_facts": ["Mara owes an old debt to the Ashen Conclave."]}
+    intent = intent_from_opening(
+        required=REQUIRED, brief=brief, anchor=ANCHOR, player_name="Mara",
+        character={"name": "Mara", "backstory": backstory},
+    )
+    fact = next(f for f in intent.conflicts if f.source == "brief.known_facts")
+    assert fact.provenance == "generated_provisional" and not fact.established
+    assert fact.derived_from, "it still records the established fact it builds on"
+    # the new detail (the Conclave) is not canon, so the history claim stays unsupported
+    claims = find_unsupported_claims("Mara owes an old debt to the Ashen Conclave.", intent, allow=["Mara"])
+    assert any(c["kind"] == "history" for c in claims)
+    # while the part the player actually wrote remains fine
+    assert not find_unsupported_claims("Mara owes an old debt.", intent, allow=["Mara"])
+
+
+def test_repairs_clean_the_player_prompt_as_well_as_the_narrative():
+    scene = _scene("The Frostmark Road Shrine waits. Hadwin Crowe watches the charms.")
+    scene["player_prompt"] = "What does Bastog do?."
+    scene["text"] = f"{scene['narrative_body']}\n\n{scene['player_prompt']}"
+    qa = run_scene_qa(scene=scene, content_bundle=_bundle(), recent_opening_shapes=[])
+    assert "malformed" in qa["repair_targets"] and qa["pass"] is False
+    repaired = apply_targeted_scene_repairs(scene, qa, player_name="Bastog")
+    assert repaired["player_prompt"] == "What does Bastog do?"
+    assert run_scene_qa(scene=repaired, content_bundle=_bundle(), recent_opening_shapes=[])["malformed_sentences"] == []
+
+    leaky = _scene("The Frostmark Road Shrine waits. Hadwin Crowe watches the charms.")
+    leaky["player_prompt"] = "The scene should ask what Bastog does."
+    leaky["text"] = f"{leaky['narrative_body']}\n\n{leaky['player_prompt']}"
+    qa = run_scene_qa(scene=leaky, content_bundle=_bundle(), recent_opening_shapes=[])
+    assert qa["internal_language"]
+    fixed = apply_targeted_scene_repairs(leaky, qa, player_name="Bastog")
+    assert fixed["player_prompt"] == "What does Bastog do?"
+    assert find_internal_language(fixed["text"]) == []
+
+
+def test_brief_unknowns_survive_questionnaire_serialization():
+    questionnaire = opening_setup_module.generate_questionnaire(
+        session_id="unknowns", campaign_id="1", campaign_contract={"campaign_name": "Quiet Start"},
+        opening_seed={"starting_location": "Marrow Gate"}, character={"name": "Ayla", "class_name": "Rogue"},
+    )
+    brief = questionnaire["campaign_brief"]
+    assert set(brief["unknowns"]) == {"conflict", "stakes", "actor", "object"}
+    assert validate_campaign_brief(brief)["valid"], "the stored brief still validates through its declared unknowns"
+
+
+def test_the_world_name_is_player_authored_and_may_appear_in_prose():
+    intent = build_opening_intent({"world_name": "Eldoria", "starting_location": "Port Meridian"}, {})
+    text = "Lanterns over Port Meridian flicker, the way they do everywhere in Eldoria."
+    assert not find_unsupported_claims(text, intent)
+    assert [f.text for f in intent.locations] == ["Port Meridian"], "the world name is not a place to start in"
+    seed = generate_starter_seed({"world_name": "Eldoria", "starting_location": "Port Meridian"}, {}, seed=1)
+    assert seed["starting_location"] == "Port Meridian"
+
+
+@pytest.mark.parametrize("text", [
+    "Bastog never repaid the old debt.",
+    "Bastog did not betray his old friend.",
+    "Bastog never forgot the old debt he owes the Guild.",
+])
+def test_negated_actions_still_presuppose_the_history(text):
+    intent = build_opening_intent(SOURCE["settings"], SOURCE["contract"], character={"name": "Bastog"})
+    assert any(c["kind"] == "history" for c in find_unsupported_claims(text, intent, allow=["Bastog"])), text
+
+
+@pytest.mark.parametrize("text", [
+    "Bastog has no old debt to settle.",
+    "No prior relationship with the harbor is established.",
+    "Bastog has no assumed debt or secret connection to the guild.",
+])
+def test_explicit_denials_of_history_are_still_not_claims(text):
+    intent = build_opening_intent(SOURCE["settings"], SOURCE["contract"], character={"name": "Bastog"})
+    assert not [c for c in find_unsupported_claims(text, intent, allow=["Bastog"]) if c["kind"] == "history"], text
+
+
+@pytest.mark.parametrize("text", [
+    "Mara stood beside the gate.", "Vell ran toward the bell.", "Sera said nothing.", "Dorn was waiting by the door.",
+])
+def test_names_followed_by_irregular_verbs_are_checked(text):
+    kinds = {c["kind"] for c in find_unsupported_claims(text, _corpus_intent(), allow=["Bastog"])}
+    assert "named_entity" in kinds, text
+
+
+@pytest.mark.parametrize("text", ["Smoke was thick over the quay.", "It was cold at the gate.", "Then the bell rang."])
+def test_irregular_verbs_do_not_turn_ordinary_openers_into_names(text):
+    assert not find_unsupported_claims(text, _corpus_intent(), allow=["Bastog"]), text

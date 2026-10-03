@@ -824,24 +824,32 @@ def apply_targeted_scene_repairs(
     text = _text(scene)
     narrative = scene.get("narrative_body") or text
     prompt = scene.get("player_prompt") or f"What does {player_name} do?"
-    if "unsupported_claims" in targets and qa_result.get("unsupported_claims"):
-        claims = qa_result["unsupported_claims"]
-        narrative = map_paragraphs(narrative, lambda para: strip_unsupported_sentences(para, claims))
-    if "internal_language" in targets:
-        narrative = map_paragraphs(narrative, strip_internal_language)
-    if "malformed" in targets:
-        # Case and doubled punctuation are fixed in place; a sentence that is still
-        # broken after that (a splice, a stray article) is removed rather than shown.
-        narrative = polish_prose(narrative)
-        remaining = [d["text"].lower() for d in blocking_defects(narrative)]
-        if remaining:
-            narrative = map_paragraphs(
-                narrative,
-                lambda para: " ".join(
-                    sentence for sentence in split_sentences(para)
-                    if not any(snippet in sentence.lower() for snippet in remaining)
-                ),
-            )
+    claims = qa_result.get("unsupported_claims") or []
+
+    def clean(block: str) -> str:
+        """The same targeted clean-up for the narrative and for the player prompt."""
+        if "unsupported_claims" in targets and claims:
+            block = map_paragraphs(block, lambda para: strip_unsupported_sentences(para, claims))
+        if "internal_language" in targets:
+            block = map_paragraphs(block, strip_internal_language)
+        if "malformed" in targets:
+            # Case and doubled punctuation are fixed in place; a sentence that is still
+            # broken after that (a splice, a stray article) is removed rather than shown.
+            block = polish_prose(block)
+            remaining = [d["text"].lower() for d in blocking_defects(block)]
+            if remaining:
+                block = map_paragraphs(
+                    block,
+                    lambda para: " ".join(
+                        sentence for sentence in split_sentences(para)
+                        if not any(snippet in sentence.lower() for snippet in remaining)
+                    ),
+                )
+        return block
+
+    narrative = clean(narrative)
+    # QA reads the prompt too, so a defective prompt is repaired (or replaced) as well.
+    prompt = clean(prompt).strip() or f"What does {player_name or 'the party'} do?"
     paragraphs = [p for p in narrative.split("\n\n") if p.strip()]
     repair_paras: list[str] = []
     pc = player_name or "the party"

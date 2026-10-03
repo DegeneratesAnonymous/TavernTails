@@ -257,8 +257,11 @@ def _grounded_fallback_seed(
     inciting_event = flavor_pick(_INCITING_EVENTS, recent_events, rng, premise_tokens)
     opening_question = rng.choice(_OPENING_QUESTIONS)
 
-    npc_name = _established_name(intent, "actor") or _generate_npc_name(genre, rng)
-    npc_role = _npc_role_for_location(location_type, rng)
+    established_npc = _established_name(intent, "actor")
+    npc_name = established_npc or _generate_npc_name(genre, rng)
+    # A role drawn from a random table would contradict the player's canon for an NPC
+    # they already named, so an established NPC is shown without an invented role.
+    npc_role = "" if established_npc else _npc_role_for_location(location_type, rng)
 
     known_type = _known_location_type(location_type)
     stakes = _stakes_for_location(location_type, inciting_event) if known_type else (
@@ -275,14 +278,19 @@ def _grounded_fallback_seed(
         "location_type": location_type,
         "location_identity": identity,
         "inciting_event": inciting_event.capitalize() + ".",
-        "named_npc_or_visible_threat": f"{npc_name} ({npc_role})",
-        "immediate_problem": f"The {npc_role.lower()} {npc_name} is trying to keep a fragile lead from disappearing before the party can examine it.",
+        "named_npc_or_visible_threat": f"{npc_name} ({npc_role})" if npc_role else npc_name,
+        "immediate_problem": (
+            f"The {npc_role.lower()} {npc_name} is trying to keep a fragile lead from disappearing before the party can examine it."
+            if npc_role else
+            f"{npc_name} is trying to keep a fragile lead from disappearing before the party can examine it."
+        ),
         "specific_stakes": stakes,
         "first_clue_or_question": opening_question,
         "player_decision": player_decision,
         "memory_updates": [
             {"type": "location", "name": location_name, "status": "campaign_opening" if established_location else "provisional"},
-            {"type": "npc", "name": npc_name, "role": npc_role, "status": "provisional"},
+            ({"type": "npc", "name": npc_name, "role": npc_role, "status": "provisional"} if npc_role
+             else {"type": "npc", "name": npc_name, "status": "campaign_opening"}),
         ],
         "generated_by": "starter_seed",
         "freshness_consumed": {
