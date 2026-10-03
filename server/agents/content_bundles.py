@@ -172,7 +172,6 @@ def generate_starter_seed(
 
     genre = str(settings.get("genre") or contract.get("campaign_dna", {}).get("genre") or "fantasy")
     tone = str(settings.get("tone") or contract.get("campaign_dna", {}).get("tone") or "balanced")
-    pillars = list((contract.get("campaign_dna") or {}).get("preferred_scene_types") or [])
     premise_seed = _seed_from_campaign_premise(settings, contract, genre, rng)
     if premise_seed:
         return _vary_premise_seed(premise_seed, freshness, rng)
@@ -920,7 +919,6 @@ def build_content_bundle(
 
     if situation_type in ("campaign_opening", "new_scene_opening"):
         scene_count = (freshness_context or {}).get("scene_count") or 0
-        prev_location = (previous_scene or {}).get("location") or ""
         loc_name = sdo.get("location", {}).get("name") or ""
 
         # If location is empty or looks like a tavern default with no context, seed it
