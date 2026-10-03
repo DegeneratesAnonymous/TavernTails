@@ -13,6 +13,7 @@ from .generation_intent import STOP_WORDS as _GROUNDING_STOP_WORDS
 from .generation_intent import (
     OpeningIntent,
     blocking_claims,
+    blocking_defects,
     build_source_trace,
     find_internal_language,
     find_unsupported_claims,
@@ -94,6 +95,8 @@ class OpeningCharacterAnchor(BaseModel):
     must_include: list[str] = Field(default_factory=list)
     must_not_include: list[str] = Field(default_factory=list)
     source: str = "player_answered"
+    # field -> "player" (the player answered it) | "default" (skipped / handed to the AI)
+    field_sources: dict[str, str] = Field(default_factory=dict)
 
 
 class ProvisionalCharacterAnchor(BaseModel):
@@ -507,6 +510,17 @@ def answers_to_anchor(
     hook_override = " ".join(str(character_hook_override or "").split()).strip()
     if hook_override:
         stake = hook_override
+    # Who actually wrote each field?  Defaults stand in for skipped / "let the AI
+    # choose" questions and must never be mistaken for what the player established.
+    field_sources = {
+        "arrival_reason": "player" if values.get("arrival_reason") else "default",
+        "pre_scene_activity": "player" if values.get("arrival_reason") else "default",
+        "personal_stake": "player" if (values.get("personal_stake") or hook_override) else "default",
+        "known_npc_connection": "player" if values.get("npc_connection") else "default",
+        "party_bond": "player" if values.get("party_bond") else "default",
+        "followed_complication": "player" if values.get("followed_complication") else "default",
+        "fear_of_loss": "player" if values.get("fear_of_loss") else "default",
+    }
     pre_scene = _pre_scene_from_arrival(arrival)
     anchor = OpeningCharacterAnchor(
         session_id=session_id,
@@ -526,6 +540,7 @@ def answers_to_anchor(
         must_include=[v for v in (arrival, pre_scene, stake, hook_override, followed_complication, fear_of_loss, npc, party_bond) if v][:7],
         must_not_include=["do not force the character to accept a quest", "do not use stale character names"],
         source=source,
+        field_sources=field_sources,
     )
     data = anchor.model_dump()
     if hook_override:
@@ -1019,6 +1034,8 @@ def validate_opening_scene_contract(
     checks["no_brief_repetition"] = not repeated
     internal = find_internal_language(text)
     checks["no_internal_language"] = not internal
+    malformed = blocking_defects(text)
+    checks["well_formed"] = not malformed
     unsupported: list[dict[str, str]] = []
     if source_intent is not None:
         unsupported = blocking_claims(find_unsupported_claims(text, source_intent, allow=[pc] if pc else ()))
@@ -1043,6 +1060,8 @@ def validate_opening_scene_contract(
         issues.append("Opening scene repeats campaign brief sentences verbatim")
     if internal:
         issues.append("Opening scene contains planner or QA language: " + ", ".join(internal[:3]))
+    for defect in malformed[:3]:
+        issues.append(f"Opening scene has a malformed sentence ({defect['defect'].replace('_', ' ')}): {defect['text']}")
     for claim in unsupported[:4]:
         issues.append(f"Opening scene makes an unsupported {claim['kind'].replace('_', ' ')} claim: {claim['text'][:80]}")
     return {
@@ -1052,6 +1071,7 @@ def validate_opening_scene_contract(
         "repeated_brief_sentences": repeated,
         "unsupported_claims": unsupported,
         "internal_language": internal,
+        "malformed_sentences": malformed,
     }
 
 

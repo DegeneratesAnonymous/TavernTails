@@ -833,3 +833,135 @@ def test_opening_qa_inspects_the_current_scene_not_stale_composer_text(monkeypat
     assert all("narrative_output" not in call for call in calls), (
         "opening QA must read the repaired scene; narrative_output would shadow it with the pre-repair composer text"
     )
+
+
+# ---------------------------------------------------------------------------
+# Second review round on #182
+# ---------------------------------------------------------------------------
+
+def test_only_people_become_actors_factions_and_items_do_not():
+    contract = {
+        "campaign_name": "Ash", "campaign_pitch": "Politics in a ruined city.",
+        "player_canon": [
+            {"name": "Ashen Conclave", "type": "faction", "source": "labelled_lore"},
+            {"name": "Cracked Seal", "type": "item", "source": "labelled_lore"},
+        ],
+    }
+    intent = build_opening_intent({}, contract)
+    assert intent.actors == []
+    assert {f.kind for f in intent.conflicts} >= {"faction", "item"}
+    seed = generate_starter_seed({}, contract, seed=2)
+    assert "Ashen Conclave" not in seed["named_npc_or_visible_threat"]
+    assert "Ashen Conclave" not in json.dumps(seed["memory_updates"])
+    # being established, the faction can still be mentioned in prose
+    assert not find_unsupported_claims("Bastog studies the seal stamped by the Ashen Conclave.", intent, allow=["Bastog"])
+    # and a real NPC alongside them is still picked
+    contract["player_canon"].append({"name": "Old Marrow", "type": "npc", "source": "labelled_lore"})
+    assert generate_starter_seed({}, contract, seed=2)["named_npc_or_visible_threat"].startswith("Old Marrow")
+
+
+def test_provenance_bookkeeping_is_not_scanned_for_recycled_fixtures():
+    from server.agents.content_bundles import _bundle_has_recycled_fixture
+
+    clean = {
+        "starting_location": "Marrow Gate", "inciting_event": "A bell rings from the sealed crypt.",
+        "premise_anchor": "An arcane observatory town beside the first crossroads.",
+        "field_provenance": {"starting_location": "user"}, "unknowns": ["stakes"], "seed_mode": "grounded_fallback",
+    }
+    # the player's own premise legitimately contains words on the recycled-fixture list
+    assert not _bundle_has_recycled_fixture({"required_content": clean})
+    # ...but a generated field that really reuses a fixture still trips the gate
+    assert _bundle_has_recycled_fixture({"required_content": {**clean, "inciting_event": "A sealed packet arrives."}})
+    # and a real seed built from such a premise passes the gate
+    pitch = "A first crossroads brawl in an arcane observatory town."
+    seed = generate_starter_seed({"setting_summary": pitch}, {"campaign_pitch": pitch}, seed=4)
+    assert "arcane observatory" in seed["premise_anchor"].lower()
+    assert not _bundle_has_recycled_fixture({"required_content": seed})
+
+
+def test_defaults_are_not_promoted_to_what_the_player_established():
+    questionnaire = _questionnaire()
+    anchor = answers_to_anchor(
+        session_id="s", questionnaire=questionnaire, character={"name": "Yungmin"},
+        answers=[
+            {"question_id": "arrival_reason", "custom_value": "I came to see whether the signet is genuine"},
+            {"question_id": "personal_stake", "option_id": "ai_choose"},
+        ],
+    )
+    assert anchor["source"] == "player_answered"
+    assert anchor["field_sources"]["arrival_reason"] == "player"
+    assert anchor["field_sources"]["personal_stake"] == "default"
+    assert anchor["field_sources"]["followed_complication"] == "default"
+    intent = intent_from_opening(required=REQUIRED, anchor=anchor, player_name="Yungmin")
+    by_source = {f.source: f.provenance for f in intent.constraints}
+    assert by_source["anchor.arrival_reason"] == "user"
+    assert by_source["anchor.personal_stake"] == "generated_provisional"
+    assert by_source["anchor.followed_complication"] == "generated_provisional"
+    # a hook the player typed in is theirs even when the question was skipped
+    hooked = answers_to_anchor(session_id="s", questionnaire=questionnaire, character={"name": "Y"}, answers=[],
+                               character_hook_override="My sister vanished here")
+    assert hooked["field_sources"]["personal_stake"] == "player"
+
+
+def test_a_players_own_negative_answers_are_kept_by_the_repair_text():
+    anchor = {
+        "character_name": "Maris Vale",
+        "arrival_reason": "Never let my sister disappear again",
+        "personal_stake": "No one touches the relic while I live",
+        "followed_complication": "No extra complication followed me here; the problem in front of me is enough.",
+        "fear_of_loss": "Nothing followed me here",
+        "known_npc_connection": "No one here has an assumed history with me; I will judge them by what they do now.",
+    }
+    text = sessions_module._anchor_repair_text(anchor, "Coldbrook Camp", "Maris Vale")
+    assert "Never let my sister disappear again" in text
+    assert "No one touches the relic while I live" in text
+    for generated_null in ("No extra complication", "Nothing followed me", "assumed history"):
+        assert generated_null not in text
+
+
+def test_malformed_prose_fails_production_qa_and_is_repaired():
+    text = (
+        "The Frostmark Road Shrine is no place for comfort.\n\n"
+        "the party arrives through the snow. Hadwin Crowe presses a forgotten symbol into the ice. "
+        "The clearest sign: why did the charms blacken?. Relics begins at The Shrine is a cold place."
+    )
+    scene = _scene(text)
+    qa = run_scene_qa(scene=scene, content_bundle=_bundle(), recent_opening_shapes=[])
+    assert qa["pass"] is False
+    assert {d["defect"] for d in qa["malformed_sentences"]} >= {"doubled_punctuation", "lowercase_start", "title_splice"}
+    assert "malformed" in qa["repair_targets"] and "malformed_sentence" in qa["regression_tags"]
+    assert any(f.startswith("Malformed sentence") for f in qa["semantic_failures"])
+
+    repaired = apply_targeted_scene_repairs(scene, qa, player_name="Bastog")
+    assert "?." not in repaired["narrative_body"]
+    assert "The party arrives through the snow." in repaired["narrative_body"]  # case fixed in place
+    assert "begins at" not in repaired["narrative_body"]  # the unfixable splice is removed, not shown
+    assert find_malformed_sentences(repaired["narrative_body"]) == []
+    again = run_scene_qa(scene=repaired, content_bundle=_bundle(), recent_opening_shapes=[])
+    assert again["malformed_sentences"] == []
+
+
+def test_malformed_llm_openings_are_replaced_by_the_well_formed_contract():
+    brief = build_campaign_brief(campaign={"campaign_name": "Amber"}, character={"name": "Bastog"}, opening_seed=REQUIRED)
+    opening = build_opening_scene_contract(required=REQUIRED, anchor=ANCHOR, campaign_brief=brief, player_name="Bastog")
+    broken = {"text": opening["opening_narrative"] + "\n\nthe party reaches Greywood Market because I came to see.",
+              "location": opening["location_name"], "choices": [{"label": a} for a in opening["action_options"]]}
+    result = validate_opening_scene_contract(scene=broken, opening_scene=opening, campaign_brief=brief, anchor=ANCHOR,
+                                             player_name="Bastog")
+    assert result["valid"] is False and result["checks"]["well_formed"] is False
+    assert any("malformed sentence" in issue for issue in result["issues"])
+
+
+@pytest.mark.parametrize("text", [
+    "The troll's regeneration stops in the fire.", "Its wounds regenerate slowly in the dark.",
+    "Regeneration potions line the apothecary's shelf.",
+])
+def test_ordinary_regeneration_vocabulary_is_not_an_internal_leak(text):
+    assert find_internal_language(text) == []
+
+
+@pytest.mark.parametrize("text", [
+    "Regenerating the scene now.", "The scene regeneration failed.", "Please regenerate the narrative.",
+])
+def test_retry_phrasing_is_still_an_internal_leak(text):
+    assert find_internal_language(text)

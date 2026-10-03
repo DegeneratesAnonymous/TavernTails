@@ -16,9 +16,12 @@ from pydantic import BaseModel, Field
 from .generation_intent import (
     OpeningIntent,
     blocking_claims,
+    blocking_defects,
     find_internal_language,
     find_unsupported_claims,
     map_paragraphs,
+    polish_prose,
+    split_sentences,
     strip_internal_language,
     strip_unsupported_sentences,
 )
@@ -99,6 +102,7 @@ class SceneQAResult(BaseModel):
     unsupported_claims: list[dict[str, str]] = Field(default_factory=list)
     internal_language: list[str] = Field(default_factory=list)
     semantic_failures: list[str] = Field(default_factory=list)
+    malformed_sentences: list[dict[str, str]] = Field(default_factory=list)
 
 
 def _text(scene: dict[str, Any], narrative_output: dict[str, Any] | None = None) -> str:
@@ -632,12 +636,15 @@ def run_scene_qa(
     text = _text(scene, narrative_output)
     intent = OpeningIntent.model_validate(source_intent) if isinstance(source_intent, dict) else source_intent
     internal_language = find_internal_language(text)
+    malformed = blocking_defects(text)
     unsupported_claims = find_unsupported_claims(text, intent, allow=allowed_names or ()) if intent else []
     blocking = blocking_claims(unsupported_claims)
     semantic_failures = (
         [f"Internal planning language in player-facing text: {', '.join(internal_language[:3])}"] if internal_language else []
     ) + [
         f"Unsupported {c['kind'].replace('_', ' ')}: {c['text'][:80]} ({c['reason']})" for c in unsupported_claims
+    ] + [
+        f"Malformed sentence ({d['defect'].replace('_', ' ')}): {d['text']}" for d in malformed
     ]
     truth = build_scene_truth_table(scene=scene, content_bundle=content_bundle, scene_director_data=scene.get("scene_director_data"), scene_beat_plan=scene_beat_plan)
     palette = build_campaign_palette(campaign_contract, content_bundle)
@@ -702,12 +709,13 @@ def run_scene_qa(
         + (["memory_delta"] if not memory_check["valid"] else [])
         + (["internal_language"] if internal_language else [])
         + (["unsupported_claims"] if unsupported_claims else [])
+        + (["malformed"] if malformed else [])
     ))
     all_failures = semantic_failures + specificity_failures + truth_failures + freshness_failures + continuity_failures + gm_failures + budget["issues"] + ui_check["issues"] + memory_check["issues"]
     quality_score = int((specificity_score * 0.2) + (freshness_score * 0.15) + (continuity_score * 0.15) + (agency_score * 0.1) + (playability_score * 0.15) + (campaign_fit_score * 0.15) + (memorability_score * 0.1))
     passed = (
         quality_score >= 75 and not truth_failures and not continuity_failures and ui_check["valid"]
-        and not internal_language and not blocking
+        and not internal_language and not blocking and not malformed
     )
     if freshness_score < 50:
         passed = False
@@ -743,6 +751,7 @@ def run_scene_qa(
             "unsupported_claims": unsupported_claims,
             "internal_language": internal_language,
             "semantic_failures": semantic_failures,
+            "malformed_sentences": malformed,
         }
     ).model_dump(by_alias=True)
 
@@ -780,6 +789,8 @@ def _regression_tags(failures: list[str]) -> list[str]:
         tags.append("internal_language_leak")
     if "unsupported " in joined:
         tags.append("unsupported_claim")
+    if "malformed sentence" in joined:
+        tags.append("malformed_sentence")
     return tags
 
 
@@ -818,6 +829,19 @@ def apply_targeted_scene_repairs(
         narrative = map_paragraphs(narrative, lambda para: strip_unsupported_sentences(para, claims))
     if "internal_language" in targets:
         narrative = map_paragraphs(narrative, strip_internal_language)
+    if "malformed" in targets:
+        # Case and doubled punctuation are fixed in place; a sentence that is still
+        # broken after that (a splice, a stray article) is removed rather than shown.
+        narrative = polish_prose(narrative)
+        remaining = [d["text"].lower() for d in blocking_defects(narrative)]
+        if remaining:
+            narrative = map_paragraphs(
+                narrative,
+                lambda para: " ".join(
+                    sentence for sentence in split_sentences(para)
+                    if not any(snippet in sentence.lower() for snippet in remaining)
+                ),
+            )
     paragraphs = [p for p in narrative.split("\n\n") if p.strip()]
     repair_paras: list[str] = []
     pc = player_name or "the party"

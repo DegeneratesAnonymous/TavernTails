@@ -1151,8 +1151,16 @@ def ensure_content_bundle(
     return bundle
 
 
+# Provenance bookkeeping describes the seed (and quotes the player's own premise);
+# it is not generated content and must not be scanned for recycled fixtures.
+SEED_METADATA_KEYS = frozenset({"seed_mode", "field_provenance", "unknowns", "premise_anchor"})
+
+
 def _bundle_has_recycled_fixture(bundle: dict[str, Any]) -> bool:
-    text = str((bundle or {}).get("required_content") or {}).lower()
+    required = (bundle or {}).get("required_content") or {}
+    if isinstance(required, dict):
+        required = {k: v for k, v in required.items() if k not in SEED_METADATA_KEYS}
+    text = str(required).lower()
     return any(term in text for term in _RECYCLED_OPENING_FIXTURES)
 
 

@@ -366,8 +366,22 @@ class OpeningIntent(BaseModel):
         return out
 
 
+_PERSON_TYPES = frozenset({"npc", "person", "character", "villain", "ally", "enemy", "contact", "boss", "patron"})
+
+
 def _entity_fact_kind(entity_type: str) -> str:
-    return "location" if entity_type in {"place", "location"} else "actor"
+    """Map a lore entity type to a fact kind.
+
+    Only people are ``actor`` facts (candidates for the opening's primary NPC).
+    A faction or an item is just as established, but it is not someone who can
+    stand in the opening scene, so it must not be selected as one.
+    """
+    kind = str(entity_type or "").strip().lower()
+    if kind in {"place", "location"}:
+        return "location"
+    if kind in _PERSON_TYPES:
+        return "actor"
+    return "faction" if kind == "faction" else (kind or "entity")
 
 
 def build_opening_intent(
@@ -580,11 +594,16 @@ def intent_from_opening(
     intent = intent_with_seed(intent, required)
     anchor = anchor or {}
     answered = str(anchor.get("source") or "player_answered") == "player_answered"
+    # Provenance is per answer: a "player_answered" questionnaire can still contain
+    # fields the player skipped or handed to the AI, which hold generated defaults.
+    field_sources = anchor.get("field_sources") if isinstance(anchor.get("field_sources"), dict) else {}
     for key in _ANCHOR_FIELDS:
         value = clean_text(anchor.get(key))
         if value:
+            from_player = field_sources.get(key, "player" if answered else "default") == "player"
             intent.add(make_fact(
-                "constraint", value, "user" if answered else "generated_provisional", source=f"anchor.{key}"
+                "constraint", value, "user" if answered and from_player else "generated_provisional",
+                source=f"anchor.{key}",
             ))
     for name in (anchor.get("character_name"), player_name):
         if clean_text(name):
@@ -650,7 +669,8 @@ _INTERNAL_PATTERNS = tuple(
         r"\bscene[_ ]beat\b",
         r"\bstory plan\b",
         r"\bvalidator\b",
-        r"\bregenerat(?:e|ed|ing|ion)\b",
+        r"\bregenerat(?:e|ed|ing|ion)\b(?=[^.!?]{0,20}\b(?:scene|narrative|prose|response|opening)\b)",
+        r"\b(?:scene|narrative|prose|opening) regenerat\w+\b",
         r"\bplaceholder\b",
         r"\bcampaign contract\b",
         r"\bspecificity\b",
@@ -746,6 +766,24 @@ _MALFORMED_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 
 
+ADVISORY_DEFECTS = frozenset({"repeated_word"})
+
+
+def blocking_defects(text: Any) -> list[dict[str, str]]:
+    """Malformed-sentence defects that production QA treats as failures."""
+    return [d for d in find_malformed_sentences(text) if d["defect"] not in ADVISORY_DEFECTS]
+
+
+def polish_prose(text: Any) -> str:
+    """Mechanically repair the unambiguous defects (case, doubled punctuation)."""
+    body = str(text or "")
+    body = re.sub(r"([?!])\.", r"\1", body)
+    body = re.sub(r"\.,", ",", body)
+    body = re.sub(r",\.", ".", body)
+    body = re.sub(r"\.\.(?!\.)", ".", body)
+    return capitalize_sentences(body)
+
+
 def find_malformed_sentences(text: Any) -> list[dict[str, str]]:
     """High-confidence grammar / assembly defects in generated prose.
 
@@ -755,7 +793,7 @@ def find_malformed_sentences(text: Any) -> list[dict[str, str]]:
     found: list[dict[str, str]] = []
     for label, pattern in _MALFORMED_PATTERNS:
         for match in pattern.finditer(body):
-            found.append({"defect": label, "text": clean_text(match.group(0))[:80]})
+            found.append({"defect": label, "text": match.group(0).strip()[:80]})
             break
     return found
 

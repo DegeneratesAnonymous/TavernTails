@@ -255,7 +255,14 @@ def _opening_anchor_context(anchor: dict) -> dict:
     }
 
 
-_NULL_ANSWER = re.compile(r"^\s*(?:no|nothing|none|nobody|never)\b", re.IGNORECASE)
+# The exact "nothing here" forms our own safe defaults produce.  A player's own
+# answer that merely starts with "no"/"never" ("Never let my sister vanish again")
+# is a real stake and must be kept.
+_NULL_ANSWER = re.compile(
+    r"^\s*(?:no extra complication|no complication|no one here has an assumed history|nothing (?:has )?followed me|"
+    r"nobody (?:here )?(?:followed|knows) me|none of (?:them|it) followed me)\b",
+    re.IGNORECASE,
+)
 
 
 def _anchor_repair_text(anchor: dict, loc_name: str, player_name: str) -> str:
