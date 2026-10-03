@@ -1481,7 +1481,27 @@ export function deriveCampaignSettings(answers: Record<string, string>): {
     'post-apocalyptic': 'post-apocalyptic survival',
   }
 
-  const setting_summary = `A ${toneLabel[tone] ?? tone} campaign set in a world of ${genreLabel[genre] ?? genre}. The stakes are personal and the world is dangerous — every choice matters.`
+  // Preserve the player's actual quiz choices as the creative brief.  The old
+  // implementation collapsed five concrete answers into a generic sentence
+  // ("the stakes are personal ... every choice matters"), which left the
+  // backend with almost no usable facts and forced later agents to invent an
+  // opening from the campaign title alone.
+  const selectedText = (questionId: string): string => {
+    const question = CAMPAIGN_QUIZ.find((q) => q.id === questionId)
+    const optionId = answers[questionId]
+    return question?.options.find((o) => o.id === optionId)?.text?.trim() || ''
+  }
+
+  const creativeBrief = [
+    `Campaign frame: ${toneLabel[tone] ?? tone}; ${genreLabel[genre] ?? genre}; ${pacing} pacing.`,
+    selectedText('q_world') ? `World reference: ${selectedText('q_world')}.` : '',
+    selectedText('q_threat') ? `Central pressure: ${selectedText('q_threat')}.` : '',
+    selectedText('q_offer') ? `Opening-hook preference: ${selectedText('q_offer')}.` : '',
+    selectedText('q_atmosphere') ? `Atmosphere reference: ${selectedText('q_atmosphere')}.` : '',
+    selectedText('q_combat') ? `Action tone: ${selectedText('q_combat')}.` : '',
+  ].filter(Boolean)
+
+  const setting_summary = creativeBrief.join(' ')
 
   return { tone, genre, pacing, content_rating, setting_summary }
 }

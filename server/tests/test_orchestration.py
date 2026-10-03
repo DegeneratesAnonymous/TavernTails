@@ -70,14 +70,14 @@ class TestMemoryExtractor:
 
     def test_extracts_new_location(self):
         delta = extract_memory(self._base_scene(), {}, {}, previous_scene={"location": ""})
-        loc_names = [l.get("name") if isinstance(l, dict) else l for l in delta["new_locations"]]
+        loc_names = [loc.get("name") if isinstance(loc, dict) else loc for loc in delta["new_locations"]]
         assert "Ironpass Fort" in loc_names
 
     def test_same_location_is_updated_not_new(self):
         delta = extract_memory(self._base_scene(), {}, {}, previous_scene={"location": "Ironpass Fort"})
-        new_names = [l.get("name") if isinstance(l, dict) else l for l in delta["new_locations"]]
+        new_names = [loc.get("name") if isinstance(loc, dict) else loc for loc in delta["new_locations"]]
         assert "Ironpass Fort" not in new_names
-        updated_names = [l.get("name") if isinstance(l, dict) else l for l in delta["updated_locations"]]
+        updated_names = [loc.get("name") if isinstance(loc, dict) else loc for loc in delta["updated_locations"]]
         assert "Ironpass Fort" in updated_names
 
     def test_extracts_visible_clues(self):
@@ -126,7 +126,6 @@ class TestMemoryExtractor:
         assert "The garrison was alerted" in delta["new_consequences"]
 
     def test_content_bundle_updates_tracked(self):
-        bundle = {"bundle_id": "abc", "bundle_type": "InvestigationBundle", "validated": True}
         delta = extract_memory(self._base_scene(), {}, {}, content_bundle={"bundle_id": "abc", "required_content": {}, "validated": True})
         assert any(u.get("bundle_id") == "abc" for u in delta.get("game_content_bundle_updates") or [])
 

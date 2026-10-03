@@ -118,7 +118,6 @@ def extract_memory(
     sd = scene.get("scene_director_data") or {}
     npc_data = sd.get("primary_npc") or {}
     loc_data = sd.get("location") or {}
-    composer = scene.get("composer_data") or {}
     bundle_content = (content_bundle or {}).get("required_content") or {}
 
     # Pull text sources
