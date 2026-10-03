@@ -10,7 +10,6 @@ from pydantic import BaseModel, Field
 
 from ..steward_llm import chat_complete
 
-
 _PERSONAL_HISTORY_PATTERNS = (
     re.compile(
         r"\b(?:my|our)\s+(?:mother|father|sister|brother|parent|child|son|daughter|spouse|partner|friend|mentor|rival|ally|enemy|acquaintance)\b",
@@ -251,7 +250,6 @@ def build_campaign_brief(
     trouble = _natural_problem(seed, camp)
     urgency = _natural_urgency(seed, camp)
     rumor = _natural_rumor(seed, camp)
-    clue = _natural_clue(seed, camp)
     place_identity = _natural_location_identity(location, seed, camp)
     object_name = _opening_object_name({**camp, **seed})
     concrete_object = _concrete_object(seed, camp, object_name)
@@ -361,7 +359,7 @@ def naturalize_character_knowledge(
     return _trim_sentence(flavor)
 
 
-naturalizeCharacterKnowledge = naturalize_character_knowledge
+naturalizeCharacterKnowledge = naturalize_character_knowledge  # noqa: N816 - camelCase alias kept for API compatibility
 
 
 BRIEF_FORBIDDEN_PHRASES = (

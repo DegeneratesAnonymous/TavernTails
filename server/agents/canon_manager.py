@@ -216,7 +216,6 @@ def expire_stale_background(
     for name, record in index.items():
         if record.get("canon_status") != "background":
             continue
-        last_used = record.get("last_used_scene") or ""
         reuse_count = record.get("reuse_count") or 0
         if reuse_count == 0 and current_scene_number > expiry_window:
             record["canon_status"] = "discarded"
