@@ -12,11 +12,9 @@ from __future__ import annotations
 
 import hashlib
 import random
-import re
 from typing import Any
 
 from .situation_contracts import (
-    SITUATION_CONTRACTS,
     validate_situation,
 )
 
@@ -174,7 +172,6 @@ def generate_starter_seed(
 
     genre = str(settings.get("genre") or contract.get("campaign_dna", {}).get("genre") or "fantasy")
     tone = str(settings.get("tone") or contract.get("campaign_dna", {}).get("tone") or "balanced")
-    pillars = list((contract.get("campaign_dna") or {}).get("preferred_scene_types") or [])
     premise_seed = _seed_from_campaign_premise(settings, contract, genre, rng)
     if premise_seed:
         return _vary_premise_seed(premise_seed, freshness, rng)
@@ -533,6 +530,23 @@ def _seed_from_campaign_premise(
             },
         }
 
+    def premise_case_matches(keywords: tuple[str, ...]) -> bool:
+        """Require a thematic anchor before applying a canned premise template.
+
+        Previously *any* keyword selected the entire template. A generic word
+        such as "vote", "relic", "tide", or "harvest" could therefore replace
+        the user's premise with unrelated volcanic guilds, drowned citadels, or
+        orbital orchards. Multi-word signature phrases may match alone; other
+        cases require a primary theme term plus at least one supporting term.
+        """
+        hits = [term for term in keywords if term in hay]
+        if not hits:
+            return False
+        primary = keywords[:2]
+        if any(term in hay and " " in term and len(term) >= 10 for term in primary):
+            return True
+        return any(term in hay for term in primary) and len(hits) >= 2
+
     premise_cases = [
         (
             ("reef", "drowned", "pearl", "tide", "citadel"),
@@ -626,7 +640,7 @@ def _seed_from_campaign_premise(
         ),
     ]
     for keywords, data in premise_cases:
-        if any(term in hay for term in keywords):
+        if premise_case_matches(keywords):
             npc_name = _generate_npc_name(genre, rng)
             role = data["role"]
             return {
@@ -905,7 +919,6 @@ def build_content_bundle(
 
     if situation_type in ("campaign_opening", "new_scene_opening"):
         scene_count = (freshness_context or {}).get("scene_count") or 0
-        prev_location = (previous_scene or {}).get("location") or ""
         loc_name = sdo.get("location", {}).get("name") or ""
 
         # If location is empty or looks like a tavern default with no context, seed it

@@ -6,29 +6,29 @@ Coverage:
   - UI Payload Builder: resolution states, bundle mapping, validation
   - Validation blocks: incomplete content blocks prose, canon violations caught
 """
-import pytest
 import tempfile
 from pathlib import Path
 
-from server.agents.memory_extractor import extract_memory
-from server.agents.canon_manager import (
-    load_canon_index,
-    save_canon_index,
-    apply_memory_delta,
-    promote_entity,
-    expire_stale_background,
-    validate_canon,
-    check_backstory_boundaries,
-    make_canon_record,
-    can_promote,
-)
-from server.agents.ui_payload_builder import (
-    build_ui_payload,
-    validate_ui_payload,
-    resolution_state_for,
-    RESOLUTION_STATES,
-)
+import pytest
 
+from server.agents.canon_manager import (
+    apply_memory_delta,
+    can_promote,
+    check_backstory_boundaries,
+    expire_stale_background,
+    load_canon_index,
+    make_canon_record,
+    promote_entity,
+    save_canon_index,
+    validate_canon,
+)
+from server.agents.memory_extractor import extract_memory
+from server.agents.ui_payload_builder import (
+    RESOLUTION_STATES,
+    build_ui_payload,
+    resolution_state_for,
+    validate_ui_payload,
+)
 
 # ---------------------------------------------------------------------------
 # Memory Extractor
@@ -70,14 +70,14 @@ class TestMemoryExtractor:
 
     def test_extracts_new_location(self):
         delta = extract_memory(self._base_scene(), {}, {}, previous_scene={"location": ""})
-        loc_names = [l.get("name") if isinstance(l, dict) else l for l in delta["new_locations"]]
+        loc_names = [loc.get("name") if isinstance(loc, dict) else loc for loc in delta["new_locations"]]
         assert "Ironpass Fort" in loc_names
 
     def test_same_location_is_updated_not_new(self):
         delta = extract_memory(self._base_scene(), {}, {}, previous_scene={"location": "Ironpass Fort"})
-        new_names = [l.get("name") if isinstance(l, dict) else l for l in delta["new_locations"]]
+        new_names = [loc.get("name") if isinstance(loc, dict) else loc for loc in delta["new_locations"]]
         assert "Ironpass Fort" not in new_names
-        updated_names = [l.get("name") if isinstance(l, dict) else l for l in delta["updated_locations"]]
+        updated_names = [loc.get("name") if isinstance(loc, dict) else loc for loc in delta["updated_locations"]]
         assert "Ironpass Fort" in updated_names
 
     def test_extracts_visible_clues(self):
@@ -126,7 +126,6 @@ class TestMemoryExtractor:
         assert "The garrison was alerted" in delta["new_consequences"]
 
     def test_content_bundle_updates_tracked(self):
-        bundle = {"bundle_id": "abc", "bundle_type": "InvestigationBundle", "validated": True}
         delta = extract_memory(self._base_scene(), {}, {}, content_bundle={"bundle_id": "abc", "required_content": {}, "validated": True})
         assert any(u.get("bundle_id") == "abc" for u in delta.get("game_content_bundle_updates") or [])
 
@@ -509,6 +508,7 @@ class TestValidationBlocks:
 class TestCampaignCreationOutput:
     def test_quick_start_produces_required_fields(self):
         from fastapi.testclient import TestClient
+
         import server.main as main
         from server import db
         from server.auth import create_access_token
