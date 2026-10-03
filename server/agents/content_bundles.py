@@ -503,16 +503,23 @@ def _seed_from_campaign_premise(
         any(w in hay for w in ("slave army", "slave-army", "forced army", "pressed army", "conscript", "enslaved"))
         and any(w in hay for w in ("escape", "escaped", "slipped away", "fled", "deserted"))
     )
-    woods_hiding = any(w in hay for w in ("woods", "forest", "treeline", "hidden out", "hiding in the woods", "hiding in a forest"))
+    # A bare "forest" is scenery, not a premise.  The hidden-woodline template needs
+    # woods AND a reason to be hiding in them.
+    woods_words = any(w in hay for w in ("woods", "forest", "treeline", "hidden out", "hiding in the woods", "hiding in a forest"))
+    hiding_words = any(w in hay for w in (
+        "hiding", "hidden camp", "hide out", "hideout", "hidden out", "fugitive", "fled", "escaped", "hunted",
+        "pursued", "pursuers", "outlaw", "deserter", "refugee",
+    ))
+    woods_hiding = woods_words and hiding_words
     north_march = any(w in hay for w in ("marching north", "north for months", "northern march"))
 
     if escaped_forced_march:
-        location = "The Northwood Hiding Place" if woods_hiding else "The Frozen March Road"
+        location = "The Northwood Hiding Place" if woods_words else "The Frozen March Road"
         npc_name = _generate_npc_name(genre, rng)
         location_identity = (
             "A concealed camp beneath winter-bent trees, far enough from the army road "
             "to feel possible and close enough that every snapped branch matters."
-        ) if woods_hiding else (
+        ) if woods_words else (
             "A wind-scoured stretch of northern road where the forced march has left tracks, "
             "discarded bindings, and fear behind it."
         )
@@ -529,7 +536,7 @@ def _seed_from_campaign_premise(
         )
         return {
             "starting_location": location,
-            "location_type": "forest road camp" if woods_hiding else "frozen pass",
+            "location_type": "forest road camp" if woods_words else "frozen pass",
             "location_identity": location_identity,
             "inciting_event": inciting,
             "named_npc_or_visible_threat": f"{npc_name} (fellow escapee)",
@@ -543,7 +550,7 @@ def _seed_from_campaign_premise(
             ],
             "generated_by": "premise_seed",
             "freshness_consumed": {
-                "location_type": "forest road camp" if woods_hiding else "frozen pass",
+                "location_type": "forest road camp" if woods_words else "frozen pass",
                 "event": "pursuit closes on escaped conscripts",
             },
         }

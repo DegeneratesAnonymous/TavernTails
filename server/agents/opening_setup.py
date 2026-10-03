@@ -557,6 +557,11 @@ def _safe_auto_answer(question: dict[str, Any], questionnaire: dict[str, Any]) -
     return fallbacks.get(qid, f"I will respond to the concrete situation at {location} without assuming facts that have not been established.")
 
 
+def coherent_default_answer(question: dict[str, Any], questionnaire: dict[str, Any] | None) -> str:
+    """The shared-motive, history-free answer for ``question`` (no first-option pick)."""
+    return _safe_auto_answer(question, questionnaire or {})
+
+
 def _coherent_default(questionnaire: dict[str, Any] | None, qid: str) -> str:
     """Default for an unanswered / "let the AI choose" question.
 
@@ -1366,16 +1371,20 @@ def _natural_location_identity(location: str, seed: dict[str, Any], contract: di
     return f"{loc} is where the campaign's first public trouble has surfaced."
 
 
+_SEED_OBJECT_FIELDS = ("approved_object", "first_clue_or_question", "inciting_event", "location_identity")
+_CAMPAIGN_OBJECT_FIELDS = ("campaign_pitch", "setting_summary", "description")
+
+
 def _opening_object_name(required: dict[str, Any], *, neutral_default: bool = False) -> str:
-    text = " ".join(str(required.get(k) or "") for k in (
-        "approved_object",
-        "first_clue_or_question",
-        "inciting_event",
-        "location_identity",
-        "campaign_pitch",
-        "setting_summary",
-        "description",
-    )).lower()
+    """Name the opening's object.
+
+    ``neutral_default`` is the strict mode used for the campaign brief, whose
+    "known facts" are treated as canon.  It reads only the fields the opening
+    seed itself supplies: a lone keyword in the campaign pitch ("harvest")
+    must not become a concrete invented object ("harvest ledger").
+    """
+    fields = _SEED_OBJECT_FIELDS if neutral_default else (*_SEED_OBJECT_FIELDS, *_CAMPAIGN_OBJECT_FIELDS)
+    text = " ".join(str(required.get(k) or "") for k in fields).lower()
     if "token" in text:
         return "funeral token"
     if "corpse" in text or "body" in text:

@@ -50,6 +50,7 @@ from .opening_setup import (
     auto_generate_anchor,
     auto_generate_answers,
     build_opening_scene_contract,
+    coherent_default_answer,
     generate_questionnaire,
     validate_first_scene_contract,
     validate_opening_anchor,
@@ -269,22 +270,27 @@ def _anchor_repair_text(anchor: dict, loc_name: str, player_name: str) -> str:
     loc = loc_name or "the opening scene"
 
     def said(key: str) -> str:
-        text = str(anchor.get(key) or "").strip().rstrip(".")
+        text = str(anchor.get(key) or "").strip()
         return "" if not text or _NULL_ANSWER.match(text) else text.replace('"', "'")
+
+    def quoted(text: str) -> str:
+        """Quote ``text`` keeping its own terminal mark (?, !, .) instead of adding a second one."""
+        text = text.rstrip()
+        return f'"{text if text.endswith((".", "?", "!")) else text + "."}"'
 
     pieces: list[str] = []
     if said("arrival_reason"):
-        pieces.append(f'{pc_sentence} reaches {loc} with one purpose in mind: "{said("arrival_reason")}."')
+        pieces.append(f"{pc_sentence} reaches {loc} with one purpose in mind: {quoted(said('arrival_reason'))}")
     if said("personal_stake"):
-        pieces.append(f'Why it matters to {pc}: "{said("personal_stake")}."')
+        pieces.append(f"Why it matters to {pc}: {quoted(said('personal_stake'))}")
     if said("followed_complication"):
-        pieces.append(f'What followed {pc} here: "{said("followed_complication")}."')
+        pieces.append(f"What followed {pc} here: {quoted(said('followed_complication'))}")
     if said("fear_of_loss"):
-        pieces.append(f'What {pc} cannot afford to lose: "{said("fear_of_loss")}."')
+        pieces.append(f"What {pc} cannot afford to lose: {quoted(said('fear_of_loss'))}")
     if said("known_npc_connection"):
-        pieces.append(f'On the people present, {pc} says: "{said("known_npc_connection")}."')
+        pieces.append(f"On the people present, {pc} says: {quoted(said('known_npc_connection'))}")
     if said("party_bond") and pc.lower() == "the party":
-        pieces.append(f'The party stays together: "{said("party_bond")}."')
+        pieces.append(f"The party stays together: {quoted(said('party_bond'))}")
     return "\n\n".join(pieces[:3])
 
 
@@ -402,14 +408,20 @@ def _opening_source_intent(
     campaign_settings: dict | None,
     campaign_contract: dict | None,
     player_name: str,
+    character: dict | None = None,
 ) -> OpeningIntent:
-    """Everything the opening scene is allowed to claim, with provenance."""
+    """Everything the opening scene is allowed to claim, with provenance.
+
+    ``character`` carries the selected character's backstory / bonds, so claims
+    the player actually wrote are not mistaken for inventions.
+    """
     return intent_from_opening(
         required=required,
         brief=campaign_brief,
         anchor=opening_anchor,
         settings=campaign_settings,
         contract=campaign_contract,
+        character=character,
         player_name=player_name,
     )
 
@@ -1666,8 +1678,8 @@ def _normalized_bridge_answers(
                 answer_text = answer_text or str(option.get("value") or option.get("label") or "")
             answer_source = answer_source or "user_choice"
         if not answer_text and answer_source == "ai_choice":
-            option = next((opt for opt in (question.get("options") or []) if str(opt.get("id") or "") != "ai_choose"), None)
-            answer_text = str((option or {}).get("value") or (option or {}).get("label") or "")
+            # Same default the anchor uses, so the stored answer and the anchor agree.
+            answer_text = coherent_default_answer(question, questionnaire) if question else ""
         if not answer_text:
             continue
         normalized.append({
@@ -2826,6 +2838,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         campaign_settings=campaign_settings,
         campaign_contract=campaign_contract,
         player_name=player_name,
+        character=character_context,
     )
     director_data_dict["fact_discipline"] = fact_discipline_prompt(opening_source_intent)
     composer_output = narrative_composer_agent.compose_scene(
@@ -3032,6 +3045,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         campaign_settings=campaign_settings,
         campaign_contract=campaign_contract,
         player_name=player_name,
+        character=character_context,
     )
     scene, opening_scene_validation = _apply_concrete_opening_scene_contract(
         scene,
@@ -3071,7 +3085,6 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         story_shape_profile=story_shape_profile,
         scene_beat_plan=opening_scene_beat,
         content_bundle=opening_content_bundle,
-        narrative_output={"narrative": narrative.narrative, "prompt": narrative.prompt},
         player_intent={"declared_actions": [], "requested_mode": "campaign_opening"},
         recent_player_actions=[],
         current_scene=None,
@@ -3214,6 +3227,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         campaign_settings=campaign_settings,
         campaign_contract=campaign_contract,
         player_name=player_name,
+        character=character_context,
     )
     scene, opening_scene_validation = _apply_concrete_opening_scene_contract(
         scene,

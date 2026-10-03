@@ -328,15 +328,21 @@ class OpeningIntent(BaseModel):
                 self.premise = fact
             return fact
         bucket = getattr(self, _BUCKETS.get(fact.kind, "conflicts"))
+        result = fact
         for idx, existing in enumerate(bucket):
             if existing.id == fact.id:
                 if AUTHORITY[fact.provenance] > AUTHORITY[existing.provenance]:
                     bucket[idx] = fact
-                    return fact
-                return existing
-        bucket.append(fact)
-        self.unknowns = [u for u in self.unknowns if u.field != fact.kind or not fact.established]
-        return fact
+                else:
+                    result = existing
+                break
+        else:
+            bucket.append(fact)
+        # An established fact resolves the matching unknown, whether it was appended
+        # or replaced a weaker version of itself.
+        if result.established:
+            self.unknowns = [u for u in self.unknowns if u.field != result.kind]
+        return result
 
     def add_unknown(self, field: str, reason: str = "The player has not established this.") -> None:
         if not any(u.field == field for u in self.unknowns):
@@ -442,7 +448,9 @@ def build_opening_intent(
             str(part or "")
             for part in (
                 character.get("backstory"), character.get("bonds"), character.get("personality_traits"),
+                character.get("ideals"), character.get("flaws"),
                 sheet.get("backstory"), sheet.get("bonds"), sheet.get("personality_traits"),
+                sheet.get("ideals"), sheet.get("flaws"),
             )
         ))
         if backstory:
@@ -836,6 +844,24 @@ _COMMON_CAPS = frozenset({
     "dawn", "dusk", "noon", "midnight", "winter", "summer", "spring", "autumn", "fall",
 })
 _LEADING_DETERMINER = re.compile(r"^(?:The|A|An)\s+")
+# Capitalized words that ordinarily open a sentence without being a name.
+_SENTENCE_STARTERS = frozenset(w.lower() for w in (
+    "after", "again", "all", "although", "always", "among", "another", "any", "anyone", "around", "as", "at", "before",
+    "behind", "below", "beneath", "beside", "between", "beyond", "both", "but", "by", "each", "either", "even",
+    "every", "everyone", "everything", "few", "for", "from", "here", "however", "in", "inside", "instead", "just",
+    "last", "many", "maybe", "meanwhile", "more", "most", "much", "neither", "next", "no", "nobody", "nothing",
+    "now", "of", "on", "once", "one", "only", "other", "others", "outside", "over", "perhaps", "several", "since",
+    "so", "some", "someone", "something", "soon", "still", "suddenly", "such", "that", "then", "there", "these",
+    "they", "this", "those", "through", "throughout", "to", "today", "tonight", "under", "until", "up", "very",
+    "what", "when", "where", "which", "while", "who", "why", "with", "within", "without", "you", "your",
+    "rain", "snow", "smoke", "wind", "fog", "mist", "dust", "ash", "silence", "darkness", "light", "shadow",
+    "shadows", "night", "morning", "evening", "cold", "heat", "steam", "blood", "fire", "flames", "thunder",
+    "lightning", "water", "mud", "ice", "frost", "sunlight", "moonlight", "lantern", "lanterns", "torch", "candle",
+    "bells", "voices", "footsteps", "people", "travelers", "guards", "crowds", "merchants", "children", "salt",
+    "wet", "dry", "old", "new", "fresh", "heavy", "thin", "quiet", "slowly", "quickly", "carefully", "gently",
+))
+# A name is usually followed by a verb: "Vell watches the gate", "Mara slammed the door".
+_VERB_AFTER_NAME = re.compile(r"^\s+[a-z]+(?:s|ed|es)\b")
 
 
 def _sentence_start(body: str, index: int) -> bool:
@@ -961,10 +987,12 @@ def find_unsupported_claims(
         if all(w.lower() in class_words for w in words):
             continue  # a class label is a role, not a named entity
         starts = _sentence_start(body, match.start())
-        if len(words) == 1 and (starts or words[0].lower() in _COMMON_CAPS):
+        if len(words) == 1 and words[0].lower() in _COMMON_CAPS:
             continue
-        if words[0].lower() in _COMMON_CAPS and len(words) == 1:
-            continue
+        if len(words) == 1 and starts:
+            # "Vell watches the gate." opens with an invented name; "Smoke curls ..." does not.
+            if words[0].lower() in _SENTENCE_STARTERS or not _VERB_AFTER_NAME.match(body[match.end():match.end() + 24]):
+                continue
         if _FACTION_CAPITAL.search(phrase) or _TITLED_NAME.search(phrase):
             continue  # already judged above
         tokens = content_tokens(phrase)

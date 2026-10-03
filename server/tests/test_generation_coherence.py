@@ -698,3 +698,138 @@ def test_fact_discipline_prompt_separates_canon_from_placeholders():
     assert "Grayhaven Harbor" in prompt.split("Provisional")[0]
     assert "Elara Voss" in prompt.split("Provisional")[1]
     assert "Never invent" in prompt and "Not established" in prompt
+
+
+# ---------------------------------------------------------------------------
+# Review findings on #182 (each one has a regression test)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("pitch", ["A quiet story in a forest.", "Travelers cross the woods at dusk."])
+def test_scenery_alone_does_not_select_the_hidden_woodline_template(pitch):
+    seed = generate_starter_seed({"setting_summary": pitch}, {"campaign_pitch": pitch}, seed=1)
+    assert seed["seed_mode"] == "grounded_fallback"
+    assert seed["starting_location"] != "The Hidden Woodline"
+
+
+def test_woods_plus_a_reason_to_hide_still_selects_the_template():
+    pitch = "Refugees are hiding in the woods from raiders."
+    seed = generate_starter_seed({"setting_summary": pitch}, {"campaign_pitch": pitch}, seed=1)
+    assert seed["seed_mode"] == "premise_template"
+    assert seed["starting_location"] == "The Hidden Woodline"
+
+
+@pytest.mark.parametrize("text", ["Vell watches the gate.", "Mara slammed the door.", "Soren nods at the stranger."])
+def test_a_name_that_opens_a_sentence_is_still_checked(text):
+    kinds = {c["kind"] for c in find_unsupported_claims(text, _corpus_intent(), allow=["Bastog"])}
+    assert "named_entity" in kinds
+
+
+@pytest.mark.parametrize("text", [
+    "Smoke curls from the chimney.", "Rain falls on the road.", "Then the bell rings.", "Silence settles over the crowd.",
+    "Nothing moves in the square.", "The signal mirror fails again.",
+])
+def test_ordinary_sentence_openers_are_not_mistaken_for_names(text):
+    assert not find_unsupported_claims(text, _corpus_intent(), allow=["Bastog"]), text
+
+
+def test_an_established_name_may_open_a_sentence():
+    intent = build_opening_intent(SOURCE["settings"], {**SOURCE["contract"],
+                                  "player_canon": [{"name": "Vell", "type": "npc", "source": "labelled_lore"}]})
+    assert not find_unsupported_claims("Vell watches the gate.", intent)
+
+
+def test_establishing_a_fact_clears_its_unknown_even_when_it_replaces_a_provisional_one():
+    intent = OpeningIntent()
+    intent.add_unknown("location")
+    intent.add(make_fact("location", "Marrow Gate", "generated_provisional"))
+    assert intent.is_unknown("location"), "a guess does not resolve the unknown"
+    intent.add(make_fact("location", "Marrow Gate", "user"))
+    assert not intent.is_unknown("location")
+    assert [f.provenance for f in intent.locations] == ["user"]
+
+
+def test_stored_bridge_answers_match_the_anchor_and_never_take_the_first_option():
+    questionnaire = _questionnaire()
+    question = questionnaire["questions"][0]
+    stored = sessions_module._normalized_bridge_answers(
+        session_id="s", campaign_id="1", character={"id": 7}, questionnaire=questionnaire,
+        answers=[{"question_id": question["id"], "option_id": "ai_choose"}],
+    )
+    assert stored[0]["answer_source"] == "ai_choice"
+    assert stored[0]["answer_text"] != "Repay an old debt"
+    anchor = answers_to_anchor(session_id="s", questionnaire=questionnaire, character={"name": "Y"},
+                               answers=[{"question_id": question["id"], "option_id": "ai_choose"}])
+    assert stored[0]["answer_text"] == anchor["arrival_reason"]
+
+
+def test_brief_does_not_turn_a_pitch_keyword_into_an_object():
+    brief = build_campaign_brief(
+        campaign={"campaign_name": "Festival", "campaign_pitch": "A harvest festival in a river town."},
+        character={"name": "Ayla"}, opening_seed={"starting_location": "Marrow Gate"},
+    )
+    assert "harvest ledger" not in json.dumps(brief).lower()
+    assert "object" in brief["unknowns"]
+    # ...while an object the opening seed itself supplies is still used
+    seeded = build_campaign_brief(
+        campaign={"campaign_name": "Festival"}, character={"name": "Ayla"},
+        opening_seed={"starting_location": "Marrow Gate", "inciting_event": "A cracked signal mirror is found on the quay."},
+    )
+    assert "object" not in seeded["unknowns"]
+    assert "cracked signal mirror" in json.dumps(seeded).lower()
+
+
+def test_runtime_intent_includes_the_selected_characters_backstory():
+    claim = "Bastog's patron wants proof the relic was moved."
+    without = sessions_module._opening_source_intent(
+        required=REQUIRED, opening_anchor=ANCHOR, campaign_brief={}, campaign_settings=SOURCE["settings"],
+        campaign_contract=SOURCE["contract"], player_name="Bastog",
+    )
+    assert find_unsupported_claims(claim, without, allow=["Bastog"])
+    with_character = sessions_module._opening_source_intent(
+        required=REQUIRED, opening_anchor=ANCHOR, campaign_brief={}, campaign_settings=SOURCE["settings"],
+        campaign_contract=SOURCE["contract"], player_name="Bastog",
+        character={"name": "Bastog", "backstory": "Bastog's patron wants proof the relic was moved."},
+    )
+    assert not find_unsupported_claims(claim, with_character, allow=["Bastog"])
+
+
+def test_quoted_answers_keep_their_own_terminal_punctuation():
+    anchor = {
+        "character_name": "Maris Vale",
+        "arrival_reason": "Who moved the mirror?",
+        "personal_stake": "I will not let it vanish!",
+        "fear_of_loss": "I do not want the evidence to disappear",
+    }
+    text = sessions_module._anchor_repair_text(anchor, "Coldbrook Camp", "Maris Vale")
+    assert '"Who moved the mirror?"' in text and '"I will not let it vanish!"' in text
+    assert '"I do not want the evidence to disappear."' in text  # no terminal mark supplied: exactly one is added
+    assert "?." not in text and "!." not in text
+    assert find_malformed_sentences(text) == []
+
+
+def test_opening_qa_inspects_the_current_scene_not_stale_composer_text(monkeypatch):
+    calls: list[dict] = []
+    real = sessions_module.run_scene_qa
+
+    def spy(**kwargs):
+        if "source_intent" in kwargs:
+            calls.append(kwargs)
+        return real(**kwargs)
+
+    monkeypatch.setattr(sessions_module, "run_scene_qa", spy)
+    monkeypatch.setattr(sessions_module.image_agent, "generate_image",
+                        lambda request: type("ImageResult", (), {"image_url": None})())
+    client = _client()
+    email = "coherence-qa-current@example.com"
+    session_id, _ = _create_campaign_session(client, email, "Maris Vale")
+    setup = client.get(f"/sessions/{session_id}/opening-setup", headers=_auth(email)).json()["questionnaire"]
+    client.post(f"/sessions/{session_id}/opening-setup", headers=_auth(email), json={
+        "questionnaire_id": setup["questionnaire_id"],
+        "answers": [{"question_id": "arrival_reason", "custom_value": "I came to audit a cracked signal mirror"}],
+    })
+    start = client.post(f"/sessions/{session_id}/start", headers=_auth(email), json={})
+    assert start.status_code == 200, start.text
+    assert len(calls) >= 2
+    assert all("narrative_output" not in call for call in calls), (
+        "opening QA must read the repaired scene; narrative_output would shadow it with the pre-repair composer text"
+    )
