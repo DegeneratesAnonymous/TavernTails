@@ -311,6 +311,7 @@ class OpeningIntent(BaseModel):
     constraints: list[Fact] = Field(default_factory=list)
     unknowns: list[Unknown] = Field(default_factory=list)
     allowed_names: list[str] = Field(default_factory=list)
+    character_name: str = ""
 
     def facts(self) -> list[Fact]:
         out: list[Fact] = [self.premise] if self.premise else []
@@ -491,6 +492,7 @@ def build_opening_intent(
             intent.add(make_fact("constraint", backstory, "user", source="character.backstory"))
         if clean_text(character.get("name")):
             intent.allowed_names.append(clean_text(character.get("name")))
+            intent.character_name = clean_text(character.get("name"))
 
     for field in ("location", "actor", "conflict", "stakes"):
         if not any(f.established for f in getattr(intent, _BUCKETS[field])):
@@ -523,6 +525,20 @@ def seed_provenance(seed: dict[str, Any]) -> str:
     return _SEED_PROVENANCE.get(str(seed.get("generated_by") or ""), "generated_provisional")
 
 
+def _negation_flips(text: str, fact_text: str) -> bool:
+    """True when ``text`` and the fact sentence it most overlaps differ in polarity.
+
+    ``content_tokens`` drops "no"/"not", so "A witness vanished" and "No witness
+    has vanished" look identical; they must never be treated as the same fact.
+    """
+    tokens = content_tokens(text)
+    if not tokens:
+        return False
+    sentences = split_sentences(fact_text) or [fact_text]
+    closest = max(sentences, key=lambda sent: len(tokens & content_tokens(sent)))
+    return bool(_NEGATION.search(text)) != bool(_NEGATION.search(closest))
+
+
 def _covering_fact(text: str, intent: OpeningIntent, *, threshold: float = 1.0) -> Fact | None:
     """The established fact that already says all of ``text``.
 
@@ -537,6 +553,8 @@ def _covering_fact(text: str, intent: OpeningIntent, *, threshold: float = 1.0) 
         if not fact.established:
             continue
         coverage = len(tokens & content_tokens(fact.text)) / len(tokens)
+        if coverage >= threshold and _negation_flips(text, fact.text):
+            continue
         if coverage >= threshold and (best is None or coverage > best[0]):
             best = (coverage, fact)
     return best[1] if best else None
@@ -649,7 +667,7 @@ def fact_discipline_prompt(intent: OpeningIntent, *, max_facts: int = 8) -> str:
     """Prompt text that tells a generator what is canon and what it may not invent."""
     established = [f for f in intent.facts() if f.established and f.kind != "premise"]
     premise = intent.premise.text if intent.premise and intent.premise.established else ""
-    provisional = [f for f in intent.facts() if not f.established and f.kind in {"location", "actor", "stakes"}]
+    provisional = [f for f in intent.facts() if not f.established and f.kind in {"location", "actor", "stakes", "conflict"}]
     lines = ["FACT DISCIPLINE (source of truth for this scene):"]
     if premise:
         lines.append(f"  Premise written by the player: {premise[:300]}")
@@ -660,7 +678,10 @@ def fact_discipline_prompt(intent: OpeningIntent, *, max_facts: int = 8) -> str:
         lines.append("  Provisional placeholders (usable, but never expand them into backstory):")
         lines.extend(f"    - {f.text[:120]}" for f in provisional[:max_facts])
     if intent.unknowns:
-        lines.append("  Not established: " + ", ".join(u.field for u in intent.unknowns) + ". Leave these open rather than inventing lore.")
+        lines.append(
+            "  Not established by the player: " + ", ".join(u.field for u in intent.unknowns)
+            + ". Use a provisional placeholder above if one exists; otherwise leave it open rather than inventing lore."
+        )
     lines.append(
         "  Never invent: personal history for the player character, prior relationships, debts or oaths, "
         "knowledge a character class supposedly grants, or named factions / organizations that are not listed above."
@@ -905,7 +926,7 @@ _COMMON_CAPS = frozenset({
     "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "january", "february", "march",
     "april", "may", "june", "july", "august", "september", "october", "november", "december", "north", "south",
     "east", "west", "i", "the", "a", "an", "what", "who", "where", "when", "why", "how", "it", "he", "she", "they",
-    "we", "you", "his", "her", "their", "this", "that", "these", "those", "there", "here", "then", "but", "and",
+    "we", "you", "my", "our", "your", "mine", "his", "her", "their", "this", "that", "these", "those", "there", "here", "then", "but", "and",
     "or", "if", "as", "at", "by", "in", "on", "of", "to", "no", "yes", "one", "two", "three", "every", "some",
     "dawn", "dusk", "noon", "midnight", "winter", "summer", "spring", "autumn", "fall",
 })
@@ -975,6 +996,38 @@ def _claim(kind: str, text: str, reason: str) -> dict[str, str]:
     return {"kind": kind, "text": clean_text(text), "reason": reason, "blocking": "yes" if kind in BLOCKING_KINDS else "no"}
 
 
+def _history_belongs_to_subject(span: str, prefix: str, intent: OpeningIntent, allow: Iterable[str]) -> bool:
+    """A history claim must be backed by one fact that is about the person it is said of.
+
+    Support pooled across every fact would let "Mara owes an old debt" pass because
+    some other character's backstory says "owes an old debt".
+    """
+    span_tokens = content_tokens(span)
+    subjects: set[str] = set()
+    for match in _CAP_PHRASE.finditer(prefix):
+        word = match.group(1)
+        if word.lower() in _COMMON_CAPS or word.split()[0].lower() in _SENTENCE_STARTERS:
+            continue
+        subjects |= content_tokens(word)
+    subjects -= {_stem(c) for c in _CLASSES}
+    if not subjects:
+        return True
+    character_tokens = content_tokens(intent.character_name) if intent.character_name else set()
+    for fact in intent.facts():
+        if not fact.established:
+            continue
+        fact_tokens = content_tokens(fact.text)
+        if len(span_tokens & fact_tokens) / max(1, len(span_tokens)) < 0.7:
+            continue
+        # What the player wrote about their own character belongs to that character,
+        # whichever channel (backstory, setup answer, brief) carried it.
+        owners = fact_tokens | character_tokens
+        if subjects <= owners:
+            return True
+    # Text the caller explicitly vouches for may still carry the claim.
+    return any(len(span_tokens & content_tokens(a)) / max(1, len(span_tokens)) >= 0.7 for a in allow)
+
+
 def find_unsupported_claims(
     text: Any,
     intent: OpeningIntent,
@@ -1020,7 +1073,8 @@ def find_unsupported_claims(
     concept_lore = re.compile(
         r"\b(?:oath|vow|pact|patron|rite|prayer|formulae|sigil)s?\b[^.!?]{0,50}\b(?:stirs?|whispers?|answers?|demands?|"
         r"warns?|names?|recogni[sz]es?|senses?|notices?)\b[^.!?]{0,80}"
-        r"|\b(?:feels?|senses?|notices?|recogni[sz]es?|perceives?)\b[^.!?]{0,40}\b(?:answer|pressure|power|magic|curse|"
+        r"|\b(?:feels?|senses?)\b[^.!?]{0,20}\bpressure\s+of\s+(?:an?\s+|the\s+|their\s+|his\s+|her\s+)?(?:oath|vow|pact|patron|binding|rite|curse)s?\b[^.!?]{0,60}"
+        r"|\b(?:feels?|senses?|notices?|recogni[sz]es?|perceives?)\b[^.!?]{0,40}\b(?:answer|power|magic|curse|"
         r"aura|binding|taint|bargain|debt|formulae|ward)\b[^.!?]{0,60}",
         re.I,
     )
@@ -1046,6 +1100,8 @@ def find_unsupported_claims(
                 span = match.group(0)
                 if not _supported(content_tokens(span), established, 0.7):
                     record("history", span, "personal history is not in any established fact")
+                elif not _history_belongs_to_subject(span, sentence[:match.start()], intent, allow):
+                    record("history", span, "established history is attributed to someone it was not established for")
         if not modal:
             for pattern in (class_lore, concept_lore):
                 for match in pattern.finditer(sentence):
@@ -1197,3 +1253,12 @@ def build_source_trace(
         "facts": [f.model_dump() for f in facts],
         "unknowns": [u.model_dump() for u in intent.unknowns],
     }
+
+
+def sanitize_generated_text(text: Any, intent: OpeningIntent, *, allow: Iterable[str] = ()) -> str:
+    """Remove sentences that break the fact discipline or leak planner language."""
+    body = str(text or "")
+    claims = blocking_claims(find_unsupported_claims(body, intent, allow=allow))
+    if claims:
+        body = map_paragraphs(body, lambda para: strip_unsupported_sentences(para, claims))
+    return map_paragraphs(body, strip_internal_language) if find_internal_language(body) else body

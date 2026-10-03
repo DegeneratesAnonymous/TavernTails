@@ -1137,3 +1137,54 @@ def test_composer_prompt_does_not_demand_invented_stakes_details():
 
     assert "name the person and deadline" not in nc._COMPOSER_SCHEMA
     assert "only if" in nc._COMPOSER_SCHEMA
+
+
+# --- review round 5 -----------------------------------------------------------------------------
+
+
+def _bastog_intent():
+    return build_opening_intent(
+        {"setting_summary": "A mining town in unrest.", "starting_location": "Ferry Landing"},
+        {"player_canon": [{"name": "Mara", "type": "npc", "source": "lore"}]},
+        character={"name": "Bastog", "backstory": "Bastog owes an old debt to a smuggler."},
+        allowed_names=["Mara"],
+    )
+
+
+def test_history_is_scoped_to_the_person_it_was_established_for():
+    intent = _bastog_intent()
+    assert not find_unsupported_claims("Bastog owes an old debt.", intent, allow=["Mara"])
+    kinds = {c["kind"] for c in find_unsupported_claims("Mara owes an old debt.", intent, allow=["Mara"])}
+    assert "history" in kinds
+
+
+def test_ordinary_pressure_is_not_class_lore():
+    intent = _bastog_intent()
+    assert not find_unsupported_claims("Bastog feels the pressure of every eye on him.", intent, allow=["Mara"])
+    kinds = {c["kind"] for c in find_unsupported_claims("Bastog feels the pressure of the oath.", intent, allow=["Mara"])}
+    assert "class_lore" in kinds
+
+
+def test_regeneration_prose_is_checked_against_the_stored_intent():
+    from server.agents.generation_intent import OpeningIntent, sanitize_generated_text
+
+    intent = OpeningIntent(**_bastog_intent().model_dump(mode="json"))
+    out = sanitize_generated_text("Rain taps the roof. Mara owes an old debt. The ferry waits.", intent, allow=["Mara"])
+    assert "debt" not in out and "ferry waits" in out.lower()
+
+
+def test_discipline_prompt_lists_provisional_conflicts():
+    intent = build_opening_intent({"setting_summary": "A river town."}, {})
+    intent = intent_with_seed(intent, {"generated_by": "starter_seed", "inciting_event": "A barge sank at dawn"})
+    from server.agents.generation_intent import fact_discipline_prompt
+
+    prompt = fact_discipline_prompt(intent)
+    assert "barge sank" in prompt
+    assert "Use a provisional placeholder" in prompt
+
+
+def test_a_negated_premise_does_not_vouch_for_its_opposite():
+    intent = build_opening_intent({"setting_summary": "No witness has vanished from the quay."}, {})
+    seeded = intent_with_seed(intent, {"generated_by": "starter_seed", "inciting_event": "A witness vanished from the quay"})
+    fact = next(f for f in seeded.facts() if "vanished" in f.text.lower() and f.kind == "conflict")
+    assert not fact.established

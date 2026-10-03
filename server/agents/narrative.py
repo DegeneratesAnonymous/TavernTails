@@ -990,6 +990,19 @@ def regenerate_narrative(payload: RegenerateRequest, current_user=Depends(get_cu
         write_prompt = f"What does {player} do?"
         is_real_content = True  # fallback is always real content
 
+    stored_intent = existing_scene.get('source_intent')
+    if is_real_content and isinstance(stored_intent, dict):
+        # Regenerated prose answers to the same facts as the original opening.
+        try:
+            from .generation_intent import OpeningIntent, sanitize_generated_text
+
+            opening_intent = OpeningIntent(**stored_intent)
+            allow = [player] + npc_names_list
+            write_narrative = sanitize_generated_text(write_narrative, opening_intent, allow=allow) or write_narrative
+            write_prompt = sanitize_generated_text(write_prompt, opening_intent, allow=allow) or f"What does {player} do?"
+        except Exception:
+            pass
+
     if is_real_content:
         try:
             existing_scene['narrative_body'] = write_narrative

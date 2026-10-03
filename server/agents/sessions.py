@@ -3119,6 +3119,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         ui_payload=scene.get("ui_payload") or {},
     )
     scene["scene_qa"] = scene_qa_final
+    scene["source_intent"] = opening_source_intent.model_dump(mode="json")
     scene["quality_debug"] = {
         "scene_qa_initial": scene_qa_initial,
         "scene_qa_final": scene_qa_final,
@@ -3272,7 +3273,30 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         ui_payload=scene.get("ui_payload") or {},
         dice_rolls=dice_rolls,
     )
+    if scene_qa_memory.get("repair_targets"):
+        # The contract and recycled-opening repairs above can reintroduce text the
+        # earlier pass removed, so the scene is repaired again before it is saved.
+        scene = apply_targeted_scene_repairs(scene, scene_qa_memory, player_name=player_name)
+        scene_qa_memory = run_scene_qa(
+            scene=scene,
+            source_intent=opening_source_intent,
+            allowed_names=[player_name],
+            campaign_contract=campaign_contract,
+            campaign_scale_profile=campaign_scale_profile,
+            story_shape_profile=story_shape_profile,
+            scene_beat_plan=opening_scene_beat,
+            content_bundle=opening_content_bundle,
+            player_intent={"declared_actions": [], "requested_mode": "campaign_opening"},
+            recent_player_actions=[],
+            current_scene=None,
+            recent_scene_history=[],
+            recent_motifs=[],
+            memory_delta=opening_memory_delta,
+            ui_payload=scene.get("ui_payload") or {},
+            dice_rolls=dice_rolls,
+        )
     scene["scene_qa"] = scene_qa_memory
+    scene["source_intent"] = opening_source_intent.model_dump(mode="json")
     scene["quality_debug"] = {
         **(scene.get("quality_debug") or {}),
         "scene_qa_final": scene_qa_memory,
