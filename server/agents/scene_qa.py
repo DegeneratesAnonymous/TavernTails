@@ -18,6 +18,7 @@ from .generation_intent import (
     blocking_claims,
     find_internal_language,
     find_unsupported_claims,
+    map_paragraphs,
     strip_internal_language,
     strip_unsupported_sentences,
 )
@@ -782,12 +783,6 @@ def _regression_tags(failures: list[str]) -> list[str]:
     return tags
 
 
-def _map_paragraphs(text: str, fn: Any) -> str:
-    """Apply ``fn`` to each paragraph, dropping paragraphs that end up empty."""
-    paragraphs = [fn(p) for p in str(text or "").split("\n\n")]
-    return "\n\n".join(p.strip() for p in paragraphs if p and p.strip())
-
-
 def _in_world(sentence: str) -> str:
     """One plain sentence of fiction: no planner vocabulary, ends in punctuation."""
     cleaned = " ".join(str(sentence or "").split()).strip()
@@ -820,9 +815,9 @@ def apply_targeted_scene_repairs(
     prompt = scene.get("player_prompt") or f"What does {player_name} do?"
     if "unsupported_claims" in targets and qa_result.get("unsupported_claims"):
         claims = qa_result["unsupported_claims"]
-        narrative = _map_paragraphs(narrative, lambda para: strip_unsupported_sentences(para, claims))
+        narrative = map_paragraphs(narrative, lambda para: strip_unsupported_sentences(para, claims))
     if "internal_language" in targets:
-        narrative = _map_paragraphs(narrative, strip_internal_language)
+        narrative = map_paragraphs(narrative, strip_internal_language)
     paragraphs = [p for p in narrative.split("\n\n") if p.strip()]
     repair_paras: list[str] = []
     pc = player_name or "the party"

@@ -597,6 +597,29 @@ def intent_from_opening(
     return intent
 
 
+def fact_discipline_prompt(intent: OpeningIntent, *, max_facts: int = 8) -> str:
+    """Prompt text that tells a generator what is canon and what it may not invent."""
+    established = [f for f in intent.facts() if f.established and f.kind != "premise"]
+    premise = intent.premise.text if intent.premise and intent.premise.established else ""
+    provisional = [f for f in intent.facts() if not f.established and f.kind in {"location", "actor", "stakes"}]
+    lines = ["FACT DISCIPLINE (source of truth for this scene):"]
+    if premise:
+        lines.append(f"  Premise written by the player: {premise[:300]}")
+    if established:
+        lines.append("  Established by the player (canon - do not contradict or embellish):")
+        lines.extend(f"    - {f.text[:160]}" for f in established[:max_facts])
+    if provisional:
+        lines.append("  Provisional placeholders (usable, but never expand them into backstory):")
+        lines.extend(f"    - {f.text[:120]}" for f in provisional[:max_facts])
+    if intent.unknowns:
+        lines.append("  Not established: " + ", ".join(u.field for u in intent.unknowns) + ". Leave these open rather than inventing lore.")
+    lines.append(
+        "  Never invent: personal history for the player character, prior relationships, debts or oaths, "
+        "knowledge a character class supposedly grants, or named factions / organizations that are not listed above."
+    )
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # Internal planning / QA language must never reach player-facing prose
 # ---------------------------------------------------------------------------
@@ -606,6 +629,12 @@ _INTERNAL_PATTERNS = tuple(
     for p in (
         r"\bthe scene (?:turns on|should|must|needs to|is meant to|will)\b",
         r"\binstead of resetting\b",
+        r"\banchors the moment\b",
+        r"\bmake this problem local rather than interchangeable\b",
+        r"\bhas a concrete role here\b",
+        r"\bimmediate consequence is concrete\b",
+        r"\bthe clearest clue is this\b",
+        r"\bthe pressure in the moment becomes visible\b",
         r"\b(?:concrete )?table details?\b",
         r"\btruth[- ]table\b",
         r"\bapproved (?:location|npc|clue|object|stakes|threat)\b",
@@ -655,6 +684,85 @@ def strip_internal_language(text: Any) -> str:
     return " ".join(kept).strip()
 
 
+_ABBREVIATIONS = frozenset({"e.g", "i.e", "etc", "vs", "mr", "mrs", "ms", "dr", "st", "no"})
+_SENTENCE_BREAK = re.compile(r"([.!?][\"'\u201d\u2019)]*)(\s+)([a-z])")
+_DETERMINERS = ("the ", "a ", "an ", "this ", "that ", "these ", "those ", "his ", "her ", "their ", "my ", "our ", "your ", "its ")
+
+
+def capitalize_sentences(text: Any) -> str:
+    """Capitalize the first letter of every paragraph and sentence.
+
+    Generated text splices names / pronouns in at sentence starts, which leaves
+    openings like "the party arrives ...".  Known abbreviations are left alone.
+    """
+    body = str(text or "")
+
+    def paragraph(par: str) -> str:
+        match = re.search(r"[A-Za-z]", par)
+        if not match or par[: match.start()].strip(" \"'\u201c\u2018(\u2014-"):
+            return par
+        return par[: match.start()] + par[match.start()].upper() + par[match.start() + 1:]
+
+    body = "\n\n".join(paragraph(p) for p in body.split("\n\n"))
+
+    def sentence(match: re.Match[str]) -> str:
+        before = body[: match.start()].rsplit(None, 1)
+        previous = (before[-1] if before else "").lower().rstrip(".")
+        following = body[match.end(3) - 1: match.end(3) + 3].lower()
+        if previous in _ABBREVIATIONS or following.startswith(("e.g", "i.e")):
+            return match.group(0)
+        return f"{match.group(1)}{match.group(2)}{match.group(3).upper()}"
+
+    return _SENTENCE_BREAK.sub(sentence, body)
+
+
+def definite(noun_phrase: Any) -> str:
+    """"marked clue" -> "the marked clue"; leaves determiners and proper nouns alone."""
+    text = clean_text(noun_phrase)
+    if not text:
+        return text
+    if text.lower().startswith(_DETERMINERS) or text[0].isupper():
+        return text
+    return f"the {text}"
+
+
+_MALFORMED_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("doubled_punctuation", re.compile(r"[?!]\.|\.\.(?!\.)|\.,|,\.|\?\?|!!(?!!)")),
+    ("lowercase_start", re.compile(r"(?:^|\n\n|(?<=[.!?]) )(?:the|a|an) [a-z]+ (?:arrives|reaches|recognizes|slows|waits|acts)\b")),
+    ("first_person_splice", re.compile(r"\b(?:because|that|until) I (?:came|am|was|want|will|do)\b")),
+    ("lowercase_pronoun_i", re.compile(r"\b(?:to|and|but|because|that) i (?:came|am|was|want|will|do)\b")),
+    ("title_splice", re.compile(r"\bbegins at [^.!?\n]{1,60}\b(?:is|are) (?:a|an|the|where)\b")),
+    ("article_a_before_vowel", re.compile(r"\b[Aa] (?:underground|surface|enemy|animal|army|axe|inn|ally|artifact)\b")),
+    ("article_an_before_consonant", re.compile(r"\b[Aa]n (?:surface|road|crowd|guard|witness|clerk|seal|bell)\b")),
+    ("repeated_word", re.compile(r"\b(?!had\b|that\b)(\w{3,})\s+\1\b", re.I)),
+)
+
+
+def find_malformed_sentences(text: Any) -> list[dict[str, str]]:
+    """High-confidence grammar / assembly defects in generated prose.
+
+    Quoted speech is ignored (a character may say "I came here to ...").
+    """
+    body = re.sub(r'"[^"\n]*"|\u201c[^\u201d\n]*\u201d', " ", str(text or ""))
+    found: list[dict[str, str]] = []
+    for label, pattern in _MALFORMED_PATTERNS:
+        for match in pattern.finditer(body):
+            found.append({"defect": label, "text": clean_text(match.group(0))[:80]})
+            break
+    return found
+
+
+def map_paragraphs(text: Any, fn: Any) -> str:
+    """Apply ``fn`` to each paragraph, dropping paragraphs that end up empty."""
+    paragraphs = [fn(p) for p in str(text or "").split("\n\n")]
+    return "\n\n".join(p.strip() for p in paragraphs if p and p.strip())
+
+
+def strip_internal_paragraphs(text: Any) -> str:
+    """:func:`strip_internal_language` that keeps the paragraph structure."""
+    return map_paragraphs(text, strip_internal_language)
+
+
 # ---------------------------------------------------------------------------
 # Semantic QA: do the claims in the prose follow from the source facts?
 # ---------------------------------------------------------------------------
@@ -665,23 +773,39 @@ _CLASSES = (
     "paladin", "warlock", "wizard", "rogue", "ranger", "cleric", "fighter", "bard", "druid",
     "monk", "sorcerer", "barbarian", "artificer",
 )
-_HEDGE = re.compile(
-    r"\b(?:no|not|never|without|nothing|none|neither|nor|assum\w*|unknown|undecided|unless|if|whether|"
-    r"may|might|could|can decide|can choose|player'?s choice|rather than)\b|n't",
+# A claim is not a claim when it is negated right where it is made ("no prior
+# relationship is assumed").  Modal framing ("may", "whether", "if") also makes a
+# sentence hypothetical, except for presuppositions such as "will settle an old
+# debt", which assert the debt exists - those patterns are ``strong``.
+_NEGATION = re.compile(
+    r"\b(?:no|not|never|without|nothing|none|neither|nor|assum\w*|unknown|undecided|rather than)\b|n't",
     re.I,
 )
-_HISTORY_PATTERNS = tuple(
-    re.compile(p, re.I)
-    for p in (
-        r"\bowes?\s+(?:a|an|the)?\s*(?:old\s+)?(?:debt|favou?r|life)\b[^.!?]{0,60}",
-        r"\bowed\s+(?:a|an|the)?\s*(?:old\s+)?(?:debt|favou?r|life)\b[^.!?]{0,60}",
-        r"\bold\s+(?:friend|rival|ally|enemy|flame|debt|oath|grudge|wound|mentor)\b[^.!?]{0,40}",
-        r"\b(?:swore|sworn|broke|broken|betrayed|abandoned)\s+(?:an?\s+|the\s+|his\s+|her\s+|their\s+|my\s+)?(?:oath|vow|pact|promise)\b[^.!?]{0,50}",
-        r"\b(?:their|his|her|your|my)\s+(?:patron|mentor|sibling|brother|sister|mother|father|spouse|lover|master)\b[^.!?]{0,50}",
-        r"\bonce\s+(?:served|knew|loved|trusted|fought|helped|saved)\b[^.!?]{0,50}",
-        r"\b(?:was|were)\s+(?:raised|trained|taught)\s+by\b[^.!?]{0,40}",
-        r"\bprior\s+(?:relationship|history|connection)\b[^.!?]{0,40}",
-        r"\b(?:remembers?|recalls?)\s+(?:this|the|that)\b[^.!?]{0,40}\bfrom\s+(?:years|long|before|another|their|his|her)\b[^.!?]{0,40}",
+# "...but nothing establishes one", "no debt is assumed": the sentence disclaims the claim.
+_DISCLAIMER = re.compile(
+    r"\bnothing (?:has |yet )?establish\w*|\bnot (?:yet )?establish\w*|\bassum(?:e|es|ed|ing|ption)\b|\bno\b[^.!?]{0,40}\b(?:is|has been|are) established\b",
+    re.I,
+)
+_MODAL = re.compile(
+    r"\b(?:unless|if|whether|may|might|could|can decide|can choose|player'?s choice)\b",
+    re.I,
+)
+_NAME_POSSESSIVE = r"(?:(?-i:[A-Z][\w-]*['’]s)|their|his|her|your|my)"
+# (pattern, strong)
+_HISTORY_PATTERNS: tuple[tuple[re.Pattern[str], bool], ...] = tuple(
+    (re.compile(p, re.I), strong)
+    for p, strong in (
+        (r"\bowes?\s+(?:a|an|the)?\s*(?:old\s+)?(?:debt|favou?r|life)\b[^.!?]{0,60}", True),
+        (r"\bowed\s+(?:a|an|the)?\s*(?:old\s+)?(?:debt|favou?r|life)\b[^.!?]{0,60}", True),
+        (r"\b(?:old|ancient|unpaid|hidden|secret)\s+debts?\b", True),
+        (r"\bdebts?\s+(?:older|owed|unpaid)\b|\b(?:hid(?:ing|es|den)|settle[sd]?|repay(?:ing|s)?)\s+(?:a\s+|an\s+|the\s+)?(?:\w+\s+)?debts?\b", True),
+        (r"\bold\s+(?:friend|rival|ally|enemy|flame|oath|grudge|wound|mentor)\b[^.!?]{0,40}", False),
+        (r"\b(?:swore|sworn|broke|broken|betrayed|abandoned)\s+(?:an?\s+|the\s+|his\s+|her\s+|their\s+|my\s+)?(?:oath|vow|pact|promise)\b[^.!?]{0,50}", False),
+        (rf"\b{_NAME_POSSESSIVE}\s+(?:patron|mentor|sibling|brother|sister|mother|father|spouse|lover|master)\b[^.!?]{{0,50}}", False),
+        (r"\bonce\s+(?:served|knew|loved|trusted|fought|helped|saved)\b[^.!?]{0,50}", False),
+        (r"\b(?:was|were)\s+(?:raised|trained|taught)\s+by\b[^.!?]{0,40}", False),
+        (r"\bprior\s+(?:relationship|history|connection)\b[^.!?]{0,40}", False),
+        (r"\b(?:remembers?|recalls?)\s+(?:this|the|that)\b[^.!?]{0,40}\bfrom\s+(?:years|long|before|another|their|his|her)\b[^.!?]{0,40}", False),
     )
 )
 _FACTION_CAPITAL = re.compile(
@@ -692,6 +816,10 @@ _FACTION_CAPITAL = re.compile(
 )
 _FACTION_GENERIC = re.compile(
     r"\b(guilds?|factions?|cults?|councils?|syndicates?|brotherhoods?|clans?|cabals?|covens?|conclaves?)\b", re.I
+)
+# Institutions the fallback templates have been caught inserting from one keyword.
+_INSTITUTION_PHRASES = re.compile(
+    r"\b(wardens|refuge keepers|harbor office|civic watch|local authority|envoy guard|observatory staff)\b", re.I
 )
 _TITLED_NAME = re.compile(
     r"\b(?:Captain|Lord|Lady|Warden|Master|Elder|Sergeant|Commander|General|King|Queen|Duke|Duchess|Count|Baron|"
@@ -764,21 +892,42 @@ def find_unsupported_claims(
         rf"understands?|realizes?|can tell|instantly|immediately)\b[^.!?]{{0,100}}",
         re.I,
     )
+    # A class's concepts (oath, pact, patron, rite) reacting to the scene, or a
+    # character perceiving a supernatural property of an object, are world
+    # facts the player never established.
+    concept_lore = re.compile(
+        r"\b(?:oath|vow|pact|patron|rite|prayer|formulae|sigil)s?\b[^.!?]{0,50}\b(?:stirs?|whispers?|answers?|demands?|"
+        r"warns?|names?|recogni[sz]es?|senses?|notices?)\b[^.!?]{0,80}"
+        r"|\b(?:feels?|senses?|notices?|recogni[sz]es?|perceives?)\b[^.!?]{0,40}\b(?:answer|pressure|power|magic|curse|"
+        r"aura|binding|taint|bargain|debt|formulae|ward)\b[^.!?]{0,60}",
+        re.I,
+    )
+
+    def negated(sentence: str, start: int) -> bool:
+        return bool(_NEGATION.search(sentence[max(0, start - 40):start]))
 
     for sentence in split_sentences(body):
-        hedged = bool(_HEDGE.search(sentence))
+        if _DISCLAIMER.search(sentence):
+            continue
+        modal = bool(_MODAL.search(sentence))
+        hedged = modal or bool(_NEGATION.search(sentence))
 
-        if not hedged:
-            for pattern in _HISTORY_PATTERNS:
-                for match in pattern.finditer(sentence):
-                    span = match.group(0)
-                    if not _supported(content_tokens(span), established, 0.7):
-                        record("history", span, "personal history is not in any established fact")
-            for match in class_lore.finditer(sentence):
+        for pattern, strong in _HISTORY_PATTERNS:
+            for match in pattern.finditer(sentence):
+                if negated(sentence, match.start()) or (modal and not strong):
+                    continue
                 span = match.group(0)
-                tokens = content_tokens(span) - {_stem(c) for c in classes}
-                if not _supported(tokens, established, 0.7):
-                    record("class_lore", span, "a character class cannot establish world facts or secret knowledge")
+                if not _supported(content_tokens(span), established, 0.7):
+                    record("history", span, "personal history is not in any established fact")
+        if not modal:
+            for pattern in (class_lore, concept_lore):
+                for match in pattern.finditer(sentence):
+                    if negated(sentence, match.start()):
+                        continue
+                    span = match.group(0)
+                    tokens = content_tokens(span) - {_stem(c) for c in classes}
+                    if not _supported(tokens, established, 0.7):
+                        record("class_lore", span, "a character class cannot establish world facts or secret knowledge")
 
         named_faction = False
         for match in _FACTION_CAPITAL.finditer(sentence):
@@ -792,6 +941,11 @@ def find_unsupported_claims(
                 if _stem(match.group(1).lower()) not in any_support:
                     record("faction", sentence, "faction language appears without a source faction")
                     break
+            for match in _INSTITUTION_PHRASES.finditer(sentence):
+                if not _supported(content_tokens(match.group(1)), any_support, 1.0):
+                    record("faction", match.group(1), "institution is not in the source facts")
+
+
 
         for match in _TITLED_NAME.finditer(sentence):
             name = clean_text(match.group(0))
@@ -836,12 +990,14 @@ def semantic_report(text: Any, intent: OpeningIntent, *, allow: Iterable[str] = 
     """QA-friendly summary: ``ok`` is False when any blocking claim is unsupported."""
     claims = find_unsupported_claims(text, intent, allow=allow)
     leaks = find_internal_language(text)
+    malformed = find_malformed_sentences(text)
     blocking = blocking_claims(claims)
     return {
-        "ok": not blocking and not leaks,
+        "ok": not blocking and not leaks and not malformed,
         "claims": claims,
         "blocking": blocking,
         "internal_language": leaks,
+        "malformed": malformed,
     }
 
 

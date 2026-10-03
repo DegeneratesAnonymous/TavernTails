@@ -32,7 +32,16 @@ from .canon_manager import (
 )
 from .content_bundles import build_content_bundle, ensure_content_bundle
 from .entity_schemas import EntityAssociation, PlayerEntityCard
-from .generation_intent import OpeningIntent, intent_from_opening
+from .generation_intent import (
+    OpeningIntent,
+    capitalize_sentences,
+    definite,
+    fact_discipline_prompt,
+    intent_from_opening,
+    map_paragraphs,
+    split_sentences,
+    strip_internal_paragraphs,
+)
 from .memory_extractor import extract_memory
 from .narrative_director import DirectorOutput
 from .narrative_director import direct_scene as narrative_direct_scene
@@ -245,32 +254,37 @@ def _opening_anchor_context(anchor: dict) -> dict:
     }
 
 
+_NULL_ANSWER = re.compile(r"^\s*(?:no|nothing|none|nobody|never)\b", re.IGNORECASE)
+
+
 def _anchor_repair_text(anchor: dict, loc_name: str, player_name: str) -> str:
+    """Restate the character's setup answers as their own words.
+
+    Answers are first-person ("I came to...") or bare option text, so splicing
+    them into third-person grammar produces broken sentences.  They are quoted
+    instead, and "no / nothing" answers are skipped rather than contradicted.
+    """
     pc = str(anchor.get("character_name") or player_name or "the party").strip() or "the party"
     pc_sentence = pc[0].upper() + pc[1:] if pc else "The party"
     loc = loc_name or "the opening scene"
+
+    def said(key: str) -> str:
+        text = str(anchor.get(key) or "").strip().rstrip(".")
+        return "" if not text or _NULL_ANSWER.match(text) else text.replace('"', "'")
+
     pieces: list[str] = []
-    arrival = str(anchor.get("arrival_reason") or "").strip().rstrip(".")
-    pre_scene = str(anchor.get("pre_scene_activity") or "").strip().rstrip(".")
-    stake = str(anchor.get("personal_stake") or "").strip().rstrip(".")
-    npc_connection = str(anchor.get("known_npc_connection") or "").strip().rstrip(".")
-    party_bond = str(anchor.get("party_bond") or "").strip().rstrip(".")
-    complication = str(anchor.get("followed_complication") or "").strip().rstrip(".")
-    fear = str(anchor.get("fear_of_loss") or "").strip().rstrip(".")
-    if arrival:
-        pieces.append(f"{pc_sentence} reaches {loc} because {arrival}.")
-    if pre_scene:
-        pieces.append(f"Before anyone can control the moment, {pc_sentence} {pre_scene}.")
-    if stake:
-        pieces.append(f"The moment is personal because {stake}.")
-    if complication:
-        pieces.append(f"A complication has followed close behind: {complication}.")
-    if fear:
-        pieces.append(f"What can be lost is clear: {fear}.")
-    if npc_connection:
-        pieces.append(f"{npc_connection}.")
-    if party_bond and pc.lower() == "the party":
-        pieces.append(f"The party stays together because {party_bond}.")
+    if said("arrival_reason"):
+        pieces.append(f'{pc_sentence} reaches {loc} with one purpose in mind: "{said("arrival_reason")}."')
+    if said("personal_stake"):
+        pieces.append(f'Why it matters to {pc}: "{said("personal_stake")}."')
+    if said("followed_complication"):
+        pieces.append(f'What followed {pc} here: "{said("followed_complication")}."')
+    if said("fear_of_loss"):
+        pieces.append(f'What {pc} cannot afford to lose: "{said("fear_of_loss")}."')
+    if said("known_npc_connection"):
+        pieces.append(f'On the people present, {pc} says: "{said("known_npc_connection")}."')
+    if said("party_bond") and pc.lower() == "the party":
+        pieces.append(f'The party stays together: "{said("party_bond")}."')
     return "\n\n".join(pieces[:3])
 
 
@@ -340,16 +354,21 @@ def _apply_first_scene_contract(
             "Question the nearest named contact",
             "Watch who tries to leave",
         ]
-    body = str(scene.get("narrative_body") or scene.get("text") or "")
-    for forbidden in (
+    body = strip_internal_paragraphs(str(scene.get("narrative_body") or scene.get("text") or ""))
+    # Filler cliches are removed with their whole sentence; splicing replacement
+    # words into the middle of a sentence leaves broken prose.
+    cliches = (
         "follows the first choice through",
         "the useful detail is not separate from the danger",
         "the first witness",
-        "the story plan",
-        "the scene should",
         "a safe road becomes unsafe",
-    ):
-        body = re.sub(re.escape(forbidden), "the pressure in the moment becomes visible", body, flags=re.IGNORECASE)
+    )
+    body = map_paragraphs(
+        body,
+        lambda para: " ".join(
+            sentence for sentence in split_sentences(para) if not any(c in sentence.lower() for c in cliches)
+        ),
+    )
     body = body.replace(" a underground", " an underground").replace(" an surface", " a surface")
     if anchor_text and anchor_text.lower() not in body.lower():
         body = f"{anchor_text}\n\n{body}".strip()
@@ -1011,13 +1030,14 @@ def _action_response_scene(
     elif any(word in lower for word in ("search", "inspect", "examine", "investigate", "track", "look")):
         title = "The Detail Out of Place"
         target_detail = approved_object or approved_clue or concrete_detail
+        target_ref = definite(target_detail)
         witness = approved_npc or "the nearest witness"
         body = (
-            f"{pc} slows down and lets {loc} become physical: scuffs, dust, disturbed edges, and {target_detail} "
+            f"{pc} slows down and lets {loc} become physical: scuffs, dust, disturbed edges, and {target_ref} "
             "held against the light long enough for the false story to split from the real one.\n\n"
-            f"The clearest sign is small, but fresh. {approved_clue or f'The {target_detail} points away from the center of attention.'} "
+            f"The clearest sign is small, but fresh. {approved_clue or f'{target_ref[0].upper() + target_ref[1:]} points away from the center of attention.'} "
             f"{witness} sees the same detail and goes still.\n\n"
-            f"Once seen, {target_detail} becomes hard to ignore. A smear breaks the pattern nearby, and a thread catches "
+            f"Once seen, {target_ref} becomes hard to ignore. A smear breaks the pattern nearby, and a thread catches "
             "on a rough edge as if someone passed through in a hurry.\n\n"
             f"{stakes}"
         )
@@ -1055,7 +1075,7 @@ def _action_response_scene(
 
     return {
         "title": title,
-        "narrative": body,
+        "narrative": capitalize_sentences(body),
         "objective": objective,
         "stakes": stakes,
         "clues": clues,
@@ -2799,10 +2819,20 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         director_data_dict["opening_context"] = required_context.get("opening_context") or {}
         if opening_campaign_brief:
             director_data_dict["campaign_brief"] = opening_campaign_brief
+    opening_source_intent = _opening_source_intent(
+        required=(opening_content_bundle.get("required_content") or {}),
+        opening_anchor=opening_anchor,
+        campaign_brief=opening_campaign_brief,
+        campaign_settings=campaign_settings,
+        campaign_contract=campaign_contract,
+        player_name=player_name,
+    )
+    director_data_dict["fact_discipline"] = fact_discipline_prompt(opening_source_intent)
     composer_output = narrative_composer_agent.compose_scene(
         scene_director_data=director_data_dict,
         player_name=player_name,
         scene_type=director_output.scene_type or "opening",
+        fact_discipline=director_data_dict["fact_discipline"],
     )
     composer_data_dict = composer_output.model_dump()
 

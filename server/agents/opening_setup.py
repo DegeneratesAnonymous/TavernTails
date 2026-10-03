@@ -498,12 +498,12 @@ def answers_to_anchor(
                 continue
             values[qid] = str(option.get("value") or option.get("label") or "")
     character_name = str(char.get("name") or "the party")
-    arrival = values.get("arrival_reason") or _auto_answer(questionnaire, "arrival_reason")
-    stake = values.get("personal_stake") or _auto_answer(questionnaire, "personal_stake")
-    npc = values.get("npc_connection") or _auto_answer(questionnaire, "npc_connection")
-    party_bond = values.get("party_bond") or _auto_answer(questionnaire, "party_bond")
-    followed_complication = values.get("followed_complication") or _auto_answer(questionnaire, "followed_complication")
-    fear_of_loss = values.get("fear_of_loss") or _auto_answer(questionnaire, "fear_of_loss")
+    arrival = values.get("arrival_reason") or _coherent_default(questionnaire, "arrival_reason")
+    stake = values.get("personal_stake") or _coherent_default(questionnaire, "personal_stake")
+    npc = values.get("npc_connection") or _coherent_default(questionnaire, "npc_connection")
+    party_bond = values.get("party_bond") or _coherent_default(questionnaire, "party_bond")
+    followed_complication = values.get("followed_complication") or _coherent_default(questionnaire, "followed_complication")
+    fear_of_loss = values.get("fear_of_loss") or _coherent_default(questionnaire, "fear_of_loss")
     hook_override = " ".join(str(character_hook_override or "").split()).strip()
     if hook_override:
         stake = hook_override
@@ -548,13 +548,50 @@ def _safe_auto_answer(question: dict[str, Any], questionnaire: dict[str, Any]) -
 
     fallbacks = {
         "arrival_reason": f"I came to understand what is happening at {location} before committing to a side.",
-        "personal_stake": f"If {concrete_fact[0].lower() + concrete_fact[1:] if concrete_fact else 'this problem is real'}, I want enough facts to choose what to do about it.",
+        "personal_stake": f"What I know so far is this: {concrete_fact.rstrip(' .!?') if concrete_fact else 'this problem is real'}. I want enough facts to choose what to do about it.",
         "followed_complication": "No extra complication followed me here; the problem in front of me is enough.",
         "fear_of_loss": "I do not want the clearest evidence or the chance to act on it to disappear.",
         "npc_connection": "No one here has an assumed history with me; I will judge them by what they do now.",
         "party_bond": "We agreed to face the immediate problem together until we understand what is actually happening.",
     }
     return fallbacks.get(qid, f"I will respond to the concrete situation at {location} without assuming facts that have not been established.")
+
+
+def _coherent_default(questionnaire: dict[str, Any] | None, qid: str) -> str:
+    """Default for an unanswered / "let the AI choose" question.
+
+    Taking each question's first option independently produces unrelated debts,
+    fears and relationships that merely happened to be listed first.  The safe
+    defaults share one present-tense motive and invent no history.
+    """
+    for question in (questionnaire or {}).get("questions", []):
+        if question.get("id") == qid:
+            return _safe_auto_answer(question, questionnaire or {})
+    return ""
+
+
+# (negation, assertion) pairs: one answer may not deny what another asserts.
+_COHERENCE_RULES: dict[str, tuple[re.Pattern[str], re.Pattern[str]]] = {
+    "prior_history": (
+        re.compile(r"\bno one (?:here )?has an assumed history\b|\bno prior (?:relationship|history|connection)\b|\bnobody here knows me\b", re.I),
+        re.compile(r"\b(?:old|former) (?:friend|rival|ally|enemy|debt)\b|\bowe[sd]?\b|\bonce (?:helped|saved|served|knew)\b|\b(?:already )?(?:trust|distrust)\b", re.I),
+    ),
+    "followed": (
+        re.compile(r"\bnothing (?:has )?followed me\b|\bno extra complication\b|\bno complication\b", re.I),
+        re.compile(r"\b(?:followed|chas(?:ing|ed)|pursu(?:ed|ing)|tracked) me\b|\bis close behind\b|\bfollowed me here\b", re.I),
+    ),
+}
+
+
+def answers_coherence_issues(answers: dict[str, str]) -> list[str]:
+    """Contradictions inside one set of setup answers (empty means coherent)."""
+    issues: list[str] = []
+    for label, (denial, assertion) in _COHERENCE_RULES.items():
+        denies = [qid for qid, text in answers.items() if denial.search(text or "")]
+        asserts = [qid for qid, text in answers.items() if assertion.search(text or "") and not denial.search(text or "")]
+        if denies and asserts:
+            issues.append(f"{label}: '{denies[0]}' denies what '{asserts[0]}' asserts")
+    return issues
 
 
 def _parse_ai_setup_answers(raw: str | None, allowed_ids: set[str]) -> dict[str, str]:
@@ -695,18 +732,22 @@ def auto_generate_answers(
     )
     generated = _parse_ai_setup_answers(raw, allowed_ids)
 
-    return [
-        {
-            "question_id": str(q.get("id")),
-            "answer_source": "ai_choice",
-            "answer_text": (
-                generated_answer
-                if generated_answer and _is_grounded_ai_answer(generated_answer, questionnaire, char)
-                else _safe_auto_answer(q, questionnaire)
-            ),
-        }
+    chosen = {
+        str(q.get("id")): (
+            generated_answer
+            if generated_answer and _is_grounded_ai_answer(generated_answer, questionnaire, char)
+            else _safe_auto_answer(q, questionnaire)
+        )
         for q in questions
         for generated_answer in [generated.get(str(q.get("id")))]
+    }
+    if answers_coherence_issues(chosen):
+        # A mix of generated and fallback answers contradicts itself: use the
+        # shared-motive fallback for the whole set rather than a patchwork.
+        chosen = {str(q.get("id")): _safe_auto_answer(q, questionnaire) for q in questions}
+    return [
+        {"question_id": qid, "answer_source": "ai_choice", "answer_text": text}
+        for qid, text in chosen.items()
     ]
 
 
@@ -893,13 +934,14 @@ def build_opening_scene_contract(
     personal_hook = _opening_personal_hook(anch, pc, object_name, location)
     pressure = _opening_pressure(req, npc_name)
     actions = _opening_action_options(npc_name, object_name, location, visible_problem)
+    pc_start = pc[0].upper() + pc[1:]
     narrative = (
         f"{location} is already too quiet for {time_of_day}.\n\n"
-        f"{pc} arrives through {sensory}. {visible_problem}\n\n"
+        f"{pc_start} arrives through {sensory}. {visible_problem}\n\n"
         f"{personal_hook}\n\n"
         f"{npc_name} is close enough to intervene, but not calm enough to hide what is wrong. "
         f"{pressure}\n\n"
-        f"{pc} can {', '.join(action[0].lower() + action[1:] for action in actions[:3])}, "
+        f"{pc_start} can {', '.join(action[0].lower() + action[1:] for action in actions[:3])}, "
         f"or {actions[3][0].lower() + actions[3][1:]}."
     )
     intent = source_intent or intent_from_opening(required=req, brief=brief, anchor=anch, player_name=pc)
@@ -1067,7 +1109,7 @@ def _class_role_label(class_name: str) -> str:
     if "paladin" in lowered:
         return "oath-sworn judge of dangerous vows"
     if "warlock" in lowered:
-        return "bearer of a pact that notices forbidden pressure"
+        return "bearer of an unspoken pact"
     if "wizard" in lowered:
         return "student of old sigils and broken formulae"
     if "rogue" in lowered:
@@ -1381,11 +1423,15 @@ def _opening_sensory_detail(location: str, required: dict[str, Any], object_name
 def _opening_visible_problem(required: dict[str, Any], npc_name: str, object_name: str) -> str:
     event = _clean_raw(str(required.get("inciting_event") or required.get("immediate_problem") or ""))
     if event and not _is_raw_question(event) and not _is_weak_player_facing_text(event):
-        return f"{event}. {object_name[0].upper() + object_name[1:]} sits where everyone can see it, but no one wants to claim it."
+        return f"{event}. The {object_name} sits where everyone can see it, but no one wants to claim it."
     clue = _clean_raw(str(required.get("first_clue_or_question") or ""))
     if "lying" in clue.lower() or _is_raw_question(clue):
         return f"Three accounts already contradict each other while {_mid_sentence(npc_name)} guards the {object_name} like it might accuse someone aloud."
     return f"{npc_name} stands beside the {object_name}, and the crowd has gone quiet in the wrong way."
+
+
+def pc_start_sentence(pc: str) -> str:
+    return pc[0].upper() + pc[1:] if pc else pc
 
 
 def _opening_personal_hook(anchor: dict[str, Any], pc: str, object_name: str, location: str) -> str:
@@ -1393,14 +1439,14 @@ def _opening_personal_hook(anchor: dict[str, Any], pc: str, object_name: str, lo
     stake = _clean_raw(str(anchor.get("personal_stake") or ""))
     fear = _clean_raw(str(anchor.get("fear_of_loss") or ""))
     if arrival and stake:
-        return f"{pc} reaches {location} with a reason already in motion, and the {object_name} turns that reason into an immediate choice."
+        return f"{pc_start_sentence(pc)} reaches {location} with a reason already in motion, and the {object_name} turns that reason into an immediate choice."
     if arrival:
-        return f"{pc} reaches {location} because the trail here already touches a promise, debt, or danger they cannot ignore."
+        return f"{pc_start_sentence(pc)} reaches {location} with a reason of their own, and the {object_name} makes it urgent."
     if stake:
         return f"For {pc}, the {object_name} is personal enough that leaving it to strangers would cost more than time."
     if fear:
-        return f"{pc} can feel the old fear behind this moment tighten as the {object_name} draws every eye."
-    return f"{pc} recognizes enough about {object_name} and {location} to know this is not ordinary trouble."
+        return f"{pc_start_sentence(pc)} feels the weight of what could be lost as the {object_name} draws every eye."
+    return f"{pc_start_sentence(pc)} can see for themselves that the {object_name} at {location} is no ordinary matter."
 
 
 def _opening_pressure(required: dict[str, Any], npc_name: str) -> str:
@@ -1441,19 +1487,14 @@ def _brief_sentences(campaign_brief: dict[str, Any]) -> list[str]:
     return list(dict.fromkeys(sentences))
 
 
-def _auto_answer(questionnaire: dict[str, Any] | None, qid: str) -> str:
-    for q in (questionnaire or {}).get("questions", []):
-        if q.get("id") == qid and q.get("options"):
-            for opt in q["options"]:
-                if opt.get("id") == "ai_choose":
-                    continue
-                return str(opt.get("value") or opt.get("label") or "")
-    return ""
+_FIRST_PERSON = re.compile(r"^\s*(?:i|i'm|i\u2019m|i've|i\u2019ve|i'd|we|we're|my|our)\b", re.IGNORECASE)
 
 
 def _pre_scene_from_arrival(arrival: str) -> str:
     if not arrival:
         return ""
+    if _FIRST_PERSON.match(arrival):
+        return ""  # a first-person answer cannot be turned into "was already trying to I ..."
     first = arrival[0].lower() + arrival[1:] if arrival else arrival
     return f"was already trying to {first.rstrip('.')}"
 

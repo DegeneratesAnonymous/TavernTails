@@ -815,7 +815,7 @@ def _stakes_for_location(location_type: str, inciting_event: str) -> str:
         "frontier fort": "Without reinforcements, the fort falls. The region falls with it.",
         "arcane observatory": "If the evidence is lost, the source of the threat becomes guesswork.",
     }
-    fallback = f"By dusk, the person carrying the clearest lead will leave {location_type} and the trail will go cold."
+    fallback = f"By dusk, the person carrying the clearest lead will leave the {location_type} and the trail will go cold."
     return stakes_map.get(location_type, fallback)
 
 
