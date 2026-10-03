@@ -164,6 +164,7 @@ def flavor_pick(
     recent: list[str],
     rng: random.Random,
     premise_tokens: set[str],
+    avoided_tokens: set[str] | None = None,
 ) -> str:
     """Pick from ``pool`` preferring entries that echo the player's own premise.
 
@@ -172,6 +173,8 @@ def flavor_pick(
     :func:`pick_fresh`.
     """
     available = [x for x in pool if x not in recent[-_AVOID_REPEAT_WINDOW:]] or pool
+    if avoided_tokens:
+        available = [x for x in available if not content_tokens(x) & avoided_tokens] or available
     if premise_tokens:
         echoing = [x for x in available if content_tokens(x) & premise_tokens]
         if echoing:
@@ -245,7 +248,15 @@ def _grounded_fallback_seed(
     tone: str,
 ) -> dict[str, Any]:
     """Seed built from the player's facts; random tables only fill the gaps."""
-    premise_tokens = intent.tokens(established_only=True)
+    # Safety rules are exclusions, so their words must never attract a table pick.
+    constraint_ids = {f.id for f in intent.constraints}
+    premise_tokens: set[str] = set()
+    for fact in intent.facts():
+        if fact.established and fact.id not in constraint_ids:
+            premise_tokens |= content_tokens(fact.text)
+    avoided_tokens: set[str] = set()
+    for fact in intent.constraints:
+        avoided_tokens |= content_tokens(fact.text)
     recent_locs = freshness.get("recent_location_types") or []
     recent_events = freshness.get("recent_opening_events") or []
 
@@ -255,10 +266,10 @@ def _grounded_fallback_seed(
         named_type = next((t for t in _LOCATION_TYPES if content_tokens(t) & content_tokens(location_name)), "")
         location_type = named_type or "starting location"
     else:
-        location_type = flavor_pick(_LOCATION_TYPES, recent_locs, rng, premise_tokens)
+        location_type = flavor_pick(_LOCATION_TYPES, recent_locs, rng, premise_tokens, avoided_tokens)
         location_name = _name_location(location_type, genre, tone, rng)
 
-    inciting_event = flavor_pick(_INCITING_EVENTS, recent_events, rng, premise_tokens)
+    inciting_event = flavor_pick(_INCITING_EVENTS, recent_events, rng, premise_tokens, avoided_tokens)
     opening_question = rng.choice(_OPENING_QUESTIONS)
 
     established_npc = _established_name(intent, "actor")

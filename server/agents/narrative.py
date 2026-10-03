@@ -998,10 +998,13 @@ def regenerate_narrative(payload: RegenerateRequest, current_user=Depends(get_cu
 
             opening_intent = OpeningIntent(**stored_intent)
             allow = [player] + npc_names_list
-            write_narrative = sanitize_generated_text(write_narrative, opening_intent, allow=allow) or write_narrative
+            write_narrative = sanitize_generated_text(write_narrative, opening_intent, allow=allow)
             write_prompt = sanitize_generated_text(write_prompt, opening_intent, allow=allow) or f"What does {player} do?"
         except Exception:
             pass
+        if not write_narrative.strip():
+            # Nothing safe survived: keep the current scene rather than persist rejected prose.
+            is_real_content = False
 
     if is_real_content:
         try:

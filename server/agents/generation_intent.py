@@ -1028,6 +1028,19 @@ def _history_belongs_to_subject(span: str, prefix: str, intent: OpeningIntent, a
     return any(len(span_tokens & content_tokens(a)) / max(1, len(span_tokens)) >= 0.7 for a in allow)
 
 
+def _name_supported(tokens: set[str], intent: OpeningIntent, allow: Iterable[str]) -> bool:
+    """A complete proper name must come from one source, not be stitched from several.
+
+    "Mara" from one fact and "Vell" from another do not establish "Mara Vell".
+    A single-word name only needs to appear somewhere.
+    """
+    if len(tokens) <= 1:
+        return _supported(tokens, intent.tokens() | intent.allowed_tokens() | {t for a in allow for t in content_tokens(a)}, 1.0)
+    sources = [content_tokens(f.text) for f in intent.facts()]
+    sources += [content_tokens(n) for n in list(intent.allowed_names) + list(allow)]
+    return any(tokens <= source for source in sources)
+
+
 def find_unsupported_claims(
     text: Any,
     intent: OpeningIntent,
@@ -1112,27 +1125,26 @@ def find_unsupported_claims(
                     if not _supported(tokens, established, 0.7):
                         record("class_lore", span, "a character class cannot establish world facts or secret knowledge")
 
-        named_faction = False
+        residual = sentence
         for match in _FACTION_CAPITAL.finditer(sentence):
-            named_faction = True
             name = clean_text(match.group(1) or match.group(2))
             name = _LEADING_DETERMINER.sub("", name)
-            if not _supported(content_tokens(name), any_support, 1.0):
+            if not _name_supported(content_tokens(name), intent, allow):
                 record("faction", name, "faction or institution is not in the source facts")
-        if not hedged and not named_faction:
-            for match in _FACTION_GENERIC.finditer(sentence):
+            residual = residual.replace(match.group(0), " ")
+        # A supported named faction must not hide a different, invented institution.
+        if not hedged:
+            for match in _FACTION_GENERIC.finditer(residual):
                 if _stem(match.group(1).lower()) not in any_support:
                     record("faction", sentence, "faction language appears without a source faction")
                     break
-            for match in _INSTITUTION_PHRASES.finditer(sentence):
+            for match in _INSTITUTION_PHRASES.finditer(residual):
                 if not _supported(content_tokens(match.group(1)), any_support, 1.0):
                     record("faction", match.group(1), "institution is not in the source facts")
 
-
-
         for match in _TITLED_NAME.finditer(sentence):
             name = clean_text(match.group(0))
-            if not _supported(content_tokens(match.group(1)), any_support, 1.0):
+            if not _name_supported(content_tokens(match.group(1)), intent, allow):
                 record("named_entity", name, "named character is not in the source facts")
 
     class_words = {c.lower() for c in classes}
@@ -1153,7 +1165,7 @@ def find_unsupported_claims(
         if _FACTION_CAPITAL.search(phrase) or _TITLED_NAME.search(phrase):
             continue  # already judged above
         tokens = content_tokens(phrase)
-        if tokens and not _supported(tokens, any_support, 1.0):
+        if tokens and not _name_supported(tokens, intent, allow):
             record("named_entity", phrase, "name does not appear in the source facts")
     return claims
 

@@ -1188,3 +1188,39 @@ def test_a_negated_premise_does_not_vouch_for_its_opposite():
     seeded = intent_with_seed(intent, {"generated_by": "starter_seed", "inciting_event": "A witness vanished from the quay"})
     fact = next(f for f in seeded.facts() if "vanished" in f.text.lower() and f.kind == "conflict")
     assert not fact.established
+
+
+# --- review round 6 -----------------------------------------------------------------------------
+
+
+def test_a_supported_faction_does_not_hide_an_invented_institution():
+    intent = build_opening_intent({"setting_summary": "The Ashen Conclave rules the quay."}, {})
+    claims = find_unsupported_claims("The Ashen Conclave watches as the civic watch seals the quay.", intent)
+    assert any(c["kind"] == "faction" for c in claims)
+    assert not find_unsupported_claims("The Ashen Conclave watches the quay.", intent)
+
+
+def test_a_full_name_cannot_be_stitched_from_two_sources():
+    intent = build_opening_intent(
+        {"setting_summary": "A ferry town."},
+        {"player_canon": [{"name": "Mara", "type": "npc", "source": "lore"}, {"name": "Vell", "type": "npc", "source": "lore"}]},
+    )
+    assert not find_unsupported_claims("Mara waits at the ferry.", intent)
+    kinds = {c["kind"] for c in find_unsupported_claims("Mara Vell waits at the ferry.", intent)}
+    assert "named_entity" in kinds
+
+
+def test_safety_exclusions_do_not_attract_table_picks():
+    contract = {"safety_policy": {"avoid": ["forest"]}}
+    for seed_value in range(30):
+        seed = generate_starter_seed(
+            {"setting_summary": "A harbor town."}, contract, {"recent_location_types": []}, seed=seed_value,
+        )
+        assert "forest" not in str(seed.get("location_identity", "")).lower()
+
+
+def test_session_character_names_include_every_member():
+    names = sessions_module._session_character_names(
+        {"members": [{"character_name": "Mara"}, {"character_name": "Bastog"}]}, "Bastog",
+    )
+    assert names == ["Bastog", "Mara"]

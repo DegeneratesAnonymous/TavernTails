@@ -407,6 +407,16 @@ def _apply_first_scene_contract(
     return scene, validation, repaired_dice
 
 
+def _session_character_names(meta: dict | None, player_name: str) -> list[str]:
+    """Every character in the session: any of them may be named in the opening."""
+    names = [player_name]
+    for member in ((meta or {}).get("members") or []):
+        name = str(member.get("character_name") or "").strip()
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
 def _opening_source_intent(
     *,
     required: dict,
@@ -3086,7 +3096,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     scene_qa_initial = run_scene_qa(
         scene=scene,
         source_intent=opening_source_intent,
-        allowed_names=[player_name],
+        allowed_names=_session_character_names(meta, player_name),
         campaign_contract=campaign_contract,
         campaign_scale_profile=campaign_scale_profile,
         story_shape_profile=story_shape_profile,
@@ -3104,7 +3114,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     scene_qa_final = run_scene_qa(
         scene=scene,
         source_intent=opening_source_intent,
-        allowed_names=[player_name],
+        allowed_names=_session_character_names(meta, player_name),
         campaign_contract=campaign_contract,
         campaign_scale_profile=campaign_scale_profile,
         story_shape_profile=story_shape_profile,
@@ -3258,7 +3268,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     scene_qa_memory = run_scene_qa(
         scene=scene,
         source_intent=opening_source_intent,
-        allowed_names=[player_name],
+        allowed_names=_session_character_names(meta, player_name),
         campaign_contract=campaign_contract,
         campaign_scale_profile=campaign_scale_profile,
         story_shape_profile=story_shape_profile,
@@ -3280,7 +3290,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         scene_qa_memory = run_scene_qa(
             scene=scene,
             source_intent=opening_source_intent,
-            allowed_names=[player_name],
+            allowed_names=_session_character_names(meta, player_name),
             campaign_contract=campaign_contract,
             campaign_scale_profile=campaign_scale_profile,
             story_shape_profile=story_shape_profile,
