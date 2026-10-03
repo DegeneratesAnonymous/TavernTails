@@ -15,9 +15,9 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from server.agents.campaign_interpretation import build_full_contract_package
-from server.agents.content_bundles import ensure_content_bundle
-from server.agents.scene_qa import run_scene_qa
+from server.agents.campaign_interpretation import build_full_contract_package  # noqa: E402
+from server.agents.content_bundles import ensure_content_bundle  # noqa: E402
+from server.agents.scene_qa import run_scene_qa  # noqa: E402
 
 TEST_CAMPAIGN_SEEDS = [
     {
