@@ -14,6 +14,14 @@ import hashlib
 import random
 from typing import Any
 
+from .generation_intent import (
+    OpeningIntent,
+    build_opening_intent,
+    content_tokens,
+    intent_with_seed,
+    premise_text,
+    seed_field_provenance,
+)
 from .situation_contracts import (
     validate_situation,
 )
@@ -150,6 +158,26 @@ def pick_fresh(pool: list[str], recent: list[str], rng: random.Random | None = N
     return r.choice(available)
 
 
+def flavor_pick(
+    pool: list[str],
+    recent: list[str],
+    rng: random.Random,
+    premise_tokens: set[str],
+) -> str:
+    """Pick from ``pool`` preferring entries that echo the player's own premise.
+
+    Random tables are allowed to *flavor* what the player established; they must
+    not drag in an unrelated setting.  With no overlap this behaves exactly like
+    :func:`pick_fresh`.
+    """
+    available = [x for x in pool if x not in recent[-_AVOID_REPEAT_WINDOW:]] or pool
+    if premise_tokens:
+        echoing = [x for x in available if content_tokens(x) & premise_tokens]
+        if echoing:
+            return rng.choice(echoing)
+    return rng.choice(available)
+
+
 # ---------------------------------------------------------------------------
 # Starter Seed Generator
 # ---------------------------------------------------------------------------
@@ -159,51 +187,93 @@ def generate_starter_seed(
     campaign_contract: dict[str, Any] | None = None,
     freshness_context: dict[str, Any] | None = None,
     seed: int | None = None,
+    intent: OpeningIntent | None = None,
 ) -> dict[str, Any]:
     """Generate a concrete opening seed for a campaign with low context.
 
     Returns the fields required for an OpeningBundle's required_content.
     Guarantees: no tavern defaults, no generic threats, concrete entities.
+
+    The seed is grounded in the player's :class:`OpeningIntent`: facts the player
+    established are used as-is, random tables only flavor what is missing, and the
+    result reports per-field provenance plus the fields that remain unknown.
     """
     settings = campaign_settings or {}
     contract = campaign_contract or {}
     freshness = freshness_context or empty_freshness()
     rng = random.Random(seed) if seed is not None else random.Random()
+    intent = intent or build_opening_intent(settings, contract)
 
     genre = str(settings.get("genre") or contract.get("campaign_dna", {}).get("genre") or "fantasy")
     tone = str(settings.get("tone") or contract.get("campaign_dna", {}).get("tone") or "balanced")
     premise_seed = _seed_from_campaign_premise(settings, contract, genre, rng)
     if premise_seed:
-        return _vary_premise_seed(premise_seed, freshness, rng)
+        return annotate_seed(_vary_premise_seed(premise_seed, freshness, rng), intent, mode="premise_template")
+    return annotate_seed(_grounded_fallback_seed(intent, freshness, rng, genre, tone), intent, mode="grounded_fallback")
 
-    # Choose fresh location type
+
+def annotate_seed(seed: dict[str, Any], intent: OpeningIntent, *, mode: str) -> dict[str, Any]:
+    """Attach provenance, unknowns and the premise anchor to a seed."""
+    grounded = intent_with_seed(intent, seed)
+    return {
+        **seed,
+        "seed_mode": mode,
+        "field_provenance": seed_field_provenance(seed, intent),
+        "unknowns": [u.field for u in grounded.unknowns],
+        "premise_anchor": intent.premise.text if intent.premise else "",
+    }
+
+
+def _established_name(intent: OpeningIntent, kind: str) -> str:
+    """A short, name-like established fact of ``kind`` (never prose)."""
+    bucket = intent.locations if kind == "location" else intent.actors
+    for fact in bucket:
+        if fact.established and fact.kind == kind and 0 < len(fact.text.split()) <= 5 and len(fact.text) <= 48:
+            return fact.text
+    return ""
+
+
+def _grounded_fallback_seed(
+    intent: OpeningIntent,
+    freshness: dict[str, Any],
+    rng: random.Random,
+    genre: str,
+    tone: str,
+) -> dict[str, Any]:
+    """Seed built from the player's facts; random tables only fill the gaps."""
+    premise_tokens = intent.tokens(established_only=True)
     recent_locs = freshness.get("recent_location_types") or []
-    location_type = pick_fresh(_LOCATION_TYPES, recent_locs, rng)
-
-    # Flavour the location name based on genre/tone
-    location_name = _name_location(location_type, genre, tone, rng)
-
-    # Choose fresh inciting event
     recent_events = freshness.get("recent_opening_events") or []
-    inciting_event = pick_fresh(_INCITING_EVENTS, recent_events, rng)
 
-    # Choose opening question
+    established_location = _established_name(intent, "location")
+    if established_location:
+        location_name = established_location
+        named_type = next((t for t in _LOCATION_TYPES if content_tokens(t) & content_tokens(location_name)), "")
+        location_type = named_type or "starting location"
+    else:
+        location_type = flavor_pick(_LOCATION_TYPES, recent_locs, rng, premise_tokens)
+        location_name = _name_location(location_type, genre, tone, rng)
+
+    inciting_event = flavor_pick(_INCITING_EVENTS, recent_events, rng, premise_tokens)
     opening_question = rng.choice(_OPENING_QUESTIONS)
 
-    # Generate a named NPC (not generic)
-    npc_name = _generate_npc_name(genre, rng)
+    npc_name = _established_name(intent, "actor") or _generate_npc_name(genre, rng)
     npc_role = _npc_role_for_location(location_type, rng)
 
-    # Stakes — concrete, tied to the location type
-    stakes = _stakes_for_location(location_type, inciting_event)
-
-    # Player decision — always a real choice, never "what will you do?"
+    known_type = _known_location_type(location_type)
+    stakes = _stakes_for_location(location_type, inciting_event) if known_type else (
+        f"By dusk, the person carrying the clearest lead will leave {location_name} and the trail will go cold."
+    )
     player_decision = _player_decision(location_type, inciting_event)
-
+    identity = (
+        f"A {location_type} where {inciting_event}."
+        if known_type
+        else f"{location_name}, where {inciting_event}."
+    )
     return {
         "starting_location": location_name,
         "location_type": location_type,
-        "location_identity": f"A {location_type} where {inciting_event}.",
+        "location_identity": identity,
         "inciting_event": inciting_event.capitalize() + ".",
         "named_npc_or_visible_threat": f"{npc_name} ({npc_role})",
         "immediate_problem": f"The {npc_role.lower()} {npc_name} is trying to keep a fragile lead from disappearing before the party can examine it.",
@@ -211,7 +281,7 @@ def generate_starter_seed(
         "first_clue_or_question": opening_question,
         "player_decision": player_decision,
         "memory_updates": [
-            {"type": "location", "name": location_name, "status": "provisional"},
+            {"type": "location", "name": location_name, "status": "campaign_opening" if established_location else "provisional"},
             {"type": "npc", "name": npc_name, "role": npc_role, "status": "provisional"},
         ],
         "generated_by": "starter_seed",
@@ -220,6 +290,10 @@ def generate_starter_seed(
             "event": inciting_event,
         },
     }
+
+
+def _known_location_type(location_type: str) -> bool:
+    return location_type in _LOCATION_TYPES or location_type in _ROLES_BY_LOCATION
 
 
 def _vary_premise_seed(seed: dict[str, Any], freshness: dict[str, Any], rng: random.Random) -> dict[str, Any]:
@@ -410,17 +484,8 @@ def _premise_event_type(text: str) -> str:
 
 
 def _campaign_premise_text(settings: dict[str, Any], contract: dict[str, Any]) -> str:
-    dna = contract.get("campaign_dna") or {}
-    return " ".join([
-        str(settings.get("setting_summary") or ""),
-        str(settings.get("world_name") or ""),
-        str(contract.get("campaign_name") or ""),
-        str(contract.get("campaign_pitch") or ""),
-        str(dna.get("setting_summary") or ""),
-        str(dna.get("starting_promise") or ""),
-        " ".join(str(x) for x in (dna.get("central_questions") or [])[:4]),
-        str(contract.get("agent_output_contract") or "")[:1200],
-    ]).strip()
+    """Player-authored premise only: the title and generated boilerplate never pick a template."""
+    return premise_text(settings, contract, player_authored=True)
 
 
 def _seed_from_campaign_premise(
@@ -945,6 +1010,11 @@ def build_content_bundle(
                 "player_decision": (sdo.get("possible_actions") or [""])[0],
                 "memory_updates": [],
             }
+            required_content = annotate_seed(
+                required_content,
+                build_opening_intent(campaign_settings, campaign_contract),
+                mode="scene_director",
+            )
 
     elif situation_type in ("combat_setup", "combat_round"):
         required_content = _build_combat_bundle(sdo, previous_scene, world_state)
