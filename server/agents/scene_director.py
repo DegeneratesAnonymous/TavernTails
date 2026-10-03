@@ -13,6 +13,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from .generation_intent import build_opening_intent
+
 try:
     from ..steward_llm import chat_complete
 except Exception:
@@ -112,11 +114,19 @@ def _deterministic_director(req: SceneDirectorRequest) -> SceneDirectorOutput:
         loc for loc in req.candidate_locations
         if not (_is_tavernish(loc) and not _campaign_allows_tavern(req))
     ]
+    # One interpretation of what the player established: use it before inventing
+    # a name from keywords in the summary or title.
+    intent = build_opening_intent(req.campaign_settings, contract)
+    established_location = next((f.text for f in intent.locations if f.established and len(f.text.split()) <= 5), "")
+    established_npc = next((f.text for f in intent.actors if f.established and len(f.text.split()) <= 5), "")
     loc_name = location_candidates[0] if location_candidates else (
-        world_name
+        established_location
+        or world_name
         or _location_from_text(setting_summary or campaign_pitch or campaign_name, genre)
     )
-    npc_name = req.candidate_npcs[0] if req.candidate_npcs else _contact_from_text(setting_summary or campaign_pitch or campaign_name, genre)
+    npc_name = req.candidate_npcs[0] if req.candidate_npcs else (
+        established_npc or _contact_from_text(setting_summary or campaign_pitch or campaign_name, genre)
+    )
 
     # Prefer active thread over hook over plot seed for conflict text
     thread = _first_story_signal(req.candidate_story_threads)

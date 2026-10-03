@@ -1,0 +1,252 @@
+{
+  "description": "Real bad generations (from pipeline session artifacts and the repo's own history) that issue #180 requires to keep failing. Every case must be detected by generation_intent / scene_qa.",
+  "source_facts": {
+    "settings": {
+      "setting_summary": "A glass harbor where signal mirrors fail and envoys vanish before dawn."
+    },
+    "contract": {
+      "campaign_name": "Glass Harbor",
+      "campaign_pitch": "A mystery in a glass harbor where missing envoys and broken signal mirrors point to sabotage."
+    },
+    "character": {
+      "name": "Bastog",
+      "class_name": "Warlock / Paladin",
+      "backstory": "A careful scout."
+    }
+  },
+  "cases": [
+    {
+      "id": "leak_anchors_the_moment",
+      "category": "internal_language",
+      "origin": "session artifact 02f79af8 (apply_targeted_scene_repairs)",
+      "text": "Ashfield Ford anchors the moment; its visible details make this problem local rather than interchangeable."
+    },
+    {
+      "id": "leak_concrete_role",
+      "category": "internal_language",
+      "origin": "session artifact 02f79af8 (apply_targeted_scene_repairs)",
+      "text": "Sera Vane has a concrete role here: they can point to what changed, what they want protected, and what they are afraid will be lost next."
+    },
+    {
+      "id": "leak_table_details",
+      "category": "internal_language",
+      "origin": "session artifact 02f79af8 (apply_targeted_scene_repairs)",
+      "text": "The scene's concrete table details are: Who brought this here?; By dusk, the person carrying the clearest lead will leave river ferry station and the trail will go cold."
+    },
+    {
+      "id": "leak_immediate_consequence",
+      "category": "internal_language",
+      "origin": "session artifact 02f79af8 (apply_targeted_scene_repairs)",
+      "text": "The immediate consequence is concrete: By dusk, the person carrying the clearest lead will leave river ferry station and the trail will go cold."
+    },
+    {
+      "id": "leak_turns_on_action",
+      "category": "internal_language",
+      "origin": "apply_targeted_scene_repairs before #180 (continuity repair)",
+      "text": "Because the party chose to inspect the seal, the scene turns on that action instead of resetting: the nearest useful detail is now tied directly to what they just did."
+    },
+    {
+      "id": "leak_pressure_substitution",
+      "category": "internal_language",
+      "origin": "session artifact 02f79af8 (_apply_first_scene_contract substitution)",
+      "text": "The party arrives through salt air. The pressure in the moment becomes visible. The sealed letter sits where everyone can see it."
+    },
+    {
+      "id": "lore_patron_stirs",
+      "category": "invented_class_lore",
+      "origin": "opening_setup._class_flavor_translation before #179",
+      "text": "Bastog's patron stirs at the cinder relic, naming it as payment, warning, or bait before anyone else hears the bargain.",
+      "expect_kinds": [
+        "history",
+        "class_lore"
+      ]
+    },
+    {
+      "id": "lore_oath_pact_hidden_debt",
+      "category": "invented_class_lore",
+      "origin": "opening_setup._class_flavor_translation before #179",
+      "text": "Bastog's oath demands judgment over the cinder relic, while the pact behind it whispers that Cinder Vote Hall is hiding a debt older than the public vote.",
+      "expect_kinds": [
+        "history",
+        "class_lore"
+      ]
+    },
+    {
+      "id": "lore_two_kinds_of_power",
+      "category": "invented_class_lore",
+      "origin": "opening_setup._class_flavor_translation before #179",
+      "text": "Bastog recognizes two kinds of power around the cinder relic: the lawful pull of an oath, and the colder pressure of a pact that answers when prayer goes too long.",
+      "expect_kinds": [
+        "class_lore"
+      ]
+    },
+    {
+      "id": "lore_object_answers",
+      "category": "invented_class_lore",
+      "origin": "opening_setup._class_flavor_translation before #179",
+      "text": "Bastog feels the cinder relic answer with a private pressure, like a debt being named by something just out of sight.",
+      "expect_kinds": [
+        "class_lore"
+      ]
+    },
+    {
+      "id": "lore_setting_law",
+      "category": "invented_class_lore",
+      "origin": "opening_setup._class_flavor_translation before #179",
+      "text": "Bastog notices the old formulae around the cinder relic do not agree with the story being told aloud.",
+      "expect_kinds": [
+        "class_lore"
+      ]
+    },
+    {
+      "id": "lore_old_debt_presupposed",
+      "category": "invented_class_lore",
+      "origin": "opening_setup.generate_provisional_character_anchor before #179",
+      "text": "Bastog does not yet know whether helping the guild will settle an old debt or deepen it.",
+      "expect_kinds": [
+        "history"
+      ]
+    },
+    {
+      "id": "lore_class_just_knows",
+      "category": "invented_class_lore",
+      "origin": "issue #180 (class alone cannot establish secret knowledge)",
+      "text": "As a Paladin, Bastog knows that the oath sworn over the relic was broken by the Silver Hand Order.",
+      "expect_kinds": [
+        "class_lore",
+        "faction"
+      ]
+    },
+    {
+      "id": "faction_guild_from_charter",
+      "category": "unrelated_faction",
+      "origin": "opening_setup._institution_or_faction ('charter'/'vote'/'mine' => guild)",
+      "text": "Guild factions are fighting over the charter.",
+      "expect_kinds": [
+        "faction"
+      ]
+    },
+    {
+      "id": "faction_road_wardens",
+      "category": "unrelated_faction",
+      "origin": "opening_setup._institution_or_faction ('road' => wardens)",
+      "text": "The road wardens and local refuge keepers disagree over who controls the crossing.",
+      "expect_kinds": [
+        "faction"
+      ]
+    },
+    {
+      "id": "faction_harbor_office",
+      "category": "unrelated_faction",
+      "origin": "opening_setup._institution_or_faction ('harbor'/'envoy')",
+      "text": "The harbor office and envoy guard are blaming each other.",
+      "expect_kinds": [
+        "faction"
+      ]
+    },
+    {
+      "id": "faction_named_order",
+      "category": "unrelated_faction",
+      "origin": "issue #180 (unrelated faction insertion)",
+      "text": "Bastog studies the seal stamped by the Ashen Conclave.",
+      "expect_kinds": [
+        "faction"
+      ]
+    },
+    {
+      "id": "npc_invented_name",
+      "category": "invented_named_character",
+      "origin": "opening_setup.build_opening_scene_contract default NPC before #180",
+      "text": "Warden Hale is close enough to intervene, but not calm enough to hide what is wrong.",
+      "expect_kinds": [
+        "named_entity"
+      ]
+    },
+    {
+      "id": "vague_forces_moving",
+      "category": "vague_stakes",
+      "origin": "session artifact 16ca8963 (scene_director deterministic stakes)",
+      "text": "Every delay gives the forces moving through The Iron Ground more time to shape what happens next.",
+      "expect_generic": true
+    },
+    {
+      "id": "vague_looming_threat",
+      "category": "vague_stakes",
+      "origin": "scene_qa.GENERIC_TERMS",
+      "text": "Something is wrong and someone needs help. A mysterious threat looms and things will get worse in the region.",
+      "expect_generic": true
+    },
+    {
+      "id": "malformed_lowercase_subject",
+      "category": "malformed",
+      "origin": "session artifact 02f79af8 (opening narrative with pc='the party')",
+      "text": "Glass Harbor is already too quiet for day.\n\nthe party arrives through salt air, wet rope, and gull cries.",
+      "expect_defects": [
+        "lowercase_start"
+      ]
+    },
+    {
+      "id": "malformed_first_person_splice",
+      "category": "malformed",
+      "origin": "session artifact 0b66b228 (_anchor_repair_text)",
+      "text": "The party reaches Ashfield Barracks because I came to understand what is happening at Ashfield Barracks before committing to a side.",
+      "expect_defects": [
+        "first_person_splice"
+      ]
+    },
+    {
+      "id": "malformed_lowercase_i",
+      "category": "malformed",
+      "origin": "session artifact 0b66b228 (_pre_scene_from_arrival)",
+      "text": "Before anyone can control the moment, The party was already trying to i came to understand what is happening.",
+      "expect_defects": [
+        "lowercase_pronoun_i"
+      ]
+    },
+    {
+      "id": "malformed_double_punctuation",
+      "category": "malformed",
+      "origin": "session artifact 174fb569 (repair clue sentence)",
+      "text": "The clearest clue is this: Who brought this here?.",
+      "expect_defects": [
+        "doubled_punctuation"
+      ]
+    },
+    {
+      "id": "malformed_title_splice",
+      "category": "malformed",
+      "origin": "opening_setup.build_campaign_brief before #180",
+      "text": "Relics of the Void begins at Cinder Vote Hall is a heat-stained assembly chamber built over old volcanic vents.",
+      "expect_defects": [
+        "title_splice"
+      ]
+    },
+    {
+      "id": "malformed_article",
+      "category": "malformed",
+      "origin": "opening_setup.validate_first_scene_contract fixture",
+      "text": "The first witness waits. A underground door opens.",
+      "expect_defects": [
+        "article_a_before_vowel"
+      ]
+    }
+  ],
+  "clean": [
+    {
+      "id": "clean_opening",
+      "text": "Glass Harbor is already too quiet for day.\n\nBastog arrives through salt air and wet rope, past the cracked signal mirror everyone is pretending not to see."
+    },
+    {
+      "id": "clean_established_stake",
+      "text": "If the signal mirror fails again before dawn, the envoys vanish with no one watching the harbor."
+    },
+    {
+      "id": "clean_hedged",
+      "text": "No prior relationship with the harbor is assumed, and Bastog may choose to care about the mirror."
+    },
+    {
+      "id": "clean_quoted_first_person",
+      "text": "Bastog reaches Glass Harbor with one purpose in mind: \"I came to audit a cracked signal mirror.\""
+    }
+  ]
+}

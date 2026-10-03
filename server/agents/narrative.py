@@ -280,6 +280,8 @@ def _build_director_system(
         f"  Tone: {style} — {tone_desc}",
         f"  Target length: {word_target}",
     ]
+    if sd.get("fact_discipline"):
+        lines.extend(["", str(sd["fact_discipline"]), ""])
     if npc_name:
         lines.append(f"  Primary NPC: {npc_name} ({npc_state})")
         if npc_wants:

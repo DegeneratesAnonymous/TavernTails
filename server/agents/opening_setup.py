@@ -9,6 +9,18 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from ..steward_llm import chat_complete
+from .generation_intent import STOP_WORDS as _GROUNDING_STOP_WORDS
+from .generation_intent import (
+    OpeningIntent,
+    blocking_claims,
+    blocking_defects,
+    build_source_trace,
+    find_internal_language,
+    find_unsupported_claims,
+    intent_from_opening,
+)
+from .generation_intent import clean_text as _clean_raw
+from .generation_intent import trim_sentence as _trim_sentence
 
 _PERSONAL_HISTORY_PATTERNS = (
     re.compile(
@@ -22,19 +34,6 @@ _PERSONAL_HISTORY_PATTERNS = (
     re.compile(r"\b(?:someone|somebody|a person)\s+(?:i|we)\s+(?:care about|love|miss)\b", re.I),
     re.compile(r"\b(?:debt collector|old debt|former friend|old friend|old rival|old ally|old enemy)\b", re.I),
 )
-_GROUNDING_STOP_WORDS = {
-    "a", "about", "above", "after", "again", "against", "all", "also", "am", "an", "and", "any",
-    "are", "around", "as", "at", "back", "be", "because", "been", "before", "being", "between",
-    "both", "but", "by", "can", "could", "did", "do", "does", "down", "during", "each", "either",
-    "ever", "few", "for", "from", "had", "has", "have", "he", "her", "here", "him", "his", "how",
-    "i", "if", "in", "into", "is", "it", "its", "just", "least", "less", "many", "may", "me",
-    "might", "more", "most", "much", "must", "my", "neither", "never", "no", "not", "now", "of",
-    "off", "on", "once", "only", "or", "other", "our", "out", "over", "own", "same", "she",
-    "should", "so", "some", "such", "than", "that", "the", "their", "them", "then", "there",
-    "these", "they", "this", "those", "through", "to", "too", "under", "up", "very", "was", "we",
-    "were", "what", "when", "where", "which", "while", "who", "will", "with", "would", "you",
-    "your",
-}
 _SENTENCE_STARTERS = {
     "a", "an", "and", "as", "at", "because", "before", "but", "if", "i", "in", "it", "my", "no",
     "nothing", "one", "our", "someone", "the", "there", "they", "this", "we", "when",
@@ -65,6 +64,8 @@ class CampaignBrief(BaseModel):
     known_facts: list[str] = Field(default_factory=list)
     character_entry_prompt: str = ""
     character_anchor: dict[str, str] = Field(default_factory=dict)
+    # Fields the brief could not establish ("conflict", "stakes", "actor", "object").
+    unknowns: list[str] = Field(default_factory=list)
     quality_debug: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -96,6 +97,8 @@ class OpeningCharacterAnchor(BaseModel):
     must_include: list[str] = Field(default_factory=list)
     must_not_include: list[str] = Field(default_factory=list)
     source: str = "player_answered"
+    # field -> "player" (the player answered it) | "default" (skipped / handed to the AI)
+    field_sources: dict[str, str] = Field(default_factory=dict)
 
 
 class ProvisionalCharacterAnchor(BaseModel):
@@ -247,15 +250,24 @@ def build_campaign_brief(
     location = str(seed.get("starting_location") or camp.get("starting_location") or "the starting location").strip()
     char_name = str(char.get("name") or "your character").strip() or "your character"
     anchor = generate_provisional_character_anchor(character=char, premise={**camp, **seed})
-    trouble = _natural_problem(seed, camp)
-    urgency = _natural_urgency(seed, camp)
-    rumor = _natural_rumor(seed, camp)
+    trouble = _natural_problem(seed, camp, strict=True)
+    urgency = _natural_urgency(seed, camp, strict=True)
+    rumor = _natural_rumor(seed, camp, strict=True)
     place_identity = _natural_location_identity(location, seed, camp)
-    object_name = _opening_object_name({**camp, **seed})
-    concrete_object = _concrete_object(seed, camp, object_name)
-    institution = _institution_or_faction(seed, camp, location)
-    visible_consequence = _visible_consequence(seed, camp, institution)
+    object_name = _opening_object_name({**camp, **seed}, neutral_default=True)
+    concrete_object = _concrete_object(seed, camp, object_name, strict=True)
+    institution = _institution_or_faction(seed, camp, location, strict=True)
+    visible_consequence = _visible_consequence(seed, camp, institution, strict=True)
     char_context = naturalize_character_knowledge(char, {**camp, **seed, "object_name": object_name}, anchor)
+    # Anything we could only answer with "not established" is an explicit unknown:
+    # it is reported, kept out of the known facts, and never dressed up as lore.
+    unknown_lines = {
+        "conflict": trouble if trouble == UNKNOWN_PROBLEM else "",
+        "stakes": urgency if urgency == UNKNOWN_URGENCY else "",
+        "actor": institution if institution == UNKNOWN_AUTHORITY else "",
+        "object": concrete_object if concrete_object == UNKNOWN_OBJECT else "",
+    }
+    unknowns = [field for field, line in unknown_lines.items() if line]
     facts = [
         place_identity,
         trouble,
@@ -266,14 +278,13 @@ def build_campaign_brief(
         visible_consequence,
         char_context,
     ]
-    facts = [_trim_sentence(f) for f in facts if f]
-    place_intro = f"{title} begins at {location}, {place_identity[0].lower() + place_identity[1:] if place_identity else 'where the first public trouble has surfaced.'}"
-    if place_identity.lower().startswith(location.lower()):
-        place_intro = f"{title} begins at {place_identity}"
+    open_lines = {UNKNOWN_PROBLEM, UNKNOWN_URGENCY, UNKNOWN_AUTHORITY, UNKNOWN_OBJECT, UNKNOWN_CONSEQUENCE}
+    facts = [_trim_sentence(f) for f in facts if f and f not in open_lines]
+    place_intro = _place_intro(title, location, place_identity)
     paragraphs = [
         place_intro,
         f"{trouble} {concrete_object}",
-        f"{urgency} {visible_consequence}",
+        f"{urgency} {visible_consequence}" if urgency != visible_consequence else urgency,
         char_context,
     ]
     paragraphs = [_trim_sentence(p) for p in paragraphs if p]
@@ -282,6 +293,7 @@ def build_campaign_brief(
         "location_name": location,
         "brief_paragraphs": paragraphs[:4],
         "known_facts": facts[:6],
+        "unknowns": unknowns,
         "character_anchor": anchor,
         "character_entry_prompt": f"{char_name} arrives before the truth is known. Decide why this mystery has pulled {char_name} here.",
     }
@@ -291,6 +303,17 @@ def build_campaign_brief(
         validation = validate_campaign_brief(brief)
     brief["quality_debug"] = validation
     return brief
+
+
+def _place_intro(title: str, location: str, place_identity: str) -> str:
+    """"<Title> begins at <Location>." followed by what the place is, grammatically."""
+    identity = _clean_raw(place_identity)
+    if not identity:
+        return _trim_sentence(f"{title} begins at {location}, where the first public trouble has surfaced")
+    if identity.lower().startswith(location.lower()):
+        # The identity already names the place ("<Location> is a ..."): don't splice it into the clause.
+        return f"{_trim_sentence(f'{title} begins at {location}')} {_trim_sentence(identity)}"
+    return _trim_sentence(f"{title} begins at {location}, {identity[0].lower() + identity[1:]}")
 
 
 def generate_provisional_character_anchor(
@@ -304,7 +327,7 @@ def generate_provisional_character_anchor(
     level = str(char.get("level") or "").strip()
     class_name = str(char.get("class_name") or "").strip()
     public_role = _public_identity(name, level, class_name)
-    object_name = _opening_object_name(prem)
+    object_name = _opening_object_name(prem, neutral_default=True)
     location = str(prem.get("starting_location") or prem.get("location_name") or "the starting place").strip()
     institution = _institution_or_faction(prem, prem, location)
     institution_subject = _institution_subject(institution)
@@ -351,7 +374,7 @@ def naturalize_character_knowledge(
     prem = premise or {}
     anch = anchor or {}
     name = str(char.get("name") or "Your character").strip() or "Your character"
-    object_name = str(prem.get("object_name") or _opening_object_name(prem)).strip() or "first physical sign"
+    object_name = str(prem.get("object_name") or _opening_object_name(prem, neutral_default=True)).strip() or "first physical sign"
     flavor = anch.get("class_flavor_translation") or _class_flavor_translation(name, str(char.get("class_name") or ""), object_name)
     reason = anch.get("reason_to_care") or ""
     if reason:
@@ -400,10 +423,11 @@ def validate_campaign_brief(brief: dict[str, Any]) -> dict[str, Any]:
         "no_raw_class_label": not re.search(r"\bas a\s+[a-z][a-z /-]{2,40},", json_blob),
         "no_forbidden": not any(phrase in json_blob for phrase in BRIEF_FORBIDDEN_PHRASES),
     }
+    waived = sorted({_UNKNOWN_WAIVES[u] for u in brief.get("unknowns") or [] if u in _UNKNOWN_WAIVES})
     for key, ok in checks.items():
-        if not ok:
+        if not ok and key not in waived:
             issues.append(key)
-    return {"valid": not issues, "issues": issues, "checks": checks}
+    return {"valid": not issues, "issues": issues, "checks": checks, "waived_for_unknowns": waived}
 
 
 def _repair_campaign_brief(
@@ -414,31 +438,40 @@ def _repair_campaign_brief(
 ) -> dict[str, Any]:
     title = str(brief.get("title") or camp.get("campaign_name") or "This campaign")
     location = str(brief.get("location_name") or seed.get("starting_location") or "the starting location")
-    object_name = _opening_object_name({**camp, **seed})
-    institution = _institution_or_faction(seed, camp, location)
+    object_name = _opening_object_name({**camp, **seed}, neutral_default=True)
+    institution = _institution_or_faction(seed, camp, location, strict=True)
     place = _natural_location_identity(location, seed, camp)
-    trouble = _natural_problem(seed, camp)
-    consequence = _visible_consequence(seed, camp, institution)
+    trouble = _natural_problem(seed, camp, strict=True)
+    consequence = _visible_consequence(seed, camp, institution, strict=True)
     anchor = brief.get("character_anchor") or generate_provisional_character_anchor(character=char, premise={**camp, **seed})
     knowledge = naturalize_character_knowledge(char, {**camp, **seed, "object_name": object_name}, anchor)
-    place_sentence = place if place.lower().startswith(location.lower()) else f"{location}, {place[0].lower() + place[1:]}"
     institution_clean = _clean_raw(institution)
+    unknowns = set(brief.get("unknowns") or [])
+    object_known = "object" not in unknowns
+    object_line = (
+        f"The physical object drawing every eye is the {object_name}"
+        + (f", and {institution_clean.lower()} cannot agree what it proves" if "actor" not in unknowns else "")
+        if object_known else UNKNOWN_OBJECT
+    )
+    consequence_line = consequence if "stakes" in unknowns else f"By the next bell, {consequence[0].lower() + consequence[1:]}"
+    open_lines = {UNKNOWN_PROBLEM, UNKNOWN_URGENCY, UNKNOWN_AUTHORITY, UNKNOWN_OBJECT, UNKNOWN_CONSEQUENCE}
+    known_facts = [
+        _trim_sentence(place),
+        None if "conflict" in unknowns else _trim_sentence(f"The immediate problem is that {trouble[0].lower() + trouble[1:]}"),
+        _trim_sentence(f"The physical object that starts the mystery is the {object_name}") if object_known else None,
+        None if "actor" in unknowns else _trim_sentence(institution),
+        None if "stakes" in unknowns else _trim_sentence(consequence),
+        knowledge,
+    ]
     repaired = {
         **brief,
         "brief_paragraphs": [
-            _trim_sentence(f"{title} begins at {place_sentence}"),
-            _trim_sentence(f"{trouble} The physical object drawing every eye is the {object_name}, and {institution_clean.lower()} cannot agree what it proves"),
-            _trim_sentence(f"By the next bell, {consequence[0].lower() + consequence[1:]}"),
+            _place_intro(title, location, place),
+            _trim_sentence(f"{trouble} {object_line}"),
+            _trim_sentence(consequence_line),
             knowledge,
         ],
-        "known_facts": [
-            _trim_sentence(place),
-            _trim_sentence(f"The immediate problem is that {trouble[0].lower() + trouble[1:]}"),
-            _trim_sentence(f"The physical object that starts the mystery is the {object_name}"),
-            _trim_sentence(institution),
-            _trim_sentence(consequence),
-            knowledge,
-        ],
+        "known_facts": [f for f in known_facts if f and f not in open_lines],
         "character_anchor": anchor,
     }
     return repaired
@@ -470,15 +503,26 @@ def answers_to_anchor(
                 continue
             values[qid] = str(option.get("value") or option.get("label") or "")
     character_name = str(char.get("name") or "the party")
-    arrival = values.get("arrival_reason") or _auto_answer(questionnaire, "arrival_reason")
-    stake = values.get("personal_stake") or _auto_answer(questionnaire, "personal_stake")
-    npc = values.get("npc_connection") or _auto_answer(questionnaire, "npc_connection")
-    party_bond = values.get("party_bond") or _auto_answer(questionnaire, "party_bond")
-    followed_complication = values.get("followed_complication") or _auto_answer(questionnaire, "followed_complication")
-    fear_of_loss = values.get("fear_of_loss") or _auto_answer(questionnaire, "fear_of_loss")
+    arrival = values.get("arrival_reason") or _coherent_default(questionnaire, "arrival_reason")
+    stake = values.get("personal_stake") or _coherent_default(questionnaire, "personal_stake")
+    npc = values.get("npc_connection") or _coherent_default(questionnaire, "npc_connection")
+    party_bond = values.get("party_bond") or _coherent_default(questionnaire, "party_bond")
+    followed_complication = values.get("followed_complication") or _coherent_default(questionnaire, "followed_complication")
+    fear_of_loss = values.get("fear_of_loss") or _coherent_default(questionnaire, "fear_of_loss")
     hook_override = " ".join(str(character_hook_override or "").split()).strip()
     if hook_override:
         stake = hook_override
+    # Who actually wrote each field?  Defaults stand in for skipped / "let the AI
+    # choose" questions and must never be mistaken for what the player established.
+    field_sources = {
+        "arrival_reason": "player" if values.get("arrival_reason") else "default",
+        "pre_scene_activity": "player" if values.get("arrival_reason") else "default",
+        "personal_stake": "player" if (values.get("personal_stake") or hook_override) else "default",
+        "known_npc_connection": "player" if values.get("npc_connection") else "default",
+        "party_bond": "player" if values.get("party_bond") else "default",
+        "followed_complication": "player" if values.get("followed_complication") else "default",
+        "fear_of_loss": "player" if values.get("fear_of_loss") else "default",
+    }
     pre_scene = _pre_scene_from_arrival(arrival)
     anchor = OpeningCharacterAnchor(
         session_id=session_id,
@@ -498,6 +542,7 @@ def answers_to_anchor(
         must_include=[v for v in (arrival, pre_scene, stake, hook_override, followed_complication, fear_of_loss, npc, party_bond) if v][:7],
         must_not_include=["do not force the character to accept a quest", "do not use stale character names"],
         source=source,
+        field_sources=field_sources,
     )
     data = anchor.model_dump()
     if hook_override:
@@ -520,13 +565,55 @@ def _safe_auto_answer(question: dict[str, Any], questionnaire: dict[str, Any]) -
 
     fallbacks = {
         "arrival_reason": f"I came to understand what is happening at {location} before committing to a side.",
-        "personal_stake": f"If {concrete_fact[0].lower() + concrete_fact[1:] if concrete_fact else 'this problem is real'}, I want enough facts to choose what to do about it.",
+        "personal_stake": f"What I know so far is this: {concrete_fact.rstrip(' .!?') if concrete_fact else 'this problem is real'}. I want enough facts to choose what to do about it.",
         "followed_complication": "No extra complication followed me here; the problem in front of me is enough.",
         "fear_of_loss": "I do not want the clearest evidence or the chance to act on it to disappear.",
         "npc_connection": "No one here has an assumed history with me; I will judge them by what they do now.",
         "party_bond": "We agreed to face the immediate problem together until we understand what is actually happening.",
     }
     return fallbacks.get(qid, f"I will respond to the concrete situation at {location} without assuming facts that have not been established.")
+
+
+def coherent_default_answer(question: dict[str, Any], questionnaire: dict[str, Any] | None) -> str:
+    """The shared-motive, history-free answer for ``question`` (no first-option pick)."""
+    return _safe_auto_answer(question, questionnaire or {})
+
+
+def _coherent_default(questionnaire: dict[str, Any] | None, qid: str) -> str:
+    """Default for an unanswered / "let the AI choose" question.
+
+    Taking each question's first option independently produces unrelated debts,
+    fears and relationships that merely happened to be listed first.  The safe
+    defaults share one present-tense motive and invent no history.
+    """
+    for question in (questionnaire or {}).get("questions", []):
+        if question.get("id") == qid:
+            return _safe_auto_answer(question, questionnaire or {})
+    return ""
+
+
+# (negation, assertion) pairs: one answer may not deny what another asserts.
+_COHERENCE_RULES: dict[str, tuple[re.Pattern[str], re.Pattern[str]]] = {
+    "prior_history": (
+        re.compile(r"\bno one (?:here )?has an assumed history\b|\bno prior (?:relationship|history|connection)\b|\bnobody here knows me\b", re.I),
+        re.compile(r"\b(?:old|former) (?:friend|rival|ally|enemy|debt)\b|\bowe[sd]?\b|\bonce (?:helped|saved|served|knew)\b|\b(?:already )?(?:trust|distrust)\b", re.I),
+    ),
+    "followed": (
+        re.compile(r"\bnothing (?:has )?followed me\b|\bno extra complication\b|\bno complication\b", re.I),
+        re.compile(r"\b(?:followed|chas(?:ing|ed)|pursu(?:ed|ing)|tracked) me\b|\bis close behind\b|\bfollowed me here\b", re.I),
+    ),
+}
+
+
+def answers_coherence_issues(answers: dict[str, str]) -> list[str]:
+    """Contradictions inside one set of setup answers (empty means coherent)."""
+    issues: list[str] = []
+    for label, (denial, assertion) in _COHERENCE_RULES.items():
+        denies = [qid for qid, text in answers.items() if denial.search(text or "")]
+        asserts = [qid for qid, text in answers.items() if assertion.search(text or "") and not denial.search(text or "")]
+        if denies and asserts:
+            issues.append(f"{label}: '{denies[0]}' denies what '{asserts[0]}' asserts")
+    return issues
 
 
 def _parse_ai_setup_answers(raw: str | None, allowed_ids: set[str]) -> dict[str, str]:
@@ -667,18 +754,22 @@ def auto_generate_answers(
     )
     generated = _parse_ai_setup_answers(raw, allowed_ids)
 
-    return [
-        {
-            "question_id": str(q.get("id")),
-            "answer_source": "ai_choice",
-            "answer_text": (
-                generated_answer
-                if generated_answer and _is_grounded_ai_answer(generated_answer, questionnaire, char)
-                else _safe_auto_answer(q, questionnaire)
-            ),
-        }
+    chosen = {
+        str(q.get("id")): (
+            generated_answer
+            if generated_answer and _is_grounded_ai_answer(generated_answer, questionnaire, char)
+            else _safe_auto_answer(q, questionnaire)
+        )
         for q in questions
         for generated_answer in [generated.get(str(q.get("id")))]
+    }
+    if answers_coherence_issues(chosen):
+        # A mix of generated and fallback answers contradicts itself: use the
+        # shared-motive fallback for the whole set rather than a patchwork.
+        chosen = {str(q.get("id")): _safe_auto_answer(q, questionnaire) for q in questions}
+    return [
+        {"question_id": qid, "answer_source": "ai_choice", "answer_text": text}
+        for qid, text in chosen.items()
     ]
 
 
@@ -834,6 +925,14 @@ FORBIDDEN_OPENING_SCENE_PHRASES = (
 )
 
 
+UNNAMED_WITNESS = "The nearest witness"
+
+
+def _mid_sentence(name: str) -> str:
+    """Lower-case a leading article so ``name`` reads naturally mid-sentence."""
+    return name[0].lower() + name[1:] if name.startswith(("The ", "A ", "An ")) else name
+
+
 def build_opening_scene_contract(
     *,
     required: dict[str, Any] | None,
@@ -841,28 +940,45 @@ def build_opening_scene_contract(
     campaign_brief: dict[str, Any] | None,
     player_name: str = "",
     time_of_day: str = "day",
+    source_intent: OpeningIntent | None = None,
 ) -> dict[str, Any]:
     req = required or {}
     anch = anchor or {}
     brief = campaign_brief or {}
     pc = str(anch.get("character_name") or player_name or "the party").strip() or "the party"
     location = str(req.get("starting_location") or brief.get("location_name") or "the opening location").strip()
-    npc_label = str(req.get("named_npc_or_visible_threat") or "Warden Hale (local witness)")
-    npc_name = npc_label.split("(")[0].strip() or "Warden Hale"
+    # An unnamed witness is honest; a made-up "Warden Hale" is invented canon.
+    npc_label = str(req.get("named_npc_or_visible_threat") or UNNAMED_WITNESS)
+    npc_name = npc_label.split("(")[0].strip() or UNNAMED_WITNESS
     object_name = _opening_object_name(req)
     sensory = _opening_sensory_detail(location, req, object_name)
     visible_problem = _opening_visible_problem(req, npc_name, object_name)
     personal_hook = _opening_personal_hook(anch, pc, object_name, location)
     pressure = _opening_pressure(req, npc_name)
     actions = _opening_action_options(npc_name, object_name, location, visible_problem)
+    pc_start = pc[0].upper() + pc[1:]
     narrative = (
         f"{location} is already too quiet for {time_of_day}.\n\n"
-        f"{pc} arrives through {sensory}. {visible_problem}\n\n"
+        f"{pc_start} arrives through {sensory}. {visible_problem}\n\n"
         f"{personal_hook}\n\n"
         f"{npc_name} is close enough to intervene, but not calm enough to hide what is wrong. "
         f"{pressure}\n\n"
-        f"{pc} can {', '.join(action[0].lower() + action[1:] for action in actions[:3])}, "
+        f"{pc_start} can {', '.join(action[0].lower() + action[1:] for action in actions[:3])}, "
         f"or {actions[3][0].lower() + actions[3][1:]}."
+    )
+    intent = source_intent or intent_from_opening(required=req, brief=brief, anchor=anch, player_name=pc)
+    source_trace = build_source_trace(
+        {
+            "location": location,
+            "named_npc": npc_name if npc_name != UNNAMED_WITNESS else "",
+            "key_object": object_name,
+            "sensory_detail": sensory,
+            "visible_problem": visible_problem,
+            "personal_hook": personal_hook,
+            "pressure_or_timer": pressure,
+            "action_options": " ".join(actions),
+        },
+        intent,
     )
     return {
         "scene_title": f"Opening - {location}",
@@ -875,6 +991,7 @@ def build_opening_scene_contract(
         "key_objects_or_clues": [object_name],
         "pressure_or_timer": pressure,
         "action_options": actions,
+        "source_trace": source_trace,
     }
 
 
@@ -885,6 +1002,7 @@ def validate_opening_scene_contract(
     campaign_brief: dict[str, Any] | None = None,
     anchor: dict[str, Any] | None = None,
     player_name: str = "",
+    source_intent: OpeningIntent | None = None,
 ) -> dict[str, Any]:
     contract = opening_scene or scene.get("opening_scene") or {}
     text = str(scene.get("text") or scene.get("narrative_body") or contract.get("opening_narrative") or "")
@@ -916,6 +1034,14 @@ def validate_opening_scene_contract(
     brief_sentences = _brief_sentences(campaign_brief or {})
     repeated = [sentence for sentence in brief_sentences if len(sentence.split()) >= 6 and sentence.lower() in lower]
     checks["no_brief_repetition"] = not repeated
+    internal = find_internal_language(text)
+    checks["no_internal_language"] = not internal
+    malformed = blocking_defects(text)
+    checks["well_formed"] = not malformed
+    unsupported: list[dict[str, str]] = []
+    if source_intent is not None:
+        unsupported = blocking_claims(find_unsupported_claims(text, source_intent, allow=[pc] if pc else ()))
+        checks["claims_supported"] = not unsupported
     if not checks["mentions_character"]:
         issues.append("Opening scene does not mention the selected character by name")
     if not checks["mentions_location"]:
@@ -934,11 +1060,20 @@ def validate_opening_scene_contract(
         issues.append("Opening scene contains generic or planner-facing phrasing")
     if repeated:
         issues.append("Opening scene repeats campaign brief sentences verbatim")
+    if internal:
+        issues.append("Opening scene contains planner or QA language: " + ", ".join(internal[:3]))
+    for defect in malformed[:3]:
+        issues.append(f"Opening scene has a malformed sentence ({defect['defect'].replace('_', ' ')}): {defect['text']}")
+    for claim in unsupported[:4]:
+        issues.append(f"Opening scene makes an unsupported {claim['kind'].replace('_', ' ')} claim: {claim['text'][:80]}")
     return {
         "valid": not issues,
         "issues": issues,
         "checks": checks,
         "repeated_brief_sentences": repeated,
+        "unsupported_claims": unsupported,
+        "internal_language": internal,
+        "malformed_sentences": malformed,
     }
 
 
@@ -1001,7 +1136,7 @@ def _class_role_label(class_name: str) -> str:
     if "paladin" in lowered:
         return "oath-sworn judge of dangerous vows"
     if "warlock" in lowered:
-        return "bearer of a pact that notices forbidden pressure"
+        return "bearer of an unspoken pact"
     if "wizard" in lowered:
         return "student of old sigils and broken formulae"
     if "rogue" in lowered:
@@ -1062,8 +1197,10 @@ def _character_reason_to_care(name: str, class_name: str, object_name: str, loca
         return f"{name} can read immediate physical danger around the {object_name} while the facts are still uncertain."
     return f"{name} has a reason to look closely at the {object_name} at {location}, while the exact personal stake remains the player's choice."
 
-def _concrete_object(seed: dict[str, Any], contract: dict[str, Any], fallback: str) -> str:
-    object_name = _opening_object_name(seed)
+def _concrete_object(seed: dict[str, Any], contract: dict[str, Any], fallback: str, *, strict: bool = False) -> str:
+    object_name = _opening_object_name(seed, neutral_default=strict)
+    if strict and object_name == NEUTRAL_OBJECT:
+        return UNKNOWN_OBJECT
     if object_name:
         return f"The physical object that starts the mystery is the {object_name}."
     text = " ".join(str(seed.get(k) or contract.get(k) or "") for k in ("inciting_event", "first_clue_or_question", "campaign_pitch", "setting_summary", "description")).lower()
@@ -1082,7 +1219,7 @@ def _concrete_object(seed: dict[str, Any], contract: dict[str, Any], fallback: s
     return f"The physical object that starts the mystery is the {fallback}."
 
 
-def _institution_or_faction(seed: dict[str, Any], contract: dict[str, Any], location: str) -> str:
+def _institution_or_faction(seed: dict[str, Any], contract: dict[str, Any], location: str, *, strict: bool = False) -> str:
     text = " ".join(str(seed.get(k) or contract.get(k) or "") for k in ("inciting_event", "first_clue_or_question", "specific_stakes", "campaign_pitch", "setting_summary", "description")).lower()
     if "guild" in text or "charter" in text or "vote" in text or "mine" in text:
         return "Guild factions are fighting over the charter."
@@ -1092,6 +1229,8 @@ def _institution_or_faction(seed: dict[str, Any], contract: dict[str, Any], loca
         return "The road wardens and local refuge keepers disagree over who controls the crossing."
     if "observatory" in location.lower() or "star" in text or "moon" in text:
         return "The observatory staff and civic watch disagree over who may seal the evidence."
+    if strict:
+        return UNKNOWN_AUTHORITY
     return "The local authority and the people caught outside its protection are already in dispute."
 
 
@@ -1105,10 +1244,12 @@ def _institution_subject(institution: str) -> str:
     return text or "the people closest to the dispute"
 
 
-def _visible_consequence(seed: dict[str, Any], contract: dict[str, Any], institution: str) -> str:
+def _visible_consequence(seed: dict[str, Any], contract: dict[str, Any], institution: str, *, strict: bool = False) -> str:
     stakes = _clean_raw(str(seed.get("specific_stakes") or seed.get("stakes") or ""))
     if stakes and not _is_raw_question(stakes) and not _is_weak_player_facing_text(stakes):
         return _trim_sentence(stakes)
+    if strict and not stakes:
+        return UNKNOWN_CONSEQUENCE
     text = " ".join(str(seed.get(k) or contract.get(k) or "") for k in ("inciting_event", "first_clue_or_question", "campaign_pitch", "setting_summary", "description")).lower()
     if "vote" in text or "charter" in text or "mine" in text:
         return "The wrong charter claim could gain legal control of the mines, roads, and workers before anyone proves fraud."
@@ -1119,12 +1260,6 @@ def _visible_consequence(seed: dict[str, Any], contract: dict[str, Any], institu
     if "road" in text or "pass" in text or "route" in text:
         return "The crossing may close, stranding travelers with whoever caused the first disappearance."
     return f"{institution} could settle the matter publicly before the first evidence is understood."
-
-
-def _clean_raw(raw: str) -> str:
-    text = " ".join(str(raw or "").replace("\n", " ").split()).strip()
-    text = text.strip(" .")
-    return text
 
 
 def _is_raw_question(text: str) -> bool:
@@ -1156,18 +1291,32 @@ def _is_weak_player_facing_text(text: str) -> bool:
     return any(phrase in lowered for phrase in weak)
 
 
-def _trim_sentence(text: str) -> str:
-    cleaned = _clean_raw(text)
-    if not cleaned:
-        return ""
-    return cleaned if cleaned.endswith((".", "!", "?")) else f"{cleaned}."
+# Honest placeholders for the campaign brief.  The brief's "known facts" are
+# treated as canon by players, so when nothing was established we say so
+# instead of inventing a crisis, a deadline, an authority, or an object.
+UNKNOWN_PROBLEM = "What has gone wrong here has not been established yet."
+UNKNOWN_URGENCY = "No deadline has been established yet."
+UNKNOWN_AUTHORITY = "Who holds authority here has not been established yet."
+UNKNOWN_CONSEQUENCE = "What is at stake has not been established yet."
+UNKNOWN_OBJECT = "The first physical sign of trouble has not been established yet."
+NEUTRAL_OBJECT = "first sign of trouble"
+
+# brief unknown field -> brief validation checks it waives
+_UNKNOWN_WAIVES = {
+    "conflict": "immediate_problem",
+    "stakes": "time_matters",
+    "actor": "concrete_entity",
+    "object": "concrete_entity",
+}
 
 
-def _natural_problem(seed: dict[str, Any], contract: dict[str, Any]) -> str:
+def _natural_problem(seed: dict[str, Any], contract: dict[str, Any], *, strict: bool = False) -> str:
     inciting = _clean_raw(str(seed.get("inciting_event") or ""))
     clue = _clean_raw(str(seed.get("first_clue_or_question") or ""))
     pitch = _clean_raw(str(contract.get("campaign_pitch") or contract.get("setting_summary") or contract.get("description") or ""))
     lower = " ".join([inciting, clue, pitch]).lower()
+    if strict and not (inciting or clue or pitch):
+        return UNKNOWN_PROBLEM
     if "vanish" in lower or "disappear" in lower or "missing" in lower:
         return "Travelers and witnesses have vanished, and the old route is becoming a dangerous mystery."
     if "lie" in lower or "lying" in lower or _is_raw_question(clue):
@@ -1181,10 +1330,12 @@ def _natural_problem(seed: dict[str, Any], contract: dict[str, Any]) -> str:
     return "A local crisis has made the first scene dangerous before the party arrives."
 
 
-def _natural_urgency(seed: dict[str, Any], contract: dict[str, Any]) -> str:
+def _natural_urgency(seed: dict[str, Any], contract: dict[str, Any], *, strict: bool = False) -> str:
     stakes = _clean_raw(str(seed.get("specific_stakes") or seed.get("stakes") or ""))
     if stakes and not _is_raw_question(stakes) and not _is_weak_player_facing_text(stakes):
         return _trim_sentence(stakes)
+    if strict and not stakes:
+        return UNKNOWN_URGENCY
     text = " ".join(str(seed.get(k) or contract.get(k) or "") for k in ("inciting_event", "campaign_pitch", "setting_summary")).lower()
     object_name = _opening_object_name({**contract, **seed})
     if "road" in text or "pass" in text or "route" in text:
@@ -1194,7 +1345,7 @@ def _natural_urgency(seed: dict[str, Any], contract: dict[str, Any]) -> str:
     return f"Before the final public count, the {object_name} may be locked away by whoever claims authority here."
 
 
-def _natural_rumor(seed: dict[str, Any], contract: dict[str, Any]) -> str:
+def _natural_rumor(seed: dict[str, Any], contract: dict[str, Any], *, strict: bool = False) -> str:
     rumor = _clean_raw(str(seed.get("rumor") or seed.get("conflicting_claim") or seed.get("player_decision") or ""))
     if rumor and not _is_raw_question(rumor) and not _is_weak_player_facing_text(rumor):
         return _trim_sentence(rumor)
@@ -1210,6 +1361,8 @@ def _natural_rumor(seed: dict[str, Any], contract: dict[str, Any]) -> str:
     pitch = _clean_raw(str(contract.get("campaign_pitch") or contract.get("setting_summary") or ""))
     if "sabotage" in pitch.lower():
         return "Some call it sabotage; others say the accusation is a cover for older guilt."
+    if strict:
+        return ""
     return "The rumors contradict each other, and no one wants to be the first to speak plainly."
 
 
@@ -1240,16 +1393,20 @@ def _natural_location_identity(location: str, seed: dict[str, Any], contract: di
     return f"{loc} is where the campaign's first public trouble has surfaced."
 
 
-def _opening_object_name(required: dict[str, Any]) -> str:
-    text = " ".join(str(required.get(k) or "") for k in (
-        "approved_object",
-        "first_clue_or_question",
-        "inciting_event",
-        "location_identity",
-        "campaign_pitch",
-        "setting_summary",
-        "description",
-    )).lower()
+_SEED_OBJECT_FIELDS = ("approved_object", "first_clue_or_question", "inciting_event", "location_identity")
+_CAMPAIGN_OBJECT_FIELDS = ("campaign_pitch", "setting_summary", "description")
+
+
+def _opening_object_name(required: dict[str, Any], *, neutral_default: bool = False) -> str:
+    """Name the opening's object.
+
+    ``neutral_default`` is the strict mode used for the campaign brief, whose
+    "known facts" are treated as canon.  It reads only the fields the opening
+    seed itself supplies: a lone keyword in the campaign pitch ("harvest")
+    must not become a concrete invented object ("harvest ledger").
+    """
+    fields = _SEED_OBJECT_FIELDS if neutral_default else (*_SEED_OBJECT_FIELDS, *_CAMPAIGN_OBJECT_FIELDS)
+    text = " ".join(str(required.get(k) or "") for k in fields).lower()
     if "token" in text:
         return "funeral token"
     if "corpse" in text or "body" in text:
@@ -1278,7 +1435,7 @@ def _opening_object_name(required: dict[str, Any]) -> str:
         return "sealed packet"
     if "warning" in text:
         return "damaged warning notice"
-    return "sealed letter"
+    return NEUTRAL_OBJECT if neutral_default else "sealed letter"
 
 
 def _opening_sensory_detail(location: str, required: dict[str, Any], object_name: str) -> str:
@@ -1297,11 +1454,15 @@ def _opening_sensory_detail(location: str, required: dict[str, Any], object_name
 def _opening_visible_problem(required: dict[str, Any], npc_name: str, object_name: str) -> str:
     event = _clean_raw(str(required.get("inciting_event") or required.get("immediate_problem") or ""))
     if event and not _is_raw_question(event) and not _is_weak_player_facing_text(event):
-        return f"{event}. {object_name[0].upper() + object_name[1:]} sits where everyone can see it, but no one wants to claim it."
+        return f"{event}. The {object_name} sits where everyone can see it, but no one wants to claim it."
     clue = _clean_raw(str(required.get("first_clue_or_question") or ""))
     if "lying" in clue.lower() or _is_raw_question(clue):
-        return f"Three accounts already contradict each other while {npc_name} guards the {object_name} like it might accuse someone aloud."
+        return f"Three accounts already contradict each other while {_mid_sentence(npc_name)} guards the {object_name} like it might accuse someone aloud."
     return f"{npc_name} stands beside the {object_name}, and the crowd has gone quiet in the wrong way."
+
+
+def pc_start_sentence(pc: str) -> str:
+    return pc[0].upper() + pc[1:] if pc else pc
 
 
 def _opening_personal_hook(anchor: dict[str, Any], pc: str, object_name: str, location: str) -> str:
@@ -1309,14 +1470,14 @@ def _opening_personal_hook(anchor: dict[str, Any], pc: str, object_name: str, lo
     stake = _clean_raw(str(anchor.get("personal_stake") or ""))
     fear = _clean_raw(str(anchor.get("fear_of_loss") or ""))
     if arrival and stake:
-        return f"{pc} reaches {location} with a reason already in motion, and the {object_name} turns that reason into an immediate choice."
+        return f"{pc_start_sentence(pc)} reaches {location} with a reason already in motion, and the {object_name} turns that reason into an immediate choice."
     if arrival:
-        return f"{pc} reaches {location} because the trail here already touches a promise, debt, or danger they cannot ignore."
+        return f"{pc_start_sentence(pc)} reaches {location} with a reason of their own, and the {object_name} makes it urgent."
     if stake:
         return f"For {pc}, the {object_name} is personal enough that leaving it to strangers would cost more than time."
     if fear:
-        return f"{pc} can feel the old fear behind this moment tighten as the {object_name} draws every eye."
-    return f"{pc} recognizes enough about {object_name} and {location} to know this is not ordinary trouble."
+        return f"{pc_start_sentence(pc)} feels the weight of what could be lost as the {object_name} draws every eye."
+    return f"{pc_start_sentence(pc)} can see for themselves that the {object_name} at {location} is no ordinary matter."
 
 
 def _opening_pressure(required: dict[str, Any], npc_name: str) -> str:
@@ -1328,7 +1489,7 @@ def _opening_pressure(required: dict[str, Any], npc_name: str) -> str:
     if "dusk" in lower or "dawn" in lower or "hour" in lower:
         return f"{npc_name} keeps glancing at the sinking light because the lead will be gone before the next watch changes."
     if "road" in lower or "pass" in lower or "close" in lower:
-        return f"By dusk, the pass wardens will close the road and {npc_name} will lose the only cooperative witness."
+        return f"By dusk, the pass wardens will close the road and {_mid_sentence(npc_name)} will lose the only cooperative witness."
     if "harbor" in lower or "envoy" in lower:
         return "When the tide turns, the harbor watch will seal the quay and the clearest lead will be moved."
     return "Before the next bell, someone here will leave with the clearest lead."
@@ -1337,7 +1498,7 @@ def _opening_pressure(required: dict[str, Any], npc_name: str) -> str:
 def _opening_action_options(npc_name: str, object_name: str, location: str, visible_problem: str) -> list[str]:
     options = [
         f"Study the {object_name}",
-        f"Question {npc_name}",
+        f"Question {_mid_sentence(npc_name)}",
         f"Watch {location} quietly",
     ]
     if "survivor" in visible_problem.lower() or "account" in visible_problem.lower():
@@ -1357,19 +1518,14 @@ def _brief_sentences(campaign_brief: dict[str, Any]) -> list[str]:
     return list(dict.fromkeys(sentences))
 
 
-def _auto_answer(questionnaire: dict[str, Any] | None, qid: str) -> str:
-    for q in (questionnaire or {}).get("questions", []):
-        if q.get("id") == qid and q.get("options"):
-            for opt in q["options"]:
-                if opt.get("id") == "ai_choose":
-                    continue
-                return str(opt.get("value") or opt.get("label") or "")
-    return ""
+_FIRST_PERSON = re.compile(r"^\s*(?:i|i'm|i\u2019m|i've|i\u2019ve|i'd|we|we're|my|our)\b", re.IGNORECASE)
 
 
 def _pre_scene_from_arrival(arrival: str) -> str:
     if not arrival:
         return ""
+    if _FIRST_PERSON.match(arrival):
+        return ""  # a first-person answer cannot be turned into "was already trying to I ..."
     first = arrival[0].lower() + arrival[1:] if arrival else arrival
     return f"was already trying to {first.rstrip('.')}"
 

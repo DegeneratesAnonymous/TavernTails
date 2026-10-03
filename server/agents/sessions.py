@@ -32,6 +32,16 @@ from .canon_manager import (
 )
 from .content_bundles import build_content_bundle, ensure_content_bundle
 from .entity_schemas import EntityAssociation, PlayerEntityCard
+from .generation_intent import (
+    OpeningIntent,
+    capitalize_sentences,
+    definite,
+    fact_discipline_prompt,
+    intent_from_opening,
+    map_paragraphs,
+    split_sentences,
+    strip_internal_paragraphs,
+)
 from .memory_extractor import extract_memory
 from .narrative_director import DirectorOutput
 from .narrative_director import direct_scene as narrative_direct_scene
@@ -40,6 +50,7 @@ from .opening_setup import (
     auto_generate_anchor,
     auto_generate_answers,
     build_opening_scene_contract,
+    coherent_default_answer,
     generate_questionnaire,
     validate_first_scene_contract,
     validate_opening_anchor,
@@ -244,32 +255,49 @@ def _opening_anchor_context(anchor: dict) -> dict:
     }
 
 
+# The exact "nothing here" forms our own safe defaults produce.  A player's own
+# answer that merely starts with "no"/"never" ("Never let my sister vanish again")
+# is a real stake and must be kept.
+_NULL_ANSWER = re.compile(
+    r"^\s*(?:no extra complication|no complication|no one here has an assumed history|nothing (?:has )?followed me|"
+    r"nobody (?:here )?(?:followed|knows) me|none of (?:them|it) followed me)\b",
+    re.IGNORECASE,
+)
+
+
 def _anchor_repair_text(anchor: dict, loc_name: str, player_name: str) -> str:
+    """Restate the character's setup answers as their own words.
+
+    Answers are first-person ("I came to...") or bare option text, so splicing
+    them into third-person grammar produces broken sentences.  They are quoted
+    instead, and "no / nothing" answers are skipped rather than contradicted.
+    """
     pc = str(anchor.get("character_name") or player_name or "the party").strip() or "the party"
     pc_sentence = pc[0].upper() + pc[1:] if pc else "The party"
     loc = loc_name or "the opening scene"
+
+    def said(key: str) -> str:
+        text = str(anchor.get(key) or "").strip()
+        return "" if not text or _NULL_ANSWER.match(text) else text.replace('"', "'")
+
+    def quoted(text: str) -> str:
+        """Quote ``text`` keeping its own terminal mark (?, !, .) instead of adding a second one."""
+        text = text.rstrip()
+        return f'"{text if text.endswith((".", "?", "!")) else text + "."}"'
+
     pieces: list[str] = []
-    arrival = str(anchor.get("arrival_reason") or "").strip().rstrip(".")
-    pre_scene = str(anchor.get("pre_scene_activity") or "").strip().rstrip(".")
-    stake = str(anchor.get("personal_stake") or "").strip().rstrip(".")
-    npc_connection = str(anchor.get("known_npc_connection") or "").strip().rstrip(".")
-    party_bond = str(anchor.get("party_bond") or "").strip().rstrip(".")
-    complication = str(anchor.get("followed_complication") or "").strip().rstrip(".")
-    fear = str(anchor.get("fear_of_loss") or "").strip().rstrip(".")
-    if arrival:
-        pieces.append(f"{pc_sentence} reaches {loc} because {arrival}.")
-    if pre_scene:
-        pieces.append(f"Before anyone can control the moment, {pc_sentence} {pre_scene}.")
-    if stake:
-        pieces.append(f"The moment is personal because {stake}.")
-    if complication:
-        pieces.append(f"A complication has followed close behind: {complication}.")
-    if fear:
-        pieces.append(f"What can be lost is clear: {fear}.")
-    if npc_connection:
-        pieces.append(f"{npc_connection}.")
-    if party_bond and pc.lower() == "the party":
-        pieces.append(f"The party stays together because {party_bond}.")
+    if said("arrival_reason"):
+        pieces.append(f"{pc_sentence} reaches {loc} with one purpose in mind: {quoted(said('arrival_reason'))}")
+    if said("personal_stake"):
+        pieces.append(f"Why it matters to {pc}: {quoted(said('personal_stake'))}")
+    if said("followed_complication"):
+        pieces.append(f"What followed {pc} here: {quoted(said('followed_complication'))}")
+    if said("fear_of_loss"):
+        pieces.append(f"What {pc} cannot afford to lose: {quoted(said('fear_of_loss'))}")
+    if said("known_npc_connection"):
+        pieces.append(f"On the people present, {pc} says: {quoted(said('known_npc_connection'))}")
+    if said("party_bond") and pc.lower() == "the party":
+        pieces.append(f"The party stays together: {quoted(said('party_bond'))}")
     return "\n\n".join(pieces[:3])
 
 
@@ -339,16 +367,21 @@ def _apply_first_scene_contract(
             "Question the nearest named contact",
             "Watch who tries to leave",
         ]
-    body = str(scene.get("narrative_body") or scene.get("text") or "")
-    for forbidden in (
+    body = strip_internal_paragraphs(str(scene.get("narrative_body") or scene.get("text") or ""))
+    # Filler cliches are removed with their whole sentence; splicing replacement
+    # words into the middle of a sentence leaves broken prose.
+    cliches = (
         "follows the first choice through",
         "the useful detail is not separate from the danger",
         "the first witness",
-        "the story plan",
-        "the scene should",
         "a safe road becomes unsafe",
-    ):
-        body = re.sub(re.escape(forbidden), "the pressure in the moment becomes visible", body, flags=re.IGNORECASE)
+    )
+    body = map_paragraphs(
+        body,
+        lambda para: " ".join(
+            sentence for sentence in split_sentences(para) if not any(c in sentence.lower() for c in cliches)
+        ),
+    )
     body = body.replace(" a underground", " an underground").replace(" an surface", " a surface")
     if anchor_text and anchor_text.lower() not in body.lower():
         body = f"{anchor_text}\n\n{body}".strip()
@@ -374,6 +407,32 @@ def _apply_first_scene_contract(
     return scene, validation, repaired_dice
 
 
+def _opening_source_intent(
+    *,
+    required: dict,
+    opening_anchor: dict,
+    campaign_brief: dict,
+    campaign_settings: dict | None,
+    campaign_contract: dict | None,
+    player_name: str,
+    character: dict | None = None,
+) -> OpeningIntent:
+    """Everything the opening scene is allowed to claim, with provenance.
+
+    ``character`` carries the selected character's backstory / bonds, so claims
+    the player actually wrote are not mistaken for inventions.
+    """
+    return intent_from_opening(
+        required=required,
+        brief=campaign_brief,
+        anchor=opening_anchor,
+        settings=campaign_settings,
+        contract=campaign_contract,
+        character=character,
+        player_name=player_name,
+    )
+
+
 def _apply_concrete_opening_scene_contract(
     scene: dict,
     *,
@@ -382,6 +441,7 @@ def _apply_concrete_opening_scene_contract(
     campaign_brief: dict,
     player_name: str,
     time_of_day: str,
+    source_intent: OpeningIntent | None = None,
 ) -> tuple[dict, dict]:
     effective_required = {
         **(required or {}),
@@ -393,6 +453,7 @@ def _apply_concrete_opening_scene_contract(
         campaign_brief=campaign_brief,
         player_name=player_name,
         time_of_day=time_of_day,
+        source_intent=source_intent,
     )
     validation = validate_opening_scene_contract(
         scene=scene,
@@ -400,6 +461,7 @@ def _apply_concrete_opening_scene_contract(
         campaign_brief=campaign_brief,
         anchor=opening_anchor,
         player_name=player_name,
+        source_intent=source_intent,
     )
     if not validation.get("valid"):
         actions = opening_scene.get("action_options") or []
@@ -427,6 +489,7 @@ def _apply_concrete_opening_scene_contract(
             campaign_brief=campaign_brief,
             anchor=opening_anchor,
             player_name=player_name,
+            source_intent=source_intent,
         )
         validation["repair_applied"] = True
     else:
@@ -986,13 +1049,14 @@ def _action_response_scene(
     elif any(word in lower for word in ("search", "inspect", "examine", "investigate", "track", "look")):
         title = "The Detail Out of Place"
         target_detail = approved_object or approved_clue or concrete_detail
+        target_ref = definite(target_detail)
         witness = approved_npc or "the nearest witness"
         body = (
-            f"{pc} slows down and lets {loc} become physical: scuffs, dust, disturbed edges, and {target_detail} "
+            f"{pc} slows down and lets {loc} become physical: scuffs, dust, disturbed edges, and {target_ref} "
             "held against the light long enough for the false story to split from the real one.\n\n"
-            f"The clearest sign is small, but fresh. {approved_clue or f'The {target_detail} points away from the center of attention.'} "
+            f"The clearest sign is small, but fresh. {approved_clue or f'{target_ref[0].upper() + target_ref[1:]} points away from the center of attention.'} "
             f"{witness} sees the same detail and goes still.\n\n"
-            f"Once seen, {target_detail} becomes hard to ignore. A smear breaks the pattern nearby, and a thread catches "
+            f"Once seen, {target_ref} becomes hard to ignore. A smear breaks the pattern nearby, and a thread catches "
             "on a rough edge as if someone passed through in a hurry.\n\n"
             f"{stakes}"
         )
@@ -1030,7 +1094,7 @@ def _action_response_scene(
 
     return {
         "title": title,
-        "narrative": body,
+        "narrative": capitalize_sentences(body),
         "objective": objective,
         "stakes": stakes,
         "clues": clues,
@@ -1621,8 +1685,8 @@ def _normalized_bridge_answers(
                 answer_text = answer_text or str(option.get("value") or option.get("label") or "")
             answer_source = answer_source or "user_choice"
         if not answer_text and answer_source == "ai_choice":
-            option = next((opt for opt in (question.get("options") or []) if str(opt.get("id") or "") != "ai_choose"), None)
-            answer_text = str((option or {}).get("value") or (option or {}).get("label") or "")
+            # Same default the anchor uses, so the stored answer and the anchor agree.
+            answer_text = coherent_default_answer(question, questionnaire) if question else ""
         if not answer_text:
             continue
         normalized.append({
@@ -2774,10 +2838,21 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         director_data_dict["opening_context"] = required_context.get("opening_context") or {}
         if opening_campaign_brief:
             director_data_dict["campaign_brief"] = opening_campaign_brief
+    opening_source_intent = _opening_source_intent(
+        required=(opening_content_bundle.get("required_content") or {}),
+        opening_anchor=opening_anchor,
+        campaign_brief=opening_campaign_brief,
+        campaign_settings=campaign_settings,
+        campaign_contract=campaign_contract,
+        player_name=player_name,
+        character=character_context,
+    )
+    director_data_dict["fact_discipline"] = fact_discipline_prompt(opening_source_intent)
     composer_output = narrative_composer_agent.compose_scene(
         scene_director_data=director_data_dict,
         player_name=player_name,
         scene_type=director_output.scene_type or "opening",
+        fact_discipline=director_data_dict["fact_discipline"],
     )
     composer_data_dict = composer_output.model_dump()
 
@@ -2970,6 +3045,15 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     }
     scene = _repair_recycled_opening_scene_if_needed(folder, scene, meta=meta)
     scene = _normalize_scene_render_fields(folder, scene)
+    opening_source_intent = _opening_source_intent(
+        required=(opening_content_bundle.get("required_content") or {}),
+        opening_anchor=opening_anchor,
+        campaign_brief=opening_campaign_brief,
+        campaign_settings=campaign_settings,
+        campaign_contract=campaign_contract,
+        player_name=player_name,
+        character=character_context,
+    )
     scene, opening_scene_validation = _apply_concrete_opening_scene_contract(
         scene,
         required=(opening_content_bundle.get("required_content") or {}),
@@ -2977,6 +3061,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         campaign_brief=opening_campaign_brief,
         player_name=player_name,
         time_of_day=time_of_day,
+        source_intent=opening_source_intent,
     )
     known_character_names = [
         str(member.get("character_name") or "")
@@ -3000,12 +3085,13 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     scene["opening_scene_validation"] = opening_scene_validation
     scene_qa_initial = run_scene_qa(
         scene=scene,
+        source_intent=opening_source_intent,
+        allowed_names=[player_name],
         campaign_contract=campaign_contract,
         campaign_scale_profile=campaign_scale_profile,
         story_shape_profile=story_shape_profile,
         scene_beat_plan=opening_scene_beat,
         content_bundle=opening_content_bundle,
-        narrative_output={"narrative": narrative.narrative, "prompt": narrative.prompt},
         player_intent={"declared_actions": [], "requested_mode": "campaign_opening"},
         recent_player_actions=[],
         current_scene=None,
@@ -3017,6 +3103,8 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     scene = apply_targeted_scene_repairs(scene, scene_qa_initial, player_name=player_name)
     scene_qa_final = run_scene_qa(
         scene=scene,
+        source_intent=opening_source_intent,
+        allowed_names=[player_name],
         campaign_contract=campaign_contract,
         campaign_scale_profile=campaign_scale_profile,
         story_shape_profile=story_shape_profile,
@@ -3049,6 +3137,12 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         "opening_bundle_context": scene.get("opening_bundle_context") or {},
         "anchor_validation": opening_anchor_validation,
         "first_scene_validation": first_scene_validation,
+        "source_trace": (scene.get("opening_scene") or {}).get("source_trace", {}),
+        "opening_unknowns": [u.field for u in opening_source_intent.unknowns],
+        "semantic_qa": {
+            "unsupported_claims": scene_qa_final.get("unsupported_claims", []),
+            "internal_language": scene_qa_final.get("internal_language", []),
+        },
     }
     if campaign_id:
         try:
@@ -3133,6 +3227,15 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     ))
     scene = _repair_recycled_opening_scene_if_needed(folder, scene, meta=meta)
     scene = _normalize_scene_render_fields(folder, scene)
+    opening_source_intent = _opening_source_intent(
+        required=(opening_content_bundle.get("required_content") or {}),
+        opening_anchor=opening_anchor,
+        campaign_brief=opening_campaign_brief,
+        campaign_settings=campaign_settings,
+        campaign_contract=campaign_contract,
+        player_name=player_name,
+        character=character_context,
+    )
     scene, opening_scene_validation = _apply_concrete_opening_scene_contract(
         scene,
         required=(opening_content_bundle.get("required_content") or {}),
@@ -3140,6 +3243,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         campaign_brief=opening_campaign_brief,
         player_name=player_name,
         time_of_day=time_of_day,
+        source_intent=opening_source_intent,
     )
     scene, first_scene_validation, dice_rolls = _apply_first_scene_contract(
         scene,
@@ -3152,6 +3256,8 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     opening_memory_delta = simulation_agent.build_memory_delta(scene, opening_world_state, opening_delta)
     scene_qa_memory = run_scene_qa(
         scene=scene,
+        source_intent=opening_source_intent,
+        allowed_names=[player_name],
         campaign_contract=campaign_contract,
         campaign_scale_profile=campaign_scale_profile,
         story_shape_profile=story_shape_profile,
@@ -3182,6 +3288,12 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         "ui_payload_validation": scene_qa_memory.get("ui_payload_validation", {}),
         "regression_tags": scene_qa_memory.get("regression_tags", []),
         "first_scene_validation": first_scene_validation,
+        "source_trace": (scene.get("opening_scene") or {}).get("source_trace", {}),
+        "opening_unknowns": [u.field for u in opening_source_intent.unknowns],
+        "semantic_qa": {
+            "unsupported_claims": scene_qa_memory.get("unsupported_claims", []),
+            "internal_language": scene_qa_memory.get("internal_language", []),
+        },
     }
     simulation_agent.atomic_write_json(folder / 'world_state.json', opening_world_state)
     simulation_agent.seed_persistent_npcs(folder, scene)
