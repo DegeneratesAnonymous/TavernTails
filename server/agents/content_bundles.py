@@ -21,6 +21,7 @@ from .generation_intent import (
     intent_with_seed,
     premise_text,
     seed_field_provenance,
+    starting_location_fact,
 )
 from .situation_contracts import (
     validate_situation,
@@ -226,7 +227,10 @@ def annotate_seed(seed: dict[str, Any], intent: OpeningIntent, *, mode: str) -> 
 
 def _established_name(intent: OpeningIntent, kind: str) -> str:
     """A short, name-like established fact of ``kind`` (never prose)."""
-    bucket = intent.locations if kind == "location" else intent.actors
+    if kind == "location":
+        start = starting_location_fact(intent)
+        return start.text if start and 0 < len(start.text.split()) <= 5 and len(start.text) <= 48 else ""
+    bucket = intent.actors
     for fact in bucket:
         if fact.established and fact.kind == kind and 0 < len(fact.text.split()) <= 5 and len(fact.text) <= 48:
             return fact.text

@@ -13,7 +13,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from .generation_intent import build_opening_intent
+from .generation_intent import build_opening_intent, starting_location_fact
 
 try:
     from ..steward_llm import chat_complete
@@ -117,7 +117,8 @@ def _deterministic_director(req: SceneDirectorRequest) -> SceneDirectorOutput:
     # One interpretation of what the player established: use it before inventing
     # a name from keywords in the summary or title.
     intent = build_opening_intent(req.campaign_settings, contract)
-    established_location = next((f.text for f in intent.locations if f.established and len(f.text.split()) <= 5), "")
+    start_fact = starting_location_fact(intent)
+    established_location = start_fact.text if start_fact and len(start_fact.text.split()) <= 5 else ""
     established_npc = next((f.text for f in intent.actors if f.established and len(f.text.split()) <= 5), "")
     loc_name = location_candidates[0] if location_candidates else (
         established_location

@@ -9,8 +9,8 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from ..steward_llm import chat_complete
-from .generation_intent import STOP_WORDS as _GROUNDING_STOP_WORDS
 from .generation_intent import (
+    ESTABLISHED,
     OpeningIntent,
     blocking_claims,
     blocking_defects,
@@ -19,6 +19,7 @@ from .generation_intent import (
     find_unsupported_claims,
     intent_from_opening,
 )
+from .generation_intent import STOP_WORDS as _GROUNDING_STOP_WORDS
 from .generation_intent import clean_text as _clean_raw
 from .generation_intent import trim_sentence as _trim_sentence
 
@@ -62,6 +63,8 @@ class CampaignBrief(BaseModel):
     location_name: str = ""
     brief_paragraphs: list[str] = Field(default_factory=list)
     known_facts: list[str] = Field(default_factory=list)
+    # Lines the generator supplied; shown to the player but not treated as canon.
+    provisional_facts: list[str] = Field(default_factory=list)
     character_entry_prompt: str = ""
     character_anchor: dict[str, str] = Field(default_factory=dict)
     # Fields the brief could not establish ("conflict", "stakes", "actor", "object").
@@ -237,6 +240,31 @@ def generate_questionnaire(
     ).model_dump()
 
 
+# Which seed fields feed each brief line, so a line can inherit their provenance.
+_LINE_SOURCES: dict[str, tuple[str, ...]] = {
+    "place": ("location_identity", "starting_location"),
+    "trouble": ("inciting_event", "immediate_problem", "first_clue_or_question"),
+    "urgency": ("specific_stakes", "time_pressure"),
+    "rumor": ("player_decision",),
+    "object": ("approved_object", "first_clue_or_question", "inciting_event"),
+    "institution": ("inciting_event", "first_clue_or_question", "specific_stakes"),
+    "consequence": ("specific_stakes",),
+}
+
+
+def _generated_seed_fields(seed: dict[str, Any]) -> set[str]:
+    """Seed fields whose provenance is weaker than the player's own word."""
+    provenance = seed.get("field_provenance") or {}
+    if not isinstance(provenance, dict):
+        return set()
+    return {f for f, p in provenance.items() if str(p) not in ESTABLISHED}
+
+
+def _line_is_provisional(line: str, generated: set[str], seed: dict[str, Any]) -> bool:
+    fields = [f for f in _LINE_SOURCES.get(line, ()) if seed.get(f)]
+    return bool(fields) and all(f in generated for f in fields)
+
+
 def build_campaign_brief(
     *,
     campaign: dict[str, Any] | None = None,
@@ -279,7 +307,14 @@ def build_campaign_brief(
         char_context,
     ]
     open_lines = {UNKNOWN_PROBLEM, UNKNOWN_URGENCY, UNKNOWN_AUTHORITY, UNKNOWN_OBJECT, UNKNOWN_CONSEQUENCE}
-    facts = [_trim_sentence(f) for f in facts if f and f not in open_lines]
+    generated = _generated_seed_fields(seed)
+    line_keys = ["place", "trouble", "urgency", "rumor", "object", "institution", "consequence", ""]
+    candidates = facts
+    facts, provisional_facts = [], []
+    for key, line in zip(line_keys, candidates, strict=True):
+        if not line or line in open_lines:
+            continue
+        (provisional_facts if key and _line_is_provisional(key, generated, seed) else facts).append(_trim_sentence(line))
     place_intro = _place_intro(title, location, place_identity)
     paragraphs = [
         place_intro,
@@ -293,6 +328,7 @@ def build_campaign_brief(
         "location_name": location,
         "brief_paragraphs": paragraphs[:4],
         "known_facts": facts[:6],
+        "provisional_facts": provisional_facts[:6],
         "unknowns": unknowns,
         "character_anchor": anchor,
         "character_entry_prompt": f"{char_name} arrives before the truth is known. Decide why this mystery has pulled {char_name} here.",
@@ -463,8 +499,19 @@ def _repair_campaign_brief(
         None if "stakes" in unknowns else _trim_sentence(consequence),
         knowledge,
     ]
+    generated = _generated_seed_fields(seed)
+    keyed = ["place", "trouble", "object", "institution", "consequence", ""]
+    provisional_facts = [
+        f for key, f in zip(keyed, known_facts, strict=True)
+        if f and f not in open_lines and key and _line_is_provisional(key, generated, seed)
+    ]
+    known_facts = [
+        f for key, f in zip(keyed, known_facts, strict=True)
+        if not (key and _line_is_provisional(key, generated, seed))
+    ]
     repaired = {
         **brief,
+        "provisional_facts": provisional_facts,
         "brief_paragraphs": [
             _place_intro(title, location, place),
             _trim_sentence(f"{trouble} {object_line}"),
@@ -657,12 +704,13 @@ def _is_grounded_ai_answer(
         brief.get("title"),
         brief.get("location_name"),
         *(brief.get("known_facts") or []),
-        *(brief.get("brief_paragraphs") or []),
         _character_backstory_text(character),
     ]
+    # Brief paragraphs are generated prose; they may echo words but never ground a claim or name.
+    paragraphs = " ".join(str(p) for p in (brief.get("brief_paragraphs") or [])).casefold()
     context = " ".join(str(part) for part in context_parts if part).casefold()
     source = f"{context} {character.get('name') or ''}".casefold()
-    context_tokens = set(re.findall(r"[a-z0-9]+", context))
+    context_tokens = set(re.findall(r"[a-z0-9]+", f"{context} {paragraphs}"))
     source_tokens = set(re.findall(r"[a-z0-9]+", source))
     answer_tokens = set(re.findall(r"[a-z0-9]+", answer.casefold()))
     if not (answer_tokens - _GROUNDING_STOP_WORDS).intersection(context_tokens):

@@ -384,6 +384,18 @@ def _entity_fact_kind(entity_type: str) -> str:
     return "faction" if kind == "faction" else (kind or "entity")
 
 
+def starting_location_fact(intent: OpeningIntent) -> Fact | None:
+    """The established place the player said the story starts at.
+
+    Lore places imported from ``player_canon`` are world facts, not a start
+    point, so they never qualify; only the explicit starting-location sources do.
+    """
+    for fact in intent.locations:
+        if fact.established and not fact.source.startswith("player_canon"):
+            return fact
+    return None
+
+
 def build_opening_intent(
     settings: dict[str, Any] | None = None,
     contract: dict[str, Any] | None = None,
@@ -857,9 +869,15 @@ _HISTORY_PATTERNS: tuple[tuple[re.Pattern[str], bool], ...] = tuple(
         (r"\bdebts?\s+(?:older|owed|unpaid)\b|\b(?:hid(?:ing|es|den)|settle[sd]?|repay(?:ing|s)?)\s+(?:a\s+|an\s+|the\s+)?(?:\w+\s+)?debts?\b", True),
         (r"\bold\s+(?:friend|rival|ally|enemy|flame|oath|grudge|wound|mentor)\b[^.!?]{0,40}", False),
         (r"\b(?:swore|sworn|broke|broken|betrayed|abandoned)\s+(?:an?\s+|the\s+|his\s+|her\s+|their\s+|my\s+)?(?:oath|vow|pact|promise)\b[^.!?]{0,50}", False),
-        (rf"\b{_NAME_POSSESSIVE}\s+(?:patron|mentor|sibling|brother|sister|mother|father|spouse|lover|master)\b[^.!?]{{0,50}}", False),
+        (rf"\b{_NAME_POSSESSIVE}\s+(?:patron|mentor|sibling|brother|sister|mother|father|spouse|lover|master|apprentice|student|ward|cousin|daughter|son|rival|partner)\b[^.!?]{{0,50}}", False),
         (r"\bonce\s+(?:served|knew|loved|trusted|fought|helped|saved)\b[^.!?]{0,50}", False),
         (r"\b(?:was|were)\s+(?:raised|trained|taught)\s+by\b[^.!?]{0,40}", False),
+        (r"\bgrew\s+up\s+(?:together|with|beside|alongside)\b[^.!?]{0,40}", False),
+        (r"\bchildhood\s+(?:friends?|rivals?|sweethearts?|enem(?:y|ies))\b[^.!?]{0,40}", False),
+        (r"\b(?:friends?|rivals?|allies|enem(?:y|ies)|partners?|apprentices?|students?|wards?)\s+of\s+(?:(?-i:[A-Z][\w-]+)|him|her|them)\b[^.!?]{0,40}", False),
+        (r"\bhave\s+known\s+each\s+other\b[^.!?]{0,40}|\bhas\s+known\s+(?:you|them|him|her)\b[^.!?]{0,40}", False),
+        (r"\b(?:trained|fought|served|travell?ed|studied|worked)\s+together\b[^.!?]{0,40}", False),
+        (r"\b(?:were|was)\s+once\s+(?:friends?|lovers?|rivals?|allies|enemies|partners|married)\b[^.!?]{0,40}", False),
         (r"\bprior\s+(?:relationship|history|connection)\b[^.!?]{0,40}", False),
         (r"\b(?:remembers?|recalls?)\s+(?:this|the|that)\b[^.!?]{0,40}\bfrom\s+(?:years|long|before|another|their|his|her)\b[^.!?]{0,40}", False),
     )
@@ -908,13 +926,38 @@ _SENTENCE_STARTERS = frozenset(w.lower() for w in (
     "bells", "voices", "footsteps", "people", "travelers", "guards", "crowds", "merchants", "children", "salt",
     "wet", "dry", "old", "new", "fresh", "heavy", "thin", "quiet", "slowly", "quickly", "carefully", "gently",
 ))
-# A name is usually followed by a verb: "Vell watches the gate", "Mara slammed the door".
-_IRREGULAR_VERBS = (
-    "was|were|is|are|had|has|did|does|said|says|stood|sat|ran|came|went|saw|took|gave|held|kept|left|met|knew|spoke|"
-    "began|thought|told|felt|found|brought|fell|rose|drew|wore|heard|lay|led|made|paid|put|read|sent|set|shook|sang|"
-    "slept|struck|swore|threw|woke|wrote|would|will|could|can|must|might|should|never|always|still|then|just"
-)
-_VERB_AFTER_NAME = re.compile(rf"^\s+(?:[a-z]+(?:s|ed|es)|{_IRREGULAR_VERBS})\b")
+# Verbs that only a person (not scenery) performs: "Vell watches the gate", "Mara stood".
+_PERSON_VERBS = frozenset((
+    "said|says|asked|asks|replied|replies|whispered|whispers|muttered|mutters|shouted|shouts|called|calls|nodded|nods|"
+    "watched|watches|waited|waits|waiting|stood|stands|sat|sits|walked|walks|ran|runs|came|comes|went|goes|saw|sees|"
+    "took|takes|gave|gives|held|holds|kept|keeps|left|leaves|met|meets|knew|knows|spoke|speaks|told|tells|felt|feels|"
+    "found|finds|brought|brings|drew|draws|wore|wears|heard|hears|led|leads|looked|looks|turned|turns|smiled|smiles|"
+    "frowned|frowns|glanced|glances|grabbed|grabs|pulled|pulls|pushed|pushes|opened|opens|closed|closes|stepped|steps|"
+    "approached|approaches|hesitated|hesitates|remembered|remembers|wanted|wants|needed|needs|thought|thinks|"
+    "believed|believes|studied|studies|carried|carries|offered|offers|warned|warns|begged|begs|demanded|demands|"
+    "refused|refuses|agreed|agrees|laughed|laughs|sighed|sighs|shrugged|shrugs|beckoned|beckons|"
+    "slammed|slams|kicked|kicks|stared|stares|froze|freezes|gripped|grips|reached|reaches|whirled|spun|hurried|hurries|"
+    "entered|enters|crossed|crosses|lifted|lifts|raised|raises|dropped|drops|tossed|tosses|signaled|signals|gestured|"
+    "gestures|gazed|gazes|spotted|spots|noticed|notices|paused|pauses|stopped|stops|joined|joins|followed|follows|"
+    "ordered|orders|insisted|insists|answered|answers|cursed|curses|paced|paces|knelt|kneels|bowed|bows|stormed|storms"
+).split("|"))
+_AUXILIARIES = frozenset(("was", "were", "is", "are", "had", "has", "would", "will", "could", "can", "must", "might", "should"))
+_NEXT_WORD = re.compile(r"^\s+([a-z]+)\b(?:\s+([a-z]+)\b)?")
+
+
+def _person_action_follows(tail: str) -> bool:
+    """True when the words after a capitalized token read as a person acting.
+
+    Scenery opens sentences too ("Canvas snaps in the wind."), so a bare
+    ``-s``/``-ed`` suffix is not evidence of a name; a verb only people perform is.
+    """
+    match = _NEXT_WORD.match(tail)
+    if not match:
+        return False
+    first, second = match.group(1), match.group(2) or ""
+    if first in _PERSON_VERBS:
+        return True
+    return first in _AUXILIARIES and (second in _PERSON_VERBS or second.endswith("ing"))
 
 
 def _sentence_start(body: str, index: int) -> bool:
@@ -1049,7 +1092,7 @@ def find_unsupported_claims(
             continue
         if len(words) == 1 and starts:
             # "Vell watches the gate." opens with an invented name; "Smoke curls ..." does not.
-            if words[0].lower() in _SENTENCE_STARTERS or not _VERB_AFTER_NAME.match(body[match.end():match.end() + 24]):
+            if words[0].lower() in _SENTENCE_STARTERS or not _person_action_follows(body[match.end():match.end() + 40]):
                 continue
         if _FACTION_CAPITAL.search(phrase) or _TITLED_NAME.search(phrase):
             continue  # already judged above

@@ -1080,3 +1080,60 @@ def test_names_followed_by_irregular_verbs_are_checked(text):
 @pytest.mark.parametrize("text", ["Smoke was thick over the quay.", "It was cold at the gate.", "Then the bell rang."])
 def test_irregular_verbs_do_not_turn_ordinary_openers_into_names(text):
     assert not find_unsupported_claims(text, _corpus_intent(), allow=["Bastog"]), text
+
+
+# --- review round 4 -----------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("text", ["Canvas snaps in the wind.", "Metal glints beneath the dust.", "Cloth hangs from the rafters."])
+def test_scenery_openers_are_not_names(text):
+    assert not find_unsupported_claims(text, _corpus_intent(), allow=["Bastog"]), text
+
+
+@pytest.mark.parametrize("text", ["Mara stood by the door.", "Sera said nothing.", "Dorn was waiting at the gate.", "Vell watches the road."])
+def test_person_verbs_still_flag_invented_names(text):
+    kinds = {c["kind"] for c in find_unsupported_claims(text, _corpus_intent(), allow=["Bastog"])}
+    assert "named_entity" in kinds, text
+
+
+@pytest.mark.parametrize("text", [
+    "Mara and Vell grew up together in the lower quarter.",
+    "Sera is a childhood friend of the warden.",
+    "Dorn's apprentice vanished last winter.",
+    "They have known each other for years.",
+    "The two trained together under one master.",
+    "They were once lovers.",
+])
+def test_relationship_history_is_an_unsupported_claim(text):
+    kinds = {c["kind"] for c in find_unsupported_claims(text, _corpus_intent(), allow=["Bastog"])}
+    assert "history" in kinds, text
+
+
+def test_only_the_stated_starting_location_is_a_start_point():
+    from server.agents.generation_intent import starting_location_fact
+
+    intent = build_opening_intent(
+        {"setting_summary": "A river town."},
+        {"player_canon": [{"name": "Old Mill", "type": "place", "source": "lore"}]},
+    )
+    assert starting_location_fact(intent) is None
+    intent = build_opening_intent({"starting_location": "Ferry Landing"}, {})
+    assert starting_location_fact(intent).text == "Ferry Landing"
+
+
+def test_brief_separates_generated_lines_from_known_facts():
+    seed = {
+        "starting_location": "Ferry Landing",
+        "inciting_event": "A barge sank at dawn",
+        "field_provenance": {"inciting_event": "generated_provisional"},
+    }
+    brief = build_campaign_brief(campaign={"campaign_name": "Tide"}, character={"name": "Ila"}, opening_seed=seed)
+    assert brief["provisional_facts"]
+    assert not any("barge" in f.lower() for f in brief["known_facts"])
+
+
+def test_composer_prompt_does_not_demand_invented_stakes_details():
+    from server.agents import narrative_composer as nc
+
+    assert "name the person and deadline" not in nc._COMPOSER_SCHEMA
+    assert "only if" in nc._COMPOSER_SCHEMA
