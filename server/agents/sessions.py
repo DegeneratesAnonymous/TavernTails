@@ -38,6 +38,7 @@ from .narrative_director import direct_scene as narrative_direct_scene
 from .opening_setup import (
     answers_to_anchor,
     auto_generate_anchor,
+    auto_generate_answers,
     build_opening_scene_contract,
     generate_questionnaire,
     validate_first_scene_contract,
@@ -1531,16 +1532,12 @@ def _opening_anchor_from_meta(meta: dict) -> dict:
 def _build_opening_setup_questionnaire(folder: Path, meta: dict) -> dict:
     campaign_id = str(meta.get("campaign_id") or "")
     campaign_contract: dict = {}
-    campaign_scale_profile: dict = {}
-    story_shape_profile: dict = {}
     backstory_hooks: list[dict] = []
     campaign_settings: dict = {}
     campaign = db.get_campaign_by_id(campaign_id) if campaign_id else None
     if campaign and isinstance(campaign.metadata_json, dict):
         campaign_settings = campaign.metadata_json.get("settings") or {}
         campaign_contract, _profiles, backstory_hooks, _session_zero = _campaign_package_from_metadata(campaign)
-        campaign_scale_profile = campaign.metadata_json.get("campaign_scale_profile") or campaign_contract.get("campaign_scale_profile") or {}
-        story_shape_profile = campaign.metadata_json.get("story_shape_profile") or campaign_contract.get("story_shape_profile") or {}
     try:
         opening_seed = ensure_content_bundle(
             situation_type="campaign_opening",
@@ -1772,23 +1769,24 @@ def skip_opening_setup(session_id: str, payload: OpeningSetupSkip | None = None,
         questionnaire.get("campaign_brief") or setup.get("campaign_brief") or {},
         (payload.character_hook_override if payload else ""),
     )
+    generated_answers = auto_generate_answers(
+        questionnaire=questionnaire,
+        character=character,
+    )
     anchor = auto_generate_anchor(
         session_id=session_id,
         campaign_id=str(meta.get("campaign_id") or ""),
         questionnaire=questionnaire,
         character=character,
         character_hook_override=(payload.character_hook_override if payload else "") or "",
+        answers=generated_answers,
     )
     bridge_answers = _normalized_bridge_answers(
         session_id=session_id,
         campaign_id=str(meta.get("campaign_id") or ""),
         character=character,
         questionnaire=questionnaire,
-        answers=[
-            {"question_id": q.get("id"), "option_id": "ai_choose", "answer_source": "ai_choice"}
-            for q in (questionnaire.get("questions") or [])
-            if q.get("id")
-        ],
+        answers=generated_answers,
     )
     setup.update({
         "required": bool(setup.get("required", True)),
@@ -2030,7 +2028,7 @@ async def bootstrap_session(session_id: str, payload: BootstrapRequest, current_
                 scene_director_output={},
                 world_state={},
                 campaign_contract=_boot_campaign_contract,
-                freshness_context=_opening_freshness_context(str(campaign_id) if campaign_id else None),
+                freshness_context=_opening_freshness_context(str(_boot_campaign_id) if _boot_campaign_id else None),
                 campaign_settings=_boot_campaign_settings,
             ).get("required_content") or {}
         except Exception:
@@ -4084,7 +4082,6 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
 
     # --- Step 4c: Content Bundle + Situation Validation ---
     adv_content_bundle: dict = {}
-    adv_situation_validated = True
     if adv_situation.get("requires_content_contract"):
         adv_freshness_context = {
             "scene_count": adv_scene_count,
@@ -4100,7 +4097,6 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             freshness_context=adv_freshness_context,
             campaign_settings=campaign_settings,
         )
-        adv_situation_validated = adv_content_bundle.get("validated", True)
 
         # --- Deterministic override: if the seed replaced a tavern default,
         # patch adv_director_data NOW so the Composer and Narrative Writer use
@@ -4141,7 +4137,6 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             freshness_context={"scene_count": adv_scene_count},
             campaign_settings=campaign_settings,
         )
-        adv_situation_validated = adv_content_bundle.get("validated", True)
 
     bundle_dice_rolls = _dice_rolls_from_content_bundle(adv_content_bundle)
     if bundle_dice_rolls:

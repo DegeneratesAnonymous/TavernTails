@@ -76,8 +76,8 @@ def _log_attempt(
     detail: str = "",
 ) -> None:
     message = (
-        "llm_attempt provider=%s task_scope=%s ok=%s elapsed_ms=%d%s"
-        % (provider, task_scope or "default", ok, int(elapsed * 1000), f" detail={detail}" if detail else "")
+        f"llm_attempt provider={provider} task_scope={task_scope or 'default'} ok={ok} "
+        f"elapsed_ms={int(elapsed * 1000)}{f' detail={detail}' if detail else ''}"
     )
     if ok:
         if elapsed >= float(os.environ.get("TAVERNTAILS_LLM_SLOW_LOG_SECONDS", "2.0")):
