@@ -280,6 +280,8 @@ def _build_director_system(
         f"  Tone: {style} — {tone_desc}",
         f"  Target length: {word_target}",
     ]
+    if sd.get("fact_discipline"):
+        lines.extend(["", str(sd["fact_discipline"]), ""])
     if npc_name:
         lines.append(f"  Primary NPC: {npc_name} ({npc_state})")
         if npc_wants:
@@ -987,6 +989,22 @@ def regenerate_narrative(payload: RegenerateRequest, current_user=Depends(get_cu
         )
         write_prompt = f"What does {player} do?"
         is_real_content = True  # fallback is always real content
+
+    stored_intent = existing_scene.get('source_intent')
+    if is_real_content and isinstance(stored_intent, dict):
+        # Regenerated prose answers to the same facts as the original opening.
+        try:
+            from .generation_intent import OpeningIntent, sanitize_generated_text
+
+            opening_intent = OpeningIntent(**stored_intent)
+            allow = [player] + npc_names_list
+            write_narrative = sanitize_generated_text(write_narrative, opening_intent, allow=allow)
+            write_prompt = sanitize_generated_text(write_prompt, opening_intent, allow=allow) or f"What does {player} do?"
+        except Exception:
+            pass
+        if not write_narrative.strip():
+            # Nothing safe survived: keep the current scene rather than persist rejected prose.
+            is_real_content = False
 
     if is_real_content:
         try:

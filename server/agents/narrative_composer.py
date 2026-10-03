@@ -142,7 +142,7 @@ _COMPOSER_SCHEMA = """{
     "first_line_of_dialogue": "their opening line — must reveal a desire, fear, or clue"
   },
   "specific_problem": "what has gone wrong, in one concrete sentence — no abstractions",
-  "specific_stakes": "who suffers, what is lost, and by when — name the person and deadline",
+  "specific_stakes": "what is at risk and what is lost — name a person or deadline only if one is established",
   "unanswered_question": "the one question the player will want answered after this scene",
   "meaningful_decision": "the concrete choice the player now faces",
   "environmental_storytelling": ["one visible detail that implies history", "another clue"],
@@ -157,6 +157,7 @@ def compose_scene(
     scene_director_data: dict,
     player_name: str,
     scene_type: str = "opening",
+    fact_discipline: str = "",
 ) -> NarrativeComposerOutput:
     """Plan the scene experience from Scene Director output.
 
@@ -178,13 +179,14 @@ def compose_scene(
         "  — emotional_target: what the player should feel (never 'neutral' or 'interested')\n"
         "  — unanswered_question: the ONE question this scene leaves open\n"
         "  — meaningful_decision: the concrete choice the player faces after this scene\n"
-        "  — specific_stakes: name the person at risk, what they lose, and by when\n"
+        "  — specific_stakes: what is at risk and what is lost; name the person or the deadline only if established\n"
         "  — primary_npc.first_line_of_dialogue: their first words — must reveal desire, fear, or a clue\n"
         "  — suggested_actions: 3–4 specific actions (verb + target, not just 'investigate')\n"
         "  — world_moves: 2–4 living-world events happening outside the immediate scene\n\n"
         "RULES:\n"
         "  — NPCs must be named. Never 'a figure', 'a stranger', 'someone nearby'.\n"
-        "  — Stakes must name a specific person and a concrete deadline.\n"
+        "  — Stakes must be concrete and built from the facts you were given. Name a person or deadline only "
+        "if one is established; otherwise describe the consequence without inventing one.\n"
         "  — World moves must imply tension, opportunity, or consequence — not generic atmosphere.\n"
         "  — suggested_actions must be verb+target ('Inspect the marked object', not just 'Inspect').\n"
         "  — memorable_object must be something the player can touch, examine, or take.\n"
@@ -196,7 +198,7 @@ def compose_scene(
         f"Scene type: {scene_type}",
         f"Player character: {player_name}",
         f"Location: {loc.get('name') or 'unknown'}",
-        f"Primary NPC: {npc.get('name') or 'UNNAMED — you must invent a name'} ({npc.get('role') or 'unknown role'})",
+        f"Primary NPC: {npc.get('name') or 'UNNAMED — you may give a plain name (it is provisional)'} ({npc.get('role') or 'unknown role'})",
         f"NPC emotional state: {npc.get('current_emotional_state') or 'unknown'}",
         f"NPC wants right now: {npc.get('what_they_want') or 'unknown'}",
         f"NPC secret knowledge: {npc.get('what_they_know') or 'unknown'}",
@@ -217,6 +219,8 @@ def compose_scene(
     if world_moves_seed:
         ctx_lines.append(f"World moves seed (improve these): {'; '.join(world_moves_seed[:3])}")
 
+    if fact_discipline:
+        ctx_lines.append(fact_discipline)
     try:
         raw = chat_complete(
             [

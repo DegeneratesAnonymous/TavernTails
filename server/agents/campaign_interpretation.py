@@ -10,6 +10,9 @@ import hashlib
 import re
 from typing import Any
 
+from .generation_intent import text_of as _text
+from .generation_intent import unique as _unique
+
 POSTURES = {
     "player_fast_start",
     "guided_builder",
@@ -18,30 +21,6 @@ POSTURES = {
     "gm_assist",
     "hybrid",
 }
-
-
-def _text(*values: Any) -> str:
-    parts: list[str] = []
-    for value in values:
-        if isinstance(value, str):
-            parts.append(value)
-        elif isinstance(value, list):
-            parts.extend(str(v) for v in value)
-        elif isinstance(value, dict):
-            parts.extend(str(v) for v in value.values())
-    return " ".join(parts).lower()
-
-
-def _unique(items: list[str]) -> list[str]:
-    seen: set[str] = set()
-    out: list[str] = []
-    for item in items:
-        cleaned = str(item or "").strip()
-        key = cleaned.lower()
-        if cleaned and key not in seen:
-            seen.add(key)
-            out.append(cleaned)
-    return out
 
 
 def _unique_entities(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
