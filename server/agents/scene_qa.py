@@ -13,6 +13,15 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from .generation_intent import (
+    OpeningIntent,
+    blocking_claims,
+    find_internal_language,
+    find_unsupported_claims,
+    strip_internal_language,
+    strip_unsupported_sentences,
+)
+
 BASE = Path(__file__).resolve().parents[1] / "sessions"
 OPENING_SHAPES_PATH = BASE / "opening_shapes.json"
 
@@ -86,6 +95,9 @@ class SceneQAResult(BaseModel):
     continuity_failures: list[str] = Field(default_factory=list)
     specificity_failures: list[str] = Field(default_factory=list)
     regression_tags: list[str] = Field(default_factory=list)
+    unsupported_claims: list[dict[str, str]] = Field(default_factory=list)
+    internal_language: list[str] = Field(default_factory=list)
+    semantic_failures: list[str] = Field(default_factory=list)
 
 
 def _text(scene: dict[str, Any], narrative_output: dict[str, Any] | None = None) -> str:
@@ -607,8 +619,25 @@ def run_scene_qa(
     memory_delta: dict[str, Any] | None = None,
     ui_payload: dict[str, Any] | None = None,
     dice_rolls: list[dict[str, Any]] | None = None,
+    source_intent: OpeningIntent | dict[str, Any] | None = None,
+    allowed_names: list[str] | None = None,
 ) -> dict[str, Any]:
+    """Review a scene.
+
+    ``source_intent`` enables semantic QA: every named entity, faction, personal
+    history, and class-lore claim in the prose must follow from a fact in the
+    intent.  Planner / QA language leaking into the prose is always checked.
+    """
     text = _text(scene, narrative_output)
+    intent = OpeningIntent.model_validate(source_intent) if isinstance(source_intent, dict) else source_intent
+    internal_language = find_internal_language(text)
+    unsupported_claims = find_unsupported_claims(text, intent, allow=allowed_names or ()) if intent else []
+    blocking = blocking_claims(unsupported_claims)
+    semantic_failures = (
+        [f"Internal planning language in player-facing text: {', '.join(internal_language[:3])}"] if internal_language else []
+    ) + [
+        f"Unsupported {c['kind'].replace('_', ' ')}: {c['text'][:80]} ({c['reason']})" for c in unsupported_claims
+    ]
     truth = build_scene_truth_table(scene=scene, content_bundle=content_bundle, scene_director_data=scene.get("scene_director_data"), scene_beat_plan=scene_beat_plan)
     palette = build_campaign_palette(campaign_contract, content_bundle)
     if not truth.approved_object:
@@ -670,10 +699,15 @@ def run_scene_qa(
         + (["player_agency"] if agency_score < 70 else [])
         + (["suggested_actions"] if agency_score < 70 else [])
         + (["memory_delta"] if not memory_check["valid"] else [])
+        + (["internal_language"] if internal_language else [])
+        + (["unsupported_claims"] if unsupported_claims else [])
     ))
-    all_failures = specificity_failures + truth_failures + freshness_failures + continuity_failures + gm_failures + budget["issues"] + ui_check["issues"] + memory_check["issues"]
+    all_failures = semantic_failures + specificity_failures + truth_failures + freshness_failures + continuity_failures + gm_failures + budget["issues"] + ui_check["issues"] + memory_check["issues"]
     quality_score = int((specificity_score * 0.2) + (freshness_score * 0.15) + (continuity_score * 0.15) + (agency_score * 0.1) + (playability_score * 0.15) + (campaign_fit_score * 0.15) + (memorability_score * 0.1))
-    passed = quality_score >= 75 and not truth_failures and not continuity_failures and ui_check["valid"]
+    passed = (
+        quality_score >= 75 and not truth_failures and not continuity_failures and ui_check["valid"]
+        and not internal_language and not blocking
+    )
     if freshness_score < 50:
         passed = False
     biggest = all_failures[0] if all_failures else ""
@@ -705,6 +739,9 @@ def run_scene_qa(
             "continuity_failures": continuity_failures,
             "specificity_failures": specificity_failures + truth_failures,
             "regression_tags": _regression_tags(all_failures),
+            "unsupported_claims": unsupported_claims,
+            "internal_language": internal_language,
+            "semantic_failures": semantic_failures,
         }
     ).model_dump(by_alias=True)
 
@@ -738,7 +775,25 @@ def _regression_tags(failures: list[str]) -> list[str]:
         tags.append("continuity")
     if "location" in joined or "npc" in joined or "clue" in joined:
         tags.append("truth_table")
+    if "internal planning language" in joined:
+        tags.append("internal_language_leak")
+    if "unsupported " in joined:
+        tags.append("unsupported_claim")
     return tags
+
+
+def _map_paragraphs(text: str, fn: Any) -> str:
+    """Apply ``fn`` to each paragraph, dropping paragraphs that end up empty."""
+    paragraphs = [fn(p) for p in str(text or "").split("\n\n")]
+    return "\n\n".join(p.strip() for p in paragraphs if p and p.strip())
+
+
+def _in_world(sentence: str) -> str:
+    """One plain sentence of fiction: no planner vocabulary, ends in punctuation."""
+    cleaned = " ".join(str(sentence or "").split()).strip()
+    if not cleaned:
+        return ""
+    return cleaned if cleaned.endswith((".", "!", "?")) else f"{cleaned}."
 
 
 def apply_targeted_scene_repairs(
@@ -748,6 +803,14 @@ def apply_targeted_scene_repairs(
     player_name: str = "the party",
     recent_player_actions: list[str] | None = None,
 ) -> dict[str, Any]:
+    """Repair a scene using only in-world prose.
+
+    Repairs must never narrate the repair itself: no "the scene turns on",
+    "table details", or other planner / QA vocabulary may reach the player.
+    Sentences that carry such language, or claims the source facts do not
+    support, are removed from the existing narrative; added sentences are plain
+    fiction built from approved facts.
+    """
     targets = set(qa_result.get("repair_targets") or [])
     if not targets:
         return scene
@@ -755,25 +818,30 @@ def apply_targeted_scene_repairs(
     text = _text(scene)
     narrative = scene.get("narrative_body") or text
     prompt = scene.get("player_prompt") or f"What does {player_name} do?"
+    if "unsupported_claims" in targets and qa_result.get("unsupported_claims"):
+        claims = qa_result["unsupported_claims"]
+        narrative = _map_paragraphs(narrative, lambda para: strip_unsupported_sentences(para, claims))
+    if "internal_language" in targets:
+        narrative = _map_paragraphs(narrative, strip_internal_language)
     paragraphs = [p for p in narrative.split("\n\n") if p.strip()]
     repair_paras: list[str] = []
     pc = player_name or "the party"
     if "continuity" in targets and recent_player_actions:
         latest = str(recent_player_actions[-1]).strip()
-        repair_paras.append(f"Because {pc} chose to {latest.rstrip('.')}, the scene turns on that action instead of resetting: the nearest useful detail is now tied directly to what they just did.")
+        repair_paras.append(_in_world(f"{pc} has just chosen to {latest.rstrip('.')}, and everyone nearby is reacting to it"))
     if "location_identity" in targets and truth.approved_location:
-        repair_paras.append(f"{truth.approved_location} anchors the moment; its visible details make this problem local rather than interchangeable.")
+        repair_paras.append(_in_world(f"This is {truth.approved_location}, and everyone present knows it"))
     if "npc_intro" in targets and truth.approved_primary_npc:
         npc = truth.approved_primary_npc.split("(")[0].strip()
-        repair_paras.append(f"{npc} has a concrete role here: they can point to what changed, what they want protected, and what they are afraid will be lost next.")
+        repair_paras.append(_in_world(f"{npc} stands close enough to speak"))
     if "clue_presentation" in targets and truth.approved_clue:
-        repair_paras.append(f"The clearest clue is this: {truth.approved_clue.rstrip('.')}.")
+        clue = truth.approved_clue.rstrip(".")
+        repair_paras.append(_in_world(f"The question no one can answer: {clue}" if clue.endswith("?") or clue.lower().startswith(("who ", "what ", "why ", "where ", "when ", "how ")) else clue))
     if "stakes" in targets and truth.approved_stakes:
-        repair_paras.append(f"The immediate consequence is concrete: {truth.approved_stakes.rstrip('.')}.")
+        repair_paras.append(_in_world(truth.approved_stakes))
     if "specificity" in targets:
         concrete_bits = [bit for bit in (truth.approved_clue, truth.approved_object, truth.approved_stakes) if bit]
-        if concrete_bits:
-            repair_paras.append("The scene's concrete table details are: " + "; ".join(bit.rstrip(".") for bit in concrete_bits[:3]) + ".")
+        repair_paras.extend(_in_world(bit) for bit in concrete_bits[:3])
     if "player_agency" in targets or "suggested_actions" in targets or "ending_beat" in targets:
         options = truth.approved_possible_actions or [
             "inspect the clue", "question the witness", "secure the location", "follow the freshest lead",
@@ -781,12 +849,11 @@ def apply_targeted_scene_repairs(
         prompt = f"What does {pc} do: {', '.join(options[:3])}, or something else?"
         scene["suggested_actions"] = options[:4]
         scene["choices"] = [{"id": f"action_{i}", "label": action} for i, action in enumerate(options[:4])]
+    repair_paras = [p for p in dict.fromkeys(repair_paras) if p and not find_internal_language(p)]
     if repair_paras:
-        if paragraphs:
-            paragraphs.extend(repair_paras)
-            narrative = "\n\n".join(paragraphs)
-        else:
-            narrative = "\n\n".join(repair_paras)
+        paragraphs.extend(repair_paras)
+    if paragraphs:
+        narrative = "\n\n".join(paragraphs)
     scene["narrative_body"] = narrative
     scene["player_prompt"] = prompt
     scene["text"] = f"{narrative}\n\n{prompt}".strip()

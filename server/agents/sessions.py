@@ -32,6 +32,7 @@ from .canon_manager import (
 )
 from .content_bundles import build_content_bundle, ensure_content_bundle
 from .entity_schemas import EntityAssociation, PlayerEntityCard
+from .generation_intent import OpeningIntent, intent_from_opening
 from .memory_extractor import extract_memory
 from .narrative_director import DirectorOutput
 from .narrative_director import direct_scene as narrative_direct_scene
@@ -374,6 +375,26 @@ def _apply_first_scene_contract(
     return scene, validation, repaired_dice
 
 
+def _opening_source_intent(
+    *,
+    required: dict,
+    opening_anchor: dict,
+    campaign_brief: dict,
+    campaign_settings: dict | None,
+    campaign_contract: dict | None,
+    player_name: str,
+) -> OpeningIntent:
+    """Everything the opening scene is allowed to claim, with provenance."""
+    return intent_from_opening(
+        required=required,
+        brief=campaign_brief,
+        anchor=opening_anchor,
+        settings=campaign_settings,
+        contract=campaign_contract,
+        player_name=player_name,
+    )
+
+
 def _apply_concrete_opening_scene_contract(
     scene: dict,
     *,
@@ -382,6 +403,7 @@ def _apply_concrete_opening_scene_contract(
     campaign_brief: dict,
     player_name: str,
     time_of_day: str,
+    source_intent: OpeningIntent | None = None,
 ) -> tuple[dict, dict]:
     effective_required = {
         **(required or {}),
@@ -393,6 +415,7 @@ def _apply_concrete_opening_scene_contract(
         campaign_brief=campaign_brief,
         player_name=player_name,
         time_of_day=time_of_day,
+        source_intent=source_intent,
     )
     validation = validate_opening_scene_contract(
         scene=scene,
@@ -400,6 +423,7 @@ def _apply_concrete_opening_scene_contract(
         campaign_brief=campaign_brief,
         anchor=opening_anchor,
         player_name=player_name,
+        source_intent=source_intent,
     )
     if not validation.get("valid"):
         actions = opening_scene.get("action_options") or []
@@ -427,6 +451,7 @@ def _apply_concrete_opening_scene_contract(
             campaign_brief=campaign_brief,
             anchor=opening_anchor,
             player_name=player_name,
+            source_intent=source_intent,
         )
         validation["repair_applied"] = True
     else:
@@ -2970,6 +2995,14 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     }
     scene = _repair_recycled_opening_scene_if_needed(folder, scene, meta=meta)
     scene = _normalize_scene_render_fields(folder, scene)
+    opening_source_intent = _opening_source_intent(
+        required=(opening_content_bundle.get("required_content") or {}),
+        opening_anchor=opening_anchor,
+        campaign_brief=opening_campaign_brief,
+        campaign_settings=campaign_settings,
+        campaign_contract=campaign_contract,
+        player_name=player_name,
+    )
     scene, opening_scene_validation = _apply_concrete_opening_scene_contract(
         scene,
         required=(opening_content_bundle.get("required_content") or {}),
@@ -2977,6 +3010,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         campaign_brief=opening_campaign_brief,
         player_name=player_name,
         time_of_day=time_of_day,
+        source_intent=opening_source_intent,
     )
     known_character_names = [
         str(member.get("character_name") or "")
@@ -3000,6 +3034,8 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     scene["opening_scene_validation"] = opening_scene_validation
     scene_qa_initial = run_scene_qa(
         scene=scene,
+        source_intent=opening_source_intent,
+        allowed_names=[player_name],
         campaign_contract=campaign_contract,
         campaign_scale_profile=campaign_scale_profile,
         story_shape_profile=story_shape_profile,
@@ -3017,6 +3053,8 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     scene = apply_targeted_scene_repairs(scene, scene_qa_initial, player_name=player_name)
     scene_qa_final = run_scene_qa(
         scene=scene,
+        source_intent=opening_source_intent,
+        allowed_names=[player_name],
         campaign_contract=campaign_contract,
         campaign_scale_profile=campaign_scale_profile,
         story_shape_profile=story_shape_profile,
@@ -3049,6 +3087,12 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         "opening_bundle_context": scene.get("opening_bundle_context") or {},
         "anchor_validation": opening_anchor_validation,
         "first_scene_validation": first_scene_validation,
+        "source_trace": (scene.get("opening_scene") or {}).get("source_trace", {}),
+        "opening_unknowns": [u.field for u in opening_source_intent.unknowns],
+        "semantic_qa": {
+            "unsupported_claims": scene_qa_final.get("unsupported_claims", []),
+            "internal_language": scene_qa_final.get("internal_language", []),
+        },
     }
     if campaign_id:
         try:
@@ -3133,6 +3177,14 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     ))
     scene = _repair_recycled_opening_scene_if_needed(folder, scene, meta=meta)
     scene = _normalize_scene_render_fields(folder, scene)
+    opening_source_intent = _opening_source_intent(
+        required=(opening_content_bundle.get("required_content") or {}),
+        opening_anchor=opening_anchor,
+        campaign_brief=opening_campaign_brief,
+        campaign_settings=campaign_settings,
+        campaign_contract=campaign_contract,
+        player_name=player_name,
+    )
     scene, opening_scene_validation = _apply_concrete_opening_scene_contract(
         scene,
         required=(opening_content_bundle.get("required_content") or {}),
@@ -3140,6 +3192,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         campaign_brief=opening_campaign_brief,
         player_name=player_name,
         time_of_day=time_of_day,
+        source_intent=opening_source_intent,
     )
     scene, first_scene_validation, dice_rolls = _apply_first_scene_contract(
         scene,
@@ -3152,6 +3205,8 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     opening_memory_delta = simulation_agent.build_memory_delta(scene, opening_world_state, opening_delta)
     scene_qa_memory = run_scene_qa(
         scene=scene,
+        source_intent=opening_source_intent,
+        allowed_names=[player_name],
         campaign_contract=campaign_contract,
         campaign_scale_profile=campaign_scale_profile,
         story_shape_profile=story_shape_profile,
@@ -3182,6 +3237,12 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         "ui_payload_validation": scene_qa_memory.get("ui_payload_validation", {}),
         "regression_tags": scene_qa_memory.get("regression_tags", []),
         "first_scene_validation": first_scene_validation,
+        "source_trace": (scene.get("opening_scene") or {}).get("source_trace", {}),
+        "opening_unknowns": [u.field for u in opening_source_intent.unknowns],
+        "semantic_qa": {
+            "unsupported_claims": scene_qa_memory.get("unsupported_claims", []),
+            "internal_language": scene_qa_memory.get("internal_language", []),
+        },
     }
     simulation_agent.atomic_write_json(folder / 'world_state.json', opening_world_state)
     simulation_agent.seed_persistent_npcs(folder, scene)

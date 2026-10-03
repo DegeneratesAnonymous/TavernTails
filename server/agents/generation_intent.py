@@ -545,6 +545,58 @@ def intent_with_seed(intent: OpeningIntent, seed: dict[str, Any] | None) -> Open
     return out
 
 
+_ANCHOR_FIELDS = (
+    "arrival_reason", "pre_scene_activity", "personal_stake", "known_npc_connection",
+    "party_bond", "followed_complication", "fear_of_loss",
+)
+
+
+def intent_from_opening(
+    *,
+    required: dict[str, Any] | None,
+    brief: dict[str, Any] | None = None,
+    anchor: dict[str, Any] | None = None,
+    settings: dict[str, Any] | None = None,
+    contract: dict[str, Any] | None = None,
+    character: dict[str, Any] | None = None,
+    player_name: str = "",
+) -> OpeningIntent:
+    """Everything an opening scene is allowed to say, with provenance.
+
+    Layers, strongest first: what the player wrote (settings, pitch, lore,
+    backstory, *answered* setup questions), then the opening seed, then the
+    campaign brief derived from that seed.  Auto-generated setup answers are only
+    ``generated_provisional``: they cannot vouch for personal history.
+    """
+    intent = build_opening_intent(settings, contract, character=character)
+    intent = intent_with_seed(intent, required)
+    anchor = anchor or {}
+    answered = str(anchor.get("source") or "player_answered") == "player_answered"
+    for key in _ANCHOR_FIELDS:
+        value = clean_text(anchor.get(key))
+        if value:
+            intent.add(make_fact(
+                "constraint", value, "user" if answered else "generated_provisional", source=f"anchor.{key}"
+            ))
+    for name in (anchor.get("character_name"), player_name):
+        if clean_text(name):
+            intent.allowed_names.append(clean_text(name))
+    for fact_text in (brief or {}).get("known_facts") or []:
+        text = clean_text(fact_text)
+        if not text:
+            continue
+        covering = _covering_fact(text, intent, threshold=0.6)
+        intent.add(make_fact(
+            "conflict",
+            text,
+            covering.provenance if covering else "generated_provisional",
+            source="brief.known_facts",
+            derived_from=[covering.id] if covering else [],
+        ))
+    intent.allowed_names = list(dict.fromkeys(intent.allowed_names))
+    return intent
+
+
 # ---------------------------------------------------------------------------
 # Internal planning / QA language must never reach player-facing prose
 # ---------------------------------------------------------------------------
