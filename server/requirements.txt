@@ -22,7 +22,7 @@ passlib==1.7.4
 pluggy==1.6.0
 pycparser==3.0
 pydantic==2.12.5
-requests==2.33.0
+requests==2.34.2
 Pygments==2.21.0
 pytest==9.0.3
 pytest-asyncio==1.4.0
