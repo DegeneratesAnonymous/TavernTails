@@ -130,7 +130,7 @@ npm run lint -- --fix  # Auto-fix some issues
 
 #### 2. Type Checking (TypeScript)
 **Purpose**: Catch type errors in TypeScript code
-**Command**: `tsc --noEmit`
+**Command**: `npm run typecheck`
 **Blocking**: ✅ Yes - must pass
 
 **Common Issues**:
@@ -142,13 +142,13 @@ npm run lint -- --fix  # Auto-fix some issues
 **How to Fix Locally**:
 ```bash
 cd client
-npx tsc --noEmit
+npm run typecheck
 ```
 
 **Windows (paths containing `&`)**:
 ```powershell
 Set-Location client
-node node_modules/typescript/bin/tsc --noEmit
+node node_modules/typescript-native/bin/tsc --noEmit
 ```
 
 #### 3. Unit Tests (Jest/React Testing Library)

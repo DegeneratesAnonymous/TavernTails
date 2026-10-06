@@ -45,7 +45,7 @@ pytest server/tests -q
 cd client
 npm ci
 npm run lint --if-present
-npx tsc --noEmit
+npm run typecheck
 npm test -- --watchAll=false
 npm run build
 ```
