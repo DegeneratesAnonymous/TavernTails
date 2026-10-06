@@ -445,6 +445,21 @@ def build_opening_intent(
         if clean_text(value):
             intent.add(make_fact("location", clean_text(value), "user", source=source))
 
+    # Conservative explicit introductions in a prose brief. Do not infer a
+    # starting place from every capitalized word or from an imported lore list.
+    if summary:
+        place = re.match(
+            r"(?:At|In)\s+((?:[A-Z][\w'-]*\s+){0,3}[A-Z][\w'-]*(?:\s+(?:village|town|city|station|harbor|workshop))?)[,:]",
+            summary,
+        )
+        if place and not starting_location_fact(intent):
+            intent.add(make_fact("location", place.group(1), "user", source="settings.setting_summary"))
+        for actor in re.finditer(
+            r"\b(?:Clockmaker|Captain|Doctor|Keeper|Mayor|Innkeeper|Smith|Librarian|Warden)\s+([A-Z][\w'-]+\s+[A-Z][\w'-]+)\b",
+            summary,
+        ):
+            intent.add(make_fact("actor", actor.group(1), "user", source="settings.setting_summary"))
+
     for entity in contract.get("player_canon") or []:
         if not isinstance(entity, dict) or not clean_text(entity.get("name")):
             continue

@@ -961,9 +961,9 @@ def _action_response_scene(
         "Ask what everyone is avoiding",
     ]
 
-    if any(word in context for word in ("northwood", "hiding place", "slave army", "escape", "escaped", "camp", "march north", "pack up", "move on")):
+    if any(word in context for word in ("northwood", "slave army", "escapees")):
         title = "Breaking Camp"
-        if any(word in lower for word in ("pack", "move", "leave", "march", "go", "on")):
+        if re.search(r"\b(?:pack|move|leave|march|go)\b", lower):
             body = (
                 f"{pc} turns the quiet decision into motion. Blankets are rolled with stiff fingers, "
                 "cold ash is kicked apart, and every strap is checked twice because a loose buckle can sound "
@@ -3649,17 +3649,6 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             'status': generation_lock.get('status') or 'running',
         }
 
-    # --- Step 2: Collect recent player chat and analyse for dice rolls ---
-    recent_messages = db.list_chat_messages(session_id=session_id, limit=20)
-    player_actions = [
-        m.message for m in recent_messages
-        if m.role not in ('gm', 'narrator', 'system') and m.message
-    ]
-    # Opening approach from the pre-first-scene selection UI — used when there
-    # are no chat messages yet so the LLM has context for the scene tone.
-    if not player_actions and payload.opening_approach:
-        player_actions = [payload.opening_approach]
-
     # Load current scene for context
     scene_text = ''
     previous_scene: dict = {}
@@ -3670,6 +3659,31 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             scene_text = previous_scene.get('text', '')
     except Exception:
         pass
+
+    # Resolve only this round's input. Previous actions remain in story memory;
+    # replaying them here repeats rolls, travel, rests and world-clock changes.
+    cursor = previous_scene.get('last_resolved_message_id')
+    recent_messages = db.list_chat_messages(
+        session_id=session_id, limit=None, after_id=int(cursor or 0),
+    )
+    # The watermark includes migrated history too. An idle first advance of an
+    # old save must not reset it to zero and replay that history next round.
+    resolved_message_id = max([int(cursor or 0), *[int(m.id or 0) for m in recent_messages]])
+    if cursor is None:
+        # Existing saves predate the cursor. Their last narration marks the
+        # boundary between resolved history and the next round's messages.
+        last_narration = _story_last_timestamp(_load_story_entries(folder))
+        if last_narration:
+            recent_messages = [
+                m for m in recent_messages
+                if m.created_at and m.created_at.replace(tzinfo=timezone.utc) > last_narration
+            ]
+    player_actions = [
+        m.message for m in recent_messages
+        if m.role not in ('gm', 'narrator', 'system') and m.message
+    ]
+    if not player_actions and payload.opening_approach:
+        player_actions = [payload.opening_approach]
 
     selected_character_context = {}
     for member in meta.get('members', []) or []:
@@ -3931,6 +3945,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             },
             "content_bundle": {"required_content": required} if required else previous_scene.get("content_bundle", {}),
             "fast_path": "opening_choice",
+            "last_resolved_message_id": resolved_message_id,
         }
         try:
             fast_vs, fast_img_prompt, fast_refresh = run_visual_pipeline(
@@ -4198,7 +4213,12 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
     else:
         scene_summary = f"{scene_summary}\n\nSelected scene beat: {selected_scene_beat.get('scene_purpose')}"
 
+    adv_established_object = str(
+        ((previous_scene.get("content_bundle") or {}).get("required_content") or {}).get("approved_object") or ""
+    ).strip()
     adv_scene_director_output: SceneDirectorOutput = scene_director_agent.direct_scene(SceneDirectorRequest(
+        is_opening_scene=False,
+        player_actions=player_actions,
         campaign_settings=campaign_settings,
         campaign_variables=campaign_variables,
         players=[adv_player_name] if adv_player_name else [],
@@ -4305,6 +4325,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         composer_data=adv_composer_data,
         player_actions=player_actions,
         campaign_contract=campaign_contract,
+        approved_object=adv_established_object,
     ))
     action_response: dict | None = None
     narrative_fallback_used = bool((getattr(narrative, 'score_detail', {}) or {}).get('fallback_used'))
@@ -4316,7 +4337,8 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             action_count=len(player_actions),
             approved_context={
                 "clue": (adv_content_bundle.get("required_content") or {}).get("first_clue_or_question") or (adv_scene_director_output.player_visible_clues[:1] or [""])[0],
-                "object": (adv_content_bundle.get("required_content") or {}).get("approved_object") or "",
+                "object": (adv_content_bundle.get("required_content") or {}).get("approved_object")
+                or (previous_scene.get("content_bundle", {}).get("required_content") or {}).get("approved_object") or "",
                 "stakes": (adv_content_bundle.get("required_content") or {}).get("specific_stakes") or adv_scene_director_output.immediate_stakes,
                 "npc": (adv_content_bundle.get("required_content") or {}).get("named_npc_or_visible_threat") or adv_scene_director_output.primary_npc.name,
             },
@@ -4380,6 +4402,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             validator_feedback=feedback,
             player_actions=player_actions,
             campaign_contract=campaign_contract,
+            approved_object=adv_established_object,
         ))
         quality_score, quality_issues = validate_scene_quality(
             narrative_text=f"{narrative.narrative}\n\n{narrative.prompt}",
@@ -4405,6 +4428,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             immediate_stakes=adv_scene_director_output.immediate_stakes,
             sensory_detail=(adv_scene_director_output.location.sensory_details[:1] or [''])[0],
             campaign_name=meta.get('name') or session_id,
+            approved_object=adv_established_object,
         )
         narrative = narrative_agent.NarrativeResponse(
             narrative=fallback_text,
@@ -4428,6 +4452,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
     )
     new_scene = {
         'id': scene_index,
+        'last_resolved_message_id': resolved_message_id,
         'title': scene_title,
         'image': None,
         'narrative_body': narrative.narrative,

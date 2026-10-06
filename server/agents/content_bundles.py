@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import random
+import re
 from typing import Any
 
 from .generation_intent import (
@@ -272,6 +273,23 @@ def _grounded_fallback_seed(
     inciting_event = flavor_pick(_INCITING_EVENTS, recent_events, rng, premise_tokens, avoided_tokens)
     opening_question = rng.choice(_OPENING_QUESTIONS)
 
+    # A rich authored brief must not become an unrelated random-table event.
+    # Keep its factual setup verbatim when no supported premise template fits.
+    has_prose_anchor = any(
+        fact.established and fact.source == "settings.setting_summary"
+        for fact in [*intent.locations, *intent.actors]
+    )
+    premise = intent.premise.text if intent.premise and has_prose_anchor else ""
+    premise_sentences = re.split(r"(?<=[.!?])\s+", premise)
+    factual_setup = next((
+        s for s in premise_sentences
+        if s and not s.lower().startswith(("find ", "avoid ", "do not ", "don't ", "no "))
+        and not s.endswith("?")
+    ), "")
+    if factual_setup:
+        inciting_event = factual_setup.rstrip(".")
+        opening_question = "What caused this, and what can you discover here?"
+
     established_npc = _established_name(intent, "actor")
     npc_name = established_npc or _generate_npc_name(genre, rng)
     # A role drawn from a random table would contradict the player's canon for an NPC
@@ -288,7 +306,7 @@ def _grounded_fallback_seed(
         if known_type
         else f"{location_name}, where {inciting_event}."
     )
-    return {
+    result = {
         "starting_location": location_name,
         "location_type": location_type,
         "location_identity": identity,
@@ -307,12 +325,26 @@ def _grounded_fallback_seed(
             ({"type": "npc", "name": npc_name, "role": npc_role, "status": "provisional"} if npc_role
              else {"type": "npc", "name": npc_name, "status": "campaign_opening"}),
         ],
-        "generated_by": "starter_seed",
+        "generated_by": "premise_seed" if factual_setup else "starter_seed",
         "freshness_consumed": {
             "location_type": location_type,
             "event": inciting_event,
         },
     }
+    if factual_setup:
+        result["location_identity"] = factual_setup
+        result["immediate_problem"] = factual_setup
+        result["specific_stakes"] = f"The cause remains unknown; act carefully to preserve what can be learned at {location_name}."
+        result["player_decision"] = f"Examine the evidence at {location_name}, speak with {npc_name}, or observe before acting."
+        # Only a plainly authored physical possession is eligible; a full
+        # clue/question sentence is never substituted for an object name.
+        possession = re.search(r"\bhas (?:a|an|the) ([\w -]{3,60}?) (?:on|in|beside)\b", premise)
+        if possession:
+            result["approved_object"] = possession.group(1).strip()
+            result["first_clue_or_question"] = next(
+                (s for s in premise_sentences if possession.group(0) in s), factual_setup,
+            )
+    return result
 
 
 def _known_location_type(location_type: str) -> bool:
