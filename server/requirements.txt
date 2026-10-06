@@ -1,7 +1,7 @@
 alembic==1.18.4
 annotated-doc==0.0.5
 annotated-types==0.7.0
-anyio==4.11.0
+anyio==4.14.2
 bcrypt==5.0.0
 certifi==2026.2.25
 cffi==2.0.0
@@ -26,9 +26,9 @@ requests==2.33.0
 Pygments==2.20.0
 pytest==9.0.3
 pytest-asyncio==1.4.0
-PyJWT==2.13.0
+PyJWT==2.15.0
 python-multipart==0.0.31
-pypdf==6.16.1
+pypdf==6.19.0
 pdfplumber==0.11.5
 python-docx==1.2.0
 openpyxl==3.1.5
