@@ -3,6 +3,7 @@ import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, model_validator
@@ -22,6 +23,7 @@ from . import scene_director as scene_director_agent
 from . import simulation as simulation_agent
 from . import storyboard as storyboard_agent
 from . import suggestions as suggestions_agent
+from .action_resolution import movement_destination
 from .arc_planner import plan_arc
 from .campaign_interpretation import build_full_contract_package
 from .canon_manager import (
@@ -179,6 +181,12 @@ def _opening_narrative_from_seed(required: dict, player_name: str) -> str:
     npc_name = npc_label.split("(")[0].strip() or "the nearest named contact"
     pc = player_name or "the party"
     pc_sentence = pc[0].upper() + pc[1:] if pc else "The party"
+
+    if required.get("approved_object") and (required.get("field_provenance") or {}).get("approved_object") in {"user", "imported", "confirmed_canon"}:
+        # An explicit authored premise needs no invented arrival, letter,
+        # frightened witness or extra damaged prop to be playable.
+        paragraphs = list(dict.fromkeys(s for s in (event, clue, stakes, decision) if s))
+        return "\n\n".join(s.rstrip(".") + "." for s in paragraphs)
 
     if not identity:
         identity = f"{loc} is where the first real sign of trouble becomes visible"
@@ -473,6 +481,15 @@ def _apply_concrete_opening_scene_contract(
         player_name=player_name,
         source_intent=source_intent,
     )
+    # A model-written scene must not be replaced merely for omitting an
+    # invented personal hook or timer from a generated opening contract.
+    has_authored_object = any(f.kind == "object" and f.established for f in source_intent.facts()) if source_intent else False
+    failed_checks = {key for key, passed in (validation.get("checks") or {}).items() if not passed}
+    if has_authored_object and not (scene.get("generation_debug") or {}).get("fallback_used", True):
+        if failed_checks <= {"personal_hook", "pressure_timer", "no_brief_repetition"}:
+            validation["valid"] = True
+            validation["issues"] = []
+            validation["optional_unestablished_checks"] = sorted(failed_checks)
     if not validation.get("valid"):
         actions = opening_scene.get("action_options") or []
         scene = {
@@ -502,6 +519,8 @@ def _apply_concrete_opening_scene_contract(
             source_intent=source_intent,
         )
         validation["repair_applied"] = True
+        scene["generation_debug"] = {**(scene.get("generation_debug") or {}),
+                                     "fallback_used": True, "fallback_reason": "opening_contract_repair"}
     else:
         scene["opening_scene"] = opening_scene
     scene["opening_scene_validation"] = validation
@@ -545,6 +564,7 @@ def _fallback_response_from_director(
         immediate_stakes=director_data.get("immediate_stakes") or "",
         sensory_detail=sensory,
         campaign_name=session_name,
+        approved_object=director_data.get("approved_object") or "",
     )
     return narrative_agent.NarrativeResponse(
         narrative=fallback_text,
@@ -936,6 +956,9 @@ def _action_response_scene(
     approved_object = str(approved.get("object") or approved.get("approved_object") or "").strip()
     approved_stakes = str(approved.get("stakes") or approved.get("specific_stakes") or "").strip()
     approved_npc = str(approved.get("npc") or approved.get("named_npc_or_visible_threat") or "").split("(")[0].strip()
+    clue_sentence = approved_clue.rstrip(".") + "." if approved_clue else ""
+    if approved_clue and approved_clue.casefold().rstrip(".") == approved_object.casefold().rstrip("."):
+        clue_sentence = f"The lead remains {definite(approved_object)}."
     concrete_detail = approved_object or approved_clue or (
         "blackened charm" if "charm" in lower else
         "water seal" if "water" in lower or "seal" in lower else
@@ -1023,6 +1046,16 @@ def _action_response_scene(
                 "Cast a quiet protective spell",
                 "Give the group a clear marching order",
             ]
+    elif movement_destination([action]):
+        destination = movement_destination([action])
+        title = f"Arrival — {destination}"
+        body = f"{pc} leaves {loc} and reaches {destination}."
+        if approved_object:
+            body += f"\n\nThe lead remains {definite(approved_object)}; the change of place has not explained it."
+        objective = f"Decide what to investigate at {destination}."
+        clues = [approved_clue] if approved_clue else []
+        moves = []
+        actions = ["Look around", "Compare what you find with the existing evidence", "Choose whom to speak to"]
     elif any(word in lower for word in ("detect magic", "arcana", "ritual", "spell")) or (
         "cast" in lower and not any(word in lower for word in ("mage armor", "light"))
     ):
@@ -1043,19 +1076,18 @@ def _action_response_scene(
         title = "The Answer Between Answers"
         target_detail = approved_object or approved_clue or f"{loc}'s guarded clue"
         witness = approved_npc or "the witness"
-        body = (
-            f"{pc}'s question lands harder than expected. The first answer is too quick, too polished, and the second "
-            f"comes only after an uncomfortable silence from {witness}.\n\n"
-            f"The useful part is not the words. It is the glance that follows them: toward {target_detail}, "
-            f"the detail everyone else at {loc} has been carefully pretending is ordinary.\n\n"
-            f"{witness} notices that glance being noticed and changes posture, one shoulder turning as if to hide "
-            "what their hands are doing. The room keeps breathing, but it is no longer relaxed.\n\n"
-            "There is a narrow opening now. Press too softly and it closes. Press too hard and the person with the truth "
-            f"may bolt before {pc} can learn why they are afraid."
-        )
-        objective = f"Use the nervous glance to learn why {target_detail} is being protected."
-        clues = [approved_clue or "The first answer is rehearsed.", f"A nervous glance points toward {target_detail}.", f"{witness} is withholding the useful part of the truth."]
-        actions = [f"Follow the glance toward {target_detail}", "Ask a sharper follow-up", f"Separate {witness}", "Offer protection for honesty"]
+        from .action_resolution import unavailable_reply
+        resolution = approved.get("resolution") or unavailable_reply(action, witness)
+        reply = str(resolution.get("reply") or "")
+        reason = str(resolution.get("reason") or "") if resolution.get("status") == "cannot_answer" else ""
+        spoken = " ".join(part for part in (reply, reason) if part)
+        body = f'At {loc}, {pc} puts the question to {witness}.\n\n{witness} replies, “{spoken}”'
+        if approved_clue:
+            body += f"\n\n{clue_sentence}"
+        objective = f"Find a reliable answer to the question about {target_detail}."
+        clues = [approved_clue] if approved_clue else []
+        moves = []
+        actions = [f"Examine {definite(target_detail)}", "Ask a follow-up using the evidence", "Look for a record or another witness"]
     elif any(word in lower for word in ("search", "inspect", "examine", "investigate", "track", "look")):
         title = "The Detail Out of Place"
         target_detail = approved_object or approved_clue or concrete_detail
@@ -1073,6 +1105,14 @@ def _action_response_scene(
         objective = f"Use {target_detail} before the trail is disturbed."
         clues = [approved_clue or f"{target_detail} contradicts the obvious story.", f"{witness} reacts to the detail.", "Someone used a less visible route."]
         actions = [f"Follow the sign from {target_detail}", "Preserve the evidence", "Compare it to nearby surfaces", f"Ask {witness} who had access"]
+        if approved_object:
+            body = f"At {loc}, {pc} examines {target_ref}."
+            if approved_clue:
+                body += f"\n\n{clue_sentence}"
+            body += "\n\nYou can examine its surfaces and compare it with the surrounding evidence before drawing a conclusion."
+            clues = [approved_clue] if approved_clue else [target_ref]
+            moves = []
+            actions = [f"Examine {target_ref} more closely", "Compare nearby evidence", f"Ask {witness} about it"]
     elif any(word in lower for word in ("watch", "scan", "observe", "listen")):
         title = "What Moves First"
         body = (
@@ -2065,7 +2105,7 @@ async def bootstrap_session(session_id: str, payload: BootstrapRequest, current_
     time_of_day = (payload.time_of_day or 'day')
 
     if is_player_run_mode(session_id):
-        scene = {
+        scene: dict[str, Any] = {
             'id': 'opening',
             'title': f"{session_name} — Player-Run Session",
             'image': None,
@@ -2262,7 +2302,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     time_of_day = payload.time_of_day or 'day'
 
     if is_player_run_mode(session_id):
-        scene = {
+        scene: dict[str, Any] = {
             'id': 'opening',
             'title': f"{session_name} — Player-Run Session",
             'image': None,
@@ -2858,6 +2898,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         character=character_context,
     )
     director_data_dict["fact_discipline"] = fact_discipline_prompt(opening_source_intent)
+    director_data_dict["approved_object"] = (opening_content_bundle.get("required_content") or {}).get("approved_object") or ""
     composer_output = narrative_composer_agent.compose_scene(
         scene_director_data=director_data_dict,
         player_name=player_name,
@@ -2878,8 +2919,9 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         is_opening_scene=True,
         character_context=character_context,
         campaign_contract=campaign_contract,
+        approved_object=director_data_dict["approved_object"],
     ))
-    if _seed_source == "premise_seed":
+    if _seed_source == "premise_seed" and (narrative.score_detail or {}).get("fallback_used"):
         _seed_required = locals().get("_bsrc") or {}
         if opening_anchor:
             _seed_required = {
@@ -2894,7 +2936,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
             tone=derived_style,
             scene_score=90,
             score_passed=True,
-            score_detail={**(narrative.score_detail or {}), "premise_seed_opening_used": True},
+            score_detail={**(narrative.score_detail or {}), "premise_seed_opening_used": True, "fallback_used": True},
             suggested_actions=director_data_dict.get("possible_actions") or [],
             world_moves=director_data_dict.get("world_moves") or [],
         )
@@ -2942,6 +2984,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
             is_opening_scene=True,
             character_context=character_context,
             campaign_contract=campaign_contract,
+            approved_object=director_data_dict["approved_object"],
         ))
         quality_score, quality_issues = validate_scene_quality(
             narrative_text=f"{narrative.narrative}\n\n{narrative.prompt}",
@@ -3025,6 +3068,11 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         'suggested_actions': (narrative.suggested_actions or composer_output.suggested_actions or [])[:4],
         # Persisted for regeneration — gives /narrative/regenerate the full structured brief
         'scene_director_data': director_data_dict,
+        'generation_debug': {
+            'fallback_used': fallback_used or bool((narrative.score_detail or {}).get('fallback_used')),
+            'narrative': narrative.score_detail,
+            'director': director_output.generation_debug,
+        },
         'situation_type': opening_scene_beat.get("scene_type") or "campaign_opening",
         'content_bundle': opening_content_bundle,
         'ui_payload': opening_content_bundle.get('ui_payload', {}),
@@ -3480,7 +3528,9 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         'quality_score': quality_score,
         'quality_issues': quality_issues,
         'retry_used': retry_used,
-        'fallback_used': fallback_used,
+        'fallback_used': bool((scene.get('generation_debug') or {}).get('fallback_used')),
+        'narrative_generation': narrative.score_detail,
+        'director_generation': director_output.generation_debug,
         'image_prompt': image_prompt,
         'scene_score': narrative.scene_score,
         'scene_score_passed': narrative.score_passed,
@@ -4219,6 +4269,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
     adv_scene_director_output: SceneDirectorOutput = scene_director_agent.direct_scene(SceneDirectorRequest(
         is_opening_scene=False,
         player_actions=player_actions,
+        previous_scene=previous_scene,
         campaign_settings=campaign_settings,
         campaign_variables=campaign_variables,
         players=[adv_player_name] if adv_player_name else [],
@@ -4245,6 +4296,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         adv_scene_director_output.scene_type = " + ".join(selected_templates)
 
     adv_director_data = adv_scene_director_output.model_dump()
+    adv_director_data["approved_object"] = adv_established_object
 
     # --- Step 4c: Content Bundle + Situation Validation ---
     adv_content_bundle: dict = {}
@@ -4326,30 +4378,44 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         player_actions=player_actions,
         campaign_contract=campaign_contract,
         approved_object=adv_established_object,
+        known_names=[adv_player_name, current_location_name, adv_scene_director_output.primary_npc.name,
+                     *[str(n.get("name", "")) for n in mem_npc_details if n.get("name")]],
     ))
     action_response: dict | None = None
     narrative_fallback_used = bool((getattr(narrative, 'score_detail', {}) or {}).get('fallback_used'))
     if player_actions and narrative_fallback_used:
         action_response = _action_response_scene(
             player_name=adv_player_name,
-            location_name=adv_scene_director_output.location.name or current_location_name or "the current location",
+            location_name=current_location_name or adv_scene_director_output.location.name or "the current location",
             latest_action=player_actions[-1],
             action_count=len(player_actions),
             approved_context={
+                "resolution": next((r for r in adv_scene_director_output.action_resolutions
+                                    if r.get("action_index") == len(player_actions) - 1), {}),
                 "clue": (adv_content_bundle.get("required_content") or {}).get("first_clue_or_question") or (adv_scene_director_output.player_visible_clues[:1] or [""])[0],
-                "object": (adv_content_bundle.get("required_content") or {}).get("approved_object")
+                "object": adv_established_object or (adv_content_bundle.get("required_content") or {}).get("approved_object")
                 or (previous_scene.get("content_bundle", {}).get("required_content") or {}).get("approved_object") or "",
                 "stakes": (adv_content_bundle.get("required_content") or {}).get("specific_stakes") or adv_scene_director_output.immediate_stakes,
                 "npc": (adv_content_bundle.get("required_content") or {}).get("named_npc_or_visible_threat") or adv_scene_director_output.primary_npc.name,
             },
         )
+        # Several chat messages may contain questions. Preserve every planned
+        # reply even when the last action is travel or inspection.
+        for resolution in adv_scene_director_output.action_resolutions:
+            if resolution.get("action_index") == len(player_actions) - 1:
+                continue
+            reply = str(resolution.get("reply") or "").strip()
+            reason = str(resolution.get("reason") or "").strip() if resolution.get("status") == "cannot_answer" else ""
+            if reply:
+                speaker = str(resolution.get("npc") or adv_scene_director_output.primary_npc.name or "The witness")
+                action_response["narrative"] += f'\n\n{speaker} replies, “{reply} {reason}”'
         narrative = narrative_agent.NarrativeResponse(
             narrative=action_response["narrative"],
             prompt=f"What does {adv_player_name} do?",
             tone=style,
             scene_score=85,
             score_passed=True,
-            score_detail={"deterministic_action_response": True},
+            score_detail={**(narrative.score_detail or {}), "deterministic_action_response": True, "fallback_used": True},
             suggested_actions=action_response["suggested_actions"],
             world_moves=action_response["world_moves"],
         )
@@ -4403,6 +4469,8 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             player_actions=player_actions,
             campaign_contract=campaign_contract,
             approved_object=adv_established_object,
+            known_names=[adv_player_name, current_location_name, adv_scene_director_output.primary_npc.name,
+                         *[str(n.get("name", "")) for n in mem_npc_details if n.get("name")]],
         ))
         quality_score, quality_issues = validate_scene_quality(
             narrative_text=f"{narrative.narrative}\n\n{narrative.prompt}",
@@ -4450,7 +4518,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         or adv_scene_director_output.location.name
         or f"Scene — {now.strftime('%Y-%m-%d %H:%M')} UTC"
     )
-    new_scene = {
+    new_scene: dict[str, Any] = {
         'id': scene_index,
         'last_resolved_message_id': resolved_message_id,
         'title': scene_title,
@@ -4485,6 +4553,11 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         'content_bundle': adv_content_bundle,
         'ui_payload': adv_content_bundle.get('ui_payload', {}),
         'scene_director_data': adv_director_data,
+        'generation_debug': {
+            'fallback_used': fallback_used or bool((narrative.score_detail or {}).get('fallback_used')),
+            'narrative': narrative.score_detail,
+            'director': adv_scene_director_output.generation_debug,
+        },
         'composer_data': adv_composer_data,
         'simulation_delta': simulation_delta,
         'campaign_scale_profile': campaign_scale_profile,
@@ -4822,7 +4895,9 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             'score': quality_score,
             'issues': quality_issues,
             'retry_used': retry_used,
-            'fallback_used': fallback_used,
+            'fallback_used': fallback_used or bool((narrative.score_detail or {}).get('fallback_used')),
+            'narrative_generation': narrative.score_detail,
+            'director_generation': adv_scene_director_output.generation_debug,
             'contract_validator': contract_validator,
         },
         'campaign_contract': {

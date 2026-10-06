@@ -338,11 +338,12 @@ def _grounded_fallback_seed(
         result["player_decision"] = f"Examine the evidence at {location_name}, speak with {npc_name}, or observe before acting."
         # Only a plainly authored physical possession is eligible; a full
         # clue/question sentence is never substituted for an object name.
-        possession = re.search(r"\bhas (?:a|an|the) ([\w -]{3,60}?) (?:on|in|beside)\b", premise)
+        from .generation_intent import established_object
+        possession = established_object(intent)
         if possession:
-            result["approved_object"] = possession.group(1).strip()
+            result["approved_object"] = possession
             result["first_clue_or_question"] = next(
-                (s for s in premise_sentences if possession.group(0) in s), factual_setup,
+                (s for s in premise_sentences if possession in s), factual_setup,
             )
     return result
 
@@ -1098,6 +1099,16 @@ def build_content_bundle(
 
     else:
         required_content = {"situation_type": situation_type, "scene_director_summary": str(sdo)[:200]}
+
+    # Model-written bundles must carry authored objects too; a keyword-table
+    # clue or a new-scene bundle cannot replace a possession from the brief.
+    from .generation_intent import established_object
+    authored_object = established_object(build_opening_intent(campaign_settings, campaign_contract))
+    carried_object = ((previous_scene or {}).get("content_bundle") or {}).get("required_content", {}).get("approved_object")
+    if authored_object or carried_object:
+        required_content["approved_object"] = authored_object or carried_object
+        if authored_object:
+            required_content.setdefault("field_provenance", {})["approved_object"] = "user"
 
     opening_anchor = (freshness_context or {}).get("opening_anchor") or {}
     if situation_type == "campaign_opening" and isinstance(opening_anchor, dict) and opening_anchor:

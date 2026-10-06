@@ -2,6 +2,7 @@
 
 import json
 import re
+import time
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -10,6 +11,7 @@ from pydantic import BaseModel, Field
 from ..auth import get_current_user
 from ..steward_llm import chat_complete
 from . import sessions as sessions_agent
+from .action_resolution import continuation_issues, movement_destination
 from .narrative_linter import ScoreResult, feedback_for_regeneration, score_scene
 from .references import search_query
 from .scene_validator import build_fallback_scene
@@ -59,6 +61,7 @@ class NarrativeRequest(BaseModel):
         default="",
         description="Physical object the campaign established; deterministic fallback scenes must keep it as the clue.",
     )
+    known_names: list[str] = Field(default_factory=list)
 
 
 class NarrativeResponse(BaseModel):
@@ -286,6 +289,11 @@ def _build_director_system(
     ]
     if sd.get("fact_discipline"):
         lines.extend(["", str(sd["fact_discipline"]), ""])
+    if sd.get("approved_object"):
+        lines.append(f"Keep this same established object on stage: {sd['approved_object']}. Do not replace it or create a second version.")
+    if sd.get("action_resolutions"):
+        lines.append("MANDATORY QUESTION REPLIES: include these actual spoken replies verbatim, with the reason if unable. "
+                     + json.dumps(sd["action_resolutions"]))
     if npc_name:
         lines.append(f"  Primary NPC: {npc_name} ({npc_state})")
         if npc_wants:
@@ -532,7 +540,8 @@ def _build_messages(payload: NarrativeRequest, weather_desc: str, player: str, f
         loc = (sd.get("location") or {}).get("name") or ""
         npc = (sd.get("primary_npc") or {}).get("name") or ""
         # User message is a compact directive, not labels-as-content
-        user_parts = [f"Write the opening scene at {loc}." if loc else "Write the opening scene."]
+        scene_label = "opening scene" if payload.is_opening_scene else "continuation resolving the new player actions"
+        user_parts = [f"Write the {scene_label} at {loc}." if loc else f"Write the {scene_label}."]
         if npc:
             user_parts.append(f"Primary NPC on stage: {npc}.")
         conflict = sd.get("central_conflict") or ""
@@ -554,6 +563,7 @@ def _build_messages(payload: NarrativeRequest, weather_desc: str, player: str, f
 
 @router.post("/narrative/generate", response_model=NarrativeResponse)
 def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
+    started = time.perf_counter()
     weather_desc = "crisp and clear" if payload.weather == "clear" else payload.weather
     player = payload.player or "the party"
 
@@ -582,8 +592,12 @@ def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
     best_prompt = default_prompt
     best_score: ScoreResult | None = None
     feedback = payload.validator_feedback
+    rejected_issues: list[str] = []
+    attempts = 0
+    fallback_reason = ""
 
     for _attempt in range(MAX_RETRIES + 1):
+        attempts += 1
         messages = _build_messages(payload, weather_desc, player, feedback)
         text = chat_complete(
             messages,
@@ -593,10 +607,24 @@ def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
         )
 
         if not text:
+            fallback_reason = "provider_unavailable"
             break  # LLM timed out or errored — no point retrying same call immediately
 
         narrative, prompt = _parse_narrative_response(text, default_narration, default_prompt)
         result = score_scene(narrative, title=scene_title, threshold=threshold)
+        issues = []
+        if payload.approved_object and payload.approved_object.casefold() not in narrative.casefold():
+            issues.append(f"Keep the established {payload.approved_object} in the scene; do not substitute a prop.")
+        if not payload.is_opening_scene and payload.player_actions:
+            issues.extend(continuation_issues(
+                narrative, payload.player_actions, (payload.scene_director_data or {}).get("action_resolutions") or [],
+                known_names=payload.known_names, allow_new_names=bool(movement_destination(payload.player_actions)),
+            ))
+        if issues:
+            rejected_issues = issues
+            fallback_reason = "action_or_fact_check_failed"
+            feedback = "\n".join(issues)
+            continue
 
         if best_score is None or result.score > best_score.score:
             best_narrative = narrative
@@ -609,7 +637,9 @@ def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
         # Build targeted feedback for next attempt
         feedback = feedback_for_regeneration(result)
 
-    score_dict: dict = best_score.to_dict() if best_score else {}
+    score_dict: dict = {**(best_score.to_dict() if best_score else {}),
+                        "attempts": attempts, "elapsed_ms": round((time.perf_counter() - started) * 1000),
+                        "rejected_issues": rejected_issues, "fallback_used": False}
     score_val = best_score.score if best_score else 0
     score_passed = best_score.passes_threshold if best_score else False
 
@@ -638,7 +668,8 @@ def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
         best_prompt = default_prompt
         score_val = max(score_val, 75)
         score_passed = True
-        score_dict = {**score_dict, "fallback_used": True, "unsupported_default_rejected": unsupported_default}
+        score_dict = {**score_dict, "fallback_used": True, "fallback_reason": fallback_reason or "quality_score",
+                      "unsupported_default_rejected": unsupported_default}
 
     return NarrativeResponse(
         narrative=best_narrative,

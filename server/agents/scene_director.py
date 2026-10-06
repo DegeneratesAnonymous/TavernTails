@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from typing import Any
 
 from pydantic import BaseModel, Field
 
-from .generation_intent import build_opening_intent, starting_location_fact
+from .action_resolution import movement_destination, resolution_issues, unavailable_reply
+from .generation_intent import build_opening_intent, established_object, fact_discipline_prompt, starting_location_fact
 
 try:
     from ..steward_llm import chat_complete
@@ -42,6 +44,7 @@ FORBIDDEN_GENERIC = [
 class SceneDirectorRequest(BaseModel):
     is_opening_scene: bool = True
     player_actions: list[str] = Field(default_factory=list)
+    previous_scene: dict[str, Any] = Field(default_factory=dict)
     campaign_settings: dict[str, Any] = Field(default_factory=dict)
     campaign_variables: dict[str, Any] = Field(default_factory=dict)
     players: list[str] = Field(default_factory=list)
@@ -93,6 +96,42 @@ class SceneDirectorOutput(BaseModel):
     threads_to_advance: list[str] = Field(default_factory=list)
     world_moves: list[str] = Field(default_factory=list)
     source: str = "llm"  # "llm" | "deterministic"
+    action_resolutions: list[dict[str, Any]] = Field(default_factory=list)
+    generation_debug: dict[str, Any] = Field(default_factory=dict)
+
+
+def _guard_scene_facts(req: SceneDirectorRequest, out: SceneDirectorOutput) -> SceneDirectorOutput:
+    intent = build_opening_intent(req.campaign_settings, req.campaign_contract)
+    obj = established_object(intent) or str(
+        ((req.previous_scene.get("content_bundle") or {}).get("required_content") or {}).get("approved_object") or ""
+    )
+    if req.is_opening_scene:
+        if obj:
+            out.player_visible_clues = [obj]
+    elif req.previous_scene:
+        previous = req.previous_scene
+        prior_director = previous.get("scene_director") or previous.get("scene_director_data") or {}
+        prior_npc = previous.get("primary_npc") or prior_director.get("primary_npc") or {}
+        if isinstance(prior_npc, str):
+            prior_npc = {"name": prior_npc}
+        destination = movement_destination(req.player_actions)
+        prior_loc = previous.get("location") or (prior_director.get("location") or {}).get("name") or ""
+        if isinstance(prior_loc, dict):
+            prior_loc = prior_loc.get("name") or ""
+        if destination or prior_loc:
+            out.location.name = destination or str(prior_loc)
+        if not destination:
+            out.primary_npc = NPCBlueprint(**{k: v for k, v in prior_npc.items() if k in NPCBlueprint.model_fields})
+            out.secondary_entities = []
+        if obj:
+            out.player_visible_clues = [obj]
+        if out.source != "llm":
+            from .action_resolution import direct_question
+            out.action_resolutions = [
+                {"action_index": i, **unavailable_reply(a, out.primary_npc.name)}
+                for i, a in enumerate(req.player_actions) if direct_question(a)
+            ]
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -407,17 +446,35 @@ _SCHEMA = (
 
 
 def direct_scene(req: SceneDirectorRequest) -> SceneDirectorOutput:
+    started = time.perf_counter()
+    out = _direct_scene(req)
+    out.generation_debug.update({"source": out.source, "fallback_used": out.source != "llm",
+                                 "elapsed_ms": round((time.perf_counter() - started) * 1000)})
+    return out
+
+
+def _direct_scene(req: SceneDirectorRequest) -> SceneDirectorOutput:
     """Call the LLM to produce a concrete scene skeleton; falls back to deterministic output."""
     if not chat_complete:
-        return _deterministic_director(req)
+        return _guard_scene_facts(req, _deterministic_director(req))
 
     player_name = req.players[0] if req.players else "the party"
     genre = req.campaign_settings.get("genre", "fantasy")
 
     ctx: list[str] = []
+    ctx.append(fact_discipline_prompt(build_opening_intent(req.campaign_settings, req.campaign_contract)))
     if not req.is_opening_scene:
         ctx.append("This is a continuation of the current scene, not a campaign opening.")
         ctx.append("NEW PLAYER ACTIONS TO RESOLVE (chronological):\n" + "\n".join(req.player_actions))
+        ctx.append("PREVIOUS SCENE (preserve people, possessions and results):\n" + json.dumps({
+            k: req.previous_scene.get(k) for k in ("location", "primary_npc", "narrative_body", "visible_clues")
+        }))
+        ctx.append("Return action_resolutions: [{action_index: 0, status: 'answered' or 'cannot_answer', "
+                   "npc: 'name', reply: 'actual spoken answer', reason: 'explicit reason if unable'}]. "
+                   "Every direct question requires a reply, never just a nervous glance. "
+                   "Use established knowledge; do not invent a memory to fill an unknown. "
+                   "Reuse established NPCs; introduce a new named NPC only if the action moves somewhere new. "
+                   "Keep the same authored object; do not substitute or spawn another version of it.")
     if req.campaign_settings.get("world_name"):
         ctx.append(f"World: {req.campaign_settings['world_name']}")
     if genre:
@@ -608,12 +665,20 @@ def direct_scene(req: SceneDirectorRequest) -> SceneDirectorOutput:
                     continuity_notes=[str(n) for n in (data.get("continuity_notes") or [])],
                     world_moves=[str(w) for w in (data.get("world_moves") or [])],
                     source="llm",
+                    action_resolutions=[r for r in (data.get("action_resolutions") or []) if isinstance(r, dict)],
                 )
-                return _guard_against_unsupported_tavern(req, output)
+                issues = resolution_issues(req.player_actions, output.action_resolutions)
+                if issues:
+                    fallback = _guard_scene_facts(req, _deterministic_director(req))
+                    fallback.generation_debug = {"fallback_reason": "missing_question_resolution", "issues": issues}
+                    return fallback
+                return _guard_scene_facts(req, _guard_against_unsupported_tavern(req, output))
     except Exception:
         pass
 
-    return _guard_against_unsupported_tavern(req, _deterministic_director(req))
+    fallback = _guard_scene_facts(req, _guard_against_unsupported_tavern(req, _deterministic_director(req)))
+    fallback.generation_debug = {"fallback_reason": "unavailable_or_invalid_model_output"}
+    return fallback
 
 
 def build_image_prompt(sd: SceneDirectorOutput, style: str = "realistic", weather: str = "clear", time_of_day: str = "day") -> str:

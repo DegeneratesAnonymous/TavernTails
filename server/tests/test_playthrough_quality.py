@@ -161,7 +161,8 @@ def test_live_clock_mystery_resolves_specific_actions(tmp_path):
         assert "moment holds" not in body.lower()
         assert "chosen to I" not in body
         assert ". is moved" not in body
-        assert not (data.get("scene_debug") or {}).get("fallback_used"), "Fallback is not live-model validation"
+        assert not data["simulation_debug"]["scene_validator"]["fallback_used"], "Fallback is not live-model validation"
+        assert data["scene"]["scene_director_data"]["source"] == "llm"
     # The full transcript still needs a human review for actual answers,
     # fair consequences and sensible clues; keyword checks cannot prove prose quality.
 
