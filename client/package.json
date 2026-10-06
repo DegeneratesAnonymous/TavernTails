@@ -14,7 +14,7 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-scripts": "5.0.1",
-    "typescript": "^6.0.2",
+    "typescript": "^7.0.2",
     "web-vitals": "^6.2.2"
   },
   "devDependencies": {
