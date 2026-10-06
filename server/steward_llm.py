@@ -119,6 +119,21 @@ def _log_attempt(
         logger.warning(message)
 
 
+def _steward_payload(messages, scope, max_tokens, temperature, timeout) -> dict:
+    """Everything TavernTails configured is forwarded unchanged; Steward adds nothing."""
+    payload = {
+        "messages": messages,
+        "task_scope": scope,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "timeout": int(min(timeout, 90)),
+    }
+    model = os.environ.get(f"OLLAMA_MODEL_{_scope_key(scope)}")  # per-scope override only
+    if model:
+        payload["model"] = model
+    return payload
+
+
 def _chat_complete(
     messages: list[dict],
     *,
@@ -151,7 +166,7 @@ def _chat_complete(
             client = _client_for(steward_host)
             r = client.post(
                 f"{steward_host}/api/games/taverntails/ai",
-                json={"messages": messages, "task_scope": scope, "max_tokens": max_tokens, "timeout": int(min(timeout, 90))},
+                json=_steward_payload(messages, scope, max_tokens, temperature, timeout),
                 timeout=steward_attempt_timeout,
             )
             r.raise_for_status()

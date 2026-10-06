@@ -534,7 +534,7 @@ def list_pinned_messages(session_id: str) -> list[ChatMessage]:
 def send_friend_request(from_identifier: str, to_identifier: str) -> FriendRequest:
     from_user = get_user_by_identifier(from_identifier)
     to_user = get_user_by_identifier(to_identifier)
-    if not from_user or not to_user:
+    if not from_user or not to_user or from_user.id is None or to_user.id is None:
         raise ValueError("User not found")
     if from_user.id == to_user.id:
         raise ValueError("Cannot friend yourself")
