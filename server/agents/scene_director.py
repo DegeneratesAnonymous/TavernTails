@@ -40,6 +40,8 @@ FORBIDDEN_GENERIC = [
 # ---------------------------------------------------------------------------
 
 class SceneDirectorRequest(BaseModel):
+    is_opening_scene: bool = True
+    player_actions: list[str] = Field(default_factory=list)
     campaign_settings: dict[str, Any] = Field(default_factory=dict)
     campaign_variables: dict[str, Any] = Field(default_factory=dict)
     players: list[str] = Field(default_factory=list)
@@ -413,6 +415,9 @@ def direct_scene(req: SceneDirectorRequest) -> SceneDirectorOutput:
     genre = req.campaign_settings.get("genre", "fantasy")
 
     ctx: list[str] = []
+    if not req.is_opening_scene:
+        ctx.append("This is a continuation of the current scene, not a campaign opening.")
+        ctx.append("NEW PLAYER ACTIONS TO RESOLVE (chronological):\n" + "\n".join(req.player_actions))
     if req.campaign_settings.get("world_name"):
         ctx.append(f"World: {req.campaign_settings['world_name']}")
     if genre:
@@ -527,14 +532,20 @@ def direct_scene(req: SceneDirectorRequest) -> SceneDirectorOutput:
 
     system = (
         "You are a tabletop RPG Scene Director. Your job: convert campaign context into ONE concrete, "
-        "immediately playable opening scene. Every field must be specific and grounded.\n\n"
+        "immediately playable scene. Every field must be specific and grounded.\n\n"
+        + ("Continue the established situation. Resolve the new player actions before introducing a new problem. "
+           "Answer a question with information the NPC knows, or explicitly explain what they cannot answer. "
+           "An inspection must reveal an observable detail about its actual target. "
+           "A movement action must acknowledge its destination. Do not replay old actions or restart the opening.\n\n"
+           if not req.is_opening_scene else "")
+        +
         "REQUIREMENTS (non-negotiable):\n"
         f"  — location.name: use the REQUIRED LOCATION from the opening constraints if provided; otherwise a SPECIFIC named place that fits {genre} — NEVER a tavern, inn, alehouse, or pub unless the campaign explicitly demands it\n"
         f"  — primary_npc.name: use the REQUIRED NPC from the opening constraints if provided; otherwise a SPECIFIC named character — not 'a stranger' or 'a mysterious figure'\n"
         "  — central_conflict: a visible, immediate situation — not a vague mood\n"
         "  — inciting_incident: what physically happens in the opening moments — a strong verb required\n"
         f"  — why_player_is_involved: personal, professional, or accidental reason {player_name} cannot ignore this\n"
-        "  — immediate_stakes: WHO suffers, WHAT is lost, BY WHEN — name the person and the deadline\n"
+        "  — immediate_stakes: describe what is at risk using established facts; name a person or deadline only if established\n"
         "  — sensory_details: what you see, hear, or smell RIGHT NOW — physical and grounded\n"
         "  — visual_prompt_elements: 3–5 items for image generation (location + NPC + mood + key visual)\n"
         "  — world_moves: 2–4 living-world events happening OUTSIDE the immediate scene — "
@@ -560,7 +571,7 @@ def direct_scene(req: SceneDirectorRequest) -> SceneDirectorOutput:
             [{"role": "system", "content": system},
              {"role": "user", "content": "\n".join(ctx)}],
             task_scope="taverntails_scene_director",
-            max_tokens=700,
+            max_tokens=1200,
             timeout=120.0,
         )
         if raw:

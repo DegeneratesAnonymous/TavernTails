@@ -199,3 +199,13 @@ _Performed via AI-assisted codebase audit (model: gpt-4o)._
    - Chat reflects invites, notes recap (`!notes`), dice rolls, and websocket-fed updates.
 5. **Pick up next Sprint task:** Start with the “Immediate Next Steps” list above.
 6. **Run tests:** From repo root run `venv\Scripts\python.exe -m pytest server/tests` (PowerShell inherits the venv path), especially if `pytest` isn’t on PATH.
+
+## 2026-10-06 — Player playthrough fixes
+
+Preserve explicit opening facts, resolve each chat action once with a persisted
+message watermark, distinguish continuation planning from campaign openings,
+and remove malformed / invented scene-QA repair sentences. Add actual-route
+multi-round regression coverage and an opt-in live-model journey. Focused
+checks: 233 passed, 1 live test skipped. Live model and browser UX validation
+remain outstanding; see `docs/PLAYTHROUGH_REVIEW.md` for reproductions,
+acceptance criteria, provider test instructions and rollback.

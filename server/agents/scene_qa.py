@@ -160,6 +160,8 @@ def build_scene_truth_table(
 
 
 def _extract_object(rc: dict[str, Any], sd: dict[str, Any]) -> str:
+    if rc.get("approved_object"):
+        return str(rc["approved_object"]).strip()
     hay = " ".join(str(v) for v in [
         rc.get("first_clue_or_question"), rc.get("inciting_event"),
         rc.get("location_identity"), rc.get("player_decision"),
@@ -653,10 +655,8 @@ def run_scene_qa(
         if not palette_object:
             palette_object = next((str(x) for x in (palette.get("preferred_concrete_nouns") or []) if str(x).strip()), "")
         truth.approved_object = palette_object
-    if not truth.approved_stakes or any(term in truth.approved_stakes.lower() for term in ("forces moving", "situation is still moving", "things will get worse")):
-        concrete = truth.approved_object or truth.approved_clue or "the clearest lead"
-        place = truth.approved_location or "this scene"
-        truth.approved_stakes = f"If the party delays, {concrete} is moved from {place} before it can be tested."
+    # QA may flag missing stakes, but must not turn a clue sentence into an
+    # object or invent evidence removal as a new fact about the world.
     specificity_score, specificity_failures = score_specificity(text, truth, palette)
     truth_score, truth_failures, truth_repairs = validate_truth_table(text, truth)
     freshness_score, freshness_failures, shape = validate_freshness(
@@ -855,7 +855,8 @@ def apply_targeted_scene_repairs(
     pc = player_name or "the party"
     if "continuity" in targets and recent_player_actions:
         latest = str(recent_player_actions[-1]).strip()
-        repair_paras.append(_in_world(f"{pc} has just chosen to {latest.rstrip('.')}, and everyone nearby is reacting to it"))
+        # Preserve the declaration without inventing success or NPC reactions.
+        repair_paras.append(_in_world(f'{pc.capitalize() if pc == "the party" else pc} attempts the declared action: “{latest.rstrip(".")}”'))
     if "location_identity" in targets and truth.approved_location:
         repair_paras.append(_in_world(f"This is {truth.approved_location}, and everyone present knows it"))
     if "npc_intro" in targets and truth.approved_primary_npc:
@@ -867,8 +868,11 @@ def apply_targeted_scene_repairs(
     if "stakes" in targets and truth.approved_stakes:
         repair_paras.append(_in_world(truth.approved_stakes))
     if "specificity" in targets:
-        concrete_bits = [bit for bit in (truth.approved_clue, truth.approved_object, truth.approved_stakes) if bit]
+        concrete_bits = [bit for bit in (truth.approved_clue, truth.approved_stakes) if bit]
         repair_paras.extend(_in_world(bit) for bit in concrete_bits[:3])
+        if truth.approved_object and not re.search(r"[.!?]", truth.approved_object):
+            if truth.approved_object.lower() not in narrative.lower():
+                repair_paras.append(_in_world(f"You can examine {truth.approved_object}"))
     if "player_agency" in targets or "suggested_actions" in targets or "ending_beat" in targets:
         options = truth.approved_possible_actions or [
             "inspect the clue", "question the witness", "secure the location", "follow the freshest lead",
@@ -876,7 +880,10 @@ def apply_targeted_scene_repairs(
         prompt = f"What does {pc} do: {', '.join(options[:3])}, or something else?"
         scene["suggested_actions"] = options[:4]
         scene["choices"] = [{"id": f"action_{i}", "label": action} for i, action in enumerate(options[:4])]
-    repair_paras = [p for p in dict.fromkeys(repair_paras) if p and not find_internal_language(p)]
+    repair_paras = [
+        p for p in dict.fromkeys(repair_paras)
+        if p and not find_internal_language(p) and p.lower() not in narrative.lower()
+    ]
     if repair_paras:
         paragraphs.extend(repair_paras)
     if paragraphs:

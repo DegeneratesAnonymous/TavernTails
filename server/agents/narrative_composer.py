@@ -228,7 +228,7 @@ def compose_scene(
                 {"role": "user", "content": "\n".join(ctx_lines)},
             ],
             task_scope="taverntails_narrative_composer",
-            max_tokens=350,
+            max_tokens=1200,  # complete nested brief + action/world-move arrays
             timeout=90.0,
         )
         if raw:

@@ -445,7 +445,8 @@ def log_chat_message(
 
 
 def list_chat_messages(
-    *, session_id: str | None = None, campaign_id: str | None = None, limit: int = 100
+    *, session_id: str | None = None, campaign_id: str | None = None,
+    limit: int | None = 100, after_id: int | None = None,
 ) -> list[ChatMessage]:
     with Session(engine) as session:
         stmt = select(ChatMessage)
@@ -453,7 +454,11 @@ def list_chat_messages(
             stmt = stmt.where(ChatMessage.session_id == session_id)
         if campaign_id:
             stmt = stmt.where(ChatMessage.campaign_id == campaign_id)
-        stmt = stmt.order_by(desc(cast(Any, ChatMessage.created_at))).limit(limit)
+        if after_id is not None:
+            stmt = stmt.where(ChatMessage.id > after_id)
+        stmt = stmt.order_by(desc(cast(Any, ChatMessage.id)))
+        if limit is not None:
+            stmt = stmt.limit(limit)
         return list(reversed(list(session.exec(stmt).all())))
 
 
