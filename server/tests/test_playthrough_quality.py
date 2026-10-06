@@ -1,6 +1,7 @@
 """Player journeys through real routes, including the no-provider path."""
 import json
 import os
+import re
 
 import pytest
 from fastapi.testclient import TestClient
@@ -155,11 +156,30 @@ def test_live_clock_mystery_resolves_specific_actions(tmp_path):
         transcript.append({"action": action, "response": data})
         (tmp_path / "live-playthrough.json").write_text(json.dumps(transcript, indent=2))
         body = data["scene"].get("narrative_body") or data["scene"]["text"]
-        assert target.lower() in body.lower(), body
+        assert re.search(rf"\b{re.escape(target)}\b", body, re.I), body  # whole word: "watching" is not "watch"
         assert body != transcript[-2]["response"]["scene"].get("narrative_body"), body
         assert "moment holds" not in body.lower()
         assert "chosen to I" not in body
         assert ". is moved" not in body
-        assert data["simulation_debug"]["scene_director"]["source"] == "llm", "Fallback is not live-model validation"
+        assert not (data.get("scene_debug") or {}).get("fallback_used"), "Fallback is not live-model validation"
     # The full transcript still needs a human review for actual answers,
     # fair consequences and sensible clues; keyword checks cannot prove prose quality.
+
+
+def test_fallback_scene_keeps_the_campaigns_established_object():
+    from server.agents.scene_validator import build_fallback_scene
+
+    kwargs = {
+        "location_name": "Alderbrook village", "npc_name": "Ada Reed", "player_name": "Ren",
+        "emotional_state": "shaken", "inciting_incident": "Every clock stopped at breakfast",
+        "central_conflict": "The clocks stopped", "immediate_stakes": "The village loses its sense of time",
+        "campaign_name": "Winter clocks",
+    }
+    plain = build_fallback_scene(**kwargs)
+    kept = build_fallback_scene(**kwargs, approved_object="stopped brass pocket watch")
+    assert "stopped brass pocket watch" in kept.lower()
+    assert "frost-stiff packet" in plain  # the keyword-table prop the campaign never asked for
+    assert "frost-stiff packet" not in kept
+    # A full clue sentence is never substituted for an object name.
+    sentence = build_fallback_scene(**kwargs, approved_object="Ada found the watch. It is stopped.")
+    assert "Ada found the watch" not in sentence

@@ -55,6 +55,10 @@ class NarrativeRequest(BaseModel):
         default=None,
         description="Persistent Campaign Contract; provides canon, creativity, tone, backstory, UI, and validator policy.",
     )
+    approved_object: str = Field(
+        default="",
+        description="Physical object the campaign established; deterministic fallback scenes must keep it as the clue.",
+    )
 
 
 class NarrativeResponse(BaseModel):
@@ -629,6 +633,7 @@ def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
             immediate_stakes=payload.scene_director_data.get("immediate_stakes") or "",
             sensory_detail=sensory[0] if sensory else "",
             campaign_name=payload.scene or scene_title,
+            approved_object=payload.approved_object,
         )
         best_prompt = default_prompt
         score_val = max(score_val, 75)

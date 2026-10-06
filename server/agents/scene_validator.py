@@ -360,6 +360,7 @@ def build_fallback_scene(
     immediate_stakes: str,
     sensory_detail: str = "",
     campaign_name: str = "",
+    approved_object: str = "",
 ) -> str:
     """Return a quality-guaranteed opening scene from template + Scene Director data.
 
@@ -459,6 +460,12 @@ def build_fallback_scene(
         evidence_object = "a scorched ledger page curled around a brass token"
     elif any(w in (campaign_name or "").lower() for w in ("storm", "rain", "flood")):
         evidence_object = "a waterlogged dispatch tube sealed with split red wax"
+
+    # An object the campaign itself established always beats a keyword-table prop:
+    # inspecting "the brass pocket watch" must not turn into a "frost-stiff packet".
+    approved = (approved_object or "").strip().rstrip(".")
+    if approved and len(approved) <= 80 and not re.search(r"[.!?]", approved):
+        evidence_object = approved if re.match(r"(?i)(a|an|the|her|his|their)\b", approved) else f"the {approved}"
 
     variant_seed = "|".join([loc, npc, campaign_name or "", incident_line, conflict_evidence])
     if any(w in premise_hay for w in ("reef", "drowned", "pearl", "tide", "saltwater", "sea-priest", "citadel")):

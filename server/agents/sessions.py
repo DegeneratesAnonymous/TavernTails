@@ -4213,6 +4213,9 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
     else:
         scene_summary = f"{scene_summary}\n\nSelected scene beat: {selected_scene_beat.get('scene_purpose')}"
 
+    adv_established_object = str(
+        ((previous_scene.get("content_bundle") or {}).get("required_content") or {}).get("approved_object") or ""
+    ).strip()
     adv_scene_director_output: SceneDirectorOutput = scene_director_agent.direct_scene(SceneDirectorRequest(
         is_opening_scene=False,
         player_actions=player_actions,
@@ -4322,6 +4325,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         composer_data=adv_composer_data,
         player_actions=player_actions,
         campaign_contract=campaign_contract,
+        approved_object=adv_established_object,
     ))
     action_response: dict | None = None
     narrative_fallback_used = bool((getattr(narrative, 'score_detail', {}) or {}).get('fallback_used'))
@@ -4398,6 +4402,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             validator_feedback=feedback,
             player_actions=player_actions,
             campaign_contract=campaign_contract,
+            approved_object=adv_established_object,
         ))
         quality_score, quality_issues = validate_scene_quality(
             narrative_text=f"{narrative.narrative}\n\n{narrative.prompt}",
@@ -4423,6 +4428,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             immediate_stakes=adv_scene_director_output.immediate_stakes,
             sensory_detail=(adv_scene_director_output.location.sensory_details[:1] or [''])[0],
             campaign_name=meta.get('name') or session_id,
+            approved_object=adv_established_object,
         )
         narrative = narrative_agent.NarrativeResponse(
             narrative=fallback_text,
