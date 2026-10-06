@@ -443,6 +443,11 @@ _SCHEMA = (
     '"possible_actions":[],"visual_prompt_elements":[],"continuity_notes":[],'
     '"world_moves":["living-world event 1","living-world event 2","living-world event 3"]}'
 )
+# The model copies this template closely, so a continuation must list the key it
+# is required to fill; otherwise per-action replies are silently omitted.
+_CONTINUATION_SCHEMA = _SCHEMA[:-1] + (
+    ',"action_resolutions":[{"action_index":0,"status":"answered","npc":"","reply":"","reason":""}]}'
+)
 
 
 def direct_scene(req: SceneDirectorRequest) -> SceneDirectorOutput:
@@ -620,7 +625,7 @@ def _direct_scene(req: SceneDirectorRequest) -> SceneDirectorOutput:
         + "\n  — 'a disturbance' — name the specific event"
         + "\n  — tavern or inn as the default invented location when no tavern context exists"
         + "\n\nReturn ONLY valid JSON — no markdown fences, no preamble, no commentary:\n"
-        + _SCHEMA
+        + (_SCHEMA if req.is_opening_scene else _CONTINUATION_SCHEMA)
     )
 
     try:

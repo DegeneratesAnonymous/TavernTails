@@ -18,6 +18,32 @@ from .scene_validator import build_fallback_scene
 
 router = APIRouter(tags=["narrative"])
 
+
+def mentions_object(text: str, approved_object: str) -> bool:
+    """True if the prose keeps the established object, allowing natural shortening.
+
+    A writer says "the watch" or "the brass pocket watch" after the first mention,
+    so the full authored phrase is not required; its head noun is. A substituted
+    prop (a sealed letter for a pocket watch) still fails.
+    """
+    obj = approved_object.casefold().strip()
+    body = text.casefold()
+    if not obj or obj in body:
+        return True
+    words = re.findall(r"[a-z0-9']+", obj)
+    return bool(words) and re.search(rf"\b{re.escape(words[-1])}s?\b", body) is not None
+
+
+def soft_shortfall_only(result) -> bool:
+    """True when the draft's only failed check is the heuristic 'immediate problem' cue."""
+    return (
+        result.failed_checks == ["No immediate concrete problem"]
+        and not result.banned_phrases_found
+        and result.has_location and result.has_named_npc
+        and result.has_visible_event and result.has_sensory_detail
+        and result.score >= 50
+    )
+
 MAX_RETRIES = 1
 SCORE_THRESHOLD = 75
 SCORE_THRESHOLD_OPENING = 80  # higher bar for first impressions
@@ -613,7 +639,7 @@ def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
         narrative, prompt = _parse_narrative_response(text, default_narration, default_prompt)
         result = score_scene(narrative, title=scene_title, threshold=threshold)
         issues = []
-        if payload.approved_object and payload.approved_object.casefold() not in narrative.casefold():
+        if payload.approved_object and not mentions_object(narrative, payload.approved_object):
             issues.append(f"Keep the established {payload.approved_object} in the scene; do not substitute a prop.")
         if not payload.is_opening_scene and payload.player_actions:
             issues.extend(continuation_issues(
@@ -642,6 +668,11 @@ def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
                         "rejected_issues": rejected_issues, "fallback_used": False}
     score_val = best_score.score if best_score else 0
     score_passed = best_score.passes_threshold if best_score else False
+    if best_score and not score_passed and soft_shortfall_only(best_score):
+        # Grounded model prose that only lacks an explicit "problem" cue beats the
+        # generic template; hard failures (banned phrases, no NPC/location) still fall back.
+        score_passed = True
+        score_dict["soft_accepted"] = True
 
     placeholder = (
         "moment holds" in best_narrative.lower()

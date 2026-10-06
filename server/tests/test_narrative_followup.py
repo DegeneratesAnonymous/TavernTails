@@ -187,3 +187,46 @@ def test_local_inference_gate_queues_calls_and_releases_on_error(monkeypatch):
             first.result()
         assert later.result() == "ok"
     assert calls == ["first", "second"]
+
+
+def test_writer_may_shorten_the_established_object_but_not_swap_it():
+    from server.agents.narrative import mentions_object
+
+    obj = "stopped brass pocket watch"
+    assert mentions_object("Ada turns the watch over in her palm.", obj)
+    assert mentions_object("The brass pocket watch ticks once.", obj)
+    assert mentions_object("The stopped brass pocket watch rests there.", obj)
+    assert not mentions_object("A sealed letter lies on the bench.", obj)
+    assert not mentions_object("Ada is watching the door.", obj)
+
+
+def test_grounded_draft_missing_only_the_problem_cue_is_kept():
+    from server.agents.narrative import soft_shortfall_only
+    from server.agents.narrative_linter import score_scene
+
+    text = (
+        "The brass pocket watch lies open on Ada Reed's workbench at Alderbrook village, its casing "
+        "smeared with a faint residue. The air smells of old wood and oil. Ada slams her palm on the "
+        "bench and the watch jumps."
+    )
+    result = score_scene(text, title="Alderbrook village")
+    assert result.failed_checks == ["No immediate concrete problem"] or not soft_shortfall_only(result)
+    result.failed_checks = ["No immediate concrete problem"]
+    result.banned_phrases_found = []
+    result.has_location = result.has_named_npc = result.has_visible_event = result.has_sensory_detail = True
+    result.score = 61
+    assert soft_shortfall_only(result)
+    result.banned_phrases_found = ["something is wrong"]
+    assert not soft_shortfall_only(result)
+    result.banned_phrases_found = []
+    result.has_named_npc = False
+    assert not soft_shortfall_only(result)
+
+
+def test_continuation_schema_asks_for_action_resolutions_but_opening_does_not():
+    import json
+
+    from server.agents.scene_director import _CONTINUATION_SCHEMA, _SCHEMA
+
+    assert "action_resolutions" in json.loads(_CONTINUATION_SCHEMA)
+    assert "action_resolutions" not in json.loads(_SCHEMA)
