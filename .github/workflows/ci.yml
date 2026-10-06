@@ -77,7 +77,7 @@ jobs:
       - name: Type check with TypeScript
         if: matrix.node-version == '20'
         working-directory: client
-        run: npx tsc --noEmit
+        run: npm run typecheck
 
       - name: Run frontend tests
         working-directory: client

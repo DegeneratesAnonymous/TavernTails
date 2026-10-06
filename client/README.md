@@ -19,9 +19,20 @@ You will also see any lint errors in the console.
 Launches the test runner in the interactive watch mode.\
 See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
 
+### `npm run typecheck`
+
+Checks the project with the TypeScript 7.0.2 native compiler. Use this command
+instead of `npx tsc` so the compiler choice is explicit.
+
+The `typescript-native` package is an npm alias for TypeScript 7.0.2. The
+`typescript` package remains pinned to 6.0.3 because Create React App and its
+ESLint plugins require the JavaScript compiler API that TypeScript 7 does not
+provide. Major updates to that compatibility package are held until the build
+and lint tooling can support them.
+
 ### `npm run build`
 
-Builds the app for production to the `build` folder.\
+Runs the TypeScript 7 project check, then builds the app for production to the `build` folder.\
 It correctly bundles React in production mode and optimizes the build for the best performance.
 
 The build is minified and the filenames include the hashes.\
