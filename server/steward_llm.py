@@ -29,7 +29,7 @@ import logging
 import os
 import re
 import time
-from threading import Lock
+from threading import BoundedSemaphore, Lock
 
 import httpx
 
@@ -37,6 +37,37 @@ logger = logging.getLogger(__name__)
 
 _CLIENTS: dict[str, httpx.Client] = {}
 _CLIENT_LOCK = Lock()
+_INFERENCE_GATES: dict[int, BoundedSemaphore] = {}
+
+
+def chat_complete(
+    messages: list[dict], *, max_tokens: int | None = None,
+    temperature: float | None = None, task_scope: str | None = None,
+    timeout: float = 60.0,
+) -> str | None:
+    """Queue local inference before starting its provider timeout.
+
+    One local GPU defaults to one in-flight completion per server process.
+    Set TAVERNTAILS_LLM_MAX_CONCURRENCY for multi-node Steward installations;
+    zero disables the gate. No prompt, endpoint or credential is logged.
+    """
+    local = bool(os.environ.get("STEWARD_HOST") or os.environ.get("OLLAMA_HOST"))
+    limit = int(os.environ.get("TAVERNTAILS_LLM_MAX_CONCURRENCY", "1" if local else "0"))
+    if limit <= 0:
+        return _chat_complete(messages, max_tokens=max_tokens, temperature=temperature, task_scope=task_scope, timeout=timeout)
+    with _CLIENT_LOCK:
+        gate = _INFERENCE_GATES.setdefault(limit, BoundedSemaphore(limit))
+    started = time.perf_counter()
+    acquired = gate.acquire(timeout=float(os.environ.get("TAVERNTAILS_LLM_QUEUE_TIMEOUT", "300")))
+    queued_ms = round((time.perf_counter() - started) * 1000)
+    logger.info("llm_queue task_scope=%s queue_ms=%s acquired=%s concurrency=%s",
+                task_scope or "default", queued_ms, acquired, limit)
+    if not acquired:
+        return None
+    try:
+        return _chat_complete(messages, max_tokens=max_tokens, temperature=temperature, task_scope=task_scope, timeout=timeout)
+    finally:
+        gate.release()
 
 
 def _client_for(base_url: str) -> httpx.Client:
@@ -88,7 +119,7 @@ def _log_attempt(
         logger.warning(message)
 
 
-def chat_complete(
+def _chat_complete(
     messages: list[dict],
     *,
     max_tokens: int | None = None,

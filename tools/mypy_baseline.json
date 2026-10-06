@@ -1,0 +1,617 @@
+{
+  "source_commit": "e1119b05bd593176739c5eb730d362f809c5bbb7",
+  "mypy_version": "2.1.0",
+  "python_version": "3.11",
+  "diagnostics": [
+    {
+      "path": "server/agents/campaign_memory.py",
+      "message": "\"datetime\" has no attribute \"asc\"  [attr-defined]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/campaign_memory.py",
+      "message": "\"datetime\" has no attribute \"desc\"  [attr-defined]",
+      "count": 4
+    },
+    {
+      "path": "server/agents/campaign_memory.py",
+      "message": "\"int\" has no attribute \"desc\"  [attr-defined]",
+      "count": 2
+    },
+    {
+      "path": "server/agents/campaign_memory.py",
+      "message": "Argument 1 to \"or_\" has incompatible type \"bool\"; expected \"Literal[False] | ColumnElement[bool] | _HasClauseElement[bool] | SQLCoreOperations[bool] | ExpressionElementRole[bool] | TypedColumnsClauseRole[bool] | Callable[[], ColumnElement[bool]] | LambdaElement\"  [arg-type]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/campaign_memory.py",
+      "message": "Argument 2 to \"or_\" has incompatible type \"bool\"; expected \"ColumnElement[bool] | _HasClauseElement[bool] | SQLCoreOperations[bool] | ExpressionElementRole[bool] | TypedColumnsClauseRole[bool] | Callable[[], ColumnElement[bool]] | LambdaElement\"  [arg-type]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/campaigns.py",
+      "message": "\"User\" has no attribute \"metadata_json\"  [attr-defined]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/campaigns.py",
+      "message": "Argument 1 to \"admin_send_notification\" has incompatible type \"int | None\"; expected \"int\"  [arg-type]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/campaigns.py",
+      "message": "Incompatible types in assignment (expression has type \"SelectOfScalar[Campaign]\", variable has type \"SelectOfScalar[User]\")  [assignment]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/characters.py",
+      "message": "\"int\" has no attribute \"lower\"  [attr-defined]",
+      "count": 2
+    },
+    {
+      "path": "server/agents/characters.py",
+      "message": "Argument 1 to \"append\" of \"list\" has incompatible type \"int\"; expected \"str\"  [arg-type]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/characters.py",
+      "message": "Incompatible types in assignment (expression has type \"None\", variable has type \"str\")  [assignment]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/characters.py",
+      "message": "Incompatible types in assignment (expression has type \"list[dict[Any, Any]]\", variable has type \"list[str]\")  [assignment]",
+      "count": 6
+    },
+    {
+      "path": "server/agents/characters.py",
+      "message": "Incompatible types in assignment (expression has type \"str | None\", variable has type \"int | None\")  [assignment]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/characters.py",
+      "message": "Incompatible types in assignment (expression has type \"str | None\", variable has type \"str\")  [assignment]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/characters.py",
+      "message": "Incompatible types in assignment (expression has type \"str\", variable has type \"int | None\")  [assignment]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/characters.py",
+      "message": "List comprehension has incompatible type List[Any | None]; expected List[str]  [misc]",
+      "count": 2
+    },
+    {
+      "path": "server/agents/characters.py",
+      "message": "List comprehension has incompatible type List[dict[str, str]]; expected List[str]  [misc]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/characters.py",
+      "message": "Name \"_extract_dnd5e_fields_from_widgets\" already defined on line <n>  [no-redef]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/characters.py",
+      "message": "Name \"pages\" already defined on line <n>  [no-redef]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/characters.py",
+      "message": "No overload variant of \"search\" matches argument types \"str\", \"int | None\"  [call-overload]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/characters.py",
+      "message": "No overload variant of \"search\" matches argument types \"str\", \"int | None\", \"RegexFlag\"  [call-overload]",
+      "count": 2
+    },
+    {
+      "path": "server/agents/content.py",
+      "message": "Argument \"scene\" to \"SceneAnalysisRequest\" has incompatible type \"list[dict[str, str]] | Any | str | None\"; expected \"str\"  [arg-type]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/content.py",
+      "message": "Incompatible types in assignment (expression has type \"dict[str, list[dict[str, str]] | Any | str | None]\", target has type \"str | None\")  [assignment]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/content.py",
+      "message": "Unexpected keyword argument \"current_user\" for \"run\"  [call-arg]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/content.py",
+      "message": "Unexpected keyword argument \"limit\" for \"run\"  [call-arg]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/content.py",
+      "message": "Unexpected keyword argument \"session_id\" for \"run\"  [call-arg]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/context_collector.py",
+      "message": "\"datetime\" has no attribute \"desc\"  [attr-defined]",
+      "count": 3
+    },
+    {
+      "path": "server/agents/context_collector.py",
+      "message": "\"int\" has no attribute \"desc\"  [attr-defined]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/context_collector.py",
+      "message": "\"str\" has no attribute \"in_\"  [attr-defined]",
+      "count": 2
+    },
+    {
+      "path": "server/agents/context_collector.py",
+      "message": "Argument 1 to \"or_\" has incompatible type \"bool\"; expected \"Literal[False] | ColumnElement[bool] | _HasClauseElement[bool] | SQLCoreOperations[bool] | ExpressionElementRole[bool] | TypedColumnsClauseRole[bool] | Callable[[], ColumnElement[bool]] | LambdaElement\"  [arg-type]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/context_collector.py",
+      "message": "Argument 2 to \"or_\" has incompatible type \"bool\"; expected \"ColumnElement[bool] | _HasClauseElement[bool] | SQLCoreOperations[bool] | ExpressionElementRole[bool] | TypedColumnsClauseRole[bool] | Callable[[], ColumnElement[bool]] | LambdaElement\"  [arg-type]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/context_collector.py",
+      "message": "Value of type \"Any | None\" is not indexable  [index]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/context_orchestrator.py",
+      "message": "\"datetime\" has no attribute \"desc\"  [attr-defined]",
+      "count": 2
+    },
+    {
+      "path": "server/agents/context_orchestrator.py",
+      "message": "\"int\" has no attribute \"desc\"  [attr-defined]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/generation_intent.py",
+      "message": "Item \"None\" of \"Any | dict[Any, Any] | None\" has no attribute \"get\"  [union-attr]",
+      "count": 3
+    },
+    {
+      "path": "server/agents/narrative.py",
+      "message": "Missing named argument \"style\" for \"NarrativeRequest\"  [call-arg]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/narrative.py",
+      "message": "Missing named argument \"time_of_day\" for \"NarrativeRequest\"  [call-arg]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/narrative.py",
+      "message": "Missing named argument \"weather\" for \"NarrativeRequest\"  [call-arg]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/narrative_composer.py",
+      "message": "Function \"chat_complete\" could always be true in boolean context  [truthy-function]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/narrative_director.py",
+      "message": "Item \"None\" of \"str | None\" has no attribute \"get\"  [union-attr]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/narrative_director.py",
+      "message": "Item \"str\" of \"str | None\" has no attribute \"get\"  [union-attr]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/narrative_director.py",
+      "message": "Unexpected keyword argument \"system\" for \"chat_complete\"  [call-arg]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/opening_setup.py",
+      "message": "Item \"None\" of \"Any | dict[Any, Any] | None\" has no attribute \"get\"  [union-attr]",
+      "count": 3
+    },
+    {
+      "path": "server/agents/opening_setup.py",
+      "message": "Need type annotation for \"provisional_facts\" (hint: \"provisional_facts: list[<type>] = ...\")  [var-annotated]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/player.py",
+      "message": "Argument \"subject\" to \"create_access_token\" has incompatible type \"str | None\"; expected \"str\"  [arg-type]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/references.py",
+      "message": "Argument \"key\" to \"sort\" of \"list\" has incompatible type \"Callable[[dict[str, object]], object]\"; expected \"Callable[[dict[str, object]], SupportsDunderLT[Any] | SupportsDunderGT[Any]]\"  [arg-type]",
+      "count": 2
+    },
+    {
+      "path": "server/agents/references.py",
+      "message": "Argument 1 to \"append\" of \"list\" has incompatible type \"dict[str, Any]\"; expected \"ReferenceListItem\"  [arg-type]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/references.py",
+      "message": "Incompatible return value type (got \"object\", expected \"SupportsDunderLT[Any] | SupportsDunderGT[Any]\")  [return-value]",
+      "count": 2
+    },
+    {
+      "path": "server/agents/references.py",
+      "message": "Incompatible types in assignment (expression has type \"object\", variable has type \"str\")  [assignment]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/references.py",
+      "message": "Module has no attribute \"Embedding\"  [attr-defined]",
+      "count": 4
+    },
+    {
+      "path": "server/agents/scene.py",
+      "message": "Need type annotation for \"supported\" (hint: \"supported: set[<type>] = ...\")  [var-annotated]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/scene_director.py",
+      "message": "Function \"chat_complete\" could always be true in boolean context  [truthy-function]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/scene_qa.py",
+      "message": "Argument 1 to \"SceneQAResult\" has incompatible type \"**dict[str, list[dict[str, str]] | list[dict[str, Any]] | dict[str, str] | dict[str, Any] | list[str] | int | Any | str]\"; expected \"bool\"  [arg-type]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/scene_qa.py",
+      "message": "Argument 1 to \"SceneQAResult\" has incompatible type \"**dict[str, list[dict[str, str]] | list[dict[str, Any]] | dict[str, str] | dict[str, Any] | list[str] | int | Any | str]\"; expected \"dict[str, Any]\"  [arg-type]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/scene_qa.py",
+      "message": "Argument 1 to \"SceneQAResult\" has incompatible type \"**dict[str, list[dict[str, str]] | list[dict[str, Any]] | dict[str, str] | dict[str, Any] | list[str] | int | Any | str]\"; expected \"dict[str, str]\"  [arg-type]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/scene_qa.py",
+      "message": "Argument 1 to \"SceneQAResult\" has incompatible type \"**dict[str, list[dict[str, str]] | list[dict[str, Any]] | dict[str, str] | dict[str, Any] | list[str] | int | Any | str]\"; expected \"int\"  [arg-type]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/scene_qa.py",
+      "message": "Argument 1 to \"SceneQAResult\" has incompatible type \"**dict[str, list[dict[str, str]] | list[dict[str, Any]] | dict[str, str] | dict[str, Any] | list[str] | int | Any | str]\"; expected \"list[dict[str, Any]]\"  [arg-type]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/scene_qa.py",
+      "message": "Argument 1 to \"SceneQAResult\" has incompatible type \"**dict[str, list[dict[str, str]] | list[dict[str, Any]] | dict[str, str] | dict[str, Any] | list[str] | int | Any | str]\"; expected \"list[dict[str, str]]\"  [arg-type]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/scene_qa.py",
+      "message": "Argument 1 to \"SceneQAResult\" has incompatible type \"**dict[str, list[dict[str, str]] | list[dict[str, Any]] | dict[str, str] | dict[str, Any] | list[str] | int | Any | str]\"; expected \"list[str]\"  [arg-type]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/scene_qa.py",
+      "message": "Argument 1 to \"SceneQAResult\" has incompatible type \"**dict[str, list[dict[str, str]] | list[dict[str, Any]] | dict[str, str] | dict[str, Any] | list[str] | int | Any | str]\"; expected \"str\"  [arg-type]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "\"DocumentMeta\" has no attribute \"get\"  [attr-defined]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Argument \"candidate_npcs\" to \"SceneDirectorRequest\" has incompatible type \"list[Sequence[str]]\"; expected \"list[str]\"  [arg-type]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Argument \"scene\" to \"SceneAnalysisRequest\" has incompatible type \"list[Any] | str | None\"; expected \"str\"  [arg-type]",
+      "count": 2
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Argument \"scene_id\" to \"update_state_after_scene\" has incompatible type \"list[Any] | str | None\"; expected \"str\"  [arg-type]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Argument \"scene_text\" to \"run_visual_pipeline\" has incompatible type \"list[Any] | str | None\"; expected \"str\"  [arg-type]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Argument \"scene_text\" to \"validate_story_quality\" has incompatible type \"list[Any] | str | None\"; expected \"str\"  [arg-type]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Argument \"ui_payload\" to \"run_scene_qa\" has incompatible type \"list[Any] | str | dict[Never, Never]\"; expected \"dict[str, Any] | None\"  [arg-type]",
+      "count": 4
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Argument 2 to \"append_canon_memory\" has incompatible type \"list[Any] | str | None\"; expected \"str\"  [arg-type]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Dict entry 0 has incompatible type \"str\": \"Any | None\"; expected \"str\": \"Sequence[str]\"  [dict-item]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Dict entry 1 has incompatible type \"str\": \"Any | None\"; expected \"str\": \"Sequence[str]\"  [dict-item]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Dict entry 19 has incompatible type \"str\": \"dict[str, Any]\"; expected \"str\": \"list[Any] | str | None\"  [dict-item]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Dict entry 2 has incompatible type \"str\": \"Any | None\"; expected \"str\": \"Sequence[str]\"  [dict-item]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Dict entry 21 has incompatible type \"str\": \"dict[str, Any]\"; expected \"str\": \"list[Any] | str | None\"  [dict-item]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Dict entry 23 has incompatible type \"str\": \"dict[Any, Any]\"; expected \"str\": \"list[Any] | str | None\"  [dict-item]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Dict entry 24 has incompatible type \"str\": \"dict[Any, Any]\"; expected \"str\": \"list[Any] | str | None\"  [dict-item]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Dict entry 25 has incompatible type \"str\": \"dict[str, Any]\"; expected \"str\": \"list[Any] | str | None\"  [dict-item]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Dict entry 26 has incompatible type \"str\": \"Any | dict[Any, Any]\"; expected \"str\": \"list[Any] | str | None\"  [dict-item]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Dict entry 27 has incompatible type \"str\": \"Any | dict[Any, Any]\"; expected \"str\": \"list[Any] | str | None\"  [dict-item]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Dict entry 28 has incompatible type \"str\": \"dict[str, Any]\"; expected \"str\": \"list[Any] | str | None\"  [dict-item]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Dict entry 29 has incompatible type \"str\": \"dict[str, Any]\"; expected \"str\": \"list[Any] | str | None\"  [dict-item]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Dict entry 3 has incompatible type \"str\": \"Any | None\"; expected \"str\": \"Sequence[str]\"  [dict-item]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Dict entry 30 has incompatible type \"str\": \"Any | dict[Any, Any]\"; expected \"str\": \"list[Any] | str | None\"  [dict-item]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Dict entry 31 has incompatible type \"str\": \"dict[Any, Any]\"; expected \"str\": \"list[Any] | str | None\"  [dict-item]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Dict entry 32 has incompatible type \"str\": \"Any | dict[Any, Any]\"; expected \"str\": \"list[Any] | str | None\"  [dict-item]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Dict entry 35 has incompatible type \"str\": \"dict[str, Any]\"; expected \"str\": \"list[Any] | str | None\"  [dict-item]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Dict entry 36 has incompatible type \"str\": \"dict[str, Any]\"; expected \"str\": \"list[Any] | str | None\"  [dict-item]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Dict entry 37 has incompatible type \"str\": \"Any | dict[Never, Never]\"; expected \"str\": \"list[Any] | str | None\"  [dict-item]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Dict entry 4 has incompatible type \"str\": \"Any | None\"; expected \"str\": \"Sequence[str]\"  [dict-item]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Incompatible types in assignment (expression has type \"Any | None\", variable has type \"str\")  [assignment]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Incompatible types in assignment (expression has type \"dict[Any, Any]\", target has type \"list[Any] | str | None\")  [assignment]",
+      "count": 5
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Incompatible types in assignment (expression has type \"dict[str, Any]\", target has type \"list[Any] | str | None\")  [assignment]",
+      "count": 7
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Item \"None\" of \"list[Any] | str | None\" has no attribute \"__iter__\" (not iterable)  [union-attr]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Item \"None\" of \"list[Any] | str | None\" has no attribute \"lower\"  [union-attr]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Item \"list[Any]\" of \"list[Any] | str | None\" has no attribute \"lower\"  [union-attr]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Item \"list[Any]\" of \"list[Any] | str | dict[Never, Never]\" has no attribute \"get\"  [union-attr]",
+      "count": 2
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Item \"str\" of \"list[Any] | str | dict[Never, Never]\" has no attribute \"get\"  [union-attr]",
+      "count": 2
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "List item 0 has incompatible type \"Generator[Sequence[str], None, None]\"; expected \"str\"  [list-item]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Name \"action_response\" already defined on line <n>  [no-redef]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Name \"narrative_director_output\" already defined on line <n>  [no-redef]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Need type annotation for \"opening_delta\"  [var-annotated]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Need type annotation for \"required\" (hint: \"required: dict[<type>, <type>] = ...\")  [var-annotated]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Need type annotation for \"scene\"  [var-annotated]",
+      "count": 2
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "No overload variant of \"get\" of \"dict\" matches argument types \"str\", \"dict[Never, Never]\"  [call-overload]",
+      "count": 2
+    },
+    {
+      "path": "server/agents/sessions.py",
+      "message": "Unpacked dict entry 0 has incompatible type \"list[Any] | str | dict[Never, Never]\"; expected \"SupportsKeysAndGetItem[str, Any]\"  [dict-item]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/situation_classifier.py",
+      "message": "Item \"None\" of \"dict[str, Any] | None\" has no attribute \"get\"  [union-attr]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/situation_contracts.py",
+      "message": "Need type annotation for \"gaps\" (hint: \"gaps: list[<type>] = ...\")  [var-annotated]",
+      "count": 3
+    },
+    {
+      "path": "server/agents/situation_contracts.py",
+      "message": "Need type annotation for \"generic\" (hint: \"generic: list[<type>] = ...\")  [var-annotated]",
+      "count": 3
+    },
+    {
+      "path": "server/agents/situation_contracts.py",
+      "message": "Need type annotation for \"weak\" (hint: \"weak: list[<type>] = ...\")  [var-annotated]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/storyboard.py",
+      "message": "Function \"_chat_complete\" could always be true in boolean context  [truthy-function]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/storyboard.py",
+      "message": "No overload variant of \"get\" of \"dict\" matches argument types \"object\", \"str\"  [call-overload]",
+      "count": 1
+    },
+    {
+      "path": "server/agents/visual_director.py",
+      "message": "Function \"_chat_complete\" could always be true in boolean context  [truthy-function]",
+      "count": 1
+    },
+    {
+      "path": "server/db.py",
+      "message": "\"bool\" has no attribute \"is_\"  [attr-defined]",
+      "count": 1
+    },
+    {
+      "path": "server/db.py",
+      "message": "Argument 1 to \"desc\" has incompatible type \"datetime\"; expected \"str | ColumnElement[Any] | _HasClauseElement[Any] | SQLCoreOperations[Any] | ExpressionElementRole[Any] | TypedColumnsClauseRole[Any] | Callable[[], ColumnElement[Any]] | LambdaElement\"  [arg-type]",
+      "count": 9
+    },
+    {
+      "path": "server/db.py",
+      "message": "Argument 1 to \"desc\" has incompatible type \"str | None\"; expected \"str | ColumnElement[Any] | _HasClauseElement[Any] | SQLCoreOperations[Any] | ExpressionElementRole[Any] | TypedColumnsClauseRole[Any] | Callable[[], ColumnElement[Any]] | LambdaElement\"  [arg-type]",
+      "count": 2
+    },
+    {
+      "path": "server/db.py",
+      "message": "Argument 1 to \"or_\" has incompatible type \"bool\"; expected \"Literal[False] | ColumnElement[bool] | _HasClauseElement[bool] | SQLCoreOperations[bool] | ExpressionElementRole[bool] | TypedColumnsClauseRole[bool] | Callable[[], ColumnElement[bool]] | LambdaElement\"  [arg-type]",
+      "count": 1
+    },
+    {
+      "path": "server/db.py",
+      "message": "Argument 1 to \"where\" of \"DMLWhereBase\" has incompatible type \"bool\"; expected \"ColumnElement[bool] | _HasClauseElement[bool] | SQLCoreOperations[bool] | ExpressionElementRole[bool] | TypedColumnsClauseRole[bool] | Callable[[], ColumnElement[bool]] | LambdaElement\"  [arg-type]",
+      "count": 8
+    },
+    {
+      "path": "server/db.py",
+      "message": "Argument 2 to \"or_\" has incompatible type \"bool\"; expected \"ColumnElement[bool] | _HasClauseElement[bool] | SQLCoreOperations[bool] | ExpressionElementRole[bool] | TypedColumnsClauseRole[bool] | Callable[[], ColumnElement[bool]] | LambdaElement\"  [arg-type]",
+      "count": 1
+    },
+    {
+      "path": "server/db.py",
+      "message": "Argument 2 to \"order_by\" of \"GenerativeSelect\" has incompatible type \"str | None\"; expected \"str | ColumnElement[Any] | _HasClauseElement[Any] | SQLCoreOperations[Any] | ExpressionElementRole[Any] | TypedColumnsClauseRole[Any] | Callable[[], ColumnElement[Any]] | LambdaElement\"  [arg-type]",
+      "count": 1
+    },
+    {
+      "path": "server/db.py",
+      "message": "Item \"None\" of \"User | None\" has no attribute \"profile\"  [union-attr]",
+      "count": 1
+    },
+    {
+      "path": "server/db.py",
+      "message": "Item \"None\" of \"int | None\" has no attribute \"in_\"  [union-attr]",
+      "count": 1
+    },
+    {
+      "path": "server/db.py",
+      "message": "Item \"int\" of \"int | None\" has no attribute \"in_\"  [union-attr]",
+      "count": 1
+    },
+    {
+      "path": "server/db.py",
+      "message": "Unsupported operand types for < (\"int\" and \"None\")  [operator]",
+      "count": 1
+    }
+  ]
+}

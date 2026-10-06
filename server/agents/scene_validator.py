@@ -9,6 +9,8 @@ from __future__ import annotations
 import hashlib
 import re
 
+from .generation_intent import definite
+
 # Phrases that indicate meta-genre framing instead of in-world scene writing
 FORBIDDEN_PHRASES: list[str] = [
     "heroic fantasy adventure",
@@ -45,7 +47,7 @@ _ABSTRACT_PATTERNS: list[str] = [
 _CONFLICT_WORDS = re.compile(
     r"\b(vanished|missing|dead|killed|attacked|stolen|burning|collapsed|wounded|fled|warned|"
     r"murdered|arrested|betrayed|escaped|ambushed|revealed|discovered|destroyed|poisoned|"
-    r"kidnapped|trapped|threatened|chased|broke|fell|crashed|exploded|bleeding)\b",
+    r"kidnapped|trapped|threatened|chased|broke|fell|crashed|exploded|bleeding|stopped|jammed|stalled)\b",
     re.IGNORECASE,
 )
 
@@ -465,7 +467,7 @@ def build_fallback_scene(
     # inspecting "the brass pocket watch" must not turn into a "frost-stiff packet".
     approved = (approved_object or "").strip().rstrip(".")
     if approved and len(approved) <= 80 and not re.search(r"[.!?]", approved):
-        evidence_object = approved if re.match(r"(?i)(a|an|the|her|his|their)\b", approved) else f"the {approved}"
+        evidence_object = definite(approved)
 
     variant_seed = "|".join([loc, npc, campaign_name or "", incident_line, conflict_evidence])
     if any(w in premise_hay for w in ("reef", "drowned", "pearl", "tide", "saltwater", "sea-priest", "citadel")):
@@ -493,7 +495,7 @@ def build_fallback_scene(
     if variant == 0:
         return (
             f"At {loc}, {sensory_line[0].lower() + sensory_line[1:] if sensory_line else 'the air tightens'}; the ordinary rhythm of the place breaks around one wrong detail.\n\n"
-            f"{evidence_object.capitalize()} sits where it should not be, close enough for {pc} to notice the fresh damage before anyone explains it away.\n\n"
+            f"{(evidence_object[0].upper() + evidence_object[1:])} sits where it should not be, close enough for {pc} to notice the fresh damage before anyone explains it away.\n\n"
             f"{npc} is already there, {state}, watching who looks first and who pretends not to. "
             f'"{incident_line}," {npc} says. "That is the part everyone keeps stepping around."\n\n'
             f"{conflict_evidence}. {stakes_line}. {decision_line}"
@@ -521,7 +523,7 @@ def build_fallback_scene(
         )
     return (
         f"At {loc}, the public explanation is already slipping out of shape. {sensory_line}. {pc_sentence} reaches the edge of the argument.\n\n"
-        f"{evidence_object.capitalize()} is the only thing in the room no one can comfortably name. {npc}, {state}, keeps one hand near it and the other open in warning.\n\n"
+        f"{(evidence_object[0].upper() + evidence_object[1:])} is the only thing in the room no one can comfortably name. {npc}, {state}, keeps one hand near it and the other open in warning.\n\n"
         f'"{incident_line}," {npc} says. "Someone wanted this found, or wanted us frightened by finding it."\n\n'
         f"{conflict_evidence}. {stakes_line}. {decision_line}"
     )

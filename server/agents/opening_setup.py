@@ -15,6 +15,7 @@ from .generation_intent import (
     blocking_claims,
     blocking_defects,
     build_source_trace,
+    definite,
     find_internal_language,
     find_unsupported_claims,
     intent_from_opening,
@@ -1014,6 +1015,17 @@ def build_opening_scene_contract(
         f"{pc_start} can {', '.join(action[0].lower() + action[1:] for action in actions[:3])}, "
         f"or {actions[3][0].lower() + actions[3][1:]}."
     )
+    if req.get("approved_object") and (req.get("field_provenance") or {}).get("approved_object") in {"user", "imported", "confirmed_canon"}:
+        # Do not decorate an authored possession with a second template prop,
+        # a guilty witness or an invented deadline during deterministic repair.
+        visible_problem = str(req.get("inciting_event") or req.get("immediate_problem") or "").strip()
+        clue = str(req.get("first_clue_or_question") or "").strip()
+        sentences = list(dict.fromkeys(s.rstrip(".") + "." for s in (visible_problem, clue) if s))
+        narrative = "\n\n".join([
+            f"At {location}, {pc_start} pauses to examine {definite(object_name)}.",
+            *sentences,
+            f"{pc_start} can {', '.join(action[0].lower() + action[1:] for action in actions[:3])}.",
+        ])
     intent = source_intent or intent_from_opening(required=req, brief=brief, anchor=anch, player_name=pc)
     source_trace = build_source_trace(
         {
@@ -1453,6 +1465,9 @@ def _opening_object_name(required: dict[str, Any], *, neutral_default: bool = Fa
     seed itself supplies: a lone keyword in the campaign pitch ("harvest")
     must not become a concrete invented object ("harvest ledger").
     """
+    approved = str(required.get("approved_object") or "").strip()
+    if approved and len(approved) <= 80 and not re.search(r"[.!?]", approved):
+        return approved
     fields = _SEED_OBJECT_FIELDS if neutral_default else (*_SEED_OBJECT_FIELDS, *_CAMPAIGN_OBJECT_FIELDS)
     text = " ".join(str(required.get(k) or "") for k in fields).lower()
     if "token" in text:

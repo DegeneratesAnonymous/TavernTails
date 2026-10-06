@@ -4,7 +4,6 @@ on:
   push:
     branches: [ main, develop, 'copilot/**' ]
   pull_request:
-    branches: [ main, develop ]
 
 permissions:
   contents: read
@@ -39,11 +38,11 @@ jobs:
         run: |
           ruff check server/
 
-      - name: Type check with mypy (non-blocking)
+      - name: Check mypy against reviewed baseline
         if: matrix.python-version == '3.11'
-        continue-on-error: true
         run: |
-          python -m mypy server --exclude 'server/agents/archive' --ignore-missing-imports --check-untyped-defs
+          python -m pytest tests/test_mypy_baseline.py -q
+          python scripts/check_mypy_baseline.py
 
       - name: Run backend tests
         if: matrix.run-tests

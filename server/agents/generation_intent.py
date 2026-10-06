@@ -397,6 +397,25 @@ def starting_location_fact(intent: OpeningIntent) -> Fact | None:
     return None
 
 
+def authored_possessions(text: str) -> list[str]:
+    """Recognize the same narrow, explicit possession form used by starter seeds.
+
+    Exclude negated and hypothetical sentences: a wish or denied possession is
+    not an object the player established. Full clue sentences are never names.
+    """
+    result = []
+    for sentence in split_sentences(text):
+        if re.search(r"\b(?:not|never|no|if|might|may|would|could|perhaps)\b", sentence, re.I):
+            continue
+        for match in re.finditer(r"\bhas (?:a|an|the) ([\w -]{3,60}?) (?:on|in|beside)\b", sentence):
+            result.append(match.group(1).strip())
+    return unique(result)
+
+
+def established_object(intent: OpeningIntent) -> str:
+    return next((f.text for f in intent.facts() if f.kind == "object" and f.established), "")
+
+
 def build_opening_intent(
     settings: dict[str, Any] | None = None,
     contract: dict[str, Any] | None = None,
@@ -459,6 +478,10 @@ def build_opening_intent(
             summary,
         ):
             intent.add(make_fact("actor", actor.group(1), "user", source="settings.setting_summary"))
+
+    for source, text in (("settings.setting_summary", summary), ("campaign_pitch", pitch)):
+        for possession in authored_possessions(text):
+            intent.add(make_fact("object", possession, "user", source=source))
 
     for entity in contract.get("player_canon") or []:
         if not isinstance(entity, dict) or not clean_text(entity.get("name")):
@@ -806,6 +829,10 @@ def definite(noun_phrase: Any) -> str:
     text = clean_text(noun_phrase)
     if not text:
         return text
+    # Sentence-initial determiners are not part of a proper name. Preserve
+    # capitals inside the phrase (e.g. a Silver Court badge).
+    if re.match(r"(?:A|An|The)\s+[a-z]", text):
+        text = text[0].lower() + text[1:]
     if text.lower().startswith(_DETERMINERS) or text[0].isupper():
         return text
     return f"the {text}"
