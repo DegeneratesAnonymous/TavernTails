@@ -24,6 +24,12 @@ _SKILLS = (
     "Persuasion", "Religion", "Sleight of Hand", "Stealth", "Survival",
 )
 _ABILITIES = ("str", "dex", "con", "int", "wis", "cha")
+_SKILL_ABILITY = {
+    "Acrobatics": "dex", "Animal Handling": "wis", "Arcana": "int", "Athletics": "str", "Deception": "cha",
+    "History": "int", "Insight": "wis", "Intimidation": "cha", "Investigation": "int", "Medicine": "wis",
+    "Nature": "int", "Perception": "wis", "Performance": "cha", "Persuasion": "cha", "Religion": "int",
+    "Sleight of Hand": "dex", "Stealth": "dex", "Survival": "wis",
+}
 
 _TEMPLATE = (
     '{"name":"","class_name":"","level":0,"race":"","background":"","alignment":"",'
@@ -83,6 +89,23 @@ def layout_text(tsv: str, *, min_conf: float = 25.0, char_px: float = 14.0) -> s
     return "\n".join(rendered)
 
 
+_STANDARD_LANGUAGES = (
+    "Common", "Dwarvish", "Elvish", "Giant", "Gnomish", "Goblin", "Halfling", "Orc", "Abyssal", "Celestial",
+    "Draconic", "Deep Speech", "Infernal", "Primordial", "Sylvan", "Undercommon", "Druidic", "Thieves' Cant",
+)
+
+
+def _correct_language(name: str) -> str:
+    """Fix a one-letter OCR slip ("Ore" for "Orc") when exactly one standard language is that close."""
+    if name in _STANDARD_LANGUAGES or len(name) < 3:
+        return name
+    near = [
+        lang for lang in _STANDARD_LANGUAGES
+        if len(lang) == len(name) and sum(a.casefold() != b.casefold() for a, b in zip(lang, name, strict=True)) == 1
+    ]
+    return near[0] if len(near) == 1 else name
+
+
 def _fold(text: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^\w+/'-]+", " ", text.casefold())).strip()
 
@@ -122,15 +145,21 @@ class _Evidence:
 
     @staticmethod
     def _heading(line: str) -> tuple[int, int | None] | None:
-        """(spell level, slot count) when ``line`` is a spell-table heading such as "1st LEVEL  4 Slots OOOO"."""
+        """(spell level, slot count) when ``line`` is a spell-table heading such as "1st LEVEL  4 Slots OOOO".
+
+        OCR reads "1st" as "Ist"/"lst" and wraps headings in stray "=" marks, so those are tolerated.
+        """
         text = line.strip()
-        if re.match(r"^\W*(?:cantrips?|\(at will\))\W*$", text, re.I):
+        if re.match(r"^[\W_]*(?:cantrips?)?[\W_]*(?:\(at will\))?[\W_]*$", text, re.I) and re.search(r"cantrip|at will", text, re.I):
             return 0, None
-        match = re.match(r"^\W*(\d)?\s*(st|nd|rd|th)\s+level\b(.*)$", text, re.I)
+        match = re.match(r"^[\W_]*([\dIil])?\s*(st|nd|rd|th)\s+level\b(.*)$", text, re.I)
         if not match:
             return None
-        # OCR sometimes drops the numeral of "2nd"; the suffix still says which it is.
-        level = int(match.group(1)) if match.group(1) else {"st": 1, "nd": 2, "rd": 3}.get(match.group(2).lower())
+        numeral = match.group(1)
+        if numeral and numeral.isdigit():
+            level: int | None = int(numeral)
+        else:  # no numeral, or an "I"/"l" read for a "1": the ordinal suffix still says which it is
+            level = {"st": 1, "nd": 2, "rd": 3}.get(match.group(2).lower())
         slots = re.search(r"(\d+)\s*slots?", match.group(3), re.I)
         return (level, int(slots.group(1)) if slots else None) if level is not None else None
 
@@ -152,6 +181,42 @@ class _Evidence:
                 if heading:
                     return heading[0]
         return None
+
+    def skill_reading(self, skill: str) -> tuple[str, int] | None:
+        """The (sign, number) printed directly before ``skill`` on its row, or None when the row has no number."""
+        pattern = re.compile(rf"(?<![\w.])([+\-\u2212\u2013]?)(\d{{1,2}})\s+{re.escape(skill)}\b", re.I)
+        for line in self.lines:
+            match = pattern.search(line)
+            if match:
+                return ("-" if match.group(1) in {"-", "\u2212", "\u2013"} else match.group(1)), int(match.group(2))
+        return None
+
+    def table_spells(self) -> list[dict[str, Any]]:
+        """Spells read straight from the spell table: each row under a level heading, name in the first column."""
+        rows: list[dict[str, Any]] = []
+        level: int | None = None
+        for line in self.lines:
+            if not line.strip():
+                level = None  # a page boundary ends the table
+                continue
+            heading = self._heading(line)
+            if heading:
+                level = heading[0]
+                continue
+            if level is None or re.search(r"\d+d\d+|bludgeoning|piercing|slashing", line, re.I):
+                continue
+            # A ritual tag ends the name even when only one space follows it ("Floating Disk [R] Wizard"); OCR
+            # also reads "[R]" as "(R]".  Without a tag, the name ends at the gap before the next column.
+            match = re.match(
+                r"^\s*(?P<name>[A-Za-z][A-Za-z'\u2019\-]*(?: [A-Za-z'\u2019\-]+){0,5})"
+                r"(?:\s*[\[({][A-Za-z][\])}]\s+\S|\s{2,}\S)", line)
+            if not match:
+                continue
+            name = match.group("name").strip()
+            if len(name) < 3 or name.isupper() or any(r["name"] == name and r["level"] == level for r in rows):
+                continue
+            rows.append({"name": name, "level": level})
+        return rows
 
     def spell_slots(self) -> dict[str, int]:
         slots: dict[str, int] = {}
@@ -276,7 +341,8 @@ def verify(data: dict[str, Any], text: str) -> tuple[dict[str, Any], list[str]]:
     bonus = _int(data.get("spell_attack_bonus"))
     keep("spell_attack_bonus", bonus if bonus is not None and -5 <= bonus <= 30 and ev.near(bonus, *_LABELS["spell_attack_bonus"]) else None)
     ability = str(data.get("spellcasting_ability") or "").strip()
-    keep("spellcasting_ability", ability if ability and ev.has_text(ability) else None)
+    code = ability[:3].upper()
+    keep("spellcasting_ability", code if ability and ev.has_text(ability) and code in {a.upper() for a in _ABILITIES} else None)
 
     stats_raw = _dict(data, "stats")
     stats = {a: v for a in _ABILITIES if (v := _verified_int(stats_raw.get(a), ev, 1, 30)) is not None and ev.leading(v, _ABILITY_LABEL[a], 4)}
@@ -284,10 +350,6 @@ def verify(data: dict[str, Any], text: str) -> tuple[dict[str, Any], list[str]]:
     if len(stats) < 6 and stats_raw:
         dropped.extend(f"stats.{a}" for a in _ABILITIES if a not in stats and stats_raw.get(a) is not None)
 
-    passives_raw = _dict(data, "passives")
-    passives = {k: v for k in ("perception", "insight", "investigation")
-                if (v := _verified_int(passives_raw.get(k), ev, 1, 40)) is not None and ev.near(v, rf"passive\s*{k}", 0)}
-    keep("passives", passives)
 
     saves_raw = _dict(data, "saves")
     saves = {}
@@ -299,19 +361,47 @@ def verify(data: dict[str, Any], text: str) -> tuple[dict[str, Any], list[str]]:
 
     for key in ("languages", "weapon_proficiencies", "tool_proficiencies", "features"):
         keep(key, _strings(data.get(key), ev))
+    if out.get("languages"):
+        out["languages"] = [_correct_language(name) for name in out["languages"]]
 
+    # Skill rows are printed "+7 Arcana": read them from the layout, never from the model, and require each value to
+    # fit the character (ability modifier plus 0, 1 or 2 proficiency bonuses).  An OCR that dropped a minus sign
+    # reads "-1" as "1"; only the reading that fits the ability modifier is kept, and an ambiguous one is left out.
     skills = []
-    for item in _list(data, "skills"):
-        if not isinstance(item, dict):
+    skill_mods: dict[str, int] = {}
+    level_known = out.get("level")
+    prof = 2 + (level_known - 1) // 4 if isinstance(level_known, int) else None
+    for name, ability in _SKILL_ABILITY.items():
+        reading = ev.skill_reading(name)
+        if reading is None:
             continue
-        name = next((s for s in _SKILLS if s.casefold() == str(item.get("name") or "").strip().casefold()), "")
-        value = _int(item.get("modifier"))
-        if name and value is not None and -10 <= value <= 20 and ev.near(value, re.escape(name), 0):
-            skills.append({"name": name, "modifier": value})
+        sign, number = reading
+        explicit = [-number if sign == "-" else number] if sign else sorted({number, -number})
+        score = stats.get(ability)
+        if score is not None and prof is not None:
+            base = (score - 10) // 2
+            fits = [v for v in explicit if v in {base, base + prof, base + 2 * prof}]
+        else:
+            fits = explicit if sign else []
+        if len(fits) == 1 and -10 <= fits[0] <= 20:
+            skills.append({"name": name, "modifier": fits[0]})
+            skill_mods[name] = fits[0]
     keep("skills", skills)
 
-    spells: list[dict[str, Any]] = []
-    for item in _list(data, "spells"):
+    # A passive score is 10 + its skill modifier (+/-5 for advantage or disadvantage).
+    passives_raw = _dict(data, "passives")
+    passives = {}
+    for key, skill in (("perception", "Perception"), ("insight", "Insight"), ("investigation", "Investigation")):
+        value = _verified_int(passives_raw.get(key), ev, 1, 40)
+        if value is None or not ev.near(value, rf"passive\s*{key}", 0):
+            continue
+        if skill in skill_mods and value not in {10 + skill_mods[skill] + d for d in (-5, 0, 5)}:
+            continue
+        passives[key] = value
+    keep("passives", passives)
+
+    spells: list[dict[str, Any]] = ev.table_spells()  # read from the table itself; the model only fills in when there is none
+    for item in [] if spells else _list(data, "spells"):
         if not isinstance(item, dict):
             continue
         name = re.sub(r"\s*\[[A-Za-z]\]\s*$", "", str(item.get("name") or "")).strip()  # "[R]" marks a ritual
@@ -337,6 +427,26 @@ def verify(data: dict[str, Any], text: str) -> tuple[dict[str, Any], list[str]]:
             "damage": damage if damage and ev.has_token(damage) else None,
         })
     keep("attacks", attacks[:20])
+
+    # What the rules fix once level and the casting ability's score are known: a scan that lost the printed number
+    # still has an exact answer (a magic item could change a printed value, so a printed one always wins).
+    derived: list[str] = []
+    if "proficiency_bonus" not in out and isinstance(out.get("level"), int):
+        out["proficiency_bonus"] = 2 + (out["level"] - 1) // 4
+        derived.append("proficiency_bonus")
+    casting = str(out.get("spellcasting_ability") or "").lower()
+    score = out.get("stats", {}).get(casting) if casting else None
+    if score is not None and "proficiency_bonus" in out:
+        modifier = (score - 10) // 2
+        if "spell_save_dc" not in out:
+            out["spell_save_dc"] = 8 + out["proficiency_bonus"] + modifier
+            derived.append("spell_save_dc")
+        if "spell_attack_bonus" not in out:
+            out["spell_attack_bonus"] = out["proficiency_bonus"] + modifier
+            derived.append("spell_attack_bonus")
+    if derived:
+        out["derived"] = derived
+        dropped = [d for d in dropped if d not in derived]
     return out, sorted(set(dropped))
 
 

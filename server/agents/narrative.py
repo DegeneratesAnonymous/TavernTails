@@ -60,6 +60,7 @@ def soft_shortfall_only(result) -> bool:
     )
 
 MAX_RETRIES = 1
+MAX_RETRIES_OPENING = 2  # an opening is the first impression and each retry carries targeted feedback
 SCORE_THRESHOLD = 75
 # Higher bar for first impressions.  The scorer's checks add up to 90 at most and an
 # opening rarely carries a dated deadline (worth 15), so 80 rejected nearly every
@@ -640,7 +641,7 @@ def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
     attempts = 0
     fallback_reason = ""
 
-    for _attempt in range(MAX_RETRIES + 1):
+    for _attempt in range((MAX_RETRIES_OPENING if payload.is_opening_scene else MAX_RETRIES) + 1):
         attempts += 1
         messages = _build_messages(payload, weather_desc, player, feedback)
         text = chat_complete(
@@ -662,6 +663,13 @@ def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
         issues = []
         if payload.approved_object and not mentions_object(narrative, payload.approved_object):
             issues.append(f"Keep the established {payload.approved_object} in the scene; do not substitute a prop.")
+        if payload.is_opening_scene:
+            from .scene_validator import _names_place  # imported here: scene_validator imports this module's siblings
+
+            place = (payload.scene_director_data or {}).get("location")
+            place_name = str(place.get("name") or "") if isinstance(place, dict) else ""
+            if place_name and not _names_place(narrative.lower(), place_name):
+                issues.append(f"Name the place ({place_name}) within the opening's first sentences.")
         if not payload.is_opening_scene and payload.player_actions:
             issues.extend(continuation_issues(
                 narrative, payload.player_actions, (payload.scene_director_data or {}).get("action_resolutions") or [],

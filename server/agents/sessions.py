@@ -42,6 +42,7 @@ from .generation_intent import (
     fact_discipline_prompt,
     intent_from_opening,
     map_paragraphs,
+    sanitize_generated_text,
     split_sentences,
     strip_internal_paragraphs,
 )
@@ -453,6 +454,29 @@ def _opening_source_intent(
     )
 
 
+def _strip_invented_sentences(scene: dict, anchor: dict, player_name: str, source_intent: OpeningIntent | None) -> dict:
+    """Keep a model-written opening that invented a detail by removing just the offending sentences.
+
+    The fact check rejects a whole draft for one invented bystander ("the Baker's Wife"); the rest of the prose is
+    usually fine.  Only a model-written scene is cleaned, only when most of it survives, and the cleaned text still
+    has to pass every other opening check, so a draft that was mostly invention still falls back as before.
+    """
+    if source_intent is None or (scene.get("generation_debug") or {}).get("fallback_used", True):
+        return scene
+    body = str(scene.get("narrative_body") or "")
+    pc = str((anchor or {}).get("character_name") or player_name or "").strip()
+    cleaned = sanitize_generated_text(body, source_intent, allow=[pc] if pc else ())
+    if not cleaned or cleaned == body or len(cleaned) < 0.55 * len(body):
+        return scene
+    prompt = str(scene.get("player_prompt") or "").strip()
+    return {
+        **scene,
+        "narrative_body": cleaned,
+        "text": f"{cleaned}\n\n{prompt}".strip(),
+        "generation_debug": {**(scene.get("generation_debug") or {}), "invented_sentences_removed": True},
+    }
+
+
 def _apply_concrete_opening_scene_contract(
     scene: dict,
     *,
@@ -475,6 +499,7 @@ def _apply_concrete_opening_scene_contract(
         time_of_day=time_of_day,
         source_intent=source_intent,
     )
+    scene = _strip_invented_sentences(scene, opening_anchor, player_name, source_intent)
     validation = validate_opening_scene_contract(
         scene=scene,
         opening_scene=opening_scene,

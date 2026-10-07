@@ -103,10 +103,14 @@ that call's snapshot; a second read adds work and can mix different versions.
 - A D&D Beyond export is a fillable form with fixed field names; `ddb_sheet.py` reads
   every value from those fields exactly (proficiencies, passives, spellcasting, spell
   levels, features by section, attacks) and replaces the generic extractors' guesses.
-- A scanned sheet has no form data. `characters._read_pdf_text_ex` OCRs it (tesseract TSV
-  positions rebuilt into `ocr_sheet.layout_text`), and `ocr_sheet.extract` has the local
-  model propose fields. Each value is kept only if it appears near its own label in the OCR
-  text; spell levels and slot counts come from the table headings. The import is flagged for review.
+- A scanned sheet has no form data. `server/ocr_client.py` sends each page image to Steward's OCR nodes
+  (`POST /api/games/taverntails/ocr`, ColemanPC then HeatherPC, pages in parallel) and falls back to a local
+  `TAVERNTAILS_TESSERACT_CMD`; tesseract's word table is rebuilt into `ocr_sheet.layout_text` (each value on its
+  label's line). Spells, spell slots and skill modifiers are then read from that layout by rule: spell rows under
+  the "1st LEVEL" headings, each skill row's number checked against the character's ability modifier (which also
+  recovers a dropped minus sign). The local model proposes the remaining fields and each value is kept only if it
+  appears near its own label. The proficiency bonus, spell save DC and spell attack bonus are derived from level and
+  casting ability when the scan lost them (listed as `fields_derived`). The import is flagged for review.
 - Character imports call `references.search_queries` once for their features and
   spells, reading one corpus snapshot and deduplicating queries. Failed queries
   do not discard successful matches. The single-query API remains available.

@@ -136,16 +136,25 @@ def test_verify_keeps_only_values_found_beside_their_own_label():
     assert kept["stats"] == {"dex": 14, "int": 19}  # 10 is a different field's number; STR's own box was lost
     assert kept["passives"] == {"perception": 10}
     assert kept["skills"] == [{"name": "Arcana", "modifier": 7}]  # Deception's number is not on its line
-    assert "initiative" in dropped and "proficiency_bonus" in dropped and "name" in dropped
-    assert "initiative" not in kept and "proficiency_bonus" not in kept and "name" not in kept
+    assert "initiative" in dropped and "name" in dropped
+    assert "initiative" not in kept and "name" not in kept
+    assert kept["proficiency_bonus"] == 3 and "proficiency_bonus" in kept["derived"]  # the model's 7 is wrong for level 5
 
 
-def test_spell_levels_and_slots_come_from_table_headings_not_the_model():
-    claimed = {"spells": [{"name": "Fire Bolt", "level": 9}, {"name": "Unseen Servant [R]", "level": 3},
-                          {"name": "Misty Step", "level": 1}, {"name": "Unarmed Strike", "level": 1}, {"name": "Invented Spell", "level": 1}]}
+def test_spells_come_from_the_table_with_levels_and_slots_not_from_the_model():
+    claimed = {"spells": [{"name": "Invented Spell", "level": 1}, {"name": "Unarmed Strike", "level": 1}]}
     kept, _ = ocr_sheet.verify(claimed, SHEET_TEXT)
-    assert kept["spells"] == [{"name": "Fire Bolt", "level": 0}, {"name": "Unseen Servant", "level": 1}, {"name": "Misty Step", "level": 2}]
+    assert kept["spells"] == [
+        {"name": "Fire Bolt", "level": 0}, {"name": "Mage Hand", "level": 0}, {"name": "Shield", "level": 1},
+        {"name": "Unseen Servant", "level": 1}, {"name": "Misty Step", "level": 2},
+    ]
     assert kept["spell_slots"] == {"1": 4, "2": 3}
+
+
+def test_the_model_only_names_spells_when_there_is_no_spell_table():
+    text = "Spells known\nFireball is my best spell\n 1st LEVEL   4 Slots\n Shield\n"
+    kept, _ = ocr_sheet.verify({"spells": [{"name": "Shield", "level": 9}, {"name": "Made Up", "level": 1}]}, text)
+    assert kept["spells"] == [{"name": "Shield", "level": 1}]  # level from the heading above, never the model's 9
 
 
 def test_attack_values_must_appear_in_the_text():
@@ -178,3 +187,93 @@ def test_extract_retries_an_empty_reply_and_merges_pages():
 def test_extract_returns_nothing_when_the_model_does():
     assert ocr_sheet.extract("some text", llm=lambda *a, **k: None) == ({}, [])
     assert ocr_sheet.extract("   ", llm=lambda *a, **k: "{}") == ({}, [])
+
+
+SKILLS_TEXT = """\
+ Wizard 5   CLASS & LEVEL
+ STRENGTH
+   12
+ DEXTERITY
+   14
+ INTELLIGENCE
+   19
+ CHARISMA
+    8
+   +1 Athletics STR
+   +7 Arcana INT
+   A  Deception CHA
+   1  Performance CHA
+   1  Sleight of Hand DEX
+   3  Insight WIS
+ 10  PASSIVE PERCEPTION
+ 13  PASSIVE INSIGHT
+"""
+
+
+def test_skill_values_are_read_from_their_row_and_must_fit_the_character():
+    kept, _ = ocr_sheet.verify({"level": 5, "stats": {"str": 12, "dex": 14, "int": 19, "cha": 8}}, SKILLS_TEXT)
+    skills = {s["name"]: s["modifier"] for s in kept["skills"]}
+    assert skills["Athletics"] == 1 and skills["Arcana"] == 7  # signed, and consistent with the ability scores
+    assert skills["Performance"] == -1  # OCR dropped the minus sign: only -1 fits CHA 8
+    assert "Deception" not in skills  # no number on its row: never guessed
+    assert "Sleight of Hand" not in skills  # "1" fits both +1 (DEX +2, no) ... and -1: neither equals DEX +2 (+3 proficient/+5)
+    assert "Insight" not in skills  # WIS unknown, so an unsigned number cannot be told from its negative
+
+
+def test_the_models_own_skill_values_are_ignored():
+    kept, _ = ocr_sheet.verify({"level": 5, "stats": {"str": 12}, "skills": [{"name": "Athletics", "modifier": 9}]}, SKILLS_TEXT)
+    assert {s["name"]: s["modifier"] for s in kept["skills"]}["Athletics"] == 1
+
+
+def test_passive_scores_must_match_their_skill():
+    text = SKILLS_TEXT + " 13  PASSIVE PERCEPTION\n"
+    kept, _ = ocr_sheet.verify({"passives": {"perception": 10, "insight": 13}, "level": 5,
+                                "stats": {"wis": 10, "str": 12, "dex": 14, "int": 19, "cha": 8}}, text)
+    assert kept["passives"]["perception"] == 10
+
+
+def test_headings_tolerate_ocr_noise():
+    ev = ocr_sheet._Evidence("x")
+    assert ev._heading("        === CANTRIPS          (At Will)") == (0, None)
+    assert ev._heading("        = = ‘= Ist LEVEL      4 Slots OOOO") == (1, 4)
+    assert ev._heading("        = = = 2nd LEVEL ===   3 Slots O00") == (2, 3)
+    assert ev._heading("           3rd LEVEL          2 Slots OO") == (3, 2)
+    assert ev._heading("   lst LEVEL  2 Slots") == (1, 2)
+    assert ev._heading("WEAPON ATTACKS & CANTRIPS") is None  # a section label, not a spell-table heading
+    assert ev._heading("the level of the table") is None
+
+
+def test_one_letter_language_slips_are_corrected_only_when_unambiguous():
+    assert ocr_sheet._correct_language("Ore") == "Orc"
+    assert ocr_sheet._correct_language("Orc") == "Orc"
+    assert ocr_sheet._correct_language("Elvish") == "Elvish"
+    assert ocr_sheet._correct_language("Dwarvlsh") == "Dwarvish"
+    assert ocr_sheet._correct_language("Klingon") == "Klingon"  # not near any standard language: left alone
+
+
+def test_values_the_rules_fix_are_derived_when_the_scan_lost_them():
+    text = "Wizard 5   CLASS & LEVEL\nINTELLIGENCE\n  19\nINT  Intelligence\n"
+    kept, dropped = ocr_sheet.verify({"level": 5, "stats": {"int": 19}, "spellcasting_ability": "Intelligence",
+                                      "proficiency_bonus": 7}, text)
+    assert kept["spellcasting_ability"] == "INT"
+    assert (kept["proficiency_bonus"], kept["spell_save_dc"], kept["spell_attack_bonus"]) == (3, 15, 7)
+    assert kept["derived"] == ["proficiency_bonus", "spell_save_dc", "spell_attack_bonus"]
+    assert "proficiency_bonus" not in dropped
+
+
+def test_a_printed_value_beats_a_derived_one():
+    text = "Wizard 5   CLASS & LEVEL\nINTELLIGENCE\n  19\nSPELL SAVE DC\n 16\nINT Intelligence\n"
+    kept, _ = ocr_sheet.verify({"level": 5, "stats": {"int": 19}, "spellcasting_ability": "INT", "spell_save_dc": 16}, text)
+    assert kept["spell_save_dc"] == 16 and "spell_save_dc" not in kept["derived"]
+
+
+def test_spell_rows_survive_ocr_mangled_ritual_tags_and_long_names():
+    text = (
+        "  = = = 1st LEVEL      4 Slots OOOO\n"
+        "  Identify (R]          Wizard               11m Touch   V,S,M\n"
+        "  Tenser's Floating Disk [R] Wizard            10m 30 ft      1 hour\n"
+        "  Magic Missile         Evocation Savant     1A  120 ft.\n"
+        "  SPELLS\n"
+    )
+    names = [(r["name"], r["level"]) for r in ocr_sheet._Evidence(text).table_spells()]
+    assert names == [("Identify", 1), ("Tenser's Floating Disk", 1), ("Magic Missile", 1)]
