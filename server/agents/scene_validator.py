@@ -441,7 +441,7 @@ def build_fallback_scene(
             f"break camp, hide and watch, or turn the woods themselves into a false trail."
         )
 
-    evidence_object = "a damaged notice weighted under a local token"
+    evidence_object = "the one detail that does not belong"  # no prop unless the premise or player named one
     if any(w in premise_hay for w in ("reef", "drowned", "pearl", "tide", "saltwater", "sea-priest", "citadel")):
         evidence_object = "a pearl knife wrapped in wet map-silk"
     elif any(w in premise_hay for w in ("volcano", "ash guild", "relic", "vote", "election", "parliament")):

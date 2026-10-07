@@ -164,7 +164,11 @@ def _extract_named_entities(docs: list[str]) -> list[dict[str, Any]]:
             lower = stripped.lower()
             for label, entity_type in _ENTITY_LABELS.items():
                 if lower.startswith(label + ":") or lower.startswith(label + " -"):
-                    raw_name = stripped[len(label):].lstrip(":- \t").split(",")[0].split(".")[0].strip()
+                    body = stripped[len(label):].lstrip(":- \t")
+                    raw_name = body.split(",")[0].split(".")[0].strip()
+                    # What the author wrote after "Name — ..." is their own description.
+                    described = re.split(r"\s[—–-]\s", body, maxsplit=1)
+                    note = described[1].strip().rstrip(".") if len(described) == 2 else ""
                     # Take only the first word-group that looks like a proper name
                     name_match = re.match(r"([A-Z][A-Za-z''\-]+(?:\s+[A-Z][A-Za-z''\-]+){0,3})", raw_name)
                     name = name_match.group(1).strip() if name_match else raw_name[:60].strip()
@@ -176,7 +180,7 @@ def _extract_named_entities(docs: list[str]) -> list[dict[str, Any]]:
                             "type": entity_type,
                             "canon_status": "player_canon",
                             "source": "labelled_lore",
-                            "note": "",
+                            "note": note[:240],
                         })
                     break
 

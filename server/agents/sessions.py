@@ -62,6 +62,7 @@ from .opening_setup import (
 from .player_intent_parser import parse_player_intent
 from .scene_beat_selector import select_scene_beat_plan
 from .scene_director import SceneDirectorOutput, SceneDirectorRequest, build_image_prompt
+from .scene_privacy import player_view
 from .scene_qa import apply_targeted_scene_repairs, load_recent_opening_shapes, record_opening_shape, run_scene_qa
 from .scene_validator import (
     MINIMUM_SCORE,
@@ -521,7 +522,8 @@ def _apply_concrete_opening_scene_contract(
         )
         validation["repair_applied"] = True
         scene["generation_debug"] = {**(scene.get("generation_debug") or {}),
-                                     "fallback_used": True, "fallback_reason": "opening_contract_repair"}
+                                     "fallback_used": True, "fallback_reason": "opening_contract_repair",
+                                     "repaired_checks": sorted(failed_checks)}
     else:
         scene["opening_scene"] = opening_scene
     scene["opening_scene_validation"] = validation
@@ -938,6 +940,20 @@ def _write_story_entries(folder: Path, entries: list[dict]) -> None:
     simulation_agent.atomic_write_json(folder / "story.json", entries)
 
 
+_ACTION_OBJECT = re.compile(
+    r"\b(?:inspect|examine|study|search|check|read|open|investigate|look (?:at|over)|take|touch)\s+"
+    r"(?:the|a|an|her|his|their|its)?\s*([a-z][a-z' -]{2,40}?)"
+    r"(?=\s+(?:closely|carefully|again|for|on|in|at|with|before)\b|[.,;!?]|$)",
+    re.I,
+)
+
+
+def _object_named_in(action: str) -> str:
+    """The thing a player said they are examining, in their own words."""
+    match = _ACTION_OBJECT.search(action or "")
+    return match.group(1).strip().lower() if match else ""
+
+
 def _action_response_scene(
     *,
     player_name: str,
@@ -960,11 +976,7 @@ def _action_response_scene(
     clue_sentence = approved_clue.rstrip(".") + "." if approved_clue else ""
     if approved_clue and approved_clue.casefold().rstrip(".") == approved_object.casefold().rstrip("."):
         clue_sentence = f"The lead remains {definite(approved_object)}."
-    concrete_detail = approved_object or approved_clue or (
-        "blackened charm" if "charm" in lower else
-        "water seal" if "water" in lower or "seal" in lower else
-        "marked clue"
-    )
+    concrete_detail = approved_object or approved_clue or _object_named_in(action) or "marked clue"
 
     title = "The Next Move"
     objective = f"Turn {action[:80] or 'the latest move'} into a concrete advantage at {loc}."
@@ -1082,7 +1094,7 @@ def _action_response_scene(
         reply = str(resolution.get("reply") or "")
         reason = str(resolution.get("reason") or "") if resolution.get("status") == "cannot_answer" else ""
         spoken = " ".join(part for part in (reply, reason) if part)
-        body = f'At {loc}, {pc} puts the question to {witness}.\n\n{witness} replies, “{spoken}”'
+        body = f'At {loc}, {pc} puts the question to {witness}.\n\n{witness[:1].upper()}{witness[1:]} replies, “{spoken}”'
         if approved_clue:
             body += f"\n\n{clue_sentence}"
         objective = f"Find a reliable answer to the question about {target_detail}."
@@ -1098,13 +1110,13 @@ def _action_response_scene(
             f"{pc} slows down and lets {loc} become physical: scuffs, dust, disturbed edges, and {target_ref} "
             "held against the light long enough for the false story to split from the real one.\n\n"
             f"The clearest sign is small, but fresh. {approved_clue or f'{target_ref[0].upper() + target_ref[1:]} points away from the center of attention.'} "
-            f"{witness} sees the same detail and goes still.\n\n"
+            f"{witness[:1].upper()}{witness[1:]} sees the same detail and goes still.\n\n"
             f"Once seen, {target_ref} becomes hard to ignore. A smear breaks the pattern nearby, and a thread catches "
             "on a rough edge as if someone passed through in a hurry.\n\n"
             f"{stakes}"
         )
         objective = f"Use {target_detail} before the trail is disturbed."
-        clues = [approved_clue or f"{target_detail} contradicts the obvious story.", f"{witness} reacts to the detail.", "Someone used a less visible route."]
+        clues = [approved_clue or f"{target_ref[0].upper() + target_ref[1:]} contradicts the obvious story.", f"{witness[:1].upper()}{witness[1:]} reacts to the detail.", "Someone used a less visible route."]
         actions = [f"Follow the sign from {target_detail}", "Preserve the evidence", "Compare it to nearby surfaces", f"Ask {witness} who had access"]
         if approved_object:
             body = f"At {loc}, {pc} examines {target_ref}."
@@ -1560,7 +1572,7 @@ def get_file(session_id: str, filename: str, current_user=Depends(get_current_us
         parsed = json.loads(text)
         if filename == "scene.json" and isinstance(parsed, dict):
             repaired = _repair_recycled_opening_scene_if_needed(folder, parsed, meta=data if meta.exists() else {})
-            return _normalize_scene_render_fields(folder, repaired)
+            return player_view(_normalize_scene_render_fields(folder, repaired))
         return parsed
     except Exception:
         return {'content': text}
@@ -2108,7 +2120,7 @@ async def bootstrap_session(session_id: str, payload: BootstrapRequest, current_
             'choices': [],
         }
         (folder / 'scene.json').write_text(json.dumps(scene))
-        return {'ok': True, 'scene': scene}
+        return {'ok': True, 'scene': player_view(scene)}
 
     # Load campaign settings so the seed can match the genre
     _boot_campaign_settings: dict = {}
@@ -2219,7 +2231,7 @@ async def bootstrap_session(session_id: str, payload: BootstrapRequest, current_
     await broadcaster.broadcast_json(session_id, {
         'type': 'narrative.scene',
         'session_id': session_id,
-        'scene': scene,
+        'scene': player_view(scene),
     })
 
     # Best-effort: emit cues + suggestions so the UI feels reactive immediately.
@@ -2237,7 +2249,7 @@ async def bootstrap_session(session_id: str, payload: BootstrapRequest, current_
     except Exception:
         pass
 
-    return {'ok': True, 'scene': scene, 'owner': owner}
+    return {'ok': True, 'scene': player_view(scene), 'owner': owner}
 
 
 # ---------------------------------------------------------------------------
@@ -2304,8 +2316,8 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
             'choices': [],
         }
         (folder / 'scene.json').write_text(json.dumps(scene))
-        await broadcaster.broadcast_json(session_id, {'type': 'narrative.scene', 'session_id': session_id, 'scene': scene})
-        return {'ok': True, 'scene': scene}
+        await broadcaster.broadcast_json(session_id, {'type': 'narrative.scene', 'session_id': session_id, 'scene': player_view(scene)})
+        return {'ok': True, 'scene': player_view(scene)}
 
     # --- Step 1: Storyboard Agent ---
     players: list[str] = _session_player_names(folder, meta)
@@ -3435,7 +3447,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     await broadcaster.broadcast_json(session_id, {
         'type': 'narrative.scene',
         'session_id': session_id,
-        'scene': scene,
+        'scene': player_view(scene),
     })
 
     ready_path = folder / 'ready.json'
@@ -3531,7 +3543,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
 
     return {
         'ok': True,
-        'scene': scene,
+        'scene': player_view(scene),
         'plot': plot_result.plot,
         'hooks': plot_result.hooks,
         'dice_rolls': dice_rolls,
@@ -4010,11 +4022,11 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         await broadcaster.broadcast_json(session_id, {
             "type": "narrative.scene",
             "session_id": session_id,
-            "scene": fast_scene,
+            "scene": player_view(fast_scene),
         })
         return {
             "ok": True,
-            "scene": fast_scene,
+            "scene": player_view(fast_scene),
             "dice_rolls": [],
             "generation": generation_lock,
             "simulation_debug": {"fast_path": "opening_choice", "required_content": required},
@@ -4794,7 +4806,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
     await broadcaster.broadcast_json(session_id, {
         'type': 'narrative.scene',
         'session_id': session_id,
-        'scene': new_scene,
+        'scene': player_view(new_scene),
     })
 
     adv_context_debug = adv_context_packet.debug_payload() if adv_context_packet else None
@@ -4901,7 +4913,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
     return {
         'ok': True,
         'generation': generation_lock,
-        'scene': new_scene,
+        'scene': player_view(new_scene),
         'dice_rolls': dice_rolls,
         'pre_scene_dice_rolls': dice_rolls,
         'post_scene_dice_rolls': post_scene_dice_rolls,

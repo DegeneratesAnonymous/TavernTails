@@ -23,8 +23,14 @@ def movement_destination(actions: list[str]) -> str:
             action, re.I,
         )
         if match:
-            destination = match.group(1).strip()
+            # The place ends where the next clause begins: "...village and look at the road".
+            destination = re.split(r"\s+(?:and|then|while|before|so|but)\b|[,;]", match.group(1).strip(), maxsplit=1, flags=re.I)[0].strip()
     return destination
+
+
+def _words(text: str) -> str:
+    """The words of ``text`` only: punctuation, quote style, markdown and case do not count."""
+    return " ".join(re.findall(r"\w+", text.casefold()))
 
 
 def _question_issues(
@@ -35,7 +41,7 @@ def _question_issues(
         item["action_index"]: item for item in reversed(resolutions)
         if isinstance(item.get("action_index"), (int, float))
     }
-    folded_body = body.casefold() if body is not None else None
+    folded_body = _words(body) if body is not None else None
     issues = []
     missing_lines = []
     for index, action in enumerate(actions):
@@ -55,8 +61,8 @@ def _question_issues(
             keys = ("reply", "reason") if status == "cannot_answer" else ("reply",)
             for key in keys:
                 value = str(item.get(key) or "").strip()
-                if value and value.casefold() not in folded_body:
-                    missing_lines.append(f"Question {index}: include the planned {key} in the narration.")
+                if value and _words(value) not in folded_body:
+                    missing_lines.append(f"Question {index}: include the planned {key} word for word, in quotation marks: “{value}”")
     return issues + missing_lines
 
 
@@ -75,7 +81,10 @@ def continuation_issues(
             intent.add(make_fact("actor", name, "confirmed_canon", confirmed_by="previous scene"))
         for claim in find_unsupported_claims(body, intent):
             if claim.get("kind") == "named_entity":
-                issues.append(f"Stay with established people and places: unsupported name {claim['text']}.")
+                issues.append(
+                    f"Stay with established people and places: unsupported name {claim['text']}. "
+                    f"Do not invent anyone; the only people and places you may name are: {', '.join(known_names)}."
+                )
     return issues
 
 

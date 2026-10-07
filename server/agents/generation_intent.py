@@ -394,7 +394,10 @@ def starting_location_fact(intent: OpeningIntent) -> Fact | None:
     for fact in intent.locations:
         if fact.established and not fact.source.startswith("player_canon"):
             return fact
-    return None
+    # Lore normally lists many places, so none is a start point.  A single
+    # labelled place is the only setting the author gave the story.
+    lore_places = [f for f in intent.locations if f.established and f.source == "player_canon:labelled_lore"]
+    return lore_places[0] if len(lore_places) == 1 else None
 
 
 def authored_possessions(text: str) -> list[str]:
@@ -493,6 +496,10 @@ def build_opening_intent(
             origin,
             source=f"player_canon:{entity.get('source') or 'lore'}",
         ))
+        note = clean_text(entity.get("note"))
+        if note and _entity_fact_kind(str(entity.get("type") or "")) == "location":
+            # The author's own description of the place is what is going on there.
+            intent.add(make_fact("setup", note, origin, source=f"player_canon_note:{clean_text(entity.get('name'))}"))
     for entity in contract.get("provisional_entities") or []:
         if not isinstance(entity, dict) or not clean_text(entity.get("name")):
             continue
@@ -971,6 +978,7 @@ _COMMON_CAPS = frozenset({
     "we", "you", "my", "our", "your", "mine", "his", "her", "their", "this", "that", "these", "those", "there", "here", "then", "but", "and",
     "or", "if", "as", "at", "by", "in", "on", "of", "to", "no", "yes", "one", "two", "three", "every", "some",
     "dawn", "dusk", "noon", "midnight", "winter", "summer", "spring", "autumn", "fall",
+    "mr", "mrs", "ms", "mx", "dr", "miss", "madam", "sir",  # an honorific alone is not a name
 })
 _LEADING_DETERMINER = re.compile(r"^(?:The|A|An)\s+")
 # Capitalized words that ordinarily open a sentence without being a name.

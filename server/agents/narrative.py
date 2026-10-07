@@ -34,13 +34,24 @@ def mentions_object(text: str, approved_object: str) -> bool:
     return bool(words) and re.search(rf"\b{re.escape(words[-1])}s?\b", body) is not None
 
 
+# Heuristic cues whose absence alone does not make grounded prose unusable.  A scene
+# may lack one of them (a travel scene with no "event" word, a calm one with no
+# explicit problem) while still having the location, a named NPC and the senses.
+_SOFT_CUES = {
+    "No immediate concrete problem": "has_immediate_problem",
+    "No visible event (nothing happens on-screen)": "has_visible_event",
+}
+
+
 def soft_shortfall_only(result) -> bool:
-    """True when the draft's only failed check is the heuristic 'immediate problem' cue."""
+    """True when the draft's only failed check is one soft heuristic cue."""
+    if len(result.failed_checks) != 1 or result.failed_checks[0] not in _SOFT_CUES:
+        return False
+    other = {"has_immediate_problem", "has_visible_event"} - {_SOFT_CUES[result.failed_checks[0]]}
     return (
-        result.failed_checks == ["No immediate concrete problem"]
-        and not result.banned_phrases_found
-        and result.has_location and result.has_named_npc
-        and result.has_visible_event and result.has_sensory_detail
+        not result.banned_phrases_found
+        and result.has_location and result.has_named_npc and result.has_sensory_detail
+        and all(getattr(result, flag) for flag in other)
         and result.score >= 50
     )
 

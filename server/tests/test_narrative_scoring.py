@@ -1,0 +1,35 @@
+"""The narrative scorer ranks concrete prose above thin prose."""
+from __future__ import annotations
+
+from server.agents import sessions  # noqa: F401  (import order: sessions before narrative)
+from server.agents.narrative import score_scene
+
+RICH = (
+    "The ancient library smells of dust and forgotten magic. Moonlight filters through stained glass, "
+    "casting spectral patterns across towering bookshelves. Archivist Venn grips the locked iron chest on "
+    "the central table and whispers that the key was stolen before dusk. Someone upstairs has just slammed "
+    "a door, and the lamps gutter as the party hears footsteps coming down. If the chest is opened before "
+    "the thief is found, the guild will blame the party."
+)
+THIN = "You are in a room. Something happens. It is quiet."
+
+
+def test_rich_scene_outscores_thin_scene():
+    assert score_scene(RICH, title="Library", threshold=75).score > score_scene(THIN, title="Library", threshold=75).score
+
+
+GROUP = (
+    "Ada Reed's workshop smells of oil and cold brass. The party edges past the workbench as Ada sets down "
+    "a stopped pocket watch and hisses that someone has broken in before dawn. Rain runs down the window, "
+    "and a boot print is still wet on the floorboards beside the door."
+)
+
+
+def test_addressing_the_group_as_the_party_is_not_meta_narration():
+    result = score_scene(GROUP, title="Workshop", threshold=75)
+    assert "the party" not in result.banned_phrases_found
+
+
+def test_real_meta_narration_is_still_penalised():
+    result = score_scene(GROUP + " The players decide what the campaign needs next.", title="Workshop", threshold=75)
+    assert {"the players", "the campaign"} <= set(result.banned_phrases_found)

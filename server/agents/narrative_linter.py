@@ -84,13 +84,14 @@ BANNED_GENERIC: list[str] = [
     "we need help",
 ]
 
+# "the party" is deliberately absent: it is how the narration addresses the group
+# when no player character is selected, and the scene templates use it too.
 BANNED_META: list[str] = [
     "you are in a fantasy",
     "this adventure",
     "this story",
     "this world",
     "the players",
-    "the party",
     "the campaign",
     "the narrative",
     "this campaign",

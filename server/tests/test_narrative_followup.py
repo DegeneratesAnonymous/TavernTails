@@ -230,3 +230,49 @@ def test_continuation_schema_asks_for_action_resolutions_but_opening_does_not():
 
     assert "action_resolutions" in json.loads(_CONTINUATION_SCHEMA)
     assert "action_resolutions" not in json.loads(_SCHEMA)
+
+
+def test_soft_shortfall_also_accepts_a_missing_visible_event_when_the_scene_is_grounded():
+    from server.agents.narrative import soft_shortfall_only
+    from server.agents.narrative_linter import ScoreResult
+
+    base = {"has_location": True, "has_named_npc": True, "has_sensory_detail": True,
+            "has_immediate_problem": True, "has_visible_event": False, "score": 61}
+    arrival = ScoreResult(failed_checks=["No visible event (nothing happens on-screen)"], **base)
+    assert soft_shortfall_only(arrival)
+    ungrounded = ScoreResult(failed_checks=["No visible event (nothing happens on-screen)"], **{**base, "has_named_npc": False})
+    assert not soft_shortfall_only(ungrounded)
+    two_gaps = ScoreResult(failed_checks=["No visible event (nothing happens on-screen)", "No immediate concrete problem"],
+                           **{**base, "has_immediate_problem": False})
+    assert not soft_shortfall_only(two_gaps)
+
+
+def test_retry_feedback_names_the_exact_reply_and_the_people_it_may_use():
+    from server.agents.action_resolution import continuation_issues
+
+    resolutions = [{"action_index": 0, "status": "answered", "reply": "Three days ago."}]
+    issues = continuation_issues("Ada nods.", ["I ask Ada when she wound it."], resolutions,
+                                 known_names=["Ada Reed"], allow_new_names=True)
+    assert any("“Three days ago.”" in i for i in issues)
+    named = continuation_issues("Clara watches the door closely.", [], [], known_names=["Ada Reed"], allow_new_names=False)
+    assert any("Ada Reed" in i and "Clara" in i for i in named)
+
+
+def test_planned_reply_matches_despite_punctuation_markdown_and_case():
+    from server.agents.action_resolution import continuation_issues
+
+    reply = "I wound it just before breakfast. But this morning... something was different. It *refused* to move."
+    resolutions = [{"action_index": 0, "status": "answered", "reply": reply}]
+    body = "Ada Reed replies, “I wound it just before breakfast. But this morning… Something was different. It refused to move.”"
+    assert not continuation_issues(body, ["I ask Ada when she wound it."], resolutions, known_names=["Ada Reed"], allow_new_names=True)
+    assert continuation_issues("Ada nods slowly.", ["I ask Ada when she wound it."], resolutions,
+                               known_names=["Ada Reed"], allow_new_names=True)
+
+
+def test_travel_destination_stops_at_the_next_clause():
+    from server.agents.action_resolution import movement_destination
+
+    assert movement_destination(["I walk to the edge of the village and look at the road."]) == "edge of the village"
+    assert movement_destination(["I leave the workshop and go to the village square."]) == "village square"
+    assert movement_destination(["I head to the docks, then ask around."]) == "docks"
+    assert movement_destination(["I ask Ada about the watch."]) == ""

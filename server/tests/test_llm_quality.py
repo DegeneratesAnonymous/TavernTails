@@ -167,8 +167,8 @@ class TestRegenerateQuality:
             f"Regenerated narrative ignores scene context. Got: {data['narrative']!r}"
         )
 
-    def test_regenerate_score_reflects_content_quality(self, client: TestClient):
-        """A rich scene prompt should score higher than a one-word scene."""
+    def test_regenerate_returns_scored_narrative(self, client: TestClient):
+        """Both a rich and a one-word scene prompt return a scored, non-empty narrative."""
         owner = "quality-score@example.com"
         _ensure_user(owner)
         sid1, _ = sessions_module.create_session_folder("Quality Score Rich", owner)
@@ -200,9 +200,10 @@ class TestRegenerateQuality:
         assert r_rich.status_code == 200, r_rich.text
         assert r_sparse.status_code == 200, r_sparse.text
 
-        score_rich = r_rich.json().get("scene_score", 0)
-        score_sparse = r_sparse.json().get("scene_score", 0)
-        # Rich context should score at least as well as sparse context
-        assert score_rich >= score_sparse, (
-            f"Rich scene scored {score_rich} but sparse scored {score_sparse} — scoring may be inverted"
-        )
+        # Each score rates the prose the model wrote, not the prompt, so two live
+        # generations cannot be ranked against each other.  The ranking itself is
+        # covered deterministically in test_narrative_scoring.py.
+        for response in (r_rich, r_sparse):
+            body = response.json()
+            assert isinstance(body.get("scene_score"), int) and 0 <= body["scene_score"] <= 100, body
+            assert str(body.get("narrative") or "").strip(), body

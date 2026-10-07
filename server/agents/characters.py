@@ -1778,6 +1778,22 @@ def _extract_pf1e_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, Any]:
 # PDF text extraction
 # ---------------------------------------------------------------------------
 
+_INLINE_FEATURE = re.compile(r"^([A-Z][\w'’,/ -]{2,50}?):\s+(\S.{8,})$")
+_METADATA_LABELS = frozenset({
+    "source", "uses", "usage", "range", "duration", "casting time", "components", "action", "level",
+    "page", "prerequisite", "prerequisites", "notes", "note", "requirement", "type", "school",
+})
+
+
+def _inline_feature(line: str) -> dict | None:
+    """A hand-written "Name: what it does" line, the usual way the official sheet's
+    Features & Traits box is filled in, as one feature."""
+    match = _INLINE_FEATURE.match(line)
+    if not match or match.group(1).strip().lower() in _METADATA_LABELS:
+        return None
+    return {"name": match.group(1).strip(), "source": None, "description": match.group(2).strip()[:400]}
+
+
 def _read_pdf_text(content: bytes) -> str | None:
     """Extract plain text from a PDF binary. Falls back to utf-8 decoding.
 
@@ -1862,6 +1878,10 @@ def _read_pdf_text(content: bytes) -> str | None:
                     return "\n\n".join(ocr_pages)
         except Exception:
             pass
+
+    # A PDF with no readable text (a scan without working OCR) is binary, not text.
+    if content.lstrip()[:5] == b"%PDF-":
+        return None
 
     # Best-effort fallback: try to decode the bytes as UTF-8 (or latin-1)
     try:
@@ -3105,6 +3125,11 @@ def _extract_spells_from_text(text: str | None) -> list[str]:
             continue
         if re.match(r"^[VSMvsm/.,()\s-]+$", candidate):
             continue
+        # form labels, not spells: skill rows "Arcana (Int)" and ALL-CAPS section headings
+        if re.search(r"\((?:Str|Dex|Con|Int|Wis|Cha)\)\s*$", candidate) or (
+            candidate.isupper()
+        ):
+            continue
         # drop tokens that are clearly metadata (PHB, durations like '1 minute', ranges like '30 ft')
         if re.match(r"^(PHB|TCoE|VGtM|BR)$", candidate):
             continue
@@ -3623,6 +3648,12 @@ def _build_character_import_sheet_from_pdf(
                         current["description"] = (existing + "\n" + sub).strip() if existing else sub
                     continue
 
+                inline = _inline_feature(line)
+                if inline and not _usage_line_pat.match(line):
+                    _flush()
+                    current = inline
+                    continue
+
                 if _is_feature_name(line):
                     _flush()
                     m = _src_ref_pat.search(line)
@@ -3672,7 +3703,9 @@ def _build_character_import_sheet_from_pdf(
         extracted_class_name = widget_class_name
 
     # Extract spells from combined text as a fallback (cantrip/spell lists inside feature blobs)
-    spells_from_text = _extract_spells_from_text(combined_text)
+    # Spell heuristics read page text only; the widget dump is key/value lines with
+    # no blank separators, so a "Spellcasting ..." key would swallow every field after it.
+    spells_from_text = _extract_spells_from_text(text)
     final_name = _as_str(name_override) or extracted_name or _guess_character_name_from_filename(filename)
     if not final_name:
         final_name = "Imported Character"
@@ -3748,6 +3781,13 @@ def _build_character_import_sheet_from_pdf(
                     if current is not None:
                         existing = current.get("description") or ""
                         current["description"] = (existing + "\n" + sub).strip() if existing else sub
+                    continue
+                # Hand-written "Name: what it does" lines (the common way to fill the
+                # official sheet's Features & Traits box) are one feature per line.
+                inline = _inline_feature(line)
+                if inline and not _usage_line_pat.match(line):
+                    _flush(cat)
+                    current = inline
                     continue
                 # Feature name or description (same logic as _lines_from_blobs)
                 if _is_feature_name(line):
@@ -4023,7 +4063,7 @@ def _build_character_import_sheet_from_pdf(
             spells.append(name)
     else:
         # Try extracting structured spellbook from combined text
-        spell_entries = _extract_spellbook_from_text(combined_text)
+        spell_entries = _extract_spellbook_from_text(text)
         if spell_entries:
             spells = [e.get("name") for e in spell_entries if isinstance(e.get("name"), str)]
         else:
@@ -4044,10 +4084,12 @@ def _build_character_import_sheet_from_pdf(
                 else:
                     spells.append(str(v).strip())
 
-        # merge with text-detected spells only if widgets did not provide names
-        for s in spells_from_text:
-            if s:
-                spells.append(s)
+        # A fillable form keeps its spells in fields; its page text is only labels.
+        # Text-detected spells are for flat PDFs with no form data.
+        if not spells and not widget_values:
+            for s in spells_from_text:
+                if s:
+                    spells.append(s)
 
     def _is_noise_spell_line(text: str) -> bool:
         t = (text or '').strip()

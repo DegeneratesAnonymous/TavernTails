@@ -41,6 +41,10 @@ The session routes in `sessions.py` coordinate generation and persist its result
    deterministic fallback; diagnostics record that choice.
 5. `simulation.py` advances world time and state on continuation. The session
    stores the scene/story and updates memory/storyboard/visual state.
+6. `scene_privacy.py` strips GM-only fields (hidden pressure, NPC knowledge and
+   wants, storyboard and arc plans) from every scene sent to a client. The full
+   scene stays in `scene.json` for the AI GM; any new route or broadcast that
+   sends a scene must pass it through `player_view`.
 
 These stages have different inputs and responsibilities. Do not combine them
 just because they all call a model. Preserve authored facts, NPC secrecy,

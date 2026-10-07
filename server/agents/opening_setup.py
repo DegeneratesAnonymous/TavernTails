@@ -1398,11 +1398,11 @@ def _is_weak_player_facing_text(text: str) -> bool:
 # Honest placeholders for the campaign brief.  The brief's "known facts" are
 # treated as canon by players, so when nothing was established we say so
 # instead of inventing a crisis, a deadline, an authority, or an object.
-UNKNOWN_PROBLEM = "What has gone wrong here has not been established yet."
-UNKNOWN_URGENCY = "No deadline has been established yet."
-UNKNOWN_AUTHORITY = "Who holds authority here has not been established yet."
-UNKNOWN_CONSEQUENCE = "What is at stake has not been established yet."
-UNKNOWN_OBJECT = "The first physical sign of trouble has not been established yet."
+UNKNOWN_PROBLEM = "Exactly what has gone wrong is still unclear, and finding out is the party's first task."
+UNKNOWN_URGENCY = "No one has set a deadline, so the party decides how fast to move."
+UNKNOWN_AUTHORITY = "Who holds authority here is still unclear."
+UNKNOWN_CONSEQUENCE = "What is at stake will come into focus as the party learns more."
+UNKNOWN_OBJECT = "The first physical sign of trouble is still waiting to be found."
 NEUTRAL_OBJECT = "first sign of trouble"
 
 # brief unknown field -> brief validation checks it waives
@@ -1567,7 +1567,7 @@ def _opening_object_name(required: dict[str, Any], *, neutral_default: bool = Fa
         return "sealed packet"
     if "warning" in text:
         return "damaged warning notice"
-    return NEUTRAL_OBJECT if neutral_default else "sealed letter"
+    return NEUTRAL_OBJECT  # never invent a prop the player did not establish
 
 
 def _opening_sensory_detail(location: str, required: dict[str, Any], object_name: str) -> str:
@@ -1580,16 +1580,25 @@ def _opening_sensory_detail(location: str, required: dict[str, Any], object_name
         return f"cold road dust, wind-bent warning flags, and travelers pretending not to stare at the {object_name}"
     if "observatory" in lower:
         return f"cold brass instruments, ink-stained charts, and a thin vibration around the {object_name}"
+    if object_name == NEUTRAL_OBJECT:
+        return "uneasy quiet, hard faces, and everyone carefully not looking at the same thing"
     return f"uneasy quiet, hard faces, and everyone watching the {object_name}"
 
 
 def _opening_visible_problem(required: dict[str, Any], npc_name: str, object_name: str) -> str:
     event = _clean_raw(str(required.get("inciting_event") or required.get("immediate_problem") or ""))
+    unknown_object = object_name == NEUTRAL_OBJECT  # the player never named a prop; do not invent one
     if event and not _is_raw_question(event) and not _is_weak_player_facing_text(event):
+        if unknown_object:
+            return f"{event}. Everyone can see that something is wrong, but no one wants to say what."
         return f"{event}. The {object_name} sits where everyone can see it, but no one wants to claim it."
     clue = _clean_raw(str(required.get("first_clue_or_question") or ""))
     if "lying" in clue.lower() or _is_raw_question(clue):
+        if unknown_object:
+            return f"Three accounts already contradict each other while {_mid_sentence(npc_name)} watches the room like the truth might accuse someone aloud."
         return f"Three accounts already contradict each other while {_mid_sentence(npc_name)} guards the {object_name} like it might accuse someone aloud."
+    if unknown_object:
+        return f"{npc_name} stands at the center of a crowd that has gone quiet in the wrong way."
     return f"{npc_name} stands beside the {object_name}, and the crowd has gone quiet in the wrong way."
 
 
@@ -1601,6 +1610,17 @@ def _opening_personal_hook(anchor: dict[str, Any], pc: str, object_name: str, lo
     arrival = _clean_raw(str(anchor.get("arrival_reason") or ""))
     stake = _clean_raw(str(anchor.get("personal_stake") or ""))
     fear = _clean_raw(str(anchor.get("fear_of_loss") or ""))
+    if object_name == NEUTRAL_OBJECT:
+        start = pc_start_sentence(pc)
+        if arrival and stake:
+            return f"{start} reaches {location} with a reason already in motion, and what is happening here turns that reason into an immediate choice."
+        if arrival:
+            return f"{start} reaches {location} with a reason of their own, and what is happening here makes it urgent."
+        if stake:
+            return f"For {pc}, what is happening at {location} is personal enough that leaving it to strangers would cost more than time."
+        if fear:
+            return f"{start} feels the weight of what could be lost as the room's trouble draws every eye."
+        return f"{pc_start_sentence(pc)} can see for themselves that something at {location} is no ordinary matter."
     if arrival and stake:
         return f"{pc_start_sentence(pc)} reaches {location} with a reason already in motion, and the {object_name} turns that reason into an immediate choice."
     if arrival:
@@ -1628,6 +1648,14 @@ def _opening_pressure(required: dict[str, Any], npc_name: str) -> str:
 
 
 def _opening_action_options(npc_name: str, object_name: str, location: str, visible_problem: str) -> list[str]:
+    if object_name == NEUTRAL_OBJECT:
+        return [
+            f"Look closely at what is wrong at {location}",
+            f"Question {_mid_sentence(npc_name)}",
+            f"Watch {location} quietly",
+            "Follow whoever is trying to leave" if "survivor" in visible_problem.lower() or "account" in visible_problem.lower()
+            else "Look for what the crowd is avoiding",
+        ]
     options = [
         f"Study the {object_name}",
         f"Question {_mid_sentence(npc_name)}",
