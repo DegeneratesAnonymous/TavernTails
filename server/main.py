@@ -167,9 +167,27 @@ app.include_router(campaign_memory_router)
 # Static hosting for production/self-hosted runs.
 # In local development, CRA serves the client separately; when `client/build`
 # exists, FastAPI can serve that bundle from the same process as the API.
+class ClientBuildFiles(StaticFiles):
+    """Serve the built client so a rebuild reaches browsers promptly.
+
+    Without ``Cache-Control`` browsers reuse files by heuristic freshness (a
+    fraction of their age), so a tab could keep running a months-old bundle
+    against the new API after a deploy (seen Oct 6 2026: "Create Campaign" spun
+    forever). The app shell must be revalidated each time (ETags keep that a
+    cheap 304); CRA's ``/static/`` files are content-hashed, so they never change.
+    """
+
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        if response.status_code in (200, 304):
+            hashed = path.replace("\\", "/").startswith("static/")
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable" if hashed else "no-cache"
+        return response
+
+
 build_dir = Path(__file__).resolve().parents[1] / 'client' / 'build'
 if build_dir.exists():
-    app.mount('/', StaticFiles(directory=str(build_dir), html=True), name='static')
+    app.mount('/', ClientBuildFiles(directory=str(build_dir), html=True), name='static')
 
 @app.get("/")
 def read_root():
