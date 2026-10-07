@@ -135,12 +135,11 @@ def collect_context(
     recent_chat = recent_chat or []
 
     # Text corpus to extract mentioned names from
-    corpus_texts = list(recent_chat)
-    if session_id:
-        corpus_texts += _load_session_story(session_id, last_n=4)
-        scene_text = _load_session_scene(session_id)
-        if scene_text:
-            corpus_texts.append(scene_text)
+    recent_story = _load_session_story(session_id, last_n=4) if session_id else []
+    current_scene = _load_session_scene(session_id) if session_id else ""
+    corpus_texts = list(recent_chat) + recent_story
+    if current_scene:
+        corpus_texts.append(current_scene)
     full_corpus = " ".join(corpus_texts)
     mentioned_names = _names_from_text(full_corpus)
 
@@ -207,9 +206,6 @@ def collect_context(
 
     ticking_clocks = [h for h in hooks if h.hook_type == "ticking_clock"][:_MAX_HOOKS]
     open_hooks = [h for h in hooks if h.hook_type != "ticking_clock"][:_MAX_HOOKS]
-
-    recent_story = _load_session_story(session_id, last_n=4) if session_id else []
-    current_scene = _load_session_scene(session_id) if session_id else ""
 
     ctx = {
         "campaign_id": campaign_id,

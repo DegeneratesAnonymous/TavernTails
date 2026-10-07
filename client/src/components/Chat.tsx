@@ -1,4 +1,4 @@
-import React, {useRef, useState, useEffect, useCallback} from 'react'
+import React, {useRef, useState, useEffect, useCallback, useMemo} from 'react'
 import './Chat.css'
 import { apiFetch, buildWsUrl } from '../api'
 import ChatToolbar from './chat/ChatToolbar'
@@ -8,6 +8,7 @@ import ImageGallery from './chat/ImageGallery'
 import MessageList from './chat/MessageList'
 import PinnedBar from './chat/PinnedBar'
 import Composer from './chat/Composer'
+import { ChatFilter, selectMessages } from './chat/messageFilters'
 import NpcSnapshotModal from './chat/NpcSnapshotModal'
 import {CharacterSummary} from './CharacterPanel'
 
@@ -130,8 +131,6 @@ const ADVANCED_TOOLS: AdvancedTool[] = [
 ]
 
 const ADVANCED_TOOLS_FOR_PANEL = ADVANCED_TOOLS.map((t) => ({ id: t.id, label: t.label, description: t.description }))
-
-type ChatFilter = 'all' | 'story' | 'player' | 'dice' | 'system'
 
 export default function Chat({sessionId, variant = 'full', aboveComposer, promptLabel, currentUserId, composerInject, onComposerInjectConsumed, character, compactLog = false, onExpandLog, onMessageSent, showSystemTab = false}: Props){
   // Chat owns both persisted messages and local-only status/tool messages.
@@ -664,28 +663,10 @@ export default function Chat({sessionId, variant = 'full', aboveComposer, prompt
     }
   },[sessionId, appendMessage, notifyMentions])
 
-  // Compact filters hide low-level system chatter by default while keeping dice
-  // results visible in the main session log.
-  const isDiceMessage = (message: Msg) => {
-    const text = message.text || ''
-    return message.who === 'system' && (/roll/i.test(text) || /→/.test(text) || /\b\d+d\d+/i.test(text))
-  }
-  const visibleMessages = messages.filter(message => {
-    if(activeFilter === 'story') return message.who === 'gm'
-    if(activeFilter === 'player') return message.who === 'you' || message.who === 'ally'
-    if(activeFilter === 'dice') return isDiceMessage(message)
-    if(activeFilter === 'system') return message.who === 'system'
-    if(message.who === 'system') return isDiceMessage(message)
-    return true
-  })
+  const { visibleMessages, filterCounts } = useMemo(
+    () => selectMessages(messages, activeFilter), [messages, activeFilter],
+  )
   const compactMessages = visibleMessages.slice(-4)
-  const filterCounts: Record<ChatFilter, number> = {
-    all: messages.filter(message => message.who !== 'system' || isDiceMessage(message)).length,
-    story: messages.filter(message => message.who === 'gm').length,
-    player: messages.filter(message => message.who === 'you' || message.who === 'ally').length,
-    dice: messages.filter(isDiceMessage).length,
-    system: messages.filter(message => message.who === 'system').length,
-  }
   const filterTabs: Array<[ChatFilter, string]> = [
     ['all', 'All'],
     ['story', 'Story'],

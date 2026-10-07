@@ -1,45 +1,27 @@
-# Agent Modules Documentation
+# Agent and code ownership
 
-This file documents the agent-based architecture for the TavernTAIls AI GM web app. Each agent is responsible for a distinct aspect of gameplay or management.
+TavernTAIls combines feature API routers with generation services. The current
+entry points, storage boundaries, and generation flow are mapped in
+[docs/CODEBASE_GUIDE.md](docs/CODEBASE_GUIDE.md).
 
-## Agents Overview
+| Generation responsibility | Implementation |
+| --- | --- |
+| Narration and prose quality | `server/agents/narrative.py`, `narrative_linter.py` |
+| Scene planning and validation | `server/agents/scene_director.py`, `scene_validator.py` |
+| NPC profiles and state | `server/agents/npc.py`, `campaign_memory.py`, `simulation.py` |
+| Story guidance and continuity | `server/agents/narrative_director.py`, `storyboard.py` |
+| Notes and recaps | `server/agents/notes.py`, `memory_extractor.py` |
+| Images and visual continuity | `server/agents/image.py`, `visual_director.py`, `visual_state.py` |
 
-### 1. Narrative Agent
-- **Role:** Drives gameplay, generates scene narration, prompts players, manages turn order.
-- **Location:** `server/agents/narrative.py`, `client/src/agents/NarrativeAgent.tsx`
+Adjacent filenames in the table are relative to `server/agents/`. Session
+start/advance orchestration belongs to `server/agents/sessions.py`; model calls
+and local inference concurrency belong to `server/steward_llm.py`.
 
-### 2. Scene Analysis Agent
-- **Role:** Detects needed dice rolls, enforces rules, prompts for player actions.
-- **Location:** `server/agents/scene.py`, `client/src/agents/SceneAgent.tsx`
+The client uses `GameplayLayout.tsx` and its panels for active play. Components
+in `client/src/agents/` also expose individual agent tools; they are not a
+one-to-one map of the session generation pipeline.
 
-### 3. NPC/Enemy Manager Agent
-- **Role:** Profiles NPCs/enemies, tracks stats, motivations, and initiative; manages combat.
-- **Location:** `server/agents/npc.py`, `client/src/agents/NPCAgent.tsx`
-
-### 4. Storyboard Agent
-- **Role:** Tracks campaign progress, scenes, branching paths, and unresolved threads.
-- **Location:** `server/agents/storyboard.py`, `client/src/agents/StoryboardAgent.tsx`
-
-### 5. Notes Agent
-- **Role:** Logs session notes, recaps, and provides !notes on request.
-- **Location:** `server/agents/notes.py`, `client/src/agents/NotesAgent.tsx`
-
-### 6. Image Generation Agent
-- **Role:** Creates scene images using AI for immersion.
-- **Location:** `server/agents/image.py`, `client/src/agents/ImageAgent.tsx`
-
-## Development Order
-1. Narrative Agent
-2. Scene Analysis Agent
-3. NPC/Enemy Manager Agent
-4. Storyboard Agent
-5. Notes Agent
-6. Image Generation Agent
-
-## Integration Plan
-- Each agent has a backend (FastAPI) module and a frontend (React) component.
-- Agents communicate via REST API endpoints.
-- Documentation and code comments will be updated as agents are expanded.
-
----
-For questions or handoff, refer to this file and the README.md for project context.
+When editing generation, preserve authored/confirmed facts, player agency,
+secrecy boundaries, and fallback diagnostics. Keep route wiring in
+`server/main.py` and feature behavior in the feature's existing owner. See
+[docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for validation commands.
