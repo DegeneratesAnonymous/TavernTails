@@ -4220,23 +4220,20 @@ def _build_character_import_sheet_from_pdf(
         top_k = 2
         # iterate combined features list (class/racial/other + general)
         all_features = list({*(class_features or []), *(racial_features or []), *(other_features or []), * (features_from_widgets or [])})
+        queries = [value for value in [*all_features[:200], *(raw_struct.get("spells") or [])[:200]]
+                   if isinstance(value, str) and value]
+        matches = references_agent.search_queries(queries, top_k=top_k)
         for f in all_features[:200]:
             if not f or not isinstance(f, str):
                 continue
-            try:
-                hits = references_agent.search_query(f, top_k=top_k)
-            except Exception:
-                hits = []
+            hits = matches.get(f, [])
             if hits:
                 refs["features"][f] = hits
 
         for s in (raw_struct.get("spells") or [])[:200]:
             if not s or not isinstance(s, str):
                 continue
-            try:
-                hits = references_agent.search_query(s, top_k=top_k)
-            except Exception:
-                hits = []
+            hits = matches.get(s, [])
             if hits:
                 refs["spells"][s] = hits
 

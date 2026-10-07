@@ -73,3 +73,31 @@ def test_index_cache_is_bounded():
         references._tfidf_index((f'word {i}',))
     assert references._tfidf_index.cache_info().currsize == 4
     references._tfidf_index.cache_clear()
+
+
+def test_batch_reads_corpus_once_and_deduplicates_queries(corpus, monkeypatch):
+    corpus('guide', ['fire water', 'ice'])
+    expected = {q: references.search_query(q) for q in ['fire', 'ice']}
+    loads = []
+    load = references._load_search_corpus
+    def counted(**kwargs):
+        loads.append(kwargs)
+        return load(**kwargs)
+    monkeypatch.setattr(references, '_load_search_corpus', counted)
+    assert references.search_queries(['fire', 'ice', 'fire', '']) == expected
+    assert len(loads) == 1
+
+
+def test_batch_continues_after_one_failed_lookup(corpus, monkeypatch):
+    corpus('guide', ['fire water'])
+    search = references._search_corpus
+    def fail_one(q, *args):
+        if q == 'ice':
+            raise ValueError('bad query')
+        return search(q, *args)
+    monkeypatch.setattr(references, '_search_corpus', fail_one)
+    hits = references.search_queries(['ice', 'fire'])
+    assert hits['ice'] == []
+    assert hits['fire']
+    with pytest.raises(ValueError):
+        references.search_query('ice')

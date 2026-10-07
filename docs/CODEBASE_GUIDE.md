@@ -11,7 +11,7 @@ client and renders the application component in `client/src/App.tsx`.
 | Accounts and access | `server/auth.py`, `server/agents/player.py` | `agents/LoginSignupAgent.tsx`, `api.ts` |
 | Campaign creation and settings | `server/agents/campaigns.py`, `opening_setup.py`, `campaign_interpretation.py` | `components/dashboard/CampaignCreationWizard.tsx`, `CampaignSetupView.tsx` |
 | Character CRUD and imports | `server/agents/characters.py` | `components/dashboard/CharacterWizard.tsx`, `ImportCharacterView.tsx` |
-| Session start and advance | `server/agents/sessions.py` | `components/GameplayLayout.tsx` |
+| Session start and advance | `server/agents/sessions.py`, `server/generation_workers.py` | `components/GameplayLayout.tsx`, `hooks/useSessionRequests.ts` |
 | Chat and dice | `server/agents/chat.py`, `rolls.py`, `ws.py` | `components/Chat.tsx`, `components/chat/` |
 | Campaign memory | `server/agents/campaign_memory.py`, `context_orchestrator.py` | campaign/session views |
 | Documents and references | `server/agents/documents.py`, `references.py`, `server/storage/documents.py` | `components/DocumentsPanel.tsx` |
@@ -91,6 +91,24 @@ that call's snapshot; a second read adds work and can mix different versions.
   Existing metadata loading, missing-file behavior, owner/invite/member policy,
   and denial responses remain in their original route scopes.
 
+## Generation and request efficiency
+
+- Synchronous generation stages run through `generation_workers.py` with a
+  four-worker limit separate from ordinary API requests. Model transport keeps
+  its own inference limit; WebSocket broadcasts stay on the request event loop.
+- Character imports call `references.search_queries` once for their features and
+  spells, reading one corpus snapshot and deduplicating queries. Failed queries
+  do not discard successful matches. The single-query API remains available.
+- Dashboard effects ignore responses after their campaign/session changes.
+  `useSessionRequests.ts` shares pending metadata reads and auto-created sessions
+  until the campaign list catches up; failures can retry. Metadata merges retain
+  newer state, and campaign lists accept only the latest request's response.
+- `sessions._write_scene` uses one approved request for the initial attempt and
+  retry, adding validation feedback without losing the opening seed or context.
+- Memory ranking reads scoring fields for every supported active entity, then
+  hydrates at most 17 full records for selected context and clue constraints.
+  Recently updated order still breaks ties; older relevant entities remain eligible.
+
 ## Where further cleanup needs care
 
 `characters.py`, `sessions.py`, `LoggedInDashboard.tsx`, and `GameplayLayout.tsx`
@@ -104,7 +122,7 @@ contracts; replacing one requires checking all callers first.
 
 Backend regression tests live in `server/tests/`; type-baseline tests live in
 `tests/`. Focused coverage for this pass is `test_context_efficiency.py`,
-`test_reference_search_efficiency.py`, `test_import_lookup_cleanup.py`, and
-`components/chat/messageFilters.test.ts`. See [CONTRIBUTING.md](CONTRIBUTING.md)
+`test_reference_search_efficiency.py`, `test_import_lookup_cleanup.py`, `test_generation_workers.py`,
+`hooks/useSessionRequests.test.ts`, and `components/chat/messageFilters.test.ts`. See [CONTRIBUTING.md](CONTRIBUTING.md)
 for the full commands. CI checks Ruff, the reviewed mypy baseline, backend tests,
 frontend lint, native TypeScript checks, Jest, and a production build.

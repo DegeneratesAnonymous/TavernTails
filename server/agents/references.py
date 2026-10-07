@@ -752,49 +752,8 @@ def _tfidf_index(texts: tuple[str, ...]) -> tuple[list[Counter[str]], dict[str, 
     return frequencies, idf, norms
 
 
-def search_query(q: str, top_k: int = 5, *, system_only: bool = False, include_system: bool = True, game_system: str | None = None):
-    """Synchronous helper for other server modules to search references.
-
-    Returns list of result dicts: {source_id, page, snippet, score, paraphrase_required}
-
-    Parameters
-    ----------
-    system_only:
-        When True, search ONLY system reference documents (rulebooks, etc.).
-    include_system:
-        When False, skip all system reference documents.  Useful for
-        user-facing queries that should not draw on restricted material.
-    game_system:
-        When set (e.g. ``\"swse\"`` or ``\"Star Wars Saga\"``), only documents tagged
-        with the matching game_system (or ``\"global\"``) are searched.  Accepts both
-        the short ruleset ID (``swse``) and the full label stored in metadata
-        (``Star Wars Saga``).
-
-    Notes
-    -----
-    The ``snippet`` field is always ``None`` for system reference results.
-    The ``paraphrase_required`` flag is ``True`` for those results.
-    Agents MUST paraphrase or summarise content from system references;
-    they must never quote the source text verbatim.
-    """
-    if not q or not q.strip():
-        return []
+def _load_search_corpus(*, system_only: bool, include_system: bool, game_system: str | None):
     root = _storage_root()
-    openai_key = os.environ.get("OPENAI_API_KEY")
-    query_vect: list[float] | None = None
-    if openai_key:
-        try:
-            import openai
-
-            openai.api_key = openai_key
-            resp = openai.Embedding.create(model="text-embedding-3-small", input=q)
-            query_vect = resp["data"][0]["embedding"]
-        except Exception:
-            logger.exception("Failed to get query embedding; falling back to text match")
-            query_vect = None
-
-    candidates: list[dict[str, object]] = []
-    # Prepare corpus for TF-IDF fallback
     corpus_texts: list[str] = []
     corpus_meta: list[dict[str, object]] = []
     for directory in root.iterdir():
@@ -846,6 +805,24 @@ def search_query(q: str, top_k: int = 5, *, system_only: bool = False, include_s
                 }
             )
 
+    return corpus_texts, corpus_meta
+
+
+def _search_corpus(q: str, top_k: int, corpus_texts: list[str], corpus_meta: list[dict[str, object]]):
+    openai_key = os.environ.get("OPENAI_API_KEY")
+    query_vect: list[float] | None = None
+    if openai_key:
+        try:
+            import openai
+
+            openai.api_key = openai_key
+            resp = openai.Embedding.create(model="text-embedding-3-small", input=q)
+            query_vect = resp["data"][0]["embedding"]
+        except Exception:
+            logger.exception("Failed to get query embedding; falling back to text match")
+            query_vect = None
+
+    candidates: list[dict[str, object]] = []
     # If we have query embedding and page embeddings, score by cosine
     if query_vect and any(meta.get("emb") for meta in corpus_meta):
         for meta in corpus_meta:
@@ -900,3 +877,57 @@ def search_query(q: str, top_k: int = 5, *, system_only: bool = False, include_s
 
     candidates.sort(key=lambda item: item["score"], reverse=True)
     return candidates[:top_k]
+
+
+def search_queries(
+    queries: list[str], top_k: int = 5, *, system_only: bool = False,
+    include_system: bool = True, game_system: str | None = None,
+) -> dict[str, list[dict[str, object]]]:
+    """Search distinct queries against one import/request-scoped corpus snapshot."""
+    queries = list(dict.fromkeys(q for q in queries if q and q.strip()))
+    if not queries:
+        return {}
+    texts, metadata = _load_search_corpus(
+        system_only=system_only, include_system=include_system, game_system=game_system,
+    )
+    results = {}
+    for q in queries:
+        try:
+            results[q] = _search_corpus(q, top_k, texts, metadata)
+        except Exception:
+            logger.exception("Reference lookup failed for %r", q)
+            results[q] = []
+    return results
+
+
+def search_query(q: str, top_k: int = 5, *, system_only: bool = False, include_system: bool = True, game_system: str | None = None):
+    """Synchronous helper for other server modules to search references.
+
+    Returns list of result dicts: {source_id, page, snippet, score, paraphrase_required}
+
+    Parameters
+    ----------
+    system_only:
+        When True, search ONLY system reference documents (rulebooks, etc.).
+    include_system:
+        When False, skip all system reference documents.  Useful for
+        user-facing queries that should not draw on restricted material.
+    game_system:
+        When set (e.g. ``\"swse\"`` or ``\"Star Wars Saga\"``), only documents tagged
+        with the matching game_system (or ``\"global\"``) are searched.  Accepts both
+        the short ruleset ID (``swse``) and the full label stored in metadata
+        (``Star Wars Saga``).
+
+    Notes
+    -----
+    The ``snippet`` field is always ``None`` for system reference results.
+    The ``paraphrase_required`` flag is ``True`` for those results.
+    Agents MUST paraphrase or summarise content from system references;
+    they must never quote the source text verbatim.
+    """
+    if not q or not q.strip():
+        return []
+    texts, metadata = _load_search_corpus(
+        system_only=system_only, include_system=include_system, game_system=game_system,
+    )
+    return _search_corpus(q, top_k, texts, metadata)

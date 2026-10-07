@@ -128,3 +128,55 @@ def test_relevance_ranking_keeps_recent_order_for_ties(context_db):
     assert [npc.name for npc in packet.active_npcs] == ['Ada', 'Cal', 'Bea']
     assert [thread.title for thread in packet.story_threads] == ['Thread 10', 'Thread 1']
     assert packet.scene.current_problem == 'Problem 10'
+
+
+def test_compact_memory_reads_preserve_full_payload_ranking_and_constraints(context_db, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import event
+    from sqlmodel import select
+
+    now = datetime.now(timezone.utc)
+    with db.Session(context_db) as session:
+        for kind, count in [('npc', 40), ('location', 6), ('story_thread', 6), ('faction', 3), ('world_event', 20)]:
+            for i in range(count):
+                session.add(db.CampaignEntity(
+                    id=f'{kind}{i}', campaign_id='campaign', entity_type=kind, name=f'{kind.title()} {i}',
+                    updated_at=now + timedelta(seconds=i),
+                    data={'biography': 'large irrelevant history ' * 1000,
+                          'primary_goal': 'Find shelter', 'next_likely_action': 'Ask for help',
+                          'story_engine': {'goal': 'Protect the bridge', 'deadline': 'dawn'},
+                          'faction_affiliations': ['Faction 0'], 'secrets': ['secret password'],
+                          'current_priority': 10 if i == 0 else 1,
+                          'current_situation': f'The bridge {i} is breaking.', 'stakes': 'The wagon will fall.',
+                          'gm_notes': f'Hidden thread {i}', 'opportunities': [f'Clue {i}'],
+                          'hidden_elements': [f'Hidden location {i}']},
+                ))
+        session.add(db.CampaignEntity(id='inactive', campaign_id='campaign', entity_type='npc', name='Inactive', status='inactive'))
+        session.add(db.CampaignEntity(id='other', campaign_id='other', entity_type='npc', name='Other'))
+        session.commit()
+        candidates = orchestrator._load_rankable_entities(session, 'campaign')
+    assert len(candidates) == 55
+    assert all('biography' not in e.data and 'secrets' not in e.data for e in candidates)
+    queries = []
+    def record(connection, cursor, statement, parameters, context, executemany):
+        queries.append((statement, parameters))
+    event.listen(context_db, 'before_cursor_execute', record)
+    args = {'campaign_id': 'campaign', 'player_actions': ['I ask Npc 0 about the bridge.'],
+            'scene_override': {'location_name': 'Location 0'}, 'use_cache': False}
+    compact = orchestrator.orchestrate(**args)
+    event.remove(context_db, 'before_cursor_execute', record)
+    hydration = [(sql, params) for sql, params in queries if 'campaignentity.id IN' in sql]
+    assert len(hydration) == 1
+    assert len(hydration[0][1]) <= 18  # campaign ID plus at most 17 full memories
+    def full_rows(session, campaign_id):
+        return session.exec(select(db.CampaignEntity).where(
+            db.CampaignEntity.campaign_id == campaign_id, db.CampaignEntity.status == 'active',
+        ).order_by(db.CampaignEntity.updated_at.desc())).all()
+    monkeypatch.setattr(orchestrator, '_load_rankable_entities', full_rows)
+    baseline = orchestrator.orchestrate(**args)
+    assert compact.model_dump(exclude={'generated_at'}) == baseline.model_dump(exclude={'generated_at'})
+    assert compact.location.name == 'Location 0'
+    assert compact.active_npcs[0].name == 'Npc 0'
+    assert compact.story_threads[0].title == 'Story_Thread 0'
+    assert 'secret password' not in compact.for_narrative()

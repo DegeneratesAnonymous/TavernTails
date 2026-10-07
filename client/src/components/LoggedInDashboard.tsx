@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import '../LoggedIn.css';
 import './LoggedInDashboard.css';
 import SourceRef from './ui/SourceRef'
@@ -24,6 +24,7 @@ import EmptyState from './ui/EmptyState'
 import Modal from './ui/Modal'
 import Toast from './ui/Toast'
 import ThemeToggle from './ui/ThemeToggle'
+import { useSessionRequests } from '../hooks/useSessionRequests'
 
 // Container category names that should not appear as individual features
 const FEATURE_CATEGORY_PATTERN = /\b(features?|traits?|abilities|proficiencies|class\s+features?|racial\s+traits?|species\s+traits?|subclass\s+features?)\s*$/i
@@ -645,11 +646,16 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     setSelectedCharacterId(Number(characters[0].id))
   }, [characters, activeCharacterId, selectedCharacterId])
 
+  const campaignRequestVersion = useRef(0)
+  const { loadSessionMeta, ensureCampaignSession, forgetCampaignSession } = useSessionRequests()
+
   const fetchCampaigns = useCallback(async () => {
+    const version = ++campaignRequestVersion.current
     try{
       const res = await apiFetch('/campaigns')
       if(res.ok){
         const data = await res.json()
+        if (version !== campaignRequestVersion.current) return
         const rows = Array.isArray(data?.campaigns) ? data.campaigns : []
         setCampaigns(rows)
         if(rows.length > 0){
@@ -892,6 +898,8 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     }
     const sessionsList: Array<any> = nextCampaign.sessions || []
 
+    if (sessionsList.length) forgetCampaignSession(String(activeCampaignId))
+
     // If activeSession already belongs to this campaign keep it — no thrash.
     if (activeSession && sessionsList.some(s => String(s.id) === activeSession)) return
 
@@ -900,10 +908,10 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     } else {
       // No sessions yet — auto-create one asynchronously.
       setActiveSession(null)
-      apiFetch(`/campaigns/${activeCampaignId}/create_session`, { method: 'POST' })
-        .then(async res => {
-          if (!res.ok) return
-          const data = await res.json().catch(() => ({} as any))
+      let cancelled = false
+      ensureCampaignSession(String(activeCampaignId))
+        .then(async data => {
+          if (cancelled) return
           const sid = data?.session_id ? String(data.session_id) : ''
           if (sid) {
             setActiveSession(sid)
@@ -912,9 +920,11 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
           }
         })
         .catch(() => { /* non-fatal */ })
+      return () => { cancelled = true }
     }
+  // Session alignment runs on campaign changes; manual session selection owns activeSession.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[activeCampaignId, campaigns])
+  },[activeCampaignId, campaigns, ensureCampaignSession, forgetCampaignSession, fetchCampaigns])
 
   const handleSetActiveCampaignId = useCallback((id: string | null) => {
     // Only update the campaign ID. The useEffect above owns session alignment.
@@ -926,36 +936,35 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   }, [])
 
   useEffect(()=>{
+    let cancelled = false
     async function ensureSessionMetas(){
       const sessionIds = activeCampaignSessions.map(s => String(s.id))
       const missing = sessionIds.filter(id => !sessionMetaById[id])
       if(missing.length === 0) return
       try{
         const results = await Promise.all(missing.map(async (id) => {
-          const res = await apiFetch(`/sessions/${id}/meta`)
-          if(!res.ok) return null
-          const data = await res.json()
-          return { id, meta: data }
+          const meta = await loadSessionMeta(id).catch(() => null)
+          return meta ? { id, meta } : null
         }))
-        const next: Record<string, any> = { ...sessionMetaById }
-        for(const item of results){
-          if(item?.id){
-            next[item.id] = item.meta
-          }
-        }
-        setSessionMetaById(next)
+        if (cancelled) return
+        setSessionMetaById(prev => {
+          const additions = results.filter(item => item && !prev[item.id])
+          if (!additions.length) return prev
+          return { ...prev, ...Object.fromEntries(additions.map(item => [item!.id, item!.meta])) }
+        })
       }catch(e){/*ignore*/}
     }
     ensureSessionMetas()
-  },[activeCampaignId, activeCampaignSessions, sessionMetaById])
+    return () => { cancelled = true }
+  },[activeCampaignId, activeCampaignSessions, sessionMetaById, loadSessionMeta])
 
   useEffect(()=>{
+    let cancelled = false
     async function loadSessionCharacterSelection(){
       if(!activeSession) return
       try{
-        const res = await apiFetch(`/sessions/${activeSession}/meta`)
-        if(!res.ok) return
-        const meta = await res.json()
+        const meta = await loadSessionMeta(activeSession)
+        if (cancelled) return
         const email = (localStorage.getItem('user_email') || '').trim().toLowerCase()
         const username = (localStorage.getItem('user_username') || '').trim().toLowerCase()
         const identifier = email || username
@@ -971,7 +980,8 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       }catch(e){/*ignore*/}
     }
     loadSessionCharacterSelection()
-  },[activeSession])
+    return () => { cancelled = true }
+  },[activeSession, loadSessionMeta])
 
   const quickstartPlaytest = useCallback(async (opts?: { campaignName?: string; charId?: number | null }) => {
     if (quickstartBusy) return

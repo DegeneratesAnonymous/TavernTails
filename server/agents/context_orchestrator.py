@@ -32,7 +32,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from pydantic import BaseModel, Field
-from sqlmodel import select
+from sqlmodel import col, select
 
 from .. import db
 from ..db import CampaignChangeLog, CampaignEntity, CampaignHook
@@ -752,6 +752,27 @@ def _save_cache(session_id: str, key: str, packet: ContextPacket) -> None:
 # Main Orchestration Entry Point
 # ---------------------------------------------------------------------------
 
+_SCORING_FIELDS = (
+    "primary_goal", "next_likely_action", "story_engine", "faction_affiliations",
+    "ticking_clock", "current_priority", "next_recommended_dm_move", "active_plan", "next_action",
+)
+
+
+def _load_rankable_entities(session: db.Session, campaign_id: str) -> list[CampaignEntity]:
+    """Read scoring fields for every candidate, without loading full memory payloads."""
+    data = CampaignEntity.__table__.c.data  # type: ignore[attr-defined]
+    rows = session.exec(
+        select(CampaignEntity.id, CampaignEntity.name, CampaignEntity.entity_type,
+               *(data[key] for key in _SCORING_FIELDS))
+        .where(CampaignEntity.campaign_id == campaign_id,
+               CampaignEntity.status == "active",
+               col(CampaignEntity.entity_type).in_(("npc", "location", "faction", "story_thread")))
+        .order_by(CampaignEntity.updated_at.desc())
+    ).all()
+    return [CampaignEntity(id=row[0], campaign_id=campaign_id, name=row[1], entity_type=row[2],
+                           data=dict(zip(_SCORING_FIELDS, row[3:], strict=True))) for row in rows]
+
+
 def orchestrate(
     campaign_id: str,
     session_id: str | None = None,
@@ -816,14 +837,7 @@ def orchestrate(
     # 2. Load campaign entities from DB
     # ---------------------------------------------------------------------------
     with db.Session(db.engine) as s:
-        all_entities = s.exec(
-            select(CampaignEntity)
-            .where(
-                CampaignEntity.campaign_id == campaign_id,
-                CampaignEntity.status == "active",
-            )
-            .order_by(CampaignEntity.updated_at.desc())
-        ).all()
+        all_entities = _load_rankable_entities(s, campaign_id)
 
         hooks = s.exec(
             select(CampaignHook)
@@ -902,6 +916,26 @@ def orchestrate(
         (loc for loc in locations if loc.name.lower() == current_location.lower()),
         locations[0] if locations else None,
     )
+
+    # Hydrate only selected memories and the recent locations/threads used for
+    # clue constraints. Ranking still considers every active candidate.
+    selected_ids = {e.id for e in [*ranked_npcs, *ranked_threads, *ranked_factions,
+                                  *locations[:3], *threads[:3]]}
+    if current_loc_entity:
+        selected_ids.add(current_loc_entity.id)
+    with db.Session(db.engine) as s:
+        full_entities = s.exec(select(CampaignEntity).where(
+            CampaignEntity.campaign_id == campaign_id,
+            col(CampaignEntity.id).in_(selected_ids),
+        )).all() if selected_ids else []
+    by_id = {e.id: e for e in full_entities}
+    ranked_npcs = [by_id[e.id] for e in ranked_npcs if e.id in by_id]
+    ranked_threads = [by_id[e.id] for e in ranked_threads if e.id in by_id]
+    ranked_factions = [by_id[e.id] for e in ranked_factions if e.id in by_id]
+    locations = [by_id[e.id] for e in locations[:3] if e.id in by_id]
+    threads = [by_id[e.id] for e in threads[:3] if e.id in by_id]
+    if current_loc_entity:
+        current_loc_entity = by_id.get(current_loc_entity.id)
 
     # ---------------------------------------------------------------------------
     # 4. Build Scene Context
