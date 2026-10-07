@@ -1,7 +1,8 @@
 # Codebase guide
 
 Use this map to find the owner of a behavior before adding another helper or agent.
-`server/main.py` registers the API routers; `client/src/App.tsx` starts the client.
+`server/main.py` registers the API routers. `client/src/index.tsx` bootstraps the
+client and renders the application component in `client/src/App.tsx`.
 
 ## Feature ownership
 
@@ -79,6 +80,17 @@ that call's snapshot; a second read adds work and can mix different versions.
   unused scoring argument. Explicit scene problems/stakes survive without a
   story thread; token trimming reports the final estimate.
 
+## Second cleanup pass
+
+- Removed the earlier D&D extractor definition that Python immediately replaced
+  with the active implementation. There is now one definition to maintain.
+- Seven system extractors share `_WidgetLookup` in `characters.py`. It keeps
+  pattern priority and field insertion order, skips the same empty values, and
+  compiles each regex once per lookup instead of calling `re.search` per field.
+- Seventeen session routes share `_require_session_member` in `sessions.py`.
+  Existing metadata loading, missing-file behavior, owner/invite/member policy,
+  and denial responses remain in their original route scopes.
+
 ## Where further cleanup needs care
 
 `characters.py`, `sessions.py`, `LoggedInDashboard.tsx`, and `GameplayLayout.tsx`
@@ -92,6 +104,7 @@ contracts; replacing one requires checking all callers first.
 
 Backend regression tests live in `server/tests/`; type-baseline tests live in
 `tests/`. Focused coverage for this pass is `test_context_efficiency.py`,
-`test_reference_search_efficiency.py`, and `components/chat/messageFilters.test.ts`. See [CONTRIBUTING.md](CONTRIBUTING.md)
+`test_reference_search_efficiency.py`, `test_import_lookup_cleanup.py`, and
+`components/chat/messageFilters.test.ts`. See [CONTRIBUTING.md](CONTRIBUTING.md)
 for the full commands. CI checks Ruff, the reviewed mypy baseline, backend tests,
 frontend lint, native TypeScript checks, Jest, and a production build.

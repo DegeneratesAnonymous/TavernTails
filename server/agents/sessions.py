@@ -1309,6 +1309,13 @@ class CreateSessionRequest(BaseModel):
     owner: str | None = None
 
 
+def _require_session_member(meta: dict, user) -> str:
+    identifier = _identifier_for_user(user)
+    if not _user_is_member(meta, identifier):
+        raise HTTPException(status_code=403, detail='Not a member of this session')
+    return identifier
+
+
 @router.post('', status_code=201)
 def create_session(req: CreateSessionRequest, current_user=Depends(get_current_user)):
     try:
@@ -1349,9 +1356,7 @@ def get_files(session_id: str, current_user=Depends(get_current_user)):
     meta_file = folder / 'meta.json'
     if meta_file.exists():
         data = json.loads(meta_file.read_text())
-        identifier = _identifier_for_user(current_user)
-        if not _user_is_member(data, identifier):
-            raise HTTPException(status_code=403, detail='Not a member of this session')
+        _require_session_member(data, current_user)
     files = [p.name for p in folder.iterdir() if p.is_file()]
     return {'files': files}
 
@@ -1366,9 +1371,7 @@ def get_meta(session_id: str, current_user=Depends(get_current_user)):
         raise HTTPException(status_code=404, detail='Meta not found')
     try:
         data = json.loads(meta.read_text())
-        identifier = _identifier_for_user(current_user)
-        if not _user_is_member(data, identifier):
-            raise HTTPException(status_code=403, detail='Not a member of this session')
+        _require_session_member(data, current_user)
         data['invites'] = _normalize_invites(data.get('invites'))
         data['members'] = data.get('members', []) or []
         return data
@@ -1396,9 +1399,7 @@ def set_character_for_session(session_id: str, req: SetCharacterRequest, current
     except Exception as err:
         raise HTTPException(status_code=500, detail='Failed to read meta') from err
 
-    identifier = _identifier_for_user(current_user)
-    if not _user_is_member(data, identifier):
-        raise HTTPException(status_code=403, detail='Not a member of this session')
+    identifier = _require_session_member(data, current_user)
 
     owner_id = getattr(current_user, 'id', None)
     if not isinstance(owner_id, int):
@@ -1520,9 +1521,7 @@ def delete_file(session_id: str, filename: str, current_user=Depends(get_current
         meta = folder / 'meta.json'
         if meta.exists():
             data = json.loads(meta.read_text())
-            identifier = _identifier_for_user(current_user)
-            if not _user_is_member(data, identifier):
-                raise HTTPException(status_code=403, detail='Not a member of this session')
+            _require_session_member(data, current_user)
         target.unlink()
         return {'ok': True}
     except HTTPException:
@@ -1543,9 +1542,7 @@ def get_file(session_id: str, filename: str, current_user=Depends(get_current_us
     meta = folder / 'meta.json'
     if meta.exists():
         data = json.loads(meta.read_text())
-        identifier = _identifier_for_user(current_user)
-        if not _user_is_member(data, identifier):
-            raise HTTPException(status_code=403, detail='Not a member of this session')
+        _require_session_member(data, current_user)
 
     text = target.read_text()
     # try to return json if parseable
@@ -1572,9 +1569,7 @@ def save_file(session_id: str, filename: str, req: SaveFileRequest, current_user
     meta = folder / 'meta.json'
     if meta.exists():
         data = json.loads(meta.read_text())
-        identifier = _identifier_for_user(current_user)
-        if not _user_is_member(data, identifier):
-            raise HTTPException(status_code=403, detail='Not a member of this session')
+        _require_session_member(data, current_user)
     target = folder / filename
     target.write_text(req.content)
     return {'ok': True}
@@ -1787,9 +1782,7 @@ def get_opening_setup(session_id: str, current_user=Depends(get_current_user)):
     if not folder.exists() or not meta_path.exists():
         raise HTTPException(status_code=404, detail='Session not found')
     meta = json.loads(meta_path.read_text())
-    identifier = _identifier_for_user(current_user)
-    if not _user_is_member(meta, identifier):
-        raise HTTPException(status_code=403, detail='Not a member of this session')
+    _require_session_member(meta, current_user)
     setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
     meta["opening_setup"] = setup
     if setup.get("completed"):
@@ -1812,9 +1805,7 @@ def submit_opening_setup(session_id: str, payload: OpeningSetupSubmit, current_u
     if not folder.exists() or not meta_path.exists():
         raise HTTPException(status_code=404, detail='Session not found')
     meta = json.loads(meta_path.read_text())
-    identifier = _identifier_for_user(current_user)
-    if not _user_is_member(meta, identifier):
-        raise HTTPException(status_code=403, detail='Not a member of this session')
+    _require_session_member(meta, current_user)
     setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
     questionnaire = setup.get("questionnaire") or _build_opening_setup_questionnaire(folder, meta)
     if payload.questionnaire_id != questionnaire.get("questionnaire_id"):
@@ -1873,9 +1864,7 @@ def skip_opening_setup(session_id: str, payload: OpeningSetupSkip | None = None,
     if not folder.exists() or not meta_path.exists():
         raise HTTPException(status_code=404, detail='Session not found')
     meta = json.loads(meta_path.read_text())
-    identifier = _identifier_for_user(current_user)
-    if not _user_is_member(meta, identifier):
-        raise HTTPException(status_code=403, detail='Not a member of this session')
+    _require_session_member(meta, current_user)
     setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
     questionnaire = setup.get("questionnaire") or _build_opening_setup_questionnaire(folder, meta)
     character = _selected_character_from_meta(meta)
@@ -1987,9 +1976,7 @@ def get_party(session_id: str, current_user=Depends(get_current_user)):
     except Exception as err:
         raise HTTPException(status_code=500, detail='Failed to read meta') from err
 
-    identifier = _identifier_for_user(current_user)
-    if not _user_is_member(meta, identifier):
-        raise HTTPException(status_code=403, detail='Not a member of this session')
+    _require_session_member(meta, current_user)
 
     members = meta.get('members', []) or []
     invites = _normalize_invites(meta.get('invites'))
@@ -2079,9 +2066,7 @@ async def bootstrap_session(session_id: str, payload: BootstrapRequest, current_
     except Exception as err:
         raise HTTPException(status_code=500, detail='Failed to read meta') from err
 
-    identifier = _identifier_for_user(current_user)
-    if not _user_is_member(meta, identifier):
-        raise HTTPException(status_code=403, detail='Not a member of this session')
+    _require_session_member(meta, current_user)
 
     opening_setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
     meta["opening_setup"] = opening_setup
@@ -2275,9 +2260,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     except Exception as err:
         raise HTTPException(status_code=500, detail='Failed to read meta') from err
 
-    identifier = _identifier_for_user(current_user)
-    if not _user_is_member(meta, identifier):
-        raise HTTPException(status_code=403, detail='Not a member of this session')
+    _require_session_member(meta, current_user)
 
     opening_setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
     meta["opening_setup"] = opening_setup
@@ -3590,9 +3573,7 @@ async def player_ready(session_id: str, payload: PlayerReadyRequest, current_use
     except Exception as err:
         raise HTTPException(status_code=500, detail='Failed to read meta') from err
 
-    identifier = _identifier_for_user(current_user)
-    if not _user_is_member(meta, identifier):
-        raise HTTPException(status_code=403, detail='Not a member of this session')
+    identifier = _require_session_member(meta, current_user)
 
     # Load/update ready state
     ready_path = folder / 'ready.json'
@@ -3654,9 +3635,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
     except Exception as err:
         raise HTTPException(status_code=500, detail='Failed to read meta') from err
 
-    identifier = _identifier_for_user(current_user)
-    if not _user_is_member(meta, identifier):
-        raise HTTPException(status_code=403, detail='Not a member of this session')
+    _require_session_member(meta, current_user)
 
     style = payload.style or 'balanced'
     campaign_id = meta.get('campaign_id')
@@ -5007,9 +4986,7 @@ def add_association(session_id: str, payload: EntityAssociation, current_user=De
         meta = json.loads(meta_path.read_text())
     except Exception as err:
         raise HTTPException(status_code=500, detail='Failed to read meta') from err
-    identifier = _identifier_for_user(current_user)
-    if not _user_is_member(meta, identifier):
-        raise HTTPException(status_code=403, detail='Not a member of this session')
+    _require_session_member(meta, current_user)
 
     existing = _load_associations(session_id)
     # Upsert: replace any existing link that shares the same ordered (entity_a, entity_b) pair.
@@ -5041,9 +5018,7 @@ def list_associations(session_id: str, current_user=Depends(get_current_user)):
         meta = json.loads(meta_path.read_text())
     except Exception as err:
         raise HTTPException(status_code=500, detail='Failed to read meta') from err
-    identifier = _identifier_for_user(current_user)
-    if not _user_is_member(meta, identifier):
-        raise HTTPException(status_code=403, detail='Not a member of this session')
+    _require_session_member(meta, current_user)
     return {'session_id': session_id, 'associations': _load_associations(session_id)}
 
 
@@ -5073,9 +5048,7 @@ def get_entity_card(session_id: str, entity_name: str, current_user=Depends(get_
         meta = json.loads(meta_path.read_text())
     except Exception as err:
         raise HTTPException(status_code=500, detail='Failed to read meta') from err
-    identifier = _identifier_for_user(current_user)
-    if not _user_is_member(meta, identifier):
-        raise HTTPException(status_code=403, detail='Not a member of this session')
+    _require_session_member(meta, current_user)
 
     name_lower = entity_name.strip().lower()
 
