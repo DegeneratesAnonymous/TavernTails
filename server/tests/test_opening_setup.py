@@ -690,7 +690,7 @@ def test_quick_start_brief_has_no_splice_duplicates_or_invented_fixtures():
 
 def test_character_knowledge_is_not_repeated_as_a_known_fact():
     brief = _fantasy_brief(1)
-    knowledge = brief["brief_paragraphs"][3]
+    knowledge = brief["brief_paragraphs"][-1]  # the character section is always last
     assert not any(knowledge[:40] in fact for fact in brief["known_facts"] + brief["provisional_facts"])
     reason = brief["character_anchor"].get("reason_to_care", "")
     assert reason and reason not in knowledge  # the reason has its own box in the UI
