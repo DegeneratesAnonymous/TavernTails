@@ -73,3 +73,14 @@ def test_a_mine_in_a_fantasy_seed_is_not_a_guild_charter_dispute():
     assert _institution_or_faction(seed, {}, "Ashveil Delve", strict=True) == UNKNOWN_AUTHORITY
     assert "Guild factions" in _institution_or_faction(
         {"genre_pool": "political", "inciting_event": "a ledger of bribes surfaces during the vote"}, {}, "Greymoor Hall", strict=True)
+
+
+@pytest.mark.parametrize("genre", GENRES)
+def test_genre_briefs_do_not_invent_an_object_from_keywords(genre):
+    from server.agents.opening_setup import UNKNOWN_OBJECT
+
+    for n in range(30):
+        _seed, brief = _brief(genre, n)
+        text = " ".join(brief["brief_paragraphs"])
+        assert "The physical object that starts the mystery" not in text, text
+        assert UNKNOWN_OBJECT in text  # honest unknown, not "broken seal" from "sealed grimoire"

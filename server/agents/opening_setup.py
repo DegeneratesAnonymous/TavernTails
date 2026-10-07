@@ -1533,6 +1533,10 @@ def _opening_object_name(required: dict[str, Any], *, neutral_default: bool = Fa
     approved = str(required.get("approved_object") or "").strip()
     if approved and len(approved) <= 80 and not re.search(r"[.!?]", approved):
         return approved
+    if neutral_default and required.get("genre_pool"):
+        # A genre seed's scenario is prose, not an object list: "a sealed grimoire" must
+        # not become a "broken seal" or "a bell rings" a "forbidden bell". Report an unknown.
+        return NEUTRAL_OBJECT
     fields = _SEED_OBJECT_FIELDS if neutral_default else (*_SEED_OBJECT_FIELDS, *_CAMPAIGN_OBJECT_FIELDS)
     text = " ".join(str(required.get(k) or "") for k in fields).lower()
     if "token" in text:
