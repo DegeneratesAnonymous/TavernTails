@@ -12,7 +12,7 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
-from .. import db
+from .. import db, ocr_client
 from ..auth import get_current_user
 from . import ddb_sheet, ocr_sheet
 from . import references as references_agent
@@ -1867,21 +1867,8 @@ def _read_pdf_text_ex(content: bytes) -> tuple[str | None, str]:
                     capture_output=True,
                 )
                 images = sorted(glob.glob(base + "-*.png"))
-                ocr_pages: list[str] = []
-                for img in images:
-                    # Sparse-text mode finds the large numerals and boxed values of a form; the TSV
-                    # positions let each value stay on the line of its label.  Plain text is the fallback.
-                    proc = subprocess.run(
-                        [tesseract_cmd, img, "stdout", "--psm", "11", "tsv"],
-                        check=True,
-                        capture_output=True,
-                    )
-                    text = ocr_sheet.layout_text(proc.stdout.decode("utf-8", errors="ignore"))
-                    if not text:
-                        proc = subprocess.run([tesseract_cmd, img, "stdout"], check=True, capture_output=True)
-                        text = proc.stdout.decode("utf-8", errors="ignore")
-                    if text:
-                        ocr_pages.append(text)
+                # Steward's OCR nodes read the pages in parallel; the local command is the fallback.
+                ocr_pages = [t for t in ocr_client.read_pages(images, tesseract_cmd) if t.strip()]
                 if ocr_pages:
                     return "\n\n".join(ocr_pages), "ocr"
         except Exception:
@@ -4577,7 +4564,8 @@ def _apply_ocr_fields(sheet: dict[str, Any], text: str, current_name: str) -> st
     fields, dropped = ocr_sheet.extract(text)
     ocr_sheet.apply(sheet, fields)
     notes = sheet.setdefault("import", {})
-    notes["ocr"] = {"fields_read": sorted(fields), "fields_rejected": dropped}
+    notes["ocr"] = {"fields_read": sorted(k for k in fields if k != "derived"), "fields_derived": fields.get("derived", []),
+                     "fields_rejected": dropped}
     notes["warnings"] = [
         w for w in notes.get("warnings") or []
         if not (w == "Missing passive scores" and fields.get("passives"))

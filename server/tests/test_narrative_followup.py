@@ -342,3 +342,53 @@ def test_a_draft_with_no_failed_check_is_not_discarded_for_missing_optional_poin
     assert soft_shortfall_only(ScoreResult(score=68, failed_checks=[]))
     assert not soft_shortfall_only(ScoreResult(score=45, failed_checks=[]))
     assert not soft_shortfall_only(ScoreResult(score=68, failed_checks=[], banned_phrases_found=["something is wrong"]))
+
+
+def test_an_opening_gets_a_third_attempt_and_is_told_to_name_the_place(monkeypatch):
+    from server.agents import narrative as narrative_module
+
+    drafts = iter([
+        "Smoke curls from a chimney. Ada Reed slams the broken watch on the bench and cold rain runs down the glass. What does Arin do?",
+        "Smoke curls over Alderbrook village. Ada Reed slams the broken watch on the bench and cold rain runs down the glass. What does Arin do?",
+    ])
+    seen = []
+
+    def fake(messages, **_):
+        seen.append(messages)
+        return next(drafts)
+
+    monkeypatch.setattr(narrative_module, "chat_complete", fake)
+    request = narrative_module.NarrativeRequest(
+        scene="clock mystery", player="Arin", is_opening_scene=True,
+        scene_director_data={"location": {"name": "Alderbrook village"}, "primary_npc": {"name": "Ada Reed"}},
+    )
+    response = narrative_module.generate_narrative(request)
+    assert "Alderbrook village" in response.narrative and len(seen) == 2
+    assert "Name the place (Alderbrook village)" in " ".join(m["content"] for m in seen[1])
+    assert narrative_module.MAX_RETRIES_OPENING == 2 and narrative_module.MAX_RETRIES == 1
+
+
+def test_a_model_opening_loses_only_its_invented_sentence_not_the_whole_draft():
+    from server.agents import sessions
+    from server.agents.generation_intent import build_opening_intent
+
+    intent = build_opening_intent(
+        {"setting_summary": "At Alderbrook, every clock stopped at breakfast. Clockmaker Ada Reed has a stopped brass pocket watch on her workbench."},
+        {},
+    )
+    body = (
+        "Cold rain runs down the windows of Alderbrook, and every clock has stopped at breakfast. "
+        "Clockmaker Ada Reed sets the stopped brass pocket watch on her workbench and hisses that someone tampered with it. "
+        "The Baker's Wife hurries between the stalls, weeping into her apron. "
+        "The workbench is littered with broken gears, and the lamp gutters."
+    )
+    scene = {"narrative_body": body, "text": body + "\n\nWhat does Arin do?", "player_prompt": "What does Arin do?",
+             "generation_debug": {"fallback_used": False}}
+    cleaned = sessions._strip_invented_sentences(scene, {}, "Arin", intent)
+    assert "Baker" not in cleaned["narrative_body"] and "Ada Reed" in cleaned["narrative_body"]
+    assert cleaned["text"].endswith("What does Arin do?") and cleaned["generation_debug"]["invented_sentences_removed"]
+    # a template/fallback scene, or no source intent, is never touched
+    assert sessions._strip_invented_sentences({**scene, "generation_debug": {"fallback_used": True}}, {}, "Arin", intent) is not None
+    fallback = {**scene, "generation_debug": {"fallback_used": True}}
+    assert sessions._strip_invented_sentences(fallback, {}, "Arin", intent) is fallback
+    assert sessions._strip_invented_sentences(scene, {}, "Arin", None) is scene

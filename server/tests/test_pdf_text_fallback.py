@@ -18,11 +18,13 @@ def _scanned_pdf() -> bytes:
 
 
 def test_scan_without_ocr_returns_none_not_pdf_bytes(monkeypatch):
+    monkeypatch.delenv("STEWARD_HOST", raising=False)
     monkeypatch.setenv("TAVERNTAILS_ENABLE_OCR", "0")
     assert _read_pdf_text(_scanned_pdf()) is None
 
 
 def test_scan_with_missing_tesseract_returns_none(monkeypatch):
+    monkeypatch.delenv("STEWARD_HOST", raising=False)
     monkeypatch.setenv("TAVERNTAILS_ENABLE_OCR", "1")
     monkeypatch.setenv("TAVERNTAILS_TESSERACT_CMD", "/nonexistent/tesseract")
     assert _read_pdf_text(_scanned_pdf()) is None
@@ -30,6 +32,7 @@ def test_scan_with_missing_tesseract_returns_none(monkeypatch):
 
 @pytest.mark.skipif(not __import__("shutil").which("pdftoppm"), reason="pdftoppm not installed")
 def test_scan_text_comes_from_the_ocr_command(monkeypatch, tmp_path):
+    monkeypatch.delenv("STEWARD_HOST", raising=False)
     stub = tmp_path / "tesseract"
     stub.write_text('#!/bin/sh\n[ -s "$1" ] || exit 1\necho "Valeros Fighter Level 5"\n')
     stub.chmod(stub.stat().st_mode | stat.S_IXUSR)
