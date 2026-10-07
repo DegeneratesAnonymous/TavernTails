@@ -7,6 +7,7 @@ import time
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from ..generation_workers import run_generation
 from ..realtime import broadcaster
 from ..steward_llm import chat_complete
 from . import sessions as sessions_agent
@@ -178,7 +179,7 @@ async def analyze_scene(payload: SceneAnalysisRequest) -> SceneAnalysisResponse:
             "scene": payload.scene[:500] if payload.scene else "",
             "actions": payload.actions[:5],
         })
-        text = chat_complete(
+        text = await run_generation(chat_complete,
             [{"role": "system", "content": system}, {"role": "user", "content": user_content}],
             task_scope="taverntails_analysis",
             max_tokens=250,

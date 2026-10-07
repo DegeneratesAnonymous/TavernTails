@@ -27,12 +27,21 @@ def movement_destination(actions: list[str]) -> str:
     return destination
 
 
-def resolution_issues(actions: list[str], resolutions: list[dict[str, Any]]) -> list[str]:
+def _question_issues(
+    actions: list[str], resolutions: list[dict[str, Any]], body: str | None = None,
+) -> list[str]:
+    # First resolution wins, matching the director's existing ordering policy.
+    by_index = {
+        item["action_index"]: item for item in reversed(resolutions)
+        if isinstance(item.get("action_index"), (int, float))
+    }
+    folded_body = body.casefold() if body is not None else None
     issues = []
+    missing_lines = []
     for index, action in enumerate(actions):
         if not direct_question(action):
             continue
-        item = next((r for r in resolutions if r.get("action_index") == index), {})
+        item = by_index.get(index, {})
         status = item.get("status")
         reply = str(item.get("reply") or "").strip()
         reason = str(item.get("reason") or "").strip()
@@ -41,24 +50,25 @@ def resolution_issues(actions: list[str], resolutions: list[dict[str, Any]]) -> 
             issues.append(f"Question {index} requires an actual reply, not a reaction or posture description.")
         elif status == "cannot_answer" and not reason:
             issues.append(f"Question {index} requires an explicit reason the NPC cannot answer.")
-    return issues
+        # Planned dialogue must appear in the prose, not only in director data.
+        if folded_body is not None:
+            keys = ("reply", "reason") if status == "cannot_answer" else ("reply",)
+            for key in keys:
+                value = str(item.get(key) or "").strip()
+                if value and value.casefold() not in folded_body:
+                    missing_lines.append(f"Question {index}: include the planned {key} in the narration.")
+    return issues + missing_lines
+
+
+def resolution_issues(actions: list[str], resolutions: list[dict[str, Any]]) -> list[str]:
+    return _question_issues(actions, resolutions)
 
 
 def continuation_issues(
     body: str, actions: list[str], resolutions: list[dict[str, Any]],
     *, known_names: list[str], allow_new_names: bool,
 ) -> list[str]:
-    issues = resolution_issues(actions, resolutions)
-    for index, action in enumerate(actions):
-        if not direct_question(action):
-            continue
-        item = next((r for r in resolutions if r.get("action_index") == index), {})
-        # Require verbatim dialogue so a vague paragraph cannot pass merely
-        # because the director planned an answer that the writer never used.
-        for key in ("reply", "reason") if item.get("status") == "cannot_answer" else ("reply",):
-            value = str(item.get(key) or "").strip()
-            if value and value.casefold() not in body.casefold():
-                issues.append(f"Question {index}: include the planned {key} in the narration.")
+    issues = _question_issues(actions, resolutions, body)
     if not allow_new_names:
         intent = OpeningIntent(allowed_names=known_names)
         for name in known_names:

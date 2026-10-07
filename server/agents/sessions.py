@@ -11,6 +11,7 @@ from sqlmodel import Session, select
 
 from .. import db
 from ..auth import get_current_user
+from ..generation_workers import run_generation
 from ..realtime import broadcaster
 from ..storage import documents as doc_storage
 from . import image as image_agent
@@ -1309,6 +1310,22 @@ class CreateSessionRequest(BaseModel):
     owner: str | None = None
 
 
+def _require_session_member(meta: dict, user) -> str:
+    identifier = _identifier_for_user(user)
+    if not _user_is_member(meta, identifier):
+        raise HTTPException(status_code=403, detail='Not a member of this session')
+    return identifier
+
+
+async def _write_scene(
+    request: narrative_agent.NarrativeRequest, *, validator_feedback: str | None = None,
+) -> narrative_agent.NarrativeResponse:
+    """Use the same approved scene inputs for the first attempt and quality retry."""
+    if validator_feedback is not None:
+        request = request.model_copy(update={"validator_feedback": validator_feedback})
+    return await run_generation(narrative_agent.generate_narrative, request)
+
+
 @router.post('', status_code=201)
 def create_session(req: CreateSessionRequest, current_user=Depends(get_current_user)):
     try:
@@ -1349,9 +1366,7 @@ def get_files(session_id: str, current_user=Depends(get_current_user)):
     meta_file = folder / 'meta.json'
     if meta_file.exists():
         data = json.loads(meta_file.read_text())
-        identifier = _identifier_for_user(current_user)
-        if not _user_is_member(data, identifier):
-            raise HTTPException(status_code=403, detail='Not a member of this session')
+        _require_session_member(data, current_user)
     files = [p.name for p in folder.iterdir() if p.is_file()]
     return {'files': files}
 
@@ -1366,9 +1381,7 @@ def get_meta(session_id: str, current_user=Depends(get_current_user)):
         raise HTTPException(status_code=404, detail='Meta not found')
     try:
         data = json.loads(meta.read_text())
-        identifier = _identifier_for_user(current_user)
-        if not _user_is_member(data, identifier):
-            raise HTTPException(status_code=403, detail='Not a member of this session')
+        _require_session_member(data, current_user)
         data['invites'] = _normalize_invites(data.get('invites'))
         data['members'] = data.get('members', []) or []
         return data
@@ -1396,9 +1409,7 @@ def set_character_for_session(session_id: str, req: SetCharacterRequest, current
     except Exception as err:
         raise HTTPException(status_code=500, detail='Failed to read meta') from err
 
-    identifier = _identifier_for_user(current_user)
-    if not _user_is_member(data, identifier):
-        raise HTTPException(status_code=403, detail='Not a member of this session')
+    identifier = _require_session_member(data, current_user)
 
     owner_id = getattr(current_user, 'id', None)
     if not isinstance(owner_id, int):
@@ -1520,9 +1531,7 @@ def delete_file(session_id: str, filename: str, current_user=Depends(get_current
         meta = folder / 'meta.json'
         if meta.exists():
             data = json.loads(meta.read_text())
-            identifier = _identifier_for_user(current_user)
-            if not _user_is_member(data, identifier):
-                raise HTTPException(status_code=403, detail='Not a member of this session')
+            _require_session_member(data, current_user)
         target.unlink()
         return {'ok': True}
     except HTTPException:
@@ -1543,9 +1552,7 @@ def get_file(session_id: str, filename: str, current_user=Depends(get_current_us
     meta = folder / 'meta.json'
     if meta.exists():
         data = json.loads(meta.read_text())
-        identifier = _identifier_for_user(current_user)
-        if not _user_is_member(data, identifier):
-            raise HTTPException(status_code=403, detail='Not a member of this session')
+        _require_session_member(data, current_user)
 
     text = target.read_text()
     # try to return json if parseable
@@ -1572,9 +1579,7 @@ def save_file(session_id: str, filename: str, req: SaveFileRequest, current_user
     meta = folder / 'meta.json'
     if meta.exists():
         data = json.loads(meta.read_text())
-        identifier = _identifier_for_user(current_user)
-        if not _user_is_member(data, identifier):
-            raise HTTPException(status_code=403, detail='Not a member of this session')
+        _require_session_member(data, current_user)
     target = folder / filename
     target.write_text(req.content)
     return {'ok': True}
@@ -1787,9 +1792,7 @@ def get_opening_setup(session_id: str, current_user=Depends(get_current_user)):
     if not folder.exists() or not meta_path.exists():
         raise HTTPException(status_code=404, detail='Session not found')
     meta = json.loads(meta_path.read_text())
-    identifier = _identifier_for_user(current_user)
-    if not _user_is_member(meta, identifier):
-        raise HTTPException(status_code=403, detail='Not a member of this session')
+    _require_session_member(meta, current_user)
     setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
     meta["opening_setup"] = setup
     if setup.get("completed"):
@@ -1812,9 +1815,7 @@ def submit_opening_setup(session_id: str, payload: OpeningSetupSubmit, current_u
     if not folder.exists() or not meta_path.exists():
         raise HTTPException(status_code=404, detail='Session not found')
     meta = json.loads(meta_path.read_text())
-    identifier = _identifier_for_user(current_user)
-    if not _user_is_member(meta, identifier):
-        raise HTTPException(status_code=403, detail='Not a member of this session')
+    _require_session_member(meta, current_user)
     setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
     questionnaire = setup.get("questionnaire") or _build_opening_setup_questionnaire(folder, meta)
     if payload.questionnaire_id != questionnaire.get("questionnaire_id"):
@@ -1873,9 +1874,7 @@ def skip_opening_setup(session_id: str, payload: OpeningSetupSkip | None = None,
     if not folder.exists() or not meta_path.exists():
         raise HTTPException(status_code=404, detail='Session not found')
     meta = json.loads(meta_path.read_text())
-    identifier = _identifier_for_user(current_user)
-    if not _user_is_member(meta, identifier):
-        raise HTTPException(status_code=403, detail='Not a member of this session')
+    _require_session_member(meta, current_user)
     setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
     questionnaire = setup.get("questionnaire") or _build_opening_setup_questionnaire(folder, meta)
     character = _selected_character_from_meta(meta)
@@ -1987,9 +1986,7 @@ def get_party(session_id: str, current_user=Depends(get_current_user)):
     except Exception as err:
         raise HTTPException(status_code=500, detail='Failed to read meta') from err
 
-    identifier = _identifier_for_user(current_user)
-    if not _user_is_member(meta, identifier):
-        raise HTTPException(status_code=403, detail='Not a member of this session')
+    _require_session_member(meta, current_user)
 
     members = meta.get('members', []) or []
     invites = _normalize_invites(meta.get('invites'))
@@ -2079,9 +2076,7 @@ async def bootstrap_session(session_id: str, payload: BootstrapRequest, current_
     except Exception as err:
         raise HTTPException(status_code=500, detail='Failed to read meta') from err
 
-    identifier = _identifier_for_user(current_user)
-    if not _user_is_member(meta, identifier):
-        raise HTTPException(status_code=403, detail='Not a member of this session')
+    _require_session_member(meta, current_user)
 
     opening_setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
     meta["opening_setup"] = opening_setup
@@ -2163,13 +2158,14 @@ async def bootstrap_session(session_id: str, payload: BootstrapRequest, current_
     else:
         scene_seed = f"the first scene of the campaign '{session_name}', as the party arrives and the hook is revealed — NOT in a tavern or inn"
 
-    narrative = narrative_agent.generate_narrative(narrative_agent.NarrativeRequest(
+    narrative_request = narrative_agent.NarrativeRequest(
         scene=scene_seed,
         player='party',
         style=style,
         weather=weather,
         time_of_day=time_of_day,
-    ))
+    )
+    narrative = await _write_scene(narrative_request)
     if _contains_recycled_opening_fixture(narrative.narrative, narrative.prompt):
         fallback_loc = _boot_seed_rc.get("starting_location") or session_name
         fallback_npc = _boot_seed_rc.get("named_npc_or_visible_threat") or "the nearest named contact"
@@ -2275,9 +2271,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     except Exception as err:
         raise HTTPException(status_code=500, detail='Failed to read meta') from err
 
-    identifier = _identifier_for_user(current_user)
-    if not _user_is_member(meta, identifier):
-        raise HTTPException(status_code=403, detail='Not a member of this session')
+    _require_session_member(meta, current_user)
 
     opening_setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
     meta["opening_setup"] = opening_setup
@@ -2422,7 +2416,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
 
     if campaign_id:
         try:
-            context_packet = orchestrate(
+            context_packet = await run_generation(orchestrate,
                 campaign_id=str(campaign_id),
                 session_id=session_id,
                 player_name=players[0] if players else "",
@@ -2471,7 +2465,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
             # Fallback to legacy context_collector
             try:
                 from .context_collector import collect_context
-                world_ctx = collect_context(str(campaign_id), session_id=session_id)
+                world_ctx = await run_generation(collect_context, str(campaign_id), session_id=session_id)
                 memory_parts = []
                 if world_ctx.get("active_threads"):
                     memory_parts.append(summarize_active_threads(str(campaign_id)))
@@ -2489,9 +2483,6 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     # Storyboard generates raw plot material; Narrative Director sets story guidance.
     # Both are synchronous LLM calls — run them in a thread pool concurrently.
     import asyncio
-    import concurrent.futures as _cf
-
-    _loop = asyncio.get_event_loop()
     player_name = players[0] if players else 'the party'
 
     def _run_storyboard():
@@ -2526,10 +2517,9 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         except Exception:
             return None
 
-    with _cf.ThreadPoolExecutor(max_workers=2) as _pool:
-        fut_plot = _loop.run_in_executor(_pool, _run_storyboard)
-        fut_director = _loop.run_in_executor(_pool, _run_director)
-        plot_result, narrative_director_output = await asyncio.gather(fut_plot, fut_director)
+    plot_result, narrative_director_output = await asyncio.gather(
+        run_generation(_run_storyboard), run_generation(_run_director),
+    )
 
     narrative_director_output: DirectorOutput | None = narrative_director_output  # type annotation
 
@@ -2654,7 +2644,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
             pass
 
     # --- Step 2: Scene Director Agent — converts raw material into a concrete scene plan ---
-    director_output: SceneDirectorOutput = scene_director_agent.direct_scene(SceneDirectorRequest(
+    director_output: SceneDirectorOutput = await run_generation(scene_director_agent.direct_scene, SceneDirectorRequest(
         campaign_settings=campaign_settings,
         campaign_variables=campaign_variables,
         players=players,
@@ -2899,7 +2889,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     )
     director_data_dict["fact_discipline"] = fact_discipline_prompt(opening_source_intent)
     director_data_dict["approved_object"] = (opening_content_bundle.get("required_content") or {}).get("approved_object") or ""
-    composer_output = narrative_composer_agent.compose_scene(
+    composer_output = await run_generation(narrative_composer_agent.compose_scene,
         scene_director_data=director_data_dict,
         player_name=player_name,
         scene_type=director_output.scene_type or "opening",
@@ -2908,7 +2898,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     composer_data_dict = composer_output.model_dump()
 
     # --- Step 3: Narrative Agent — first attempt ---
-    narrative = narrative_agent.generate_narrative(narrative_agent.NarrativeRequest(
+    narrative_request = narrative_agent.NarrativeRequest(
         scene=_bootstrap_plot_seed or plot_result.plot,
         player=player_name,
         style=derived_style,
@@ -2920,7 +2910,8 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         character_context=character_context,
         campaign_contract=campaign_contract,
         approved_object=director_data_dict["approved_object"],
-    ))
+    )
+    narrative = await _write_scene(narrative_request)
     if _seed_source == "premise_seed" and (narrative.score_detail or {}).get("fallback_used"):
         _seed_required = locals().get("_bsrc") or {}
         if opening_anchor:
@@ -2972,20 +2963,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
             npc_name,
             player_name,
         )
-        narrative = narrative_agent.generate_narrative(narrative_agent.NarrativeRequest(
-            scene=plot_result.plot,
-            player=player_name,
-            style=derived_style,
-            weather=weather,
-            time_of_day=time_of_day,
-            scene_director_data=director_data_dict,
-            composer_data=composer_data_dict,
-            validator_feedback=feedback,
-            is_opening_scene=True,
-            character_context=character_context,
-            campaign_contract=campaign_contract,
-            approved_object=director_data_dict["approved_object"],
-        ))
+        narrative = await _write_scene(narrative_request, validator_feedback=feedback)
         quality_score, quality_issues = validate_scene_quality(
             narrative_text=f"{narrative.narrative}\n\n{narrative.prompt}",
             location_name=loc_name,
@@ -3234,7 +3212,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         image_prompt = build_image_prompt(director_output, style=derived_style, weather=weather, time_of_day=time_of_day)
 
     try:
-        img = image_agent.generate_image(image_agent.ImageRequest(
+        img = await run_generation(image_agent.generate_image, image_agent.ImageRequest(
             prompt=image_prompt,
             style='realistic',
             session_id=session_id,
@@ -3590,9 +3568,7 @@ async def player_ready(session_id: str, payload: PlayerReadyRequest, current_use
     except Exception as err:
         raise HTTPException(status_code=500, detail='Failed to read meta') from err
 
-    identifier = _identifier_for_user(current_user)
-    if not _user_is_member(meta, identifier):
-        raise HTTPException(status_code=403, detail='Not a member of this session')
+    identifier = _require_session_member(meta, current_user)
 
     # Load/update ready state
     ready_path = folder / 'ready.json'
@@ -3654,9 +3630,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
     except Exception as err:
         raise HTTPException(status_code=500, detail='Failed to read meta') from err
 
-    identifier = _identifier_for_user(current_user)
-    if not _user_is_member(meta, identifier):
-        raise HTTPException(status_code=403, detail='Not a member of this session')
+    _require_session_member(meta, current_user)
 
     style = payload.style or 'balanced'
     campaign_id = meta.get('campaign_id')
@@ -4010,7 +3984,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             fast_scene["visual_state"] = fast_vs.model_dump()
             save_visual_state(session_id, fast_vs)
             if fast_refresh or not fast_scene.get("image"):
-                img = image_agent.generate_image(image_agent.ImageRequest(prompt=fast_img_prompt, style="realistic"))
+                img = await run_generation(image_agent.generate_image, image_agent.ImageRequest(prompt=fast_img_prompt, style="realistic"))
                 fast_scene["image"] = img.image_url
         except Exception:
             pass
@@ -4049,7 +4023,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
     if campaign_id:
         try:
             from .context_orchestrator import orchestrate
-            adv_context_packet = orchestrate(
+            adv_context_packet = await run_generation(orchestrate,
                 campaign_id=str(campaign_id),
                 session_id=session_id,
                 player_name=adv_player_name,
@@ -4060,7 +4034,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         except Exception:
             try:
                 from .context_collector import collect_context
-                ctx = collect_context(
+                ctx = await run_generation(collect_context,
                     campaign_id=str(campaign_id),
                     session_id=session_id,
                     recent_chat=player_actions,
@@ -4077,7 +4051,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
     adv_director_output: DirectorOutput | None = None
     if adv_story_state is not None:
         try:
-            adv_director_output = narrative_direct_scene(
+            adv_director_output = await run_generation(narrative_direct_scene,
                 state=adv_story_state,
                 player_name=adv_player_name,
                 player_actions=player_actions,
@@ -4266,7 +4240,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
     adv_established_object = str(
         ((previous_scene.get("content_bundle") or {}).get("required_content") or {}).get("approved_object") or ""
     ).strip()
-    adv_scene_director_output: SceneDirectorOutput = scene_director_agent.direct_scene(SceneDirectorRequest(
+    adv_scene_director_output: SceneDirectorOutput = await run_generation(scene_director_agent.direct_scene, SceneDirectorRequest(
         is_opening_scene=False,
         player_actions=player_actions,
         previous_scene=previous_scene,
@@ -4360,14 +4334,14 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
     if bundle_dice_rolls:
         dice_rolls = bundle_dice_rolls
 
-    adv_composer_output = narrative_composer_agent.compose_scene(
+    adv_composer_output = await run_generation(narrative_composer_agent.compose_scene,
         scene_director_data=adv_director_data,
         player_name=adv_player_name,
         scene_type=adv_scene_director_output.scene_type or selected_templates[0],
     )
     adv_composer_data = adv_composer_output.model_dump()
 
-    narrative = narrative_agent.generate_narrative(narrative_agent.NarrativeRequest(
+    narrative_request = narrative_agent.NarrativeRequest(
         scene=scene_summary,
         player=adv_player_name,
         style=style,
@@ -4380,7 +4354,8 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         approved_object=adv_established_object,
         known_names=[adv_player_name, current_location_name, adv_scene_director_output.primary_npc.name,
                      *[str(n.get("name", "")) for n in mem_npc_details if n.get("name")]],
-    ))
+    )
+    narrative = await _write_scene(narrative_request)
     action_response: dict | None = None
     narrative_fallback_used = bool((getattr(narrative, 'score_detail', {}) or {}).get('fallback_used'))
     if player_actions and narrative_fallback_used:
@@ -4457,21 +4432,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             adv_scene_director_output.primary_npc.name,
             adv_player_name,
         )
-        narrative = narrative_agent.generate_narrative(narrative_agent.NarrativeRequest(
-            scene=scene_summary,
-            player=adv_player_name,
-            style=style,
-            weather=weather,
-            time_of_day=time_of_day,
-            scene_director_data=adv_director_data,
-            composer_data=adv_composer_data,
-            validator_feedback=feedback,
-            player_actions=player_actions,
-            campaign_contract=campaign_contract,
-            approved_object=adv_established_object,
-            known_names=[adv_player_name, current_location_name, adv_scene_director_output.primary_npc.name,
-                         *[str(n.get("name", "")) for n in mem_npc_details if n.get("name")]],
-        ))
+        narrative = await _write_scene(narrative_request, validator_feedback=feedback)
         quality_score, quality_issues = validate_scene_quality(
             narrative_text=f"{narrative.narrative}\n\n{narrative.prompt}",
             location_name=adv_scene_director_output.location.name,
@@ -4691,7 +4652,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
 
     if do_refresh:
         try:
-            img = image_agent.generate_image(image_agent.ImageRequest(
+            img = await run_generation(image_agent.generate_image, image_agent.ImageRequest(
                 prompt=adv_img_prompt,
                 style='realistic',
             ))
@@ -5007,9 +4968,7 @@ def add_association(session_id: str, payload: EntityAssociation, current_user=De
         meta = json.loads(meta_path.read_text())
     except Exception as err:
         raise HTTPException(status_code=500, detail='Failed to read meta') from err
-    identifier = _identifier_for_user(current_user)
-    if not _user_is_member(meta, identifier):
-        raise HTTPException(status_code=403, detail='Not a member of this session')
+    _require_session_member(meta, current_user)
 
     existing = _load_associations(session_id)
     # Upsert: replace any existing link that shares the same ordered (entity_a, entity_b) pair.
@@ -5041,9 +5000,7 @@ def list_associations(session_id: str, current_user=Depends(get_current_user)):
         meta = json.loads(meta_path.read_text())
     except Exception as err:
         raise HTTPException(status_code=500, detail='Failed to read meta') from err
-    identifier = _identifier_for_user(current_user)
-    if not _user_is_member(meta, identifier):
-        raise HTTPException(status_code=403, detail='Not a member of this session')
+    _require_session_member(meta, current_user)
     return {'session_id': session_id, 'associations': _load_associations(session_id)}
 
 
@@ -5073,9 +5030,7 @@ def get_entity_card(session_id: str, entity_name: str, current_user=Depends(get_
         meta = json.loads(meta_path.read_text())
     except Exception as err:
         raise HTTPException(status_code=500, detail='Failed to read meta') from err
-    identifier = _identifier_for_user(current_user)
-    if not _user_is_member(meta, identifier):
-        raise HTTPException(status_code=403, detail='Not a member of this session')
+    _require_session_member(meta, current_user)
 
     name_lower = entity_name.strip().lower()
 

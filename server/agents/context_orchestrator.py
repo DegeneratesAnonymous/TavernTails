@@ -32,7 +32,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from pydantic import BaseModel, Field
-from sqlmodel import select
+from sqlmodel import col, select
 
 from .. import db
 from ..db import CampaignChangeLog, CampaignEntity, CampaignHook
@@ -434,7 +434,6 @@ def _score_thread(
     entity: CampaignEntity,
     mentioned_names: set[str],
     player_actions: list[str],
-    current_npc_ids: set[str],
     current_location: str,
 ) -> int:
     """Score story thread relevance 0–200."""
@@ -635,11 +634,9 @@ def _estimate_tokens(text: str) -> int:
 
 def _trim_to_budget(packet: ContextPacket, budget: int) -> None:
     """Trim active_npcs and story_threads until packet's for_narrative() is under budget."""
-    for _ in range(10):
-        text = packet.for_narrative()
-        est = _estimate_tokens(text)
-        packet.token_estimate = est
-        if est <= budget:
+    while True:
+        packet.token_estimate = _estimate_tokens(packet.for_narrative())
+        if packet.token_estimate <= budget:
             break
         if packet.active_npcs:
             packet.active_npcs.pop()
@@ -755,6 +752,27 @@ def _save_cache(session_id: str, key: str, packet: ContextPacket) -> None:
 # Main Orchestration Entry Point
 # ---------------------------------------------------------------------------
 
+_SCORING_FIELDS = (
+    "primary_goal", "next_likely_action", "story_engine", "faction_affiliations",
+    "ticking_clock", "current_priority", "next_recommended_dm_move", "active_plan", "next_action",
+)
+
+
+def _load_rankable_entities(session: db.Session, campaign_id: str) -> list[CampaignEntity]:
+    """Read scoring fields for every candidate, without loading full memory payloads."""
+    data = CampaignEntity.__table__.c.data  # type: ignore[attr-defined]
+    rows = session.exec(
+        select(CampaignEntity.id, CampaignEntity.name, CampaignEntity.entity_type,
+               *(data[key] for key in _SCORING_FIELDS))
+        .where(CampaignEntity.campaign_id == campaign_id,
+               CampaignEntity.status == "active",
+               col(CampaignEntity.entity_type).in_(("npc", "location", "faction", "story_thread")))
+        .order_by(CampaignEntity.updated_at.desc())
+    ).all()
+    return [CampaignEntity(id=row[0], campaign_id=campaign_id, name=row[1], entity_type=row[2],
+                           data=dict(zip(_SCORING_FIELDS, row[3:], strict=True))) for row in rows]
+
+
 def orchestrate(
     campaign_id: str,
     session_id: str | None = None,
@@ -819,14 +837,7 @@ def orchestrate(
     # 2. Load campaign entities from DB
     # ---------------------------------------------------------------------------
     with db.Session(db.engine) as s:
-        all_entities = s.exec(
-            select(CampaignEntity)
-            .where(
-                CampaignEntity.campaign_id == campaign_id,
-                CampaignEntity.status == "active",
-            )
-            .order_by(CampaignEntity.updated_at.desc())
-        ).all()
+        all_entities = _load_rankable_entities(s, campaign_id)
 
         hooks = s.exec(
             select(CampaignHook)
@@ -845,11 +856,6 @@ def orchestrate(
             .limit(8)
         ).all()
 
-        # Relationships for player character (if we can identify them by name)
-        player_relationships: list[dict] = []
-        if player_name:
-            pass  # player entity lookup reserved for future relationship mapping
-
     # Partition by type
     npcs = [e for e in all_entities if e.entity_type == "npc"]
     locations = [e for e in all_entities if e.entity_type == "location"]
@@ -859,16 +865,12 @@ def orchestrate(
     recent_entity_ids = {c.entity_id for c in recent_changes}
     active_thread_ids = {e.id for e in threads}
 
-    # Faction membership: which factions own scored NPCs?
-    npc_faction_ids: set[str] = set()
-    for npc in npcs:
-        d = npc.data or {}
-        affiliations = d.get("faction_affiliations") or []
-        for aff in affiliations:
-            # match faction name to entity
-            for f in factions:
-                if f.name.lower() == str(aff).lower():
-                    npc_faction_ids.add(f.id)
+    affiliated_names = {
+        str(affiliation).lower()
+        for npc in npcs
+        for affiliation in ((npc.data or {}).get("faction_affiliations") or [])
+    }
+    npc_faction_ids = {f.id for f in factions if f.name.lower() in affiliated_names}
 
     # ---------------------------------------------------------------------------
     # 3. Relevance scoring
@@ -885,7 +887,7 @@ def orchestrate(
         for e in npcs
     }
     thread_scores = {
-        e.id: _score_thread(e, mentioned_names, player_actions, set(npc_scores.keys()), current_location)
+        e.id: _score_thread(e, mentioned_names, player_actions, current_location)
         for e in threads
     }
     faction_scores = {
@@ -915,10 +917,31 @@ def orchestrate(
         locations[0] if locations else None,
     )
 
+    # Hydrate only selected memories and the recent locations/threads used for
+    # clue constraints. Ranking still considers every active candidate.
+    selected_ids = {e.id for e in [*ranked_npcs, *ranked_threads, *ranked_factions,
+                                  *locations[:3], *threads[:3]]}
+    if current_loc_entity:
+        selected_ids.add(current_loc_entity.id)
+    with db.Session(db.engine) as s:
+        full_entities = s.exec(select(CampaignEntity).where(
+            CampaignEntity.campaign_id == campaign_id,
+            col(CampaignEntity.id).in_(selected_ids),
+        )).all() if selected_ids else []
+    by_id = {e.id: e for e in full_entities}
+    ranked_npcs = [by_id[e.id] for e in ranked_npcs if e.id in by_id]
+    ranked_threads = [by_id[e.id] for e in ranked_threads if e.id in by_id]
+    ranked_factions = [by_id[e.id] for e in ranked_factions if e.id in by_id]
+    locations = [by_id[e.id] for e in locations[:3] if e.id in by_id]
+    threads = [by_id[e.id] for e in threads[:3] if e.id in by_id]
+    if current_loc_entity:
+        current_loc_entity = by_id.get(current_loc_entity.id)
+
     # ---------------------------------------------------------------------------
     # 4. Build Scene Context
     # ---------------------------------------------------------------------------
     scene_text = scene_json.get("text") or (story_lines[-1] if story_lines else "")
+    leading_thread = (ranked_threads[0].data or {}) if ranked_threads else {}
     scene_ctx = SceneContext(
         scene_id=scene_json.get("id") or "",
         scene_type=scene_json.get("scene_type") or "scene",
@@ -927,8 +950,8 @@ def orchestrate(
         weather=visual_state.get("weather") or "clear",
         mood=visual_state.get("mood") or "unease",
         threat_level=visual_state.get("threat_level") or "low",
-        current_problem=scene_json.get("problem") or (ranked_threads[0].data or {}).get("current_situation") or "" if ranked_threads else "",
-        immediate_stakes=scene_json.get("stakes") or (ranked_threads[0].data or {}).get("stakes") or "" if ranked_threads else "",
+        current_problem=scene_json.get("problem") or leading_thread.get("current_situation") or "",
+        immediate_stakes=scene_json.get("stakes") or leading_thread.get("stakes") or "",
         open_prompt=scene_json.get("prompt") or "",
         scene_summary=scene_text[:300] if scene_text else "",
     )
@@ -936,9 +959,7 @@ def orchestrate(
     # ---------------------------------------------------------------------------
     # 5. Build Player Context
     # ---------------------------------------------------------------------------
-    pc_data: dict = {}
-    if pcs:
-        pc_data = pcs[0]
+    pc_data = pcs[0] if pcs else {}
     sheet = pc_data.get("sheet") or {}
     pc_ctx = PlayerContext(
         name=player_name or pc_data.get("name") or pc_data.get("character_name") or "the party",
@@ -950,7 +971,7 @@ def orchestrate(
         active_resources=[],
         relevant_backstory_hooks=sheet.get("backstory_hooks") or [],
         current_reputation=sheet.get("reputation") or {},
-        relationships=player_relationships,
+        relationships=[],
     )
 
     # ---------------------------------------------------------------------------

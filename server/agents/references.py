@@ -5,6 +5,8 @@ import logging
 import math
 import os
 import re
+from collections import Counter
+from functools import lru_cache
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -734,49 +736,24 @@ _RULESET_DOC_SYSTEM: dict[str, str] = {
 }
 
 
-def search_query(q: str, top_k: int = 5, *, system_only: bool = False, include_system: bool = True, game_system: str | None = None):
-    """Synchronous helper for other server modules to search references.
+def _tokens(text: str) -> list[str]:
+    return re.findall(r"[a-z0-9]{2,}", (text or "").lower())
 
-    Returns list of result dicts: {source_id, page, snippet, score, paraphrase_required}
 
-    Parameters
-    ----------
-    system_only:
-        When True, search ONLY system reference documents (rulebooks, etc.).
-    include_system:
-        When False, skip all system reference documents.  Useful for
-        user-facing queries that should not draw on restricted material.
-    game_system:
-        When set (e.g. ``\"swse\"`` or ``\"Star Wars Saga\"``), only documents tagged
-        with the matching game_system (or ``\"global\"``) are searched.  Accepts both
-        the short ruleset ID (``swse``) and the full label stored in metadata
-        (``Star Wars Saga``).
+@lru_cache(maxsize=4)
+def _tfidf_index(texts: tuple[str, ...]) -> tuple[list[Counter[str]], dict[str, float], list[float]]:
+    """Reuse corpus work across feature queries; changed content gets a new key."""
+    frequencies = [Counter(_tokens(text)) for text in texts]
+    document_counts = Counter(token for counts in frequencies for token in counts)
+    idf = {token: math.log((len(texts) + 1) / (count + 1)) + 1.0
+           for token, count in document_counts.items()}
+    norms = [sum((count * idf[token]) ** 2 for token, count in counts.items()) ** 0.5
+             for counts in frequencies]
+    return frequencies, idf, norms
 
-    Notes
-    -----
-    The ``snippet`` field is always ``None`` for system reference results.
-    The ``paraphrase_required`` flag is ``True`` for those results.
-    Agents MUST paraphrase or summarise content from system references;
-    they must never quote the source text verbatim.
-    """
-    if not q or not q.strip():
-        return []
+
+def _load_search_corpus(*, system_only: bool, include_system: bool, game_system: str | None):
     root = _storage_root()
-    openai_key = os.environ.get("OPENAI_API_KEY")
-    query_vect: list[float] | None = None
-    if openai_key:
-        try:
-            import openai
-
-            openai.api_key = openai_key
-            resp = openai.Embedding.create(model="text-embedding-3-small", input=q)
-            query_vect = resp["data"][0]["embedding"]
-        except Exception:
-            logger.exception("Failed to get query embedding; falling back to text match")
-            query_vect = None
-
-    candidates: list[dict[str, object]] = []
-    # Prepare corpus for TF-IDF fallback
     corpus_texts: list[str] = []
     corpus_meta: list[dict[str, object]] = []
     for directory in root.iterdir():
@@ -828,6 +805,24 @@ def search_query(q: str, top_k: int = 5, *, system_only: bool = False, include_s
                 }
             )
 
+    return corpus_texts, corpus_meta
+
+
+def _search_corpus(q: str, top_k: int, corpus_texts: list[str], corpus_meta: list[dict[str, object]]):
+    openai_key = os.environ.get("OPENAI_API_KEY")
+    query_vect: list[float] | None = None
+    if openai_key:
+        try:
+            import openai
+
+            openai.api_key = openai_key
+            resp = openai.Embedding.create(model="text-embedding-3-small", input=q)
+            query_vect = resp["data"][0]["embedding"]
+        except Exception:
+            logger.exception("Failed to get query embedding; falling back to text match")
+            query_vect = None
+
+    candidates: list[dict[str, object]] = []
     # If we have query embedding and page embeddings, score by cosine
     if query_vect and any(meta.get("emb") for meta in corpus_meta):
         for meta in corpus_meta:
@@ -846,60 +841,24 @@ def search_query(q: str, top_k: int = 5, *, system_only: bool = False, include_s
                     }
                 )
     else:
-        # TF-IDF fallback scoring
-        # Simple tokenizer
-        def tokenize(s: str):
-            return list(re.findall(r"[a-z0-9]{2,}", (s or "").lower()))
-
-        # Build IDF
-        n_docs = len(corpus_texts)
-        idf: dict[str, float] = {}
-        df: dict[str, int] = {}
-        for text in corpus_texts:
-            tokens = set(tokenize(text))
-            for token in tokens:
-                df[token] = df.get(token, 0) + 1
-        for token, count in df.items():
-            idf[token] = math.log((n_docs + 1) / (count + 1)) + 1.0
-
-        # Query vector
-        q_tokens = tokenize(q)
-        if q_tokens:
-            q_tf: dict[str, int] = {}
-            for token in q_tokens:
-                q_tf[token] = q_tf.get(token, 0) + 1
-            q_vec: dict[str, float] = {token: (q_tf[token] * idf.get(token, 0.0)) for token in q_tf}
-            q_norm = sum(val * val for val in q_vec.values()) ** 0.5
-
-            for idx, text in enumerate(corpus_texts):
-                t_tf: dict[str, int] = {}
-                toks = tokenize(text)
-                if not toks:
+        frequencies, idf, norms = _tfidf_index(tuple(corpus_texts))
+        query_counts = Counter(_tokens(q))
+        if query_counts:
+            query_vector = {token: count * idf.get(token, 0.0) for token, count in query_counts.items()}
+            query_norm = sum(value * value for value in query_vector.values()) ** 0.5
+            for counts, norm, meta in zip(frequencies, norms, corpus_meta, strict=True):
+                if not query_norm or not norm:
                     continue
-                for tok in toks:
-                    t_tf[tok] = t_tf.get(tok, 0) + 1
-                # build dot product
-                dot = 0.0
-                for token, q_val in q_vec.items():
-                    t_val = t_tf.get(token, 0) * idf.get(token, 0.0)
-                    dot += q_val * t_val
-                denom_a = q_norm
-                denom_b = sum((t_tf.get(tok, 0) * idf.get(tok, 0.0)) ** 2 for tok in t_tf) ** 0.5
-                if denom_a > 0 and denom_b > 0:
-                    score = dot / (denom_a * denom_b)
-                else:
-                    score = 0.0
+                dot = sum(value * (counts.get(token, 0) * idf.get(token, 0.0))
+                          for token, value in query_vector.items())
+                score = dot / (query_norm * norm)
                 if score > 0:
-                    meta = corpus_meta[idx]
-                    candidates.append(
-                        {
-                            "source_id": meta["source_id"],
-                            "page": meta["page"],
-                            "snippet": meta.get("snippet"),
-                            "paraphrase_required": meta.get("paraphrase_required", False),
-                            "score": float(score),
-                        }
-                    )
+                    candidates.append({
+                        "source_id": meta["source_id"], "page": meta["page"],
+                        "snippet": meta.get("snippet"),
+                        "paraphrase_required": meta.get("paraphrase_required", False),
+                        "score": float(score),
+                    })
         else:
             # As a last resort, substring match
             q_lower = q.lower()
@@ -918,3 +877,57 @@ def search_query(q: str, top_k: int = 5, *, system_only: bool = False, include_s
 
     candidates.sort(key=lambda item: item["score"], reverse=True)
     return candidates[:top_k]
+
+
+def search_queries(
+    queries: list[str], top_k: int = 5, *, system_only: bool = False,
+    include_system: bool = True, game_system: str | None = None,
+) -> dict[str, list[dict[str, object]]]:
+    """Search distinct queries against one import/request-scoped corpus snapshot."""
+    queries = list(dict.fromkeys(q for q in queries if q and q.strip()))
+    if not queries:
+        return {}
+    texts, metadata = _load_search_corpus(
+        system_only=system_only, include_system=include_system, game_system=game_system,
+    )
+    results = {}
+    for q in queries:
+        try:
+            results[q] = _search_corpus(q, top_k, texts, metadata)
+        except Exception:
+            logger.exception("Reference lookup failed for %r", q)
+            results[q] = []
+    return results
+
+
+def search_query(q: str, top_k: int = 5, *, system_only: bool = False, include_system: bool = True, game_system: str | None = None):
+    """Synchronous helper for other server modules to search references.
+
+    Returns list of result dicts: {source_id, page, snippet, score, paraphrase_required}
+
+    Parameters
+    ----------
+    system_only:
+        When True, search ONLY system reference documents (rulebooks, etc.).
+    include_system:
+        When False, skip all system reference documents.  Useful for
+        user-facing queries that should not draw on restricted material.
+    game_system:
+        When set (e.g. ``\"swse\"`` or ``\"Star Wars Saga\"``), only documents tagged
+        with the matching game_system (or ``\"global\"``) are searched.  Accepts both
+        the short ruleset ID (``swse``) and the full label stored in metadata
+        (``Star Wars Saga``).
+
+    Notes
+    -----
+    The ``snippet`` field is always ``None`` for system reference results.
+    The ``paraphrase_required`` flag is ``True`` for those results.
+    Agents MUST paraphrase or summarise content from system references;
+    they must never quote the source text verbatim.
+    """
+    if not q or not q.strip():
+        return []
+    texts, metadata = _load_search_corpus(
+        system_only=system_only, include_system=include_system, game_system=game_system,
+    )
+    return _search_corpus(q, top_k, texts, metadata)

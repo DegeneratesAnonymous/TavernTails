@@ -41,9 +41,7 @@ def _build_pdf_bytes() -> bytes:
     # Fallback: build the PDF in-memory (avoids breaking startup if the fixture
     # was accidentally removed; the fixture should normally be committed).
     logger.warning("Starfinder fixture PDF not found at %s — building in memory", _FIXTURE_PDF)
-    import sys
-    sys.path.insert(0, str(Path(__file__).parent.parent))
-    from tests.fixtures.starfinder.generate_navasi import NAVASI_FIELDS, build_pdf  # type: ignore[import]
+    from server.tests.fixtures.starfinder.generate_navasi import NAVASI_FIELDS, build_pdf
     return build_pdf(NAVASI_FIELDS)
 
 
