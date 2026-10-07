@@ -116,7 +116,7 @@ def validate_scene_quality(
 
     # --- Positive criteria ---
 
-    if location_name and location_name.lower() in tl:
+    if location_name and _names_place(tl, location_name):
         score += 15
     else:
         issues.append(f"Named location '{location_name or '(none)'}' not found in narrative")
@@ -139,8 +139,11 @@ def validate_scene_quality(
     else:
         issues.append("No concrete conflict action detected in narrative")
 
+    generic_player = (player_name or "").strip().lower() in {"", "the party", "party", "you", "the players"}
     if player_name and player_name.lower() in tl:
         score += 10
+    elif generic_player and re.search(r"\b(you|your|the party)\b", tl):
+        score += 10  # no character is selected: the group is addressed as "you" or "the party"
     else:
         issues.append(f"Player character '{player_name or '?'}' not addressed directly")
 
@@ -201,13 +204,61 @@ def validate_scene_quality(
     return max(0, min(100, score)), issues
 
 
+# Props and openings written for particular sample campaigns.  Matching is by whole,
+# distinctive word or phrase: generic words ("water", "vote", "station", "ice" inside
+# "service") must not hand an unrelated campaign somebody else's prop.
+_CONSCRIPT_WORDS = ("slave army", "forced army", "pressed army", "conscripted army")
+_REEF_WORDS = ("reef", "drowned", "pearl", "saltwater", "sea-priest")
+_VOLCANO_WORDS = ("volcano", "ash guild", "cinder")
+_ORBITAL_WORDS = ("orbital", "orchard", "gravity fruit", "gantry")
+_LANTERN_WORDS = ("bone lantern", "family memory", "raider")
+_CLOCKWORK_WORDS = ("mechanical rain", "prophetic rust", "rustfall", "rain-gauge", "water authority")
+_DESERT_WORDS = ("glass desert", "dune", "dunes")
+_RAIL_WORDS = ("skyrail", "lightning rail")
+
+
+def _has_any(haystack: str, words: tuple[str, ...]) -> bool:
+    return any(re.search(rf"(?<![a-z]){re.escape(w)}(?![a-z])", haystack) for w in words)
+
+
+_PLACE_NOUNS = frozenset({
+    "village", "town", "city", "hamlet", "keep", "tower", "temple", "castle", "fortress", "harbor", "harbour",
+    "station", "colony", "settlement", "district", "quarter", "outpost", "port", "the", "of",
+})
+
+
+def _names_place(lower_text: str, place: str) -> bool:
+    """The place is named: its full name, or its distinctive words ("Alderbrook" for "Alderbrook village")."""
+    name = place.lower().strip()
+    if name in lower_text:
+        return True
+    distinctive = [w for w in re.findall(r"[a-z']{3,}", name) if w not in _PLACE_NOUNS]
+    return bool(distinctive) and all(re.search(rf"\b{re.escape(w)}", lower_text) for w in distinctive)
+
+
+_FILLER = frozenset({"the", "a", "an", "of", "and", "with", "that", "this", "from", "into", "their", "there"})
+
+
+def _mentions(lower_text: str, phrase: str) -> bool:
+    """``phrase`` is named in the text: at least half of its content words appear as whole words."""
+    words = [w for w in re.findall(r"[a-z']{3,}", str(phrase or "").lower()) if w not in _FILLER]
+    if not words:
+        return False
+    found = sum(1 for w in words if re.search(rf"\b{re.escape(w)}", lower_text))
+    return found >= max(1, (len(words) + 1) // 2)
+
+
 def validate_campaign_expectations(
     narrative_text: str,
     campaign_contract: dict | None = None,
     *,
     invented_entities: list[str] | None = None,
+    evidence: list[str] | None = None,
 ) -> dict:
     """Validate a scene against the persistent Campaign Contract.
+
+    ``evidence`` lists the scene's own established clues and objects; mentioning one of
+    them satisfies a "concrete clue" requirement, not only a fixed list of clue words.
 
     This augments the generic quality score with campaign-specific expectations:
     canon strictness, mystery pacing, agency, tone, and backstory boundaries.
@@ -233,7 +284,7 @@ def validate_campaign_expectations(
 
     if policy.get("require_concrete_clues"):
         clue_words = ["clue", "mark", "track", "receipt", "letter", "symbol", "stain", "footprint", "witness", "record"]
-        if not any(w in lower for w in clue_words):
+        if not any(w in lower for w in clue_words) and not any(_mentions(lower, e) for e in evidence or []):
             failed.append("missing_concrete_clue")
 
     if policy.get("preserve_unanswered_questions"):
@@ -395,6 +446,9 @@ def build_fallback_scene(
             sensory_detail = "Rain hammers against the shutters and the floor planks are slick with mud"
     sensory = sensory_detail or "Cold air bites through the cracks in the shutters."
     sensory_line = sensory.rstrip(".")
+    # The templates open with "At {loc}, ..."; a detail that already starts that way would repeat it.
+    if loc and sensory_line.casefold().startswith(f"at {loc.casefold()}"):
+        sensory_line = sensory_line[len(loc) + 3:].lstrip(" ,;:")
 
     def _cap(s: str) -> str:
         """Capitalize only the first character, preserving proper nouns in the rest."""
@@ -429,7 +483,7 @@ def build_fallback_scene(
         central_conflict or "",
         immediate_stakes or "",
     ]).lower()
-    if any(w in premise_hay for w in ("slave army", "forced army", "pressed army", "conscript", "escape", "pursuit")):
+    if _has_any(premise_hay, _CONSCRIPT_WORDS):
         evidence_object = "fresh bootprints pressed into the needle-strewn mud beside a snapped branch"
         sensory = sensory_detail or "Cold sap, wet bark, and old campfire ash hang under the trees"
         return (
@@ -441,27 +495,21 @@ def build_fallback_scene(
             f"break camp, hide and watch, or turn the woods themselves into a false trail."
         )
 
-    evidence_object = "a damaged notice weighted under a local token"
-    if any(w in premise_hay for w in ("reef", "drowned", "pearl", "tide", "saltwater", "sea-priest", "citadel")):
+    evidence_object = "the one detail that does not belong"  # no prop unless the premise or player named one
+    if _has_any(premise_hay, _REEF_WORDS):
         evidence_object = "a pearl knife wrapped in wet map-silk"
-    elif any(w in premise_hay for w in ("volcano", "ash guild", "relic", "vote", "election", "parliament")):
+    elif _has_any(premise_hay, _VOLCANO_WORDS):
         evidence_object = "a voting token fused to a flake of black volcanic glass"
-    elif any(w in premise_hay for w in ("orbital", "orchard", "gravity fruit", "harvest", "corporate")):
+    elif _has_any(premise_hay, _ORBITAL_WORDS):
         evidence_object = "a bruised gravity fruit hovering a finger-width above its crate"
-    elif any(w in premise_hay for w in ("bone lantern", "lanterns", "family memory", "borderlands", "raider")):
+    elif _has_any(premise_hay, _LANTERN_WORDS):
         evidence_object = "a bone-lantern wick burning with someone else's childhood voice"
-    elif any(w in premise_hay for w in ("clockwork", "mechanical rain", "prophetic rust", "impossible weather", "rustfall", "rain-gauge", "gauge", "water authority")):
+    elif _has_any(premise_hay, _CLOCKWORK_WORDS):
         evidence_object = "a brass rain-gauge blooming with prophetic rust"
-    elif any(w in premise_hay for w in ("desert", "dune", "sand", "glass", "water", "shade")):
+    elif _has_any(premise_hay, _DESERT_WORDS):
         evidence_object = "a cracked water flask dusted with glass-bright sand"
-    elif any(w in premise_hay for w in ("rail", "skyrail", "lightning", "station", "sabotage", "engine")):
+    elif _has_any(premise_hay, _RAIL_WORDS):
         evidence_object = "a scorched brass relay pin still ticking with static"
-    elif any(w in (campaign_name or "").lower() for w in ("winter", "frost", "ice", "snow")):
-        evidence_object = "a frost-stiff packet wrapped around a shard of dark glass"
-    elif any(w in (campaign_name or "").lower() for w in ("fire", "ember", "ash", "burn")):
-        evidence_object = "a scorched ledger page curled around a brass token"
-    elif any(w in (campaign_name or "").lower() for w in ("storm", "rain", "flood")):
-        evidence_object = "a waterlogged dispatch tube sealed with split red wax"
 
     # An object the campaign itself established always beats a keyword-table prop:
     # inspecting "the brass pocket watch" must not turn into a "frost-stiff packet".
@@ -470,15 +518,15 @@ def build_fallback_scene(
         evidence_object = definite(approved)
 
     variant_seed = "|".join([loc, npc, campaign_name or "", incident_line, conflict_evidence])
-    if any(w in premise_hay for w in ("reef", "drowned", "pearl", "tide", "saltwater", "sea-priest", "citadel")):
+    if _has_any(premise_hay, _REEF_WORDS):
         variant = 0
-    elif any(w in premise_hay for w in ("volcano", "ash guild", "relic", "vote", "election", "parliament", "cinder")):
+    elif _has_any(premise_hay, _VOLCANO_WORDS):
         variant = 1
-    elif any(w in premise_hay for w in ("orbital", "orchard", "gravity fruit", "harvest", "corporate", "gantry")):
+    elif _has_any(premise_hay, _ORBITAL_WORDS):
         variant = 2
-    elif any(w in premise_hay for w in ("bone lantern", "lanterns", "family memory", "borderlands", "raider")):
+    elif _has_any(premise_hay, _LANTERN_WORDS):
         variant = 3
-    elif any(w in premise_hay for w in ("clockwork", "mechanical rain", "prophetic rust", "impossible weather", "rustfall", "rain-gauge", "gauge", "water authority")):
+    elif _has_any(premise_hay, _CLOCKWORK_WORDS):
         variant = 4
     else:
         variant = int(hashlib.sha1(variant_seed.encode("utf-8")).hexdigest()[:2], 16) % 5

@@ -103,8 +103,8 @@ def test_question_checks_keep_validation_errors_before_missing_dialogue():
     assert issues == [
         'Question 0 requires an explicit reason the NPC cannot answer.',
         'Question 1 requires an explicit reason the NPC cannot answer.',
-        'Question 0: include the planned reply in the narration.',
-        'Question 1: include the planned reply in the narration.',
+        'Question 0: include the planned reply word for word, in quotation marks: “Unknown.”',
+        'Question 1: include the planned reply word for word, in quotation marks: “Unknown.”',
     ]
 
 

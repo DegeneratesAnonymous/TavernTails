@@ -34,19 +34,37 @@ def mentions_object(text: str, approved_object: str) -> bool:
     return bool(words) and re.search(rf"\b{re.escape(words[-1])}s?\b", body) is not None
 
 
+# Heuristic cues whose absence alone does not make grounded prose unusable.  A scene
+# may lack one of them (a travel scene with no "event" word, a calm one with no
+# explicit problem) while still having the location, a named NPC and the senses.
+_SOFT_CUES = {
+    "No immediate concrete problem": "has_immediate_problem",
+    "No visible event (nothing happens on-screen)": "has_visible_event",
+}
+
+
 def soft_shortfall_only(result) -> bool:
-    """True when the draft's only failed check is the heuristic 'immediate problem' cue."""
+    """True when the draft has no hard failure: no failed check and no banned phrase (score only
+    short of the bar because optional cues such as a dated deadline are absent), or exactly one
+    soft heuristic cue is missing."""
+    if not result.failed_checks:
+        return not result.banned_phrases_found and result.score >= 60
+    if len(result.failed_checks) != 1 or result.failed_checks[0] not in _SOFT_CUES:
+        return False
+    other = {"has_immediate_problem", "has_visible_event"} - {_SOFT_CUES[result.failed_checks[0]]}
     return (
-        result.failed_checks == ["No immediate concrete problem"]
-        and not result.banned_phrases_found
-        and result.has_location and result.has_named_npc
-        and result.has_visible_event and result.has_sensory_detail
+        not result.banned_phrases_found
+        and result.has_location and result.has_named_npc and result.has_sensory_detail
+        and all(getattr(result, flag) for flag in other)
         and result.score >= 50
     )
 
 MAX_RETRIES = 1
 SCORE_THRESHOLD = 75
-SCORE_THRESHOLD_OPENING = 80  # higher bar for first impressions
+# Higher bar for first impressions.  The scorer's checks add up to 90 at most and an
+# opening rarely carries a dated deadline (worth 15), so 80 rejected nearly every
+# model-written opening that had no failed check; 70 still needs all the core cues.
+SCORE_THRESHOLD_OPENING = 70
 
 
 class NarrativeRequest(BaseModel):
@@ -637,7 +655,10 @@ def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
             break  # LLM timed out or errored — no point retrying same call immediately
 
         narrative, prompt = _parse_narrative_response(text, default_narration, default_prompt)
-        result = score_scene(narrative, title=scene_title, threshold=threshold)
+        # The player prompt is returned beside the prose, not inside it, but the scorer's
+        # agency check looks for it; score what the player will actually read.
+        scored_text = narrative if re.search(r"what does\s+\w+\s+do", narrative, re.I) else f"{narrative}\n\n{prompt}"
+        result = score_scene(scored_text, title=scene_title, threshold=threshold)
         issues = []
         if payload.approved_object and not mentions_object(narrative, payload.approved_object):
             issues.append(f"Keep the established {payload.approved_object} in the scene; do not substitute a prop.")

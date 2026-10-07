@@ -301,6 +301,13 @@ def _grounded_fallback_seed(
         if s and not s.lower().startswith(("find ", "avoid ", "do not ", "don't ", "no "))
         and not s.endswith("?")
     ), "")
+    if not factual_setup and established_location:
+        # The author's own description of the place they started the story in.
+        lore_setup = next((
+            f.text for f in intent.conflicts
+            if f.established and f.source == f"player_canon_note:{established_location}"
+        ), "")
+        factual_setup = f"{lore_setup[:1].upper()}{lore_setup[1:].rstrip('.')}." if lore_setup else ""
     if factual_setup:
         inciting_event = factual_setup.rstrip(".")
         opening_question = "What caused this, and what can you discover here?"

@@ -230,3 +230,115 @@ def test_continuation_schema_asks_for_action_resolutions_but_opening_does_not():
 
     assert "action_resolutions" in json.loads(_CONTINUATION_SCHEMA)
     assert "action_resolutions" not in json.loads(_SCHEMA)
+
+
+def test_soft_shortfall_also_accepts_a_missing_visible_event_when_the_scene_is_grounded():
+    from server.agents.narrative import soft_shortfall_only
+    from server.agents.narrative_linter import ScoreResult
+
+    base = {"has_location": True, "has_named_npc": True, "has_sensory_detail": True,
+            "has_immediate_problem": True, "has_visible_event": False, "score": 61}
+    arrival = ScoreResult(failed_checks=["No visible event (nothing happens on-screen)"], **base)
+    assert soft_shortfall_only(arrival)
+    ungrounded = ScoreResult(failed_checks=["No visible event (nothing happens on-screen)"], **{**base, "has_named_npc": False})
+    assert not soft_shortfall_only(ungrounded)
+    two_gaps = ScoreResult(failed_checks=["No visible event (nothing happens on-screen)", "No immediate concrete problem"],
+                           **{**base, "has_immediate_problem": False})
+    assert not soft_shortfall_only(two_gaps)
+
+
+def test_retry_feedback_names_the_exact_reply_and_the_people_it_may_use():
+    from server.agents.action_resolution import continuation_issues
+
+    resolutions = [{"action_index": 0, "status": "answered", "reply": "Three days ago."}]
+    issues = continuation_issues("Ada nods.", ["I ask Ada when she wound it."], resolutions,
+                                 known_names=["Ada Reed"], allow_new_names=True)
+    assert any("“Three days ago.”" in i for i in issues)
+    named = continuation_issues("Clara watches the door closely.", [], [], known_names=["Ada Reed"], allow_new_names=False)
+    assert any("Ada Reed" in i and "Clara" in i for i in named)
+
+
+def test_planned_reply_matches_despite_punctuation_markdown_and_case():
+    from server.agents.action_resolution import continuation_issues
+
+    reply = "I wound it just before breakfast. But this morning... something was different. It *refused* to move."
+    resolutions = [{"action_index": 0, "status": "answered", "reply": reply}]
+    body = "Ada Reed replies, “I wound it just before breakfast. But this morning… Something was different. It refused to move.”"
+    assert not continuation_issues(body, ["I ask Ada when she wound it."], resolutions, known_names=["Ada Reed"], allow_new_names=True)
+    assert continuation_issues("Ada nods slowly.", ["I ask Ada when she wound it."], resolutions,
+                               known_names=["Ada Reed"], allow_new_names=True)
+
+
+def test_travel_destination_stops_at_the_next_clause():
+    from server.agents.action_resolution import movement_destination
+
+    assert movement_destination(["I walk to the edge of the village and look at the road."]) == "edge of the village"
+    assert movement_destination(["I leave the workshop and go to the village square."]) == "village square"
+    assert movement_destination(["I head to the docks, then ask around."]) == "docks"
+    assert movement_destination(["I ask Ada about the watch."]) == ""
+
+
+def _travel_request():
+    return scene_director.SceneDirectorRequest(
+        is_opening_scene=False, player_actions=["I walk to the village square."],
+        campaign_settings={"setting_summary": PREMISE},
+        previous_scene={"location": "Ada Reed's Workshop", "primary_npc": {"name": "Ada Reed"}},
+    )
+
+
+def test_director_retries_a_truncated_plan_with_more_room(monkeypatch):
+    plan = json.dumps({"location": "Village Square", "primary_npc": "Ada Reed", "central_conflict": "The square is empty."})
+    replies = iter([plan[:60], plan])
+    budgets = []
+
+    def fake(messages, **kwargs):
+        budgets.append(kwargs["max_tokens"])
+        return next(replies)
+
+    monkeypatch.setattr(scene_director, "chat_complete", fake)
+    out = scene_director.direct_scene(_travel_request())
+    assert out.source == "llm" and budgets == [1200, 2200]
+    assert out.location.name.casefold() == "village square" and out.primary_npc.name == "Ada Reed"  # bare names are accepted
+
+
+def test_director_records_why_it_fell_back(monkeypatch):
+    monkeypatch.setattr(scene_director, "chat_complete", lambda *a, **k: "this is not json {")
+    out = scene_director.direct_scene(_travel_request())
+    assert out.source == "deterministic"
+    assert out.generation_debug["fallback_reason"] == "unavailable_or_invalid_model_output"
+    assert "JSONDecodeError" in out.generation_debug["error"] or out.generation_debug["error"] == "no_json_object"
+    monkeypatch.setattr(scene_director, "chat_complete", lambda *a, **k: None)
+    assert scene_director.direct_scene(_travel_request()).generation_debug["error"] == "no_reply"
+
+
+def test_scene_checks_accept_the_places_distinctive_name_and_the_scenes_own_clue():
+    from server.agents.scene_validator import validate_campaign_expectations, validate_scene_quality
+
+    prose = ("The scent of oil hangs over the square of Alderbrook. Ada Reed lifts the stopped brass pocket watch and "
+             "whispers that every clock froze at breakfast.")
+    _, issues = validate_scene_quality(narrative_text=prose, location_name="Alderbrook village", npc_name="Ada Reed",
+                                       player_name="Arin", conflict="every clock stopped")
+    assert not [i for i in issues if "Named location" in i]
+    contract = {"validator_policy": {"require_concrete_clues": True}}
+    assert "missing_concrete_clue" in validate_campaign_expectations(prose.replace("watch", "thing"), contract)["failed_expectations"]
+    assert "missing_concrete_clue" not in validate_campaign_expectations(
+        prose, contract, evidence=["stopped brass pocket watch"])["failed_expectations"]
+
+
+def test_a_group_with_no_selected_character_is_addressed_as_you_or_the_party():
+    from server.agents.scene_validator import validate_scene_quality
+
+    prose = ("Ada Reed slams the broken watch on the bench in Alderbrook and hisses that someone stole the key. "
+             "The smell of oil is thick as you step inside. What does the party do?")
+    _, issues = validate_scene_quality(narrative_text=prose, location_name="Alderbrook", npc_name="Ada Reed",
+                                       player_name="the party", conflict="stolen key")
+    assert not [i for i in issues if "Player character" in i]
+
+
+def test_a_draft_with_no_failed_check_is_not_discarded_for_missing_optional_points():
+    from server.agents.narrative import soft_shortfall_only
+    from server.agents.narrative_linter import ScoreResult
+
+    assert soft_shortfall_only(ScoreResult(score=68, failed_checks=[]))
+    assert not soft_shortfall_only(ScoreResult(score=45, failed_checks=[]))
+    assert not soft_shortfall_only(ScoreResult(score=68, failed_checks=[], banned_phrases_found=["something is wrong"]))
