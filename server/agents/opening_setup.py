@@ -315,29 +315,19 @@ def build_campaign_brief(
     line_keys = ["place", "trouble", "urgency", "rumor", "object", "institution", "consequence"]
     facts: list[str] = []
     provisional_facts: list[str] = []
-    # The character's own knowledge is shown in its own section, so it is not repeated as a fact.
     candidates = [place_identity, trouble, urgency, rumor, concrete_object, institution, visible_consequence]
     for key, line in zip(line_keys, candidates, strict=True):
         if not line or line in open_lines:
             continue
         (provisional_facts if _line_is_provisional(key, generated, seed) else facts).append(_trim_sentence(line))
     place_intro = _place_intro(title, location, place_identity)
-
-    def _known(*lines: str) -> str:
-        return " ".join(line for line in lines if line)
-
-    # When the anchor supplies the character's reason it has its own box, so the
-    # knowledge paragraph carries only the class-flavored half.
-    knowledge = anchor.get("class_flavor_translation") or char_context
     paragraphs = [
         place_intro,
-        _known(trouble, concrete_object),
-        _known(urgency, visible_consequence) if urgency != visible_consequence else _known(urgency),
-        knowledge,
+        " ".join(p for p in (trouble, concrete_object) if p),
+        " ".join(p for p in (urgency, visible_consequence) if p) if urgency != visible_consequence else urgency,
+        char_context,
     ]
-    paragraphs = [capitalize_sentences(_trim_sentence(p)) for p in paragraphs if p]
-    facts = [capitalize_sentences(f) for f in facts]
-    provisional_facts = [capitalize_sentences(f) for f in provisional_facts]
+    paragraphs = [_trim_sentence(p) for p in paragraphs if p]
     brief = {
         "title": title,
         "location_name": location,
@@ -352,6 +342,7 @@ def build_campaign_brief(
     if not validation["valid"]:
         brief = _repair_campaign_brief(brief, seed, camp, char)
         validation = validate_campaign_brief(brief)
+    brief = _finish_brief(brief)
     brief["quality_debug"] = validation
     return brief
 
@@ -467,7 +458,13 @@ def validate_campaign_brief(brief: dict[str, Any]) -> dict[str, Any]:
     checks = {
         "names_starting_location": bool(location and location in text),
         "explains_location": any(word in text for word in ("hall", "harbor", "pass", "road", "market", "observatory", "chamber", "crossing", "watchpoint", "built", "where")),
-        "immediate_problem": any(word in text for word in ("cracked", "vanished", "missing", "sabotage", "dispute", "disagree", "contradict", "fraud", "poison", "stolen", "broken", "sealed", "stopped", "failed", "failing", "accuse", "ripen", "cycle", "cycles", "caught", "shear")),
+        "immediate_problem": any(word in text for word in (
+            "cracked", "vanished", "missing", "sabotage", "dispute", "disagree", "contradict", "fraud", "poison",
+            "stolen", "broken", "sealed", "stopped", "failed", "failing", "accuse", "ripen", "cycle", "cycles", "caught", "shear",
+            # genre-neutral trouble (fantasy, horror, sci-fi, political, survival)
+            "dying", "fails", "flickers", "unravel", "stands open", "swings open", "returns", "rewrite", "tolls", "hum",
+            "refuse", "disagrees", "drifting", "rising", "closes", "turns bitter", "goes out", "cut loose", "asking the same thing",
+        )),
         "concrete_entity": any(word in text for word in ("relic", "seal", "ledger", "mirror", "bell", "guild", "charter", "warden", "archivist", "faction", "institution", "survivor", "witness", "corpse", "token", "letter", "tracks", "blood", "charm", "bowl")),
         "time_matters": any(word in text for word in ("before", "soon", "tonight", "dawn", "dusk", "certified", "closes", "disappear", "final")),
         "character_knowledge": bool(anchor.get("reason_to_care") or anchor.get("class_flavor_translation")) and any(str(v).lower()[:24] in text for v in anchor.values() if v),
@@ -479,6 +476,31 @@ def validate_campaign_brief(brief: dict[str, Any]) -> dict[str, Any]:
         if not ok and key not in waived:
             issues.append(key)
     return {"valid": not issues, "issues": issues, "checks": checks, "waived_for_unknowns": waived}
+
+
+def _finish_brief(brief: dict[str, Any]) -> dict[str, Any]:
+    """Player-facing polish shared by the built and the repaired brief.
+
+    The character's reason has its own box in the UI, so the knowledge paragraph
+    keeps only the class-flavored half; the facts list is shown under the
+    paragraphs, so nothing they already say (or the character section) is
+    repeated there; sentence starts are capitalized.
+    """
+    anchor = brief.get("character_anchor") or {}
+    flavor = _trim_sentence(anchor.get("class_flavor_translation") or "")
+    paragraphs = [str(p) for p in brief.get("brief_paragraphs") or []]
+    if flavor and paragraphs and paragraphs[-1].lower().startswith(flavor.lower()[:40]):
+        paragraphs[-1] = flavor
+    stated = " ".join(paragraphs).lower()
+
+    def keep(fact: str) -> bool:
+        text = fact.lower().rstrip(". ")
+        return bool(text) and text not in stated and not (flavor and flavor.lower()[:40] in text)
+
+    brief["brief_paragraphs"] = [capitalize_sentences(p) for p in paragraphs]
+    for key in ("known_facts", "provisional_facts"):
+        brief[key] = [capitalize_sentences(f) for f in brief.get(key) or [] if keep(str(f))]
+    return brief
 
 
 def _repair_campaign_brief(
@@ -1295,6 +1317,13 @@ def _concrete_object(seed: dict[str, Any], contract: dict[str, Any], fallback: s
 
 def _institution_or_faction(seed: dict[str, Any], contract: dict[str, Any], location: str, *, strict: bool = False) -> str:
     text = " ".join(str(seed.get(k) or contract.get(k) or "") for k in ("inciting_event", "first_clue_or_question", "specific_stakes", "campaign_pitch", "setting_summary", "description")).lower()
+    pool = str(seed.get("genre_pool") or "")
+    if pool:
+        # A genre seed's wording ("mine", "road", "pass") must not summon the
+        # mystery fixtures below: a haunted mine is not a guild charter dispute.
+        if pool == "political" and ("guild" in text or "charter" in text or "vote" in text):
+            return "Guild factions are fighting over the charter."
+        return UNKNOWN_AUTHORITY if strict else "The local authority and the people caught outside its protection are already in dispute."
     if "guild" in text or "charter" in text or "vote" in text or "mine" in text:
         return "Guild factions are fighting over the charter."
     if "harbor" in text or "envoy" in text:
@@ -1385,6 +1414,14 @@ _UNKNOWN_WAIVES = {
 }
 
 
+_LYING = re.compile(r"\b(?:lie|lies|lied|lying|liar|liars)\b")
+
+
+def _mentions_lying(text: str) -> bool:
+    """Whole words only: "supplies", "believe" and "relief" do not mean someone is lying."""
+    return bool(_LYING.search(text))
+
+
 def _natural_problem(seed: dict[str, Any], contract: dict[str, Any], *, strict: bool = False) -> str:
     inciting = _clean_raw(str(seed.get("inciting_event") or ""))
     clue = _clean_raw(str(seed.get("first_clue_or_question") or ""))
@@ -1392,10 +1429,20 @@ def _natural_problem(seed: dict[str, Any], contract: dict[str, Any], *, strict: 
     lower = " ".join([inciting, clue, pitch]).lower()
     if strict and not (inciting or clue or pitch):
         return UNKNOWN_PROBLEM
+    if seed.get("genre_pool"):
+        # Genre seeds are written scenarios: state their open question as it is, instead of
+        # keyword-matching it onto a mystery fixture ("missing page" -> vanished travelers).
+        if _is_raw_question(clue):
+            return f"Everyone is asking the same thing: {clue.rstrip()}"
+        if inciting and not _is_raw_question(inciting):
+            return _trim_sentence(inciting)
     if "vanish" in lower or "disappear" in lower or "missing" in lower:
         return "Travelers and witnesses have vanished, and the old route is becoming a dangerous mystery."
-    if "lie" in lower or "lying" in lower or _is_raw_question(clue):
+    if _mentions_lying(lower):
         return "Three witnesses contradict each other: one names a hand in it, one swears no one was there, and one refuses to say whose voice they heard."
+    if _is_raw_question(clue):
+        # An open question is the trouble; do not invent witnesses or events to answer it.
+        return f"Everyone is asking the same thing: {clue.rstrip()}"
     if "clue" in lower or "mirror" in lower or "ledger" in lower or "seal" in lower:
         return "The first physical sign of trouble has already made the locals afraid to speak plainly."
     if inciting and not _is_raw_question(inciting) and not _is_weak_player_facing_text(inciting):
@@ -1430,7 +1477,7 @@ def _natural_rumor(seed: dict[str, Any], contract: dict[str, Any], *, strict: bo
     clue = _clean_raw(str(seed.get("first_clue_or_question") or ""))
     if _is_raw_question(clue):
         lowered = clue.lower()
-        if "lying" in lowered or "lie" in lowered:
+        if _mentions_lying(lowered):
             return "Some blame frightened witnesses; others insist the official account is false."
         if "who" in lowered:
             return "Everyone has a suspect, but no two accounts point to the same person."

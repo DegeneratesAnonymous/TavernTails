@@ -24,6 +24,7 @@ from .generation_intent import (
     seed_field_provenance,
     starting_location_fact,
 )
+from .genre_seeds import GENRE_SEEDS, GenreSeeds, pools_for
 from .situation_contracts import (
     validate_situation,
 )
@@ -209,12 +210,16 @@ def generate_starter_seed(
     rng = random.Random(seed) if seed is not None else random.Random()
     intent = intent or build_opening_intent(settings, contract)
 
-    genre = str(settings.get("genre") or contract.get("campaign_dna", {}).get("genre") or "fantasy")
+    explicit_genre = str(settings.get("genre") or contract.get("campaign_dna", {}).get("genre") or "")
+    genre = explicit_genre or "fantasy"
     tone = str(settings.get("tone") or contract.get("campaign_dna", {}).get("tone") or "balanced")
     premise_seed = _seed_from_campaign_premise(settings, contract, genre, rng)
     if premise_seed:
         return annotate_seed(_vary_premise_seed(premise_seed, freshness, rng), intent, mode="premise_template")
-    return annotate_seed(_grounded_fallback_seed(intent, freshness, rng, genre, tone), intent, mode="grounded_fallback")
+    return annotate_seed(
+        _grounded_fallback_seed(intent, freshness, rng, genre, tone, pools=pools_for(explicit_genre)),
+        intent, mode="grounded_fallback",
+    )
 
 
 def annotate_seed(seed: dict[str, Any], intent: OpeningIntent, *, mode: str) -> dict[str, Any]:
@@ -247,8 +252,14 @@ def _grounded_fallback_seed(
     rng: random.Random,
     genre: str,
     tone: str,
+    pools: GenreSeeds | None = None,
 ) -> dict[str, Any]:
-    """Seed built from the player's facts; random tables only fill the gaps."""
+    """Seed built from the player's facts; random tables only fill the gaps.
+
+    ``pools`` carries the explicitly chosen genre's tables; without it the
+    generic (mystery-leaning) tables are used.
+    """
+    location_pool = [p.type for p in pools.places] if pools else _LOCATION_TYPES
     # Safety rules are exclusions, so their words must never attract a table pick.
     constraint_ids = {f.id for f in intent.constraints}
     premise_tokens: set[str] = set()
@@ -264,14 +275,18 @@ def _grounded_fallback_seed(
     established_location = _established_name(intent, "location")
     if established_location:
         location_name = established_location
-        named_type = next((t for t in _LOCATION_TYPES if content_tokens(t) & content_tokens(location_name)), "")
+        named_type = next((t for t in location_pool if content_tokens(t) & content_tokens(location_name)), "")
         location_type = named_type or "starting location"
     else:
-        location_type = flavor_pick(_LOCATION_TYPES, recent_locs, rng, premise_tokens, avoided_tokens)
+        location_type = flavor_pick(location_pool, recent_locs, rng, premise_tokens, avoided_tokens)
         location_name = _name_location(location_type, genre, tone, rng)
 
-    inciting_event = flavor_pick(_INCITING_EVENTS, recent_events, rng, premise_tokens, avoided_tokens)
-    opening_question = rng.choice(_OPENING_QUESTIONS)
+    # A genre place owns its events and questions, so the scenario stays coherent.
+    place = next((p for p in pools.places if p.type == location_type), None) if pools else None
+    event_pool = list(place.events) if place else list(pools.events) if pools else _INCITING_EVENTS
+    question_pool = list(place.questions) if place else list(pools.questions) if pools else _OPENING_QUESTIONS
+    inciting_event = flavor_pick(event_pool, recent_events, rng, premise_tokens, avoided_tokens)
+    opening_question = rng.choice(question_pool)
 
     # A rich authored brief must not become an unrelated random-table event.
     # Keep its factual setup verbatim when no supported premise template fits.
@@ -302,7 +317,7 @@ def _grounded_fallback_seed(
     )
     player_decision = _player_decision(location_type, inciting_event)
     identity = (
-        f"A {location_type} where {inciting_event}."
+        f"{_with_article(location_type).capitalize()} where {inciting_event}."
         if known_type
         else f"{location_name}, where {inciting_event}."
     )
@@ -326,6 +341,7 @@ def _grounded_fallback_seed(
              else {"type": "npc", "name": npc_name, "status": "campaign_opening"}),
         ],
         "generated_by": "premise_seed" if factual_setup else "starter_seed",
+        "genre_pool": genre.lower() if pools else "",
         "freshness_consumed": {
             "location_type": location_type,
             "event": inciting_event,
@@ -346,6 +362,11 @@ def _grounded_fallback_seed(
                 (s for s in premise_sentences if possession in s), factual_setup,
             )
     return result
+
+
+def _with_article(noun_phrase: str) -> str:
+    """"a frozen pass" / "an abandoned asylum"."""
+    return f"{'an' if noun_phrase[:1].lower() in 'aeiou' else 'a'} {noun_phrase}"
 
 
 def _known_location_type(location_type: str) -> bool:
@@ -804,22 +825,24 @@ _LOCATION_PREFIXES: dict[str, list[str]] = {
 }
 
 
+_LOCATION_SUFFIXES: dict[str, str] = {
+    "border village": "Post", "desert caravan camp": "Junction",
+    "mountain monastery": "Abbey", "river ferry station": "Ford",
+    "ruined watchtower": "Watchtower", "mining settlement": "Vein",
+    "coastal shrine": "Shrine", "occupied city district": "Quarter",
+    "forest road camp": "Camp", "noble estate": "Estate",
+    "swamp causeway": "Crossing", "battlefield hospital": "Barracks",
+    "arcane observatory": "Observatory", "market square": "Market",
+    "frontier fort": "Fort", "ship at sea": "Vessel",
+    "underground refuge": "Hold", "temple courtyard": "Courtyard",
+    "burned farmstead": "Farmstead", "frozen pass": "Pass",
+}
+
+
 def _name_location(location_type: str, genre: str, tone: str, rng: random.Random) -> str:
     prefixes = _LOCATION_PREFIXES.get(genre.lower(), _LOCATION_PREFIXES["default"])
     prefix = rng.choice(prefixes)
-    suffix_map = {
-        "border village": "Post", "desert caravan camp": "Junction",
-        "mountain monastery": "Abbey", "river ferry station": "Ford",
-        "ruined watchtower": "Watchtower", "mining settlement": "Vein",
-        "coastal shrine": "Shrine", "occupied city district": "Quarter",
-        "forest road camp": "Camp", "noble estate": "Estate",
-        "swamp causeway": "Crossing", "battlefield hospital": "Barracks",
-        "arcane observatory": "Observatory", "market square": "Market",
-        "frontier fort": "Fort", "ship at sea": "Vessel",
-        "underground refuge": "Hold", "temple courtyard": "Courtyard",
-        "burned farmstead": "Farmstead", "frozen pass": "Pass",
-    }
-    suffix = suffix_map.get(location_type, "Keep")
+    suffix = _LOCATION_SUFFIXES.get(location_type, "Keep")
     return f"{prefix} {suffix}"
 
 
@@ -869,30 +892,41 @@ def _npc_role_for_location(location_type: str, rng: random.Random) -> str:
     return rng.choice(pool)
 
 
+_STAKES_BY_LOCATION: dict[str, str] = {
+    "border village": "If nothing is done, the garrison will blame the next outsider.",
+    "desert caravan camp": "Water supply runs out in 48 hours. Conflict will follow.",
+    "mountain monastery": "The records at risk contain something someone wants destroyed.",
+    "mining settlement": "The company will seal the mine with workers still inside.",
+    "frontier fort": "Without reinforcements, the fort falls. The region falls with it.",
+    "arcane observatory": "If the evidence is lost, the source of the threat becomes guesswork.",
+}
+
+_DECISION_BY_LOCATION: dict[str, str] = {
+    "border village": "Help the garrison commander investigate — or protect the person they're blaming.",
+    "desert caravan camp": "Secure the water source or negotiate a truce between competing factions.",
+    "mountain monastery": "Retrieve the records before they disappear — or find out why someone wants them gone.",
+    "mining settlement": "Enter the mine, or find another way to locate the missing workers.",
+    "frontier fort": "Send for help and hold the fort, or abandon it and warn the region.",
+    "arcane observatory": "Document the phenomenon, or use it before it vanishes.",
+}
+
+# Genre places (see genre_seeds) register their own name suffix, NPC roles, stakes and decision.
+for _seeds in GENRE_SEEDS.values():
+    for _place in _seeds.places:
+        _LOCATION_SUFFIXES[_place.type] = _place.suffix
+        _ROLES_BY_LOCATION[_place.type] = list(_place.roles)
+        _STAKES_BY_LOCATION[_place.type] = _place.stakes
+        _DECISION_BY_LOCATION[_place.type] = _place.decision
+
+
 def _stakes_for_location(location_type: str, inciting_event: str) -> str:
-    stakes_map = {
-        "border village": "If nothing is done, the garrison will blame the next outsider.",
-        "desert caravan camp": "Water supply runs out in 48 hours. Conflict will follow.",
-        "mountain monastery": "The records at risk contain something someone wants destroyed.",
-        "mining settlement": "The company will seal the mine with workers still inside.",
-        "frontier fort": "Without reinforcements, the fort falls. The region falls with it.",
-        "arcane observatory": "If the evidence is lost, the source of the threat becomes guesswork.",
-    }
     fallback = f"By dusk, the person carrying the clearest lead will leave the {location_type} and the trail will go cold."
-    return stakes_map.get(location_type, fallback)
+    return _STAKES_BY_LOCATION.get(location_type, fallback)
 
 
 def _player_decision(location_type: str, inciting_event: str) -> str:
-    decision_map = {
-        "border village": "Help the garrison commander investigate — or protect the person they're blaming.",
-        "desert caravan camp": "Secure the water source or negotiate a truce between competing factions.",
-        "mountain monastery": "Retrieve the records before they disappear — or find out why someone wants them gone.",
-        "mining settlement": "Enter the mine, or find another way to locate the missing workers.",
-        "frontier fort": "Send for help and hold the fort, or abandon it and warn the region.",
-        "arcane observatory": "Document the phenomenon, or use it before it vanishes.",
-    }
     fallback = "Act on what is immediately visible, or investigate what lies beneath the surface first."
-    return decision_map.get(location_type, fallback)
+    return _DECISION_BY_LOCATION.get(location_type, fallback)
 
 
 # ---------------------------------------------------------------------------
