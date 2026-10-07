@@ -656,3 +656,60 @@ def test_first_scene_contract_rejects_meta_language_and_unjustified_rolls():
     assert any("Forbidden first-scene language" in issue for issue in result["issues"])
     assert any("fewer than three" in issue for issue in result["issues"])
     assert any("Dice request" in issue for issue in result["issues"])
+
+
+# --- Quick Start brief quality (live dashboard review, Oct 6 2026) -------------
+
+def _fantasy_brief(seed_no: int) -> dict:
+    from server.agents.content_bundles import generate_starter_seed
+
+    camp = {
+        "campaign_name": "Salt, Steel, and Sorcery", "genre": "fantasy",
+        "setting_summary": "Magic, monsters, and ancient prophecies.",
+        "campaign_pitch": "Magic, monsters, and ancient prophecies.",
+    }
+    seed = generate_starter_seed({"setting_summary": camp["setting_summary"], "genre": "fantasy"}, seed=seed_no)
+    return build_campaign_brief(
+        campaign=camp, character={"name": "Arin Quickstep", "class_name": "Rogue", "level": 3}, opening_seed=seed,
+    )
+
+
+def test_quick_start_brief_has_no_splice_duplicates_or_invented_fixtures():
+    import re
+
+    for seed_no in range(40):
+        brief = _fantasy_brief(seed_no)
+        pieces = brief["brief_paragraphs"] + brief["known_facts"]
+        text = " ".join(pieces + [brief["character_entry_prompt"]])
+        assert not re.search(r"[.!?] [a-z]", text), text  # "...established yet. could settle..."
+        assert "the object" not in text and "the room" not in text, text
+        assert "public count" not in text and "sealed letter" not in text, text
+        sentences = [s.strip().lower() for s in re.split(r"(?<=[.!?])\s+", " ".join(pieces)) if s.strip()]
+        assert len(sentences) == len(set(sentences)), sentences  # nothing is shown twice
+
+
+def test_character_knowledge_is_not_repeated_as_a_known_fact():
+    brief = _fantasy_brief(1)
+    knowledge = brief["brief_paragraphs"][3]
+    assert not any(knowledge[:40] in fact for fact in brief["known_facts"] + brief["provisional_facts"])
+    reason = brief["character_anchor"].get("reason_to_care", "")
+    assert reason and reason not in knowledge  # the reason has its own box in the UI
+
+
+def test_consequence_never_splices_a_sentence_before_could_settle():
+    from server.agents.opening_setup import UNKNOWN_AUTHORITY, _visible_consequence
+
+    seed = {"specific_stakes": "?"}  # unusable stakes force the generic consequence
+    assert _visible_consequence(seed, {}, UNKNOWN_AUTHORITY).startswith("Whoever holds authority here could settle")
+    real = _visible_consequence(seed, {}, "The harbor office and envoy guard are blaming each other.")
+    assert real.startswith("The harbor office and envoy guard could settle"), real
+
+
+def test_entry_prompt_only_calls_it_a_mystery_for_mystery_campaigns():
+    from server.agents.opening_setup import _trouble_noun
+
+    assert _trouble_noun({"genre": "fantasy"}) == "trouble"
+    assert _trouble_noun({"campaign_dna": {"genre": "horror"}}) == "trouble"
+    assert _trouble_noun({"genre": "mystery"}) == "mystery"
+    assert _trouble_noun({}) == "mystery"  # genre unknown: keep the long-standing wording
+    assert "this trouble" in _fantasy_brief(0)["character_entry_prompt"]

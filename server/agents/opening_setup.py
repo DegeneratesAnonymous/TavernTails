@@ -15,6 +15,7 @@ from .generation_intent import (
     blocking_claims,
     blocking_defects,
     build_source_trace,
+    capitalize_sentences,
     definite,
     find_internal_language,
     find_unsupported_claims,
@@ -266,6 +267,18 @@ def _line_is_provisional(line: str, generated: set[str], seed: dict[str, Any]) -
     return bool(fields) and all(f in generated for f in fields)
 
 
+def _campaign_genre(camp: dict[str, Any]) -> str:
+    """The campaign's genre, wherever the contract or settings recorded it."""
+    dna = camp.get("campaign_dna") or {}
+    settings = camp.get("settings") or {}
+    return str(camp.get("genre") or dna.get("genre") or settings.get("genre") or "").strip().lower()
+
+
+def _trouble_noun(camp: dict[str, Any]) -> str:
+    """"mystery" only for mystery campaigns; other genres have a different kind of trouble."""
+    return "mystery" if _campaign_genre(camp) in {"", "mystery", "noir", "detective"} else "trouble"
+
+
 def build_campaign_brief(
     *,
     campaign: dict[str, Any] | None = None,
@@ -297,33 +310,34 @@ def build_campaign_brief(
         "object": concrete_object if concrete_object == UNKNOWN_OBJECT else "",
     }
     unknowns = [field for field, line in unknown_lines.items() if line]
-    facts = [
-        place_identity,
-        trouble,
-        urgency,
-        rumor,
-        concrete_object,
-        institution,
-        visible_consequence,
-        char_context,
-    ]
     open_lines = {UNKNOWN_PROBLEM, UNKNOWN_URGENCY, UNKNOWN_AUTHORITY, UNKNOWN_OBJECT, UNKNOWN_CONSEQUENCE}
     generated = _generated_seed_fields(seed)
-    line_keys = ["place", "trouble", "urgency", "rumor", "object", "institution", "consequence", ""]
-    candidates = facts
-    facts, provisional_facts = [], []
+    line_keys = ["place", "trouble", "urgency", "rumor", "object", "institution", "consequence"]
+    facts: list[str] = []
+    provisional_facts: list[str] = []
+    # The character's own knowledge is shown in its own section, so it is not repeated as a fact.
+    candidates = [place_identity, trouble, urgency, rumor, concrete_object, institution, visible_consequence]
     for key, line in zip(line_keys, candidates, strict=True):
         if not line or line in open_lines:
             continue
-        (provisional_facts if key and _line_is_provisional(key, generated, seed) else facts).append(_trim_sentence(line))
+        (provisional_facts if _line_is_provisional(key, generated, seed) else facts).append(_trim_sentence(line))
     place_intro = _place_intro(title, location, place_identity)
+
+    def _known(*lines: str) -> str:
+        return " ".join(line for line in lines if line)
+
+    # When the anchor supplies the character's reason it has its own box, so the
+    # knowledge paragraph carries only the class-flavored half.
+    knowledge = anchor.get("class_flavor_translation") or char_context
     paragraphs = [
         place_intro,
-        f"{trouble} {concrete_object}",
-        f"{urgency} {visible_consequence}" if urgency != visible_consequence else urgency,
-        char_context,
+        _known(trouble, concrete_object),
+        _known(urgency, visible_consequence) if urgency != visible_consequence else _known(urgency),
+        knowledge,
     ]
-    paragraphs = [_trim_sentence(p) for p in paragraphs if p]
+    paragraphs = [capitalize_sentences(_trim_sentence(p)) for p in paragraphs if p]
+    facts = [capitalize_sentences(f) for f in facts]
+    provisional_facts = [capitalize_sentences(f) for f in provisional_facts]
     brief = {
         "title": title,
         "location_name": location,
@@ -332,7 +346,7 @@ def build_campaign_brief(
         "provisional_facts": provisional_facts[:6],
         "unknowns": unknowns,
         "character_anchor": anchor,
-        "character_entry_prompt": f"{char_name} arrives before the truth is known. Decide why this mystery has pulled {char_name} here.",
+        "character_entry_prompt": f"{char_name} arrives before the truth is known. Decide why this {_trouble_noun(camp)} has pulled {char_name} here.",
     }
     validation = validate_campaign_brief(brief)
     if not validation["valid"]:
@@ -1319,7 +1333,8 @@ def _visible_consequence(seed: dict[str, Any], contract: dict[str, Any], institu
         return "The harbor may close ranks around a false account before ships leave with the evidence."
     if "road" in text or "pass" in text or "route" in text:
         return "The crossing may close, stranding travelers with whoever caused the first disappearance."
-    return f"{institution} could settle the matter publicly before the first evidence is understood."
+    subject = "Whoever holds authority here" if institution == UNKNOWN_AUTHORITY else _institution_subject(institution)
+    return f"{subject[:1].upper()}{subject[1:]} could settle the matter publicly before the first evidence is understood."
 
 
 def _is_raw_question(text: str) -> bool:
@@ -1380,7 +1395,7 @@ def _natural_problem(seed: dict[str, Any], contract: dict[str, Any], *, strict: 
     if "vanish" in lower or "disappear" in lower or "missing" in lower:
         return "Travelers and witnesses have vanished, and the old route is becoming a dangerous mystery."
     if "lie" in lower or "lying" in lower or _is_raw_question(clue):
-        return "Three witnesses contradict each other: one names a hand at the object, one swears the room was empty, and one refuses to say whose voice they heard."
+        return "Three witnesses contradict each other: one names a hand in it, one swears no one was there, and one refuses to say whose voice they heard."
     if "clue" in lower or "mirror" in lower or "ledger" in lower or "seal" in lower:
         return "The first physical sign of trouble has already made the locals afraid to speak plainly."
     if inciting and not _is_raw_question(inciting) and not _is_weak_player_facing_text(inciting):
@@ -1397,12 +1412,15 @@ def _natural_urgency(seed: dict[str, Any], contract: dict[str, Any], *, strict: 
     if strict and not stakes:
         return UNKNOWN_URGENCY
     text = " ".join(str(seed.get(k) or contract.get(k) or "") for k in ("inciting_event", "campaign_pitch", "setting_summary")).lower()
-    object_name = _opening_object_name({**contract, **seed})
+    object_name = _opening_object_name({**contract, **seed}, neutral_default=True)
+    thing = "the first evidence" if object_name == NEUTRAL_OBJECT else f"the {object_name}"
     if "road" in text or "pass" in text or "route" in text:
-        return f"At dusk, the road wardens will close the crossing and carry the {object_name} behind their barricade."
+        return f"At dusk, the road wardens will close the crossing and carry {thing} behind their barricade."
     if "harbor" in text or "envoy" in text:
-        return f"At the next tide bell, the harbor office will seal the quay and send the {object_name} aboard an outbound ship."
-    return f"Before the final public count, the {object_name} may be locked away by whoever claims authority here."
+        return f"At the next tide bell, the harbor office will seal the quay and send {thing} aboard an outbound ship."
+    if strict:
+        return UNKNOWN_URGENCY  # no deadline was authored; do not invent one
+    return f"Before the situation hardens, {thing} may be locked away by whoever claims authority here."
 
 
 def _natural_rumor(seed: dict[str, Any], contract: dict[str, Any], *, strict: bool = False) -> str:
