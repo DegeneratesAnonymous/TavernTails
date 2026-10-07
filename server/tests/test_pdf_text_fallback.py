@@ -57,3 +57,12 @@ def test_inline_feature_lines_split_into_name_and_description():
     }
     assert _inline_feature("Source: Player's Handbook page 114") is None  # metadata, not a feature
     assert _inline_feature("Fey Ancestry") is None
+
+
+def test_equipment_box_splits_into_items_without_breaking_parenthesised_commas():
+    from server.agents.characters import split_item_list
+
+    assert split_item_list("Quarterstaff\n• Spellbook\n- Component pouch") == ["Quarterstaff", "Spellbook", "Component pouch"]
+    assert split_item_list("Quarterstaff, Spellbook, Rope, hempen (50 feet, 10 lb), Scholar's pack") == [
+        "Quarterstaff", "Spellbook", "Rope", "hempen (50 feet, 10 lb)", "Scholar's pack"]
+    assert split_item_list(None) == [] and split_item_list("  \n ") == []

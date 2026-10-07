@@ -33,3 +33,19 @@ def test_addressing_the_group_as_the_party_is_not_meta_narration():
 def test_real_meta_narration_is_still_penalised():
     result = score_scene(GROUP + " The players decide what the campaign needs next.", title="Workshop", threshold=75)
     assert {"the players", "the campaign"} <= set(result.banned_phrases_found)
+
+
+def test_a_draft_is_scored_with_its_player_prompt(monkeypatch):
+    """The prompt comes back beside the prose; leaving it out capped good openings below the opening bar."""
+    from server.agents import narrative as narrative_module
+
+    body = ("Ada Reed's workshop smells of oil and cold brass. Ada slams the broken watch on the bench and hisses that "
+            "someone stole the key before dawn. Rain runs down the window, and unless the party acts before the bell, "
+            "the thief walks free.")
+    seen = []
+    monkeypatch.setattr(narrative_module, "chat_complete", lambda *a, **k: f"{body}\n\nWhat does Arin do?")
+    real = narrative_module.score_scene
+    monkeypatch.setattr(narrative_module, "score_scene", lambda text, **kw: seen.append(text) or real(text, **kw))
+    narrative_module.generate_narrative(narrative_module.NarrativeRequest(scene="clock mystery", player="Arin", is_opening_scene=True))
+    assert seen and "What does Arin do?" in seen[0]
+    assert seen[0].lower().count("what does arin do") == 1

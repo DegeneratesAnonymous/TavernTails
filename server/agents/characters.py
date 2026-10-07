@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from .. import db
 from ..auth import get_current_user
+from . import ddb_sheet, ocr_sheet
 from . import references as references_agent
 from .system_detect import infer_ttrpg_system, list_ttrpg_systems, override_ttrpg_system
 
@@ -1794,14 +1795,16 @@ def _inline_feature(line: str) -> dict | None:
     return {"name": match.group(1).strip(), "source": None, "description": match.group(2).strip()[:400]}
 
 
-def _read_pdf_text(content: bytes) -> str | None:
-    """Extract plain text from a PDF binary. Falls back to utf-8 decoding.
+def _read_pdf_text_ex(content: bytes) -> tuple[str | None, str]:
+    """Extract plain text from a PDF binary and say where it came from.
+
+    The source is "text" (the PDF's own text layer), "ocr" or "raw". Falls back to utf-8 decoding.
 
     This is best-effort: PDF parsing may fail for non-PDF uploads, so we
     gracefully fall back to decoding bytes as text.
     """
     if not content:
-        return None
+        return None, "raw"
     try:
         import io
 
@@ -1817,7 +1820,7 @@ def _read_pdf_text(content: bytes) -> str | None:
             if t:
                 pages.append(t)
         if pages:
-            return "\n\n".join(pages)
+            return "\n\n".join(pages), "text"
     except Exception:
         # Fall through to text decoding below
         pass
@@ -1843,7 +1846,7 @@ def _read_pdf_text(content: bytes) -> str | None:
                 if t:
                     pages.append(t)
         if pages:
-            return "\n\n".join(pages)
+            return "\n\n".join(pages), "text"
     except Exception:
         pass
 
@@ -1866,36 +1869,67 @@ def _read_pdf_text(content: bytes) -> str | None:
                 images = sorted(glob.glob(base + "-*.png"))
                 ocr_pages: list[str] = []
                 for img in images:
+                    # Sparse-text mode finds the large numerals and boxed values of a form; the TSV
+                    # positions let each value stay on the line of its label.  Plain text is the fallback.
                     proc = subprocess.run(
-                        [tesseract_cmd, img, "stdout"],
+                        [tesseract_cmd, img, "stdout", "--psm", "11", "tsv"],
                         check=True,
                         capture_output=True,
                     )
-                    text = proc.stdout.decode("utf-8", errors="ignore")
+                    text = ocr_sheet.layout_text(proc.stdout.decode("utf-8", errors="ignore"))
+                    if not text:
+                        proc = subprocess.run([tesseract_cmd, img, "stdout"], check=True, capture_output=True)
+                        text = proc.stdout.decode("utf-8", errors="ignore")
                     if text:
                         ocr_pages.append(text)
                 if ocr_pages:
-                    return "\n\n".join(ocr_pages)
+                    return "\n\n".join(ocr_pages), "ocr"
         except Exception:
             pass
 
     # A PDF with no readable text (a scan without working OCR) is binary, not text.
     if content.lstrip()[:5] == b"%PDF-":
-        return None
+        return None, "raw"
 
     # Best-effort fallback: try to decode the bytes as UTF-8 (or latin-1)
     try:
-        return content.decode("utf-8")
+        return content.decode("utf-8"), "raw"
     except Exception:
         try:
-            return content.decode("latin-1")
+            return content.decode("latin-1"), "raw"
         except Exception:
-            return None
+            return None, "raw"
+
+
+def _read_pdf_text(content: bytes) -> str | None:
+    return _read_pdf_text_ex(content)[0]
 
 
 # ---------------------------------------------------------------------------
 # D&D 5e field extraction
 # ---------------------------------------------------------------------------
+
+
+def split_item_list(value: str | None) -> list[str]:
+    """One entry per item from a free-text equipment box: a line each, or comma-separated
+    (commas inside parentheses, as in "Rope, hempen (50 feet, 10 lb)", do not split)."""
+    items: list[str] = []
+    for line in re.split(r"\r?\n", str(value or "")):
+        line = re.sub(r"^[\s*\-\u2022\u00b7]+", "", line).strip()
+        if not line:
+            continue
+        depth, current, parts = 0, "", []
+        for char in line:
+            depth += char in "(["
+            depth -= char in ")]" and depth > 0
+            if char == "," and depth == 0:
+                parts.append(current)
+                current = ""
+            else:
+                current += char
+        parts.append(current)
+        items.extend(p.strip() for p in parts if p.strip())
+    return items
 
 
 def _extract_dnd5e_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, Any]:
@@ -2153,10 +2187,10 @@ def _extract_dnd5e_fields_from_widgets(fields: Dict[str, str]) -> Dict[str, Any]
         if not v:
             continue
         if re.search(r"\b(equipment|item|gear|weapon|armor)\b", str(k), re.I):
-            item_name = _as_str(v)
-            if item_name and item_name.lower() not in seen_items and len(item_name) > 1:
-                seen_items.add(item_name.lower())
-                equipment.append(item_name)
+            for item_name in split_item_list(_as_str(v)):
+                if item_name.lower() not in seen_items and len(item_name) > 1:
+                    seen_items.add(item_name.lower())
+                    equipment.append(item_name)
     if equipment:
         result["equipment"] = equipment
 
@@ -3688,7 +3722,7 @@ def _build_character_import_sheet_from_pdf(
 
         return features
 
-    text = _read_pdf_text(content)
+    text, text_source = _read_pdf_text_ex(content)
     # Combine extracted page text + widget key/value lines for better downstream parsing.
     widget_lines = "\n".join([f"{k}: {v}" for k, v in list(widget_values.items())[:600]])
     combined_text = (text or "") + ("\n\n" + widget_lines if widget_lines else "")
@@ -4470,6 +4504,13 @@ def _build_character_import_sheet_from_pdf(
                 s for s in sheet["skills"]
                 if isinstance(s, dict) and s.get("name", "").lower() in _canonical_lower
             ]
+        # A D&D Beyond export is read exactly from its named fields; these replace the guesses above.
+        ddb_fields = ddb_sheet.extract(widget_values)
+        sheet.update(ddb_fields)
+        if ddb_fields:
+            import_warnings = (sheet.get("import") or {}).get("warnings")
+            if import_warnings and any(v is not None for v in (ddb_fields.get("passives") or {}).values()):
+                sheet["import"]["warnings"] = [w for w in import_warnings if w != "Missing passive scores"]
     elif system_name == "Call of Cthulhu":
         coc_fields = _extract_coc_fields_from_widgets(widget_values)
         for k, v in coc_fields.items():
@@ -4520,7 +4561,29 @@ def _build_character_import_sheet_from_pdf(
         if sheet.get("system", {}).get("name") in (None, "Unknown"):
             sheet["system"] = {"name": "Shadowrun", "publisher": "Catalyst Game Labs"}
 
+    if text_source == "ocr" and not widget_values:
+        final_name = _apply_ocr_fields(sheet, text or "", final_name)
+
     return final_name, safe_level, final_class_name, sheet
+
+
+def _apply_ocr_fields(sheet: dict[str, Any], text: str, current_name: str) -> str:
+    """A scan has no form data and its text is unordered, so the local model reads the fields from it.
+
+    Only values that appear in the OCR text are kept (see ``ocr_sheet``); the page-text
+    heuristics' spell list is page labels on a scan and is discarded.  Returns the character name.
+    """
+    sheet["spells"], sheet["spellbook"] = [], []
+    fields, dropped = ocr_sheet.extract(text)
+    ocr_sheet.apply(sheet, fields)
+    notes = sheet.setdefault("import", {})
+    notes["ocr"] = {"fields_read": sorted(fields), "fields_rejected": dropped}
+    notes["warnings"] = [
+        w for w in notes.get("warnings") or []
+        if not (w == "Missing passive scores" and fields.get("passives"))
+        and not (w in {"Missing species", "Missing background"} and fields.get("race" if "species" in w else "background"))
+    ] + ["Imported from a scan using OCR; check every value against the original sheet"]
+    return str(fields.get("name") or current_name)
 
 
 def _serialize(character: db.Character) -> Dict[str, Any]:

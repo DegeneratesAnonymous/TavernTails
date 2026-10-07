@@ -54,3 +54,27 @@ def test_scene_file_endpoint_does_not_send_gm_secrets():
     assert "Ada Reed" in res.text
     # the AI GM still has the full scene on disk
     assert "sold the key" in (sessions_module.BASE / sid / "scene.json").read_text()
+
+
+def _member(email: str):
+    if not db.get_user_by_identifier(email):
+        user = db.create_user(email=email, password="secret", username=email.split("@")[0], profile={"name": "p", "email": email})
+        db.verify_user(email, user.verification_token)
+    return {"Authorization": f"Bearer {create_access_token(email)}"}
+
+
+NPCS = [{"name": "Ada Reed", "role": "clockmaker", "secrets": ["sold the key"], "motivations": ["hide it"],
+         "known_information": ["the thief's name"], "current_goal": "stay quiet"}]
+
+
+def test_npc_notes_hide_secrets_from_players_but_not_the_dm():
+    dm, player = "privacy-dm@example.com", "privacy-player@example.com"
+    dm_headers, player_headers = _member(dm), _member(player)
+    sid, _ = sessions_module.create_session_folder("Privacy NPCs", dm, invites=[player], owner_role="dm")
+    (sessions_module.BASE / sid / "npcs.json").write_text(json.dumps(NPCS))
+    client = TestClient(main.app)
+    as_dm = client.get(f"/sessions/{sid}/file/npcs.json", headers=dm_headers)
+    as_player = client.get(f"/sessions/{sid}/file/npcs.json", headers=player_headers)
+    assert as_dm.status_code == as_player.status_code == 200
+    assert as_dm.json() == NPCS
+    assert as_player.json() == [{"name": "Ada Reed", "role": "clockmaker"}]

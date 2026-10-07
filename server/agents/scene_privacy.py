@@ -22,6 +22,14 @@ def _clean_npc(npc: Any) -> Any:
     return {k: v for k, v in npc.items() if k not in GM_ONLY_NPC_KEYS} if isinstance(npc, dict) else npc
 
 
+def player_npc_list(npcs: Any) -> Any:
+    """``npcs.json`` as a player may read it: the DM's notes on what each NPC knows, wants and hides are removed."""
+    if not isinstance(npcs, list):
+        return npcs
+    hidden = GM_ONLY_NPC_KEYS | {"known_information", "current_goal", "hidden_pressure"}
+    return [{k: v for k, v in npc.items() if k not in hidden} if isinstance(npc, dict) else npc for npc in npcs]
+
+
 def player_view(scene: Any) -> Any:
     """A copy of ``scene`` without GM-only fields; anything that is not a scene dict is returned as is."""
     if not isinstance(scene, dict):

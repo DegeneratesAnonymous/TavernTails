@@ -100,6 +100,13 @@ class SceneDirectorOutput(BaseModel):
     generation_debug: dict[str, Any] = Field(default_factory=dict)
 
 
+def _as_dict(value: object) -> dict:
+    """The model sometimes gives a bare name where an object is expected."""
+    if isinstance(value, dict):
+        return value
+    return {"name": value} if isinstance(value, str) and value.strip() else {}
+
+
 def _guard_scene_facts(req: SceneDirectorRequest, out: SceneDirectorOutput) -> SceneDirectorOutput:
     intent = build_opening_intent(req.campaign_settings, req.campaign_contract)
     obj = established_object(intent) or str(
@@ -628,61 +635,69 @@ def _direct_scene(req: SceneDirectorRequest) -> SceneDirectorOutput:
         + (_SCHEMA if req.is_opening_scene else _CONTINUATION_SCHEMA)
     )
 
-    try:
-        raw = chat_complete(
-            [{"role": "system", "content": system},
-             {"role": "user", "content": "\n".join(ctx)}],
-            task_scope="taverntails_scene_director",
-            max_tokens=1200,
-            timeout=120.0,
-        )
-        if raw:
-            start = raw.find("{")
-            end = raw.rfind("}") + 1
-            if start != -1 and end > start:
-                data = json.loads(raw[start:end])
-                loc = data.get("location") or {}
-                npc = data.get("primary_npc") or {}
-                output = SceneDirectorOutput(
-                    scene_title=str(data.get("scene_title") or ""),
-                    scene_type=str(data.get("scene_type") or "opening"),
-                    location=LocationBlueprint(
-                        name=str(loc.get("name") or ""),
-                        type=str(loc.get("type") or ""),
-                        sensory_details=[str(s) for s in (loc.get("sensory_details") or [])],
-                    ),
-                    primary_npc=NPCBlueprint(
-                        name=str(npc.get("name") or ""),
-                        role=str(npc.get("role") or ""),
-                        current_emotional_state=str(npc.get("current_emotional_state") or ""),
-                        what_they_want=str(npc.get("what_they_want") or ""),
-                        what_they_know=str(npc.get("what_they_know") or ""),
-                    ),
-                    secondary_entities=[str(e) for e in (data.get("secondary_entities") or [])],
-                    central_conflict=str(data.get("central_conflict") or ""),
-                    inciting_incident=str(data.get("inciting_incident") or ""),
-                    why_player_is_involved=str(data.get("why_player_is_involved") or ""),
-                    immediate_stakes=str(data.get("immediate_stakes") or ""),
-                    hidden_pressure=str(data.get("hidden_pressure") or ""),
-                    player_visible_clues=[str(c) for c in (data.get("player_visible_clues") or [])],
-                    possible_actions=[str(a) for a in (data.get("possible_actions") or [])],
-                    visual_prompt_elements=[str(v) for v in (data.get("visual_prompt_elements") or [])],
-                    continuity_notes=[str(n) for n in (data.get("continuity_notes") or [])],
-                    world_moves=[str(w) for w in (data.get("world_moves") or [])],
-                    source="llm",
-                    action_resolutions=[r for r in (data.get("action_resolutions") or []) if isinstance(r, dict)],
-                )
-                issues = resolution_issues(req.player_actions, output.action_resolutions)
-                if issues:
-                    fallback = _guard_scene_facts(req, _deterministic_director(req))
-                    fallback.generation_debug = {"fallback_reason": "missing_question_resolution", "issues": issues}
-                    return fallback
-                return _guard_scene_facts(req, _guard_against_unsupported_tavern(req, output))
-    except Exception:
-        pass
+    error = ""
+    # A continuation plan is longer than an opening and can be cut off at the token limit,
+    # leaving unparseable JSON; one retry with more room recovers it.
+    for max_tokens in (1200, 2200):
+        try:
+            raw = chat_complete(
+                [{"role": "system", "content": system},
+                 {"role": "user", "content": "\n".join(ctx)}],
+                task_scope="taverntails_scene_director",
+                max_tokens=max_tokens,
+                timeout=120.0,
+            )
+            if raw:
+                start = raw.find("{")
+                end = raw.rfind("}") + 1
+                if start != -1 and end > start:
+                    data = json.loads(raw[start:end])
+                    loc = _as_dict(data.get("location"))
+                    npc = _as_dict(data.get("primary_npc"))
+                    output = SceneDirectorOutput(
+                        scene_title=str(data.get("scene_title") or ""),
+                        scene_type=str(data.get("scene_type") or "opening"),
+                        location=LocationBlueprint(
+                            name=str(loc.get("name") or ""),
+                            type=str(loc.get("type") or ""),
+                            sensory_details=[str(s) for s in (loc.get("sensory_details") or [])],
+                        ),
+                        primary_npc=NPCBlueprint(
+                            name=str(npc.get("name") or ""),
+                            role=str(npc.get("role") or ""),
+                            current_emotional_state=str(npc.get("current_emotional_state") or ""),
+                            what_they_want=str(npc.get("what_they_want") or ""),
+                            what_they_know=str(npc.get("what_they_know") or ""),
+                        ),
+                        secondary_entities=[str(e) for e in (data.get("secondary_entities") or [])],
+                        central_conflict=str(data.get("central_conflict") or ""),
+                        inciting_incident=str(data.get("inciting_incident") or ""),
+                        why_player_is_involved=str(data.get("why_player_is_involved") or ""),
+                        immediate_stakes=str(data.get("immediate_stakes") or ""),
+                        hidden_pressure=str(data.get("hidden_pressure") or ""),
+                        player_visible_clues=[str(c) for c in (data.get("player_visible_clues") or [])],
+                        possible_actions=[str(a) for a in (data.get("possible_actions") or [])],
+                        visual_prompt_elements=[str(v) for v in (data.get("visual_prompt_elements") or [])],
+                        continuity_notes=[str(n) for n in (data.get("continuity_notes") or [])],
+                        world_moves=[str(w) for w in (data.get("world_moves") or [])],
+                        source="llm",
+                        action_resolutions=[r for r in (data.get("action_resolutions") or []) if isinstance(r, dict)],
+                    )
+                    issues = resolution_issues(req.player_actions, output.action_resolutions)
+                    if issues:
+                        fallback = _guard_scene_facts(req, _deterministic_director(req))
+                        fallback.generation_debug = {"fallback_reason": "missing_question_resolution", "issues": issues}
+                        return fallback
+                    return _guard_scene_facts(req, _guard_against_unsupported_tavern(req, output))
+            if not raw:
+                error = "no_reply"
+                break  # the provider is unavailable; asking again will not help
+            error = "no_json_object"
+        except Exception as exc:
+            error = f"{type(exc).__name__}: {str(exc)[:120]}"
 
     fallback = _guard_scene_facts(req, _guard_against_unsupported_tavern(req, _deterministic_director(req)))
-    fallback.generation_debug = {"fallback_reason": "unavailable_or_invalid_model_output"}
+    fallback.generation_debug = {"fallback_reason": "unavailable_or_invalid_model_output", "error": error}
     return fallback
 
 

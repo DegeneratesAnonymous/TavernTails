@@ -276,3 +276,69 @@ def test_travel_destination_stops_at_the_next_clause():
     assert movement_destination(["I leave the workshop and go to the village square."]) == "village square"
     assert movement_destination(["I head to the docks, then ask around."]) == "docks"
     assert movement_destination(["I ask Ada about the watch."]) == ""
+
+
+def _travel_request():
+    return scene_director.SceneDirectorRequest(
+        is_opening_scene=False, player_actions=["I walk to the village square."],
+        campaign_settings={"setting_summary": PREMISE},
+        previous_scene={"location": "Ada Reed's Workshop", "primary_npc": {"name": "Ada Reed"}},
+    )
+
+
+def test_director_retries_a_truncated_plan_with_more_room(monkeypatch):
+    plan = json.dumps({"location": "Village Square", "primary_npc": "Ada Reed", "central_conflict": "The square is empty."})
+    replies = iter([plan[:60], plan])
+    budgets = []
+
+    def fake(messages, **kwargs):
+        budgets.append(kwargs["max_tokens"])
+        return next(replies)
+
+    monkeypatch.setattr(scene_director, "chat_complete", fake)
+    out = scene_director.direct_scene(_travel_request())
+    assert out.source == "llm" and budgets == [1200, 2200]
+    assert out.location.name.casefold() == "village square" and out.primary_npc.name == "Ada Reed"  # bare names are accepted
+
+
+def test_director_records_why_it_fell_back(monkeypatch):
+    monkeypatch.setattr(scene_director, "chat_complete", lambda *a, **k: "this is not json {")
+    out = scene_director.direct_scene(_travel_request())
+    assert out.source == "deterministic"
+    assert out.generation_debug["fallback_reason"] == "unavailable_or_invalid_model_output"
+    assert "JSONDecodeError" in out.generation_debug["error"] or out.generation_debug["error"] == "no_json_object"
+    monkeypatch.setattr(scene_director, "chat_complete", lambda *a, **k: None)
+    assert scene_director.direct_scene(_travel_request()).generation_debug["error"] == "no_reply"
+
+
+def test_scene_checks_accept_the_places_distinctive_name_and_the_scenes_own_clue():
+    from server.agents.scene_validator import validate_campaign_expectations, validate_scene_quality
+
+    prose = ("The scent of oil hangs over the square of Alderbrook. Ada Reed lifts the stopped brass pocket watch and "
+             "whispers that every clock froze at breakfast.")
+    _, issues = validate_scene_quality(narrative_text=prose, location_name="Alderbrook village", npc_name="Ada Reed",
+                                       player_name="Arin", conflict="every clock stopped")
+    assert not [i for i in issues if "Named location" in i]
+    contract = {"validator_policy": {"require_concrete_clues": True}}
+    assert "missing_concrete_clue" in validate_campaign_expectations(prose.replace("watch", "thing"), contract)["failed_expectations"]
+    assert "missing_concrete_clue" not in validate_campaign_expectations(
+        prose, contract, evidence=["stopped brass pocket watch"])["failed_expectations"]
+
+
+def test_a_group_with_no_selected_character_is_addressed_as_you_or_the_party():
+    from server.agents.scene_validator import validate_scene_quality
+
+    prose = ("Ada Reed slams the broken watch on the bench in Alderbrook and hisses that someone stole the key. "
+             "The smell of oil is thick as you step inside. What does the party do?")
+    _, issues = validate_scene_quality(narrative_text=prose, location_name="Alderbrook", npc_name="Ada Reed",
+                                       player_name="the party", conflict="stolen key")
+    assert not [i for i in issues if "Player character" in i]
+
+
+def test_a_draft_with_no_failed_check_is_not_discarded_for_missing_optional_points():
+    from server.agents.narrative import soft_shortfall_only
+    from server.agents.narrative_linter import ScoreResult
+
+    assert soft_shortfall_only(ScoreResult(score=68, failed_checks=[]))
+    assert not soft_shortfall_only(ScoreResult(score=45, failed_checks=[]))
+    assert not soft_shortfall_only(ScoreResult(score=68, failed_checks=[], banned_phrases_found=["something is wrong"]))

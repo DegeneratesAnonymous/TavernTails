@@ -62,7 +62,7 @@ from .opening_setup import (
 from .player_intent_parser import parse_player_intent
 from .scene_beat_selector import select_scene_beat_plan
 from .scene_director import SceneDirectorOutput, SceneDirectorRequest, build_image_prompt
-from .scene_privacy import player_view
+from .scene_privacy import player_npc_list, player_view
 from .scene_qa import apply_targeted_scene_repairs, load_recent_opening_shapes, record_opening_shape, run_scene_qa
 from .scene_validator import (
     MINIMUM_SCORE,
@@ -954,6 +954,12 @@ def _object_named_in(action: str) -> str:
     return match.group(1).strip().lower() if match else ""
 
 
+def _scene_evidence(director_data: dict) -> list[str]:
+    """The clues and object the director established for this scene."""
+    items = [*(director_data.get("player_visible_clues") or []), director_data.get("approved_object") or ""]
+    return [str(i) for i in items if i]
+
+
 def _action_response_scene(
     *,
     player_name: str,
@@ -1322,6 +1328,15 @@ class CreateSessionRequest(BaseModel):
     owner: str | None = None
 
 
+def _is_dm(meta: dict, user) -> bool:
+    """True for a member whose role is the (human) DM; everyone else sees the player's view of GM notes."""
+    identifier = _identifier_for_user(user)
+    return any(
+        _normalize_email(member.get('email')) == identifier and member.get('role') == 'dm'
+        for member in meta.get('members', []) or []
+    )
+
+
 def _require_session_member(meta: dict, user) -> str:
     identifier = _identifier_for_user(user)
     if not _user_is_member(meta, identifier):
@@ -1573,6 +1588,8 @@ def get_file(session_id: str, filename: str, current_user=Depends(get_current_us
         if filename == "scene.json" and isinstance(parsed, dict):
             repaired = _repair_recycled_opening_scene_if_needed(folder, parsed, meta=data if meta.exists() else {})
             return player_view(_normalize_scene_render_fields(folder, repaired))
+        if filename == "npcs.json" and not _is_dm(data if meta.exists() else {}, current_user):
+            return player_npc_list(parsed)
         return parsed
     except Exception:
         return {'content': text}
@@ -2956,6 +2973,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     contract_validator = validate_campaign_expectations(
         narrative_text=f"{narrative.narrative}\n\n{narrative.prompt}",
         campaign_contract=campaign_contract,
+        evidence=_scene_evidence(director_data_dict),
     )
     recycled_opening_detected = _contains_recycled_opening_fixture(narrative.narrative, narrative.prompt)
     if recycled_opening_detected:
@@ -2987,6 +3005,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         contract_validator = validate_campaign_expectations(
             narrative_text=f"{narrative.narrative}\n\n{narrative.prompt}",
             campaign_contract=campaign_contract,
+            evidence=_scene_evidence(director_data_dict),
         )
         recycled_opening_detected = _contains_recycled_opening_fixture(narrative.narrative, narrative.prompt)
         if recycled_opening_detected:
@@ -4426,6 +4445,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
     contract_validator = validate_campaign_expectations(
         narrative_text=f"{narrative.narrative}\n\n{narrative.prompt}",
         campaign_contract=campaign_contract,
+        evidence=_scene_evidence(adv_director_data),
     )
     retry_used = False
     fallback_used = False
@@ -4455,6 +4475,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         contract_validator = validate_campaign_expectations(
             narrative_text=f"{narrative.narrative}\n\n{narrative.prompt}",
             campaign_contract=campaign_contract,
+            evidence=_scene_evidence(adv_director_data),
         )
 
     if quality_score < minimum_score:

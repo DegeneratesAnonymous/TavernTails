@@ -186,8 +186,8 @@ def test_fallback_scene_keeps_the_campaigns_established_object():
     plain = build_fallback_scene(**kwargs)
     kept = build_fallback_scene(**kwargs, approved_object="stopped brass pocket watch")
     assert "stopped brass pocket watch" in kept.lower()
-    assert "frost-stiff packet" in plain  # the keyword-table prop the campaign never asked for
-    assert "frost-stiff packet" not in kept
+    assert "frost-stiff packet" not in plain  # a campaign title alone must not invent a prop
+    assert "the one detail that does not belong" in plain.lower()
     # A full clue sentence is never substituted for an object name.
     sentence = build_fallback_scene(**kwargs, approved_object="Ada found the watch. It is stopped.")
     assert "Ada found the watch" not in sentence

@@ -10,7 +10,7 @@ client and renders the application component in `client/src/App.tsx`.
 | --- | --- | --- |
 | Accounts and access | `server/auth.py`, `server/agents/player.py` | `agents/LoginSignupAgent.tsx`, `api.ts` |
 | Campaign creation and settings | `server/agents/campaigns.py`, `opening_setup.py`, `campaign_interpretation.py` | `components/dashboard/CampaignCreationWizard.tsx`, `CampaignSetupView.tsx` |
-| Character CRUD and imports | `server/agents/characters.py` | `components/dashboard/CharacterWizard.tsx`, `ImportCharacterView.tsx` |
+| Character CRUD and imports | `server/agents/characters.py`, `ddb_sheet.py`, `ocr_sheet.py` | `components/dashboard/CharacterWizard.tsx`, `ImportCharacterView.tsx` |
 | Session start and advance | `server/agents/sessions.py`, `server/generation_workers.py` | `components/GameplayLayout.tsx`, `hooks/useSessionRequests.ts` |
 | Chat and dice | `server/agents/chat.py`, `rolls.py`, `ws.py` | `components/Chat.tsx`, `components/chat/` |
 | Campaign memory | `server/agents/campaign_memory.py`, `context_orchestrator.py` | campaign/session views |
@@ -100,6 +100,13 @@ that call's snapshot; a second read adds work and can mix different versions.
 - Synchronous generation stages run through `generation_workers.py` with a
   four-worker limit separate from ordinary API requests. Model transport keeps
   its own inference limit; WebSocket broadcasts stay on the request event loop.
+- A D&D Beyond export is a fillable form with fixed field names; `ddb_sheet.py` reads
+  every value from those fields exactly (proficiencies, passives, spellcasting, spell
+  levels, features by section, attacks) and replaces the generic extractors' guesses.
+- A scanned sheet has no form data. `characters._read_pdf_text_ex` OCRs it (tesseract TSV
+  positions rebuilt into `ocr_sheet.layout_text`), and `ocr_sheet.extract` has the local
+  model propose fields. Each value is kept only if it appears near its own label in the OCR
+  text; spell levels and slot counts come from the table headings. The import is flagged for review.
 - Character imports call `references.search_queries` once for their features and
   spells, reading one corpus snapshot and deduplicating queries. Failed queries
   do not discard successful matches. The single-query API remains available.

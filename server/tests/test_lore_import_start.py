@@ -91,3 +91,16 @@ def test_fallback_scene_invents_no_prop_for_a_premise_without_one():
     for invented in ("damaged notice", "local token", "rain-gauge", "flask", "frost-stiff"):
         assert invented not in text
     assert "Ada Reed" in text
+
+
+def test_fallback_scene_does_not_repeat_the_location_when_the_detail_already_names_it():
+    from server.agents.scene_validator import build_fallback_scene
+
+    for seed in range(8):  # every template variant
+        text = build_fallback_scene(
+            location_name="Alderbrook village", npc_name="Ada Reed", player_name="Arin", emotional_state="urgent",
+            inciting_incident=f"Every clock stopped at breakfast {seed}", central_conflict="Nobody knows why the clocks stopped",
+            immediate_stakes="The cause remains unknown and the village is uneasy",
+            sensory_detail="At alderbrook village, every clock stopped at breakfast", campaign_name=f"Alderbrook {'x' * seed}",
+        )
+        assert "at alderbrook village, at alderbrook village" not in text.casefold()

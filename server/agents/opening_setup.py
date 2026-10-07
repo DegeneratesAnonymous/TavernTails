@@ -1109,6 +1109,8 @@ def validate_opening_scene_contract(
         if c
     ]
     choice_lower = " ".join(choices).lower()
+    from .scene_validator import _SENSORY_WORDS, _names_place  # imported here: scene_validator imports this module
+
     location = str(contract.get("location_name") or scene.get("location") or "").strip()
     pc = str((anchor or {}).get("character_name") or player_name or "").strip()
     npc_or_objects = [
@@ -1118,8 +1120,10 @@ def validate_opening_scene_contract(
     issues: list[str] = []
     checks = {
         "mentions_character": bool(pc and pc.lower() in lower) or pc.lower() == "the party",
-        "mentions_location": bool(location and location.lower() in lower),
-        "sensory_detail": any(word in lower for word in ("smell", "sound", "humming", "rain", "dust", "canvas", "lantern", "salt", "cold", "quiet", "smoke", "market", "bells")),
+        "mentions_location": bool(location and _names_place(lower, location)),
+        "sensory_detail": bool(_SENSORY_WORDS.search(lower)) or any(
+            word in lower for word in ("smell", "sound", "humming", "rain", "dust", "canvas", "lantern", "salt", "cold", "quiet", "smoke", "market", "bells")
+        ),
         "concrete_npc_object": any(item and item.lower() in lower for item in npc_or_objects),
         "personal_hook": _keywords_present(str(contract.get("personal_hook") or (anchor or {}).get("arrival_reason") or ""), lower),
         "pressure_timer": bool(contract.get("pressure_or_timer")) and _keywords_present(str(contract.get("pressure_or_timer")), lower),
