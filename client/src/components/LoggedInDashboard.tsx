@@ -1593,6 +1593,8 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
               || (current.option_id && current.option_id !== 'ai_choose')
             ))
             const bridgeCharacterName = characters.find(c => Number(c.id) === Number(activeCharacterId))?.name || 'your character'
+            // The fallback name is lowercase mid-sentence; at the start of a sentence it needs a capital.
+            const bridgeCharacterLead = bridgeCharacterName.charAt(0).toUpperCase() + bridgeCharacterName.slice(1)
             const answerFor = (question: any) => {
               const answer = openingSetupAnswers[question.id] || {}
               if (answer.answer_source === 'ai_choice') return 'AI will decide based on your character.'
@@ -1662,7 +1664,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                         </section>
                         <section>
                           <h3>What {bridgeCharacterName} Knows</h3>
-                          <p>{briefParagraphs[3] || knownFacts[5] || campaignBrief?.character_entry_prompt || `${bridgeCharacterName} arrives before the truth is known.`}</p>
+                          <p>{briefParagraphs[3] || knownFacts[5] || campaignBrief?.character_entry_prompt || `${bridgeCharacterLead} arrives before the truth is known.`}</p>
                         </section>
                       </div>
                       {knownFacts.length ? (
@@ -1674,7 +1676,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                       ) : null}
                       <div className="opening-hook-editor">
                         <div className="opening-hook-editor-head">
-                          <strong>{bridgeCharacterName} is involved because...</strong>
+                          <strong>{bridgeCharacterLead} is involved because...</strong>
                           <button
                             type="button"
                             className="opening-custom-toggle"
@@ -1688,14 +1690,14 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                             className="opening-hook-input"
                             value={openingSetupCharacterHook}
                             rows={3}
-                            placeholder={`${bridgeCharacterName} is involved because...`}
+                            placeholder={`${bridgeCharacterLead} is involved because...`}
                             onChange={(event) => setOpeningSetupCharacterHook(event.target.value)}
                           />
                         ) : (
-                          <p>{openingSetupCharacterHook || campaignBrief?.character_anchor?.reason_to_care || `${bridgeCharacterName} has a personal reason to care about the opening trouble.`}</p>
+                          <p>{openingSetupCharacterHook || campaignBrief?.character_anchor?.reason_to_care || `${bridgeCharacterLead} has a personal reason to care about the opening trouble.`}</p>
                         )}
                       </div>
-                      <p className="opening-entry-prompt">{campaignBrief?.character_entry_prompt || `${bridgeCharacterName} arrives before the truth is known. Decide why this mystery has pulled them here.`}</p>
+                      <p className="opening-entry-prompt">{campaignBrief?.character_entry_prompt || `${bridgeCharacterLead} arrives before the truth is known. Decide why this trouble has pulled them here.`}</p>
                       <div className="opening-bridge-actions opening-bridge-actions--review">
                         <button className="btn btn-secondary" type="button" disabled={openingSetupBusy} onClick={() => setView('gameplay')}>
                           Back
