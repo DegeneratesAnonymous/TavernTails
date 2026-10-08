@@ -240,3 +240,17 @@ def test_continuation_scenes_never_roll_bare_names_or_places(monkeypatch):
     narrative._scene_table_rolls(narrative.NarrativeRequest(scene="x", player="Mara", player_actions=["Mara asks about the caravan"]))
     narrative._scene_table_rolls(narrative.NarrativeRequest(scene="x", player="Mara", is_opening_scene=True))
     assert seen[0] == frozenset({"name", "place"}) and seen[1] == frozenset()
+
+
+def test_roll_text_drops_repeated_lead_ins_and_stray_dots():
+    table = {"id": "t", "title": "The party encounters...", "lead": "The party encounters", "die": 4, "category": "encounter",
+             "source": "b.pdf", "page": 1, "rows": [{"lo": 1, "hi": 4, "text": "the party encounters.....a dragon turtle harassing a vessel."}]}
+    assert rt.roll_table(table, random.Random(1))["result"] == "The characters encounter a dragon turtle harassing a vessel."
+    raw = [{"title": "Trouble", "source": "b.pdf", "page": 1, "rows": [
+        {"lo": i, "hi": i, "text": t} for i, t in enumerate([
+            "The soft floor collapses below the.. party dropping them into a lair.",
+            "A toll collector weeps whenever coins are paid into his tin.",
+            "Two bandits argue over a stolen cheese wheel at the gate.",
+            "A hooded rider asks everyone the way to the sea.",
+        ], 1)]}]
+    assert rt.build_tables(raw)[0]["rows"][0]["text"] == "The soft floor collapses below the party dropping them into a lair."
