@@ -965,8 +965,23 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
       try{
         const meta = await loadSessionMeta(activeSession)
         if (cancelled) return
-        const email = (localStorage.getItem('user_email') || '').trim().toLowerCase()
-        const username = (localStorage.getItem('user_username') || '').trim().toLowerCase()
+        let email = (localStorage.getItem('user_email') || '').trim().toLowerCase()
+        let username = (localStorage.getItem('user_username') || '').trim().toLowerCase()
+        if (!email && !username) {
+          // Signed in without the login form (Steward SSO, or a token from before identity was stored):
+          // ask the server who we are rather than matching nobody and dropping the character.
+          try {
+            const meRes = await apiFetch('/player/me')
+            if (meRes.ok) {
+              const profile = (await meRes.json())?.profile
+              email = String(profile?.email || '').trim().toLowerCase()
+              username = String(profile?.username || '').trim().toLowerCase()
+              if (email) localStorage.setItem('user_email', email)
+              if (username) localStorage.setItem('user_username', username)
+            }
+          } catch (e) { /* fall through to no match */ }
+          if (cancelled) return
+        }
         const identifier = email || username
         const members = Array.isArray(meta?.members) ? meta.members : []
         const me = members.find((m: any) => {

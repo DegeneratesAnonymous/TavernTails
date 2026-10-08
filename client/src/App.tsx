@@ -38,6 +38,12 @@ function App() {
       .then(data => {
         if (data.access_token) {
           localStorage.setItem('access_token', data.access_token)
+          // Remember who signed in. The dashboard finds "my" party member and character by this identity,
+          // and the SSO path used to store only the token, so the character never came back.
+          const email = data.profile?.email
+          const username = data.profile?.username
+          if (email) localStorage.setItem('user_email', String(email))
+          if (username) localStorage.setItem('user_username', String(username))
           setShowAuth(true)
         }
       })

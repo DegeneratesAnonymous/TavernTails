@@ -1702,7 +1702,7 @@ def _opening_anchor_from_meta(meta: dict) -> dict:
     return {}
 
 
-def _build_opening_setup_questionnaire(folder: Path, meta: dict) -> dict:
+def _build_opening_setup_questionnaire(folder: Path, meta: dict, setup: dict | None = None) -> dict:
     campaign_id = str(meta.get("campaign_id") or "")
     campaign_contract: dict = {}
     backstory_hooks: list[dict] = []
@@ -1722,6 +1722,10 @@ def _build_opening_setup_questionnaire(folder: Path, meta: dict) -> dict:
         ).get("required_content") or {}
     except Exception:
         opening_seed = {}
+    if setup is not None and opening_seed:
+        # The brief the player answers is built from this seed; session start reuses it so the first
+        # scene happens where the brief said it would instead of at a second, independently drawn place.
+        setup["seed"] = opening_seed
     character = _selected_character_from_meta(meta)
     party_mode = len(_session_player_names(folder, meta)) > 1 or not character.get("id")
     return generate_questionnaire(
@@ -1854,7 +1858,7 @@ def get_opening_setup(session_id: str, current_user=Depends(get_current_user)):
         return {"opening_setup": setup, "completed": True, "anchors": setup.get("anchors") or []}
     questionnaire = setup.get("questionnaire")
     if not questionnaire:
-        questionnaire = _build_opening_setup_questionnaire(folder, meta)
+        questionnaire = _build_opening_setup_questionnaire(folder, meta, setup)
         setup["questionnaire"] = questionnaire
         setup["questionnaire_id"] = questionnaire.get("questionnaire_id")
         setup["campaign_brief"] = questionnaire.get("campaign_brief") or {}
@@ -1871,7 +1875,7 @@ def submit_opening_setup(session_id: str, payload: OpeningSetupSubmit, current_u
     meta = json.loads(meta_path.read_text())
     _require_session_member(meta, current_user)
     setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
-    questionnaire = setup.get("questionnaire") or _build_opening_setup_questionnaire(folder, meta)
+    questionnaire = setup.get("questionnaire") or _build_opening_setup_questionnaire(folder, meta, setup)
     if payload.questionnaire_id != questionnaire.get("questionnaire_id"):
         raise HTTPException(status_code=400, detail="Questionnaire mismatch")
     character = _selected_character_from_meta(meta)
@@ -1930,7 +1934,7 @@ def skip_opening_setup(session_id: str, payload: OpeningSetupSkip | None = None,
     meta = json.loads(meta_path.read_text())
     _require_session_member(meta, current_user)
     setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
-    questionnaire = setup.get("questionnaire") or _build_opening_setup_questionnaire(folder, meta)
+    questionnaire = setup.get("questionnaire") or _build_opening_setup_questionnaire(folder, meta, setup)
     character = _selected_character_from_meta(meta)
     campaign_brief = _campaign_brief_with_hook(
         questionnaire.get("campaign_brief") or setup.get("campaign_brief") or {},
@@ -2653,14 +2657,20 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         or (campaign_contract.get("campaign_dna") or {}).get("starting_location")
         or (campaign_contract.get("world_contract") or {}).get("known_starting_location")
     )
-    if not _explicit_starting_location:
+    _stored_opening_seed = (meta.get("opening_setup") or {}).get("seed")
+    _opening_fresh = {**_opening_freshness_context(str(campaign_id) if campaign_id else None), "opening_anchor": opening_anchor}
+    if isinstance(_stored_opening_seed, dict) and _stored_opening_seed.get("starting_location"):
+        _opening_fresh["opening_seed"] = _stored_opening_seed  # every later fallback draw reuses what the brief showed
+    if not _explicit_starting_location and isinstance(_stored_opening_seed, dict) and _stored_opening_seed.get("starting_location"):
+        _bootstrap_seed_rc = dict(_stored_opening_seed)
+    elif not _explicit_starting_location:
         try:
             _bootstrap_seed_rc = ensure_content_bundle(
                 situation_type="campaign_opening",
                 scene_director_output={},
                 world_state={},
                 campaign_contract=campaign_contract,
-                freshness_context={**_opening_freshness_context(str(campaign_id) if campaign_id else None), "opening_anchor": opening_anchor},
+                freshness_context=_opening_fresh,
                 campaign_settings=campaign_settings,
             ).get("required_content") or {}
         except Exception:
@@ -2837,7 +2847,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
                 scene_director_output={},
                 world_state={},
                 campaign_contract=campaign_contract,
-                freshness_context={**_opening_freshness_context(str(campaign_id) if campaign_id else None), "opening_anchor": opening_anchor},
+                freshness_context=_opening_fresh,
                 campaign_settings=campaign_settings,
             ).get("required_content") or {}
             replacement_loc = _guard_seed.get("starting_location") or ""
@@ -2894,7 +2904,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         world_state={},
         campaign_contract=campaign_contract,
         previous_scene=None,
-        freshness_context={**_opening_freshness_context(str(campaign_id) if campaign_id else None), "opening_anchor": opening_anchor},
+        freshness_context=_opening_fresh,
         campaign_settings=campaign_settings,
     )
     if not opening_content_bundle.get("content_gate_passed"):
@@ -2903,7 +2913,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
             scene_director_output={},
             world_state={},
             campaign_contract=campaign_contract,
-            freshness_context={**_opening_freshness_context(str(campaign_id) if campaign_id else None), "opening_anchor": opening_anchor},
+            freshness_context=_opening_fresh,
             campaign_settings=campaign_settings,
         )
         opening_content_bundle = fallback_bundle

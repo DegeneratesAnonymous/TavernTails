@@ -1096,7 +1096,9 @@ def build_content_bundle(
             or (scene_count == 0 and _looks_like_tavern_default(loc_name))
         )
         if needs_seed:
-            seed_data = generate_starter_seed(
+            # A seed the player already saw (the opening brief was built from it) wins over a fresh draw.
+            fixed_seed = (freshness_context or {}).get("opening_seed")
+            seed_data = dict(fixed_seed) if isinstance(fixed_seed, dict) and fixed_seed.get("starting_location") else generate_starter_seed(
                 campaign_settings=campaign_settings,
                 campaign_contract=campaign_contract,
                 freshness_context=freshness_context,
