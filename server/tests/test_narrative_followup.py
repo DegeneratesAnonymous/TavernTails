@@ -133,7 +133,7 @@ def test_model_writer_retries_a_non_answer_even_if_prose_score_passes(monkeypatc
     ))
     assert result.score_detail["fallback_used"]
     assert result.score_detail["fallback_reason"] == "action_or_fact_check_failed"
-    assert result.score_detail["attempts"] == 2
+    assert result.score_detail["attempts"] == narrative.MAX_RETRIES + 1
 
 
 def test_real_routes_report_fallback_and_resolve_question_and_movement(monkeypatch):
@@ -365,7 +365,7 @@ def test_an_opening_gets_a_third_attempt_and_is_told_to_name_the_place(monkeypat
     response = narrative_module.generate_narrative(request)
     assert "Alderbrook village" in response.narrative and len(seen) == 2
     assert "Name the place (Alderbrook village)" in " ".join(m["content"] for m in seen[1])
-    assert narrative_module.MAX_RETRIES_OPENING == 2 and narrative_module.MAX_RETRIES == 1
+    assert narrative_module.MAX_RETRIES_OPENING == 2 and narrative_module.MAX_RETRIES == 2
 
 
 def test_a_model_opening_loses_only_its_invented_sentence_not_the_whole_draft():

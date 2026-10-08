@@ -60,7 +60,7 @@ def soft_shortfall_only(result) -> bool:
         and result.score >= 50
     )
 
-MAX_RETRIES = 1
+MAX_RETRIES = 2  # a continuation is the core loop and a retry costs seconds; the template fallback is the last resort
 MAX_RETRIES_OPENING = 2  # an opening is the first impression and each retry carries targeted feedback
 SCORE_THRESHOLD = 75
 # Higher bar for first impressions.  The scorer's checks add up to 90 at most and an
@@ -667,7 +667,7 @@ def _scene_table_rolls(payload: NarrativeRequest) -> list[dict]:
     try:
         return rollable_tables.roll_for_scene(
             context=context, scene_type=scene_type, count=rollable_tables.rolls_needed(payload.is_opening_scene),
-            exclude=frozenset() if names_ok else frozenset({"name", "place"}),
+            exclude=frozenset() if names_ok else frozenset({"name", "place"}), no_names=not names_ok,
         )
     except Exception:
         return []  # tables are seasoning; never let them break narration
@@ -700,6 +700,9 @@ def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
 
     threshold = SCORE_THRESHOLD_OPENING if payload.is_opening_scene else SCORE_THRESHOLD
     table_rolls = _scene_table_rolls(payload)
+    active_rolls = list(table_rolls)  # dropped for the retry when a draft fails a hard check, so a roll never costs a scene
+    rolls_dropped = False
+    best_rolls: list[dict] = list(table_rolls)
 
     best_narrative = default_narration
     best_prompt = default_prompt
@@ -711,7 +714,7 @@ def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
 
     for _attempt in range((MAX_RETRIES_OPENING if payload.is_opening_scene else MAX_RETRIES) + 1):
         attempts += 1
-        messages = _build_messages(payload, weather_desc, player, feedback, table_rolls)
+        messages = _build_messages(payload, weather_desc, player, feedback, active_rolls)
         text = chat_complete(
             messages,
             task_scope="taverntails_narrative",
@@ -749,20 +752,26 @@ def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
                 narrative, payload.player_actions, (payload.scene_director_data or {}).get("action_resolutions") or [],
                 known_names=payload.known_names, allow_new_names=bool(movement_destination(payload.player_actions)),
             ))
-        unwoven = rollable_tables.rolls_missing(narrative, table_rolls) if table_rolls else []
-        if unwoven and _attempt == 0:
+        hard_issues = bool(issues)
+        unwoven = rollable_tables.rolls_missing(narrative, active_rolls) if active_rolls else []
+        if unwoven and _attempt == 0 and not hard_issues:
             # One rescue pass only: later drafts are accepted so an ignored roll never forces the template fallback.
             issues.append("Work the rolled story ingredients into the scene — still missing: " + "; ".join(r["result"][:120] for r in unwoven))
         if issues:
             rejected_issues = issues
             fallback_reason = "action_or_fact_check_failed"
             feedback = "\n".join(issues)
+            if hard_issues and active_rolls:
+                # The retry runs exactly as it would have without tables: the roll must never be why a scene fails.
+                active_rolls = []
+                rolls_dropped = True
             continue
 
         if best_score is None or result.score > best_score.score:
             best_narrative = narrative
             best_prompt = prompt
             best_score = result
+            best_rolls = list(active_rolls)
 
         if result.passes_threshold:
             break
@@ -777,7 +786,8 @@ def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
         score_dict["table_rolls"] = [
             {key: roll.get(key) for key in ("category", "die", "roll", "result", "table", "source", "page")} for roll in table_rolls
         ]
-        score_dict["table_rolls_woven"] = not rollable_tables.rolls_missing(best_narrative, table_rolls)
+        score_dict["table_rolls_woven"] = bool(best_rolls) and not rollable_tables.rolls_missing(best_narrative, best_rolls)
+        score_dict["table_rolls_dropped"] = rolls_dropped
     score_val = best_score.score if best_score else 0
     score_passed = best_score.passes_threshold if best_score else False
     if best_score and not score_passed and soft_shortfall_only(best_score):

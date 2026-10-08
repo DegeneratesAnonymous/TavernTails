@@ -151,12 +151,12 @@ def test_narrative_prompt_carries_the_rolls_and_retries_once_when_ignored(monkey
 
     def fake_chat(messages, **_):
         prompts.append(messages[0]["content"])
-        return next(drafts)
+        return next(drafts, None) or '{"narrative": "Mara reached Ashfall at dusk, where a toll collector wept as every coin clinked into his tin.", "prompt": "What does Mara do?"}'
 
     monkeypatch.setattr(narrative, "chat_complete", fake_chat)
     result = narrative.generate_narrative(narrative.NarrativeRequest(scene="Ashfall road", player="Mara", table_rolls=rolls))
     assert all("THE DICE HAVE SPOKEN" in p and "toll collector" in p for p in prompts)
-    assert len(prompts) == 2 and "toll collector" in result.narrative
+    assert len(prompts) >= 2 and "toll collector" in result.narrative
     assert result.score_detail["table_rolls_woven"] is True
     assert result.score_detail["table_rolls"][0]["die"] == "1d6"
 
@@ -254,3 +254,46 @@ def test_roll_text_drops_repeated_lead_ins_and_stray_dots():
             "A hooded rider asks everyone the way to the sea.",
         ], 1)]}]
     assert rt.build_tables(raw)[0]["rows"][0]["text"] == "The soft floor collapses below the party dropping them into a lair."
+
+
+def test_a_hard_failure_drops_the_rolls_so_the_retry_runs_as_it_would_without_tables(monkeypatch):
+    narrative = _narrative()
+    rolls = [{"category": "encounter", "die": "1d6", "roll": 2, "table": "T", "source": "b.pdf", "page": 1,
+              "result": "The characters encounter a roadworkers union demanding tolls."}]
+    prompts: list[str] = []
+    drafts = iter([
+        # invents a named person the fact-check does not know -> hard failure
+        '{"narrative": "Mara met Captain Hollis Brandt at the gate, who demanded a toll of every wagon on the road.", "prompt": "What does Mara do?"}',
+        '{"narrative": "Mara waited at the gate while Orrin Vale counted the wagons on the muddy road, wary of every shadow.", "prompt": "What does Mara do?"}',
+    ])
+
+    def fake_chat(messages, **_):
+        prompts.append(messages[0]["content"])
+        return next(drafts, None) or '{"narrative": "Mara waited at the gate.", "prompt": "What does Mara do?"}'
+
+    monkeypatch.setattr(narrative, "chat_complete", fake_chat)
+    result = narrative.generate_narrative(narrative.NarrativeRequest(
+        scene="gate", player="Mara", table_rolls=rolls, known_names=["Mara", "Orrin Vale"],
+        player_actions=["Mara waits at the gate"]))
+    assert "THE DICE HAVE SPOKEN" in prompts[0]
+    assert all("THE DICE HAVE SPOKEN" not in p for p in prompts[1:])
+    assert result.score_detail["table_rolls_dropped"] is True
+    assert result.score_detail["table_rolls_woven"] is False
+
+
+def test_prompt_keeps_new_introductions_unnamed_in_continuations_only():
+    rolls = [{"category": "encounter", "result": "The characters encounter a toll collector."}]
+    assert "UNNAMED" in rt.rolls_prompt_block(rolls)
+    assert "UNNAMED" not in rt.rolls_prompt_block(rolls, is_opening=True)
+
+
+def test_no_names_rerolls_results_that_introduce_a_proper_name():
+    named = {"id": "n", "title": "The party encounters...", "lead": "The party encounters", "die": 4, "category": "encounter",
+             "rows": [{"lo": i, "hi": i, "text": "Christoff Erson, a frail man of remarkable height, pondering the road."} for i in range(1, 5)]}
+    plain = {"id": "p", "title": "The party sees...", "lead": "The party sees", "die": 4, "category": "encounter",
+             "rows": [{"lo": i, "hi": i, "text": "a toll collector weeping over a tin of coins."} for i in range(1, 5)]}
+    for seed in range(20):
+        rolls = rt.roll_for_scene(scene_type="travel", seed=seed, index={"tables": [named, plain]}, no_names=True)
+        assert rolls and "Christoff" not in rolls[0]["result"]
+    assert rt.roll_for_scene(scene_type="travel", seed=1, index={"tables": [named]}, no_names=True) == []
+    assert "Christoff" in rt.roll_for_scene(scene_type="travel", seed=1, index={"tables": [named]})[0]["result"]
