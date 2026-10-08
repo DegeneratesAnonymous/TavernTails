@@ -136,8 +136,8 @@ def test_verify_keeps_only_values_found_beside_their_own_label():
     assert kept["stats"] == {"dex": 14, "int": 19}  # 10 is a different field's number; STR's own box was lost
     assert kept["passives"] == {"perception": 10}
     assert kept["skills"] == [{"name": "Arcana", "modifier": 7}]  # Deception's number is not on its line
-    assert "initiative" in dropped and "name" in dropped
-    assert "initiative" not in kept and "name" not in kept
+    assert "name" in dropped and "name" not in kept
+    assert kept["initiative"] == 2 and "initiative" in kept["derived"]  # the claimed 0 is not on the sheet; DEX 14 gives +2
     assert kept["proficiency_bonus"] == 3 and "proficiency_bonus" in kept["derived"]  # the model's 7 is wrong for level 5
 
 
@@ -259,6 +259,15 @@ def test_values_the_rules_fix_are_derived_when_the_scan_lost_them():
     assert (kept["proficiency_bonus"], kept["spell_save_dc"], kept["spell_attack_bonus"]) == (3, 15, 7)
     assert kept["derived"] == ["proficiency_bonus", "spell_save_dc", "spell_attack_bonus"]
     assert "proficiency_bonus" not in dropped
+
+
+def test_initiative_is_derived_from_dexterity_only_when_the_scan_lost_it():
+    text = "Rogue 3   CLASS & LEVEL\nDEXTERITY\n  16\n"
+    kept, _ = ocr_sheet.verify({"level": 3, "stats": {"dex": 16}}, text)
+    assert kept["initiative"] == 3 and "initiative" in kept["derived"]
+    text = "Rogue 3   CLASS & LEVEL\nDEXTERITY\n  16\nINITIATIVE\n +5\n"
+    kept, _ = ocr_sheet.verify({"level": 3, "stats": {"dex": 16}, "initiative": 5}, text)
+    assert kept["initiative"] == 5 and "initiative" not in kept.get("derived", [])
 
 
 def test_a_printed_value_beats_a_derived_one():

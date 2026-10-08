@@ -187,6 +187,24 @@ _FORBIDDEN_NARRATIVE = [
 ]
 
 
+
+_SENTENCE_OPENERS = frozenset({
+    "the", "a", "an", "as", "when", "then", "it", "its", "there", "here", "her", "his", "their", "your", "this",
+    "that", "morning", "evening", "night", "dawn", "dusk",
+})
+
+
+def name_place_in_opening(narrative: str, place_name: str) -> str:
+    """Prefix the opening's first sentence with its location ("In Alderbrook, the crisp air ...")."""
+    text = narrative.strip()
+    if not text or not place_name:
+        return narrative
+    first_word = re.match(r"[A-Za-z']+", text)
+    # Only a common sentence-opener loses its capital; a proper name ("Ada Reed ...") keeps it.
+    opener = first_word and first_word.group(0).lower() in _SENTENCE_OPENERS
+    lowered = text[0].lower() + text[1:] if opener else text
+    return f"In {place_name}, {lowered}"
+
 def _contains_unsupported_tavern_default(narrative: str, scene_director_data: dict | None) -> bool:
     text = (narrative or "").lower()
     if not text:
@@ -669,7 +687,13 @@ def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
             place = (payload.scene_director_data or {}).get("location")
             place_name = str(place.get("name") or "") if isinstance(place, dict) else ""
             if place_name and not _names_place(narrative.lower(), place_name):
-                issues.append(f"Name the place ({place_name}) within the opening's first sentences.")
+                if _attempt == MAX_RETRIES_OPENING and not issues:
+                    # Out of retries and nothing else is wrong: name the place ourselves rather than discard the draft.
+                    narrative = name_place_in_opening(narrative, place_name)
+                    scored_text = f"{narrative}\n\n{prompt}"
+                    result = score_scene(scored_text, title=scene_title, threshold=threshold)
+                else:
+                    issues.append(f"Name the place ({place_name}) within the opening's first sentences.")
         if not payload.is_opening_scene and payload.player_actions:
             issues.extend(continuation_issues(
                 narrative, payload.player_actions, (payload.scene_director_data or {}).get("action_resolutions") or [],
