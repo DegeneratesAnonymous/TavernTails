@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from ..auth import get_current_user
 from ..steward_llm import chat_complete
+from . import rollable_tables
 from . import sessions as sessions_agent
 from .action_resolution import continuation_issues, movement_destination
 from .narrative_linter import ScoreResult, feedback_for_regeneration, score_scene
@@ -107,6 +108,10 @@ class NarrativeRequest(BaseModel):
         description="Physical object the campaign established; deterministic fallback scenes must keep it as the clue.",
     )
     known_names: list[str] = Field(default_factory=list)
+    table_rolls: list[dict] | None = Field(
+        default=None,
+        description="Pre-rolled rollable-table results to weave into the scene; when omitted, tables are rolled here.",
+    )
 
 
 class NarrativeResponse(BaseModel):
@@ -319,6 +324,7 @@ def _build_director_system(
     is_opening: bool = False,
     character_context: dict | None = None,
     campaign_contract: dict | None = None,
+    table_rolls: list[dict] | None = None,
 ) -> str:
     """Build a directive system prompt from Scene Director JSON + optional Composer brief."""
     sd = _clean_sdd(sd)  # strip forbidden abstract phrases before building prompt
@@ -488,6 +494,11 @@ def _build_director_system(
         lines.append(f"  Use {player}'s name. Show consequences. Describe what they can see, hear, smell, and physically interact with next.")
         lines.append("")
 
+    rolled = rollable_tables.rolls_prompt_block(table_rolls or [], is_opening=is_opening)
+    if rolled:
+        lines.append(rolled)
+        lines.append("")
+
     lines.append(_SCENE_LAWS.replace("{player}", player))
     lines.append("")
     lines.append("ABSOLUTELY FORBIDDEN — writing any of these fails the scene:")
@@ -517,6 +528,7 @@ def _build_generic_system(
     validator_feedback: str | None,
     player_actions: list[str] | None = None,
     campaign_contract: dict | None = None,
+    table_rolls: list[dict] | None = None,
 ) -> str:
     """Fallback system prompt when no Scene Director data is available."""
     tone = STYLE_TONES.get(style.lower(), STYLE_TONES["balanced"])
@@ -540,6 +552,11 @@ def _build_generic_system(
         lines.append("")
         lines.append(f"  Open by narrating the outcome in third-person past tense using {player}'s name.")
         lines.append("  Show consequences, world reactions, and the physical details they can act on next.")
+        lines.append("")
+
+    rolled = rollable_tables.rolls_prompt_block(table_rolls or [], is_opening=False)
+    if rolled:
+        lines.append(rolled)
         lines.append("")
 
     lines.append(_SCENE_LAWS.replace("{player}", player))
@@ -587,7 +604,7 @@ def _parse_narrative_response(text: str, fallback_narrative: str, fallback_promp
     return narration, fallback_prompt
 
 
-def _build_messages(payload: NarrativeRequest, weather_desc: str, player: str, feedback: str | None) -> list[dict]:
+def _build_messages(payload: NarrativeRequest, weather_desc: str, player: str, feedback: str | None, table_rolls: list[dict] | None = None) -> list[dict]:
     """Build LLM messages list for a generation attempt."""
     if payload.scene_director_data:
         system = _build_director_system(
@@ -598,6 +615,7 @@ def _build_messages(payload: NarrativeRequest, weather_desc: str, player: str, f
             is_opening=payload.is_opening_scene,
             character_context=payload.character_context,
             campaign_contract=payload.campaign_contract,
+            table_rolls=table_rolls,
         )
         sd = payload.scene_director_data
         loc = (sd.get("location") or {}).get("name") or ""
@@ -612,16 +630,47 @@ def _build_messages(payload: NarrativeRequest, weather_desc: str, player: str, f
             user_parts.append(f"Central situation: {conflict[:150]}")
         if payload.scene:
             user_parts.append(payload.scene[:200])
+        reminder = rollable_tables.rolls_user_reminder(table_rolls or [])
+        if reminder:
+            user_parts.append(reminder)
         user_content = " ".join(user_parts)
     else:
         system = _build_generic_system(
             player, payload.style, weather_desc, payload.time_of_day,
             feedback, player_actions=payload.player_actions or [],
             campaign_contract=payload.campaign_contract,
+            table_rolls=table_rolls,
         )
         user_content = payload.scene or ""
+        reminder = rollable_tables.rolls_user_reminder(table_rolls or [])
+        if reminder:
+            user_content = f"{user_content} {reminder}".strip()
 
     return [{"role": "system", "content": system}, {"role": "user", "content": user_content}]
+
+
+def _scene_table_rolls(payload: NarrativeRequest) -> list[dict]:
+    """Roll the rollable tables once per scene so every retry and the prompt see the same results."""
+    if payload.table_rolls is not None:
+        return list(payload.table_rolls)
+    if not rollable_tables.enabled(payload.campaign_contract):
+        return []
+    sd = payload.scene_director_data or {}
+    scene_type = "opening" if payload.is_opening_scene else str(sd.get("scene_type") or "default")
+    context = " ".join([
+        payload.scene or "", " ".join(payload.player_actions or []),
+        str((sd.get("location") or {}).get("name") or ""), str(sd.get("central_conflict") or ""),
+    ])
+    # A continuation may only name people and places already established (or a destination the players
+    # are travelling to), so a rolled bare name would be rejected as an invention.
+    names_ok = payload.is_opening_scene or bool(movement_destination(payload.player_actions))
+    try:
+        return rollable_tables.roll_for_scene(
+            context=context, scene_type=scene_type, count=rollable_tables.rolls_needed(payload.is_opening_scene),
+            exclude=frozenset() if names_ok else frozenset({"name", "place"}),
+        )
+    except Exception:
+        return []  # tables are seasoning; never let them break narration
 
 
 @router.post("/narrative/generate", response_model=NarrativeResponse)
@@ -650,6 +699,7 @@ def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
     default_narration = f"At {loc_name}, the moment holds — waiting for what comes next."
 
     threshold = SCORE_THRESHOLD_OPENING if payload.is_opening_scene else SCORE_THRESHOLD
+    table_rolls = _scene_table_rolls(payload)
 
     best_narrative = default_narration
     best_prompt = default_prompt
@@ -661,7 +711,7 @@ def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
 
     for _attempt in range((MAX_RETRIES_OPENING if payload.is_opening_scene else MAX_RETRIES) + 1):
         attempts += 1
-        messages = _build_messages(payload, weather_desc, player, feedback)
+        messages = _build_messages(payload, weather_desc, player, feedback, table_rolls)
         text = chat_complete(
             messages,
             task_scope="taverntails_narrative",
@@ -699,6 +749,10 @@ def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
                 narrative, payload.player_actions, (payload.scene_director_data or {}).get("action_resolutions") or [],
                 known_names=payload.known_names, allow_new_names=bool(movement_destination(payload.player_actions)),
             ))
+        unwoven = rollable_tables.rolls_missing(narrative, table_rolls) if table_rolls else []
+        if unwoven and _attempt == 0:
+            # One rescue pass only: later drafts are accepted so an ignored roll never forces the template fallback.
+            issues.append("Work the rolled story ingredients into the scene — still missing: " + "; ".join(r["result"][:120] for r in unwoven))
         if issues:
             rejected_issues = issues
             fallback_reason = "action_or_fact_check_failed"
@@ -719,6 +773,11 @@ def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
     score_dict: dict = {**(best_score.to_dict() if best_score else {}),
                         "attempts": attempts, "elapsed_ms": round((time.perf_counter() - started) * 1000),
                         "rejected_issues": rejected_issues, "fallback_used": False}
+    if table_rolls:
+        score_dict["table_rolls"] = [
+            {key: roll.get(key) for key in ("category", "die", "roll", "result", "table", "source", "page")} for roll in table_rolls
+        ]
+        score_dict["table_rolls_woven"] = not rollable_tables.rolls_missing(best_narrative, table_rolls)
     score_val = best_score.score if best_score else 0
     score_passed = best_score.passes_threshold if best_score else False
     if best_score and not score_passed and soft_shortfall_only(best_score):

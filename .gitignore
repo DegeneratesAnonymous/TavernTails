@@ -46,3 +46,6 @@ server/campaigns/
 /Inventory.png
 /Journal.png
 /Skills.png
+
+# Rollable-table books and the index derived from them (copyrighted; local only)
+server/storage/rollable_tables/
