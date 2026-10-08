@@ -28,12 +28,12 @@ DEFAULT_INDEX = STORAGE_DIR / "index.json"
 # Scene kinds the director/composer use, mapped to the table categories that suit them.
 CATEGORY_WEIGHTS: dict[str, dict[str, float]] = {
     "opening": {"encounter": 3, "complication": 3, "npc": 2, "rumor": 2, "place": 1, "object": 1, "event": 2, "sensory": 1},
-    "dialogue": {"npc": 4, "rumor": 3, "motivation": 3, "event": 2, "encounter": 1, "object": 1},
-    "investigation": {"clue": 4, "object": 3, "rumor": 2, "sensory": 2, "complication": 1},
-    "exploration": {"sensory": 3, "place": 3, "object": 2, "encounter": 2, "complication": 2, "event": 1},
+    "dialogue": {"npc": 4, "rumor": 3, "event": 2, "encounter": 2},
+    "investigation": {"clue": 4, "rumor": 2, "sensory": 2, "complication": 1, "event": 1},
+    "exploration": {"sensory": 3, "place": 3, "encounter": 2, "complication": 2, "event": 1},
     "travel": {"encounter": 4, "event": 3, "sensory": 2, "complication": 2, "rumor": 1},
     "combat": {"complication": 4, "sensory": 1},
-    "default": {"encounter": 3, "complication": 3, "npc": 2, "rumor": 2, "object": 1, "event": 2, "sensory": 1, "clue": 1, "motivation": 1},
+    "default": {"encounter": 3, "complication": 3, "npc": 2, "rumor": 2, "event": 2, "sensory": 1, "clue": 1},
 }
 _CATEGORY_KEYWORDS: list[tuple[str, tuple[str, ...]]] = [
     ("name", ("names",)),
@@ -99,6 +99,8 @@ def _usable_entry(text: str, *, names_ok: bool = False) -> bool:
     value = _clean(text)
     if len(value) < 4 or len(value) > 380:
         return False
+    if not names_ok and re.match(r"^[A-Z][A-Z' ]{6,}:", value):
+        return False  # a table heading ("ITEMS NOT DISPLAYED FOR SALE:") glued onto the row
     if not names_ok and re.match(r"^(?:this|the)\s+(?:item|artifact|weapon|space|entity|room|chamber)\b", value, re.I):
         return False  # describes "this item/space" from the book's own context; nothing for a scene to hang it on
     if not names_ok and (len(value.split()) < 3 or re.match(r"^\d+\s+[a-z]", value)):
@@ -163,6 +165,8 @@ def build_tables(raw_tables: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if len(usable) < 4 or len(usable) < len(rows) * 0.75:
             continue
         lead = _lead_in(title, [r["text"] for r in usable])
+        if re.match(r"^(?:the|this)\s+(?:space|item|artifact|entity|room|chamber|target)\b", lead, re.I):
+            continue  # "The space is..." only makes sense inside the book's own setup
         if not names_table and not lead and sorted(len(r["text"].split()) for r in usable)[len(usable) // 2] < 3:
             continue  # lists of bare words ("Eldritch", "Fire Plate") are not something a scene can use
         die = max(r["hi"] for r in rows)
@@ -332,8 +336,18 @@ def roll_table(table: dict[str, Any], rng: random.Random) -> dict[str, Any]:
     }
 
 
-def roll_for_scene(*, context: str = "", scene_type: str = "default", count: int = 1, seed: Any = None, index: dict[str, Any] | None = None, exclude: frozenset[str] = frozenset()) -> list[dict[str, Any]]:
-    """Roll ``count`` tables suited to the scene.  ``seed`` makes the rolls reproducible (tests)."""
+def _names_someone(result: str) -> bool:
+    """True when a rolled result carries a proper name the story has not established."""
+    return _local_proper_nouns(result) >= 1 or bool(re.search(r"\b(?:encounter|find|see|hear|meet|face)s?\s+(?:[A-Z][a-z]+ ){1,2}[A-Z]", result))
+
+
+def roll_for_scene(*, context: str = "", scene_type: str = "default", count: int = 1, seed: Any = None, index: dict[str, Any] | None = None,
+                   exclude: frozenset[str] = frozenset(), no_names: bool = False) -> list[dict[str, Any]]:
+    """Roll ``count`` tables suited to the scene.  ``seed`` makes the rolls reproducible (tests).
+
+    ``no_names`` re-rolls results that introduce a proper name: a continuation may only name what the
+    story has already established, so such a result would just be rejected downstream.
+    """
     data = index if index is not None else load_index()
     tables = data.get("tables") or []
     if not tables or count <= 0:
@@ -342,10 +356,22 @@ def roll_for_scene(*, context: str = "", scene_type: str = "default", count: int
     rolls: list[dict[str, Any]] = []
     used_categories: set[str] = set(exclude)
     for _ in range(count):
-        table = _pick_table(tables, context, scene_type, rng, used_categories)
-        if table is None:
+        picked = None
+        for _try in range(8 if no_names else 1):
+            table = _pick_table(tables, context, scene_type, rng, used_categories)
+            if table is None:
+                break
+            rolled = roll_table(table, rng)
+            if no_names and _names_someone(rolled["result"]):
+                with _RECENT_LOCK:
+                    _RECENT.append(table["id"])  # do not offer the same table straight away
+                continue
+            picked = (table, rolled)
             break
-        rolls.append(roll_table(table, rng))
+        if picked is None:
+            break
+        table, rolled = picked
+        rolls.append(rolled)
         used_categories.add(str(table.get("category")))
         with _RECENT_LOCK:
             _RECENT.append(table["id"])
@@ -372,6 +398,9 @@ def rolls_prompt_block(rolls: list[dict[str, Any]], *, is_opening: bool = False)
         "  Never override what the players just did or what is already established; let the roll complicate, colour or redirect it instead." if not is_opening
         else "  Let the roll shape the opening's specifics (who, what is happening, what stands out) without contradicting the campaign premise.",
         "  Never mention dice, tables, rolls, books, or this list in the prose.",
+        *([] if is_opening else [
+            "  Anyone or anything a result brings in stays UNNAMED unless it is a name already established — describe it by role or look (a toll collector, a hooded rider, a roadworkers' guild). Do not invent proper names for people, groups, or places.",
+        ]),
     ]
     for i, roll in enumerate(rolls, 1):
         hint = _CATEGORY_HINTS.get(str(roll.get("category")), "")
