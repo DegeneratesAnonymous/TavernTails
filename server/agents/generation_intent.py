@@ -846,7 +846,7 @@ def definite(noun_phrase: Any) -> str:
 
 
 _MALFORMED_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("doubled_punctuation", re.compile(r"[?!]\.|\.\.(?!\.)|\.,|,\.|\?\?|!!(?!!)")),
+    ("doubled_punctuation", re.compile(r"[?!]\.|\.\.(?!\.)|(?<!\ba\.m)(?<!\bp\.m)\.,|,\.|\?\?|!!(?!!)")),
     ("lowercase_start", re.compile(r"(?:^|\n\n|(?<=[.!?]) )(?:the|a|an) [a-z]+ (?:arrives|reaches|recognizes|slows|waits|acts)\b")),
     ("first_person_splice", re.compile(r"\b(?:because|that|until) I (?:came|am|was|want|will|do)\b")),
     ("lowercase_pronoun_i", re.compile(r"\b(?:to|and|but|because|that) i (?:came|am|was|want|will|do)\b")),
@@ -869,7 +869,7 @@ def polish_prose(text: Any) -> str:
     """Mechanically repair the unambiguous defects (case, doubled punctuation)."""
     body = str(text or "")
     body = re.sub(r"([?!])\.", r"\1", body)
-    body = re.sub(r"\.,", ",", body)
+    body = re.sub(r"(?<!\ba\.m)(?<!\bp\.m)\.,", ",", body)  # "8:03 a.m., the same" keeps its period
     body = re.sub(r",\.", ".", body)
     body = re.sub(r"\.\.(?!\.)", ".", body)
     return capitalize_sentences(body)

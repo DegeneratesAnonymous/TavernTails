@@ -1224,3 +1224,13 @@ def test_session_character_names_include_every_member():
         {"members": [{"character_name": "Mara"}, {"character_name": "Bastog"}]}, "Bastog",
     )
     assert names == ["Bastog", "Mara"]
+
+
+def test_a_clock_abbreviation_followed_by_a_comma_is_not_doubled_punctuation():
+    from server.agents.generation_intent import find_malformed_sentences, polish_prose
+
+    text = "The hands stop at 8:03 a.m., the same as every other clock; at 9 p.m., it ends."
+    assert not [d for d in find_malformed_sentences(text) if d["defect"] == "doubled_punctuation"]
+    assert polish_prose(text) == text
+    assert polish_prose("It ends here., then") == "It ends here, then"
+    assert [d for d in find_malformed_sentences("It ends here., then") if d["defect"] == "doubled_punctuation"]

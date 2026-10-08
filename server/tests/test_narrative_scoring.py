@@ -49,3 +49,13 @@ def test_a_draft_is_scored_with_its_player_prompt(monkeypatch):
     narrative_module.generate_narrative(narrative_module.NarrativeRequest(scene="clock mystery", player="Arin", is_opening_scene=True))
     assert seen and "What does Arin do?" in seen[0]
     assert seen[0].lower().count("what does arin do") == 1
+
+
+def test_naming_the_place_keeps_proper_names_and_lowers_common_openers():
+    from server.agents.narrative import name_place_in_opening
+
+    assert name_place_in_opening("The crisp air smells of bread.", "Alderbrook village") == \
+        "In Alderbrook village, the crisp air smells of bread."
+    assert name_place_in_opening("Ada Reed stumbles in.", "Alderbrook village") == \
+        "In Alderbrook village, Ada Reed stumbles in."
+    assert name_place_in_opening("", "Alderbrook village") == ""
