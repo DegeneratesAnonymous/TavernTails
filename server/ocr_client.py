@@ -27,11 +27,11 @@ def remote_enabled() -> bool:
     return bool(os.environ.get("STEWARD_HOST")) and os.environ.get("TAVERNTAILS_OCR_REMOTE", "1") != "0"
 
 
-def _remote(image: bytes, fmt: str) -> str | None:
+def _remote(image: bytes, fmt: str, psm: int = 11) -> str | None:
     """One page read by a Steward OCR node, or ``None`` when no node could."""
     url = os.environ["STEWARD_HOST"].rstrip("/") + "/api/games/taverntails/ocr"
     try:
-        reply = httpx.post(url, params={"psm": 11, "format": fmt}, content=image, timeout=REMOTE_TIMEOUT,
+        reply = httpx.post(url, params={"psm": psm, "format": fmt}, content=image, timeout=REMOTE_TIMEOUT,
                            headers={"Content-Type": "application/octet-stream"})
     except httpx.HTTPError as exc:
         log.warning("remote OCR unreachable: %s", type(exc).__name__)
