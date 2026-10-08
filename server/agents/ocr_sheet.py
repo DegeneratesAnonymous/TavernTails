@@ -434,6 +434,10 @@ def verify(data: dict[str, Any], text: str) -> tuple[dict[str, Any], list[str]]:
     if "proficiency_bonus" not in out and isinstance(out.get("level"), int):
         out["proficiency_bonus"] = 2 + (out["level"] - 1) // 4
         derived.append("proficiency_bonus")
+    dex = out.get("stats", {}).get("dex")
+    if "initiative" not in out and dex is not None:
+        out["initiative"] = (dex - 10) // 2  # the usual case; a feat or item bonus would have been printed
+        derived.append("initiative")
     casting = str(out.get("spellcasting_ability") or "").lower()
     score = out.get("stats", {}).get(casting) if casting else None
     if score is not None and "proficiency_bonus" in out:
