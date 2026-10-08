@@ -77,7 +77,8 @@ def _clean(text: Any) -> str:
 
 
 def _strip_ellipsis(text: str) -> str:
-    return re.sub(r"^(?:\.{2,}|…)\s*", "", text).strip()
+    text = re.sub(r"^(?:\.{2,}|…)\s*", "", text).strip()
+    return re.sub(r"(?<=\w)\.{2,}(?=\s+[a-z])", "", text)  # "below the.. party" -> "below the party"
 
 
 _COMMON_CAPS = frozenset("I A An The Lady Lord King Queen Prince Princess Duke Duchess Baron Baroness Captain Sir Dame God Gods Goddess Elf Elves Dwarf Dwarves Halfling Gnome Orc Orcs Goblin Goblins Drow Human Tiefling Dragonborn Deva Fey Feywild Shadowfell Material Plane".split())
@@ -283,6 +284,8 @@ def _soften(text: str) -> str:
 
 def _compose(table: dict[str, Any], row_text: str) -> str:
     lead = table.get("lead") or ""
+    if lead:  # some scans repeat the lead-in at the start of the row itself
+        row_text = re.sub(rf"^(?:{re.escape(lead)}|the party \w+)[\s.…]*", "", row_text, flags=re.I).strip() or row_text
     first = row_text.split(" ", 1)[0].lower()
     if lead:
         body = row_text[:1].lower() + row_text[1:] if first in _DETERMINERS else row_text
