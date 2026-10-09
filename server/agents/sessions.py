@@ -504,6 +504,37 @@ def _strip_repeated_brief_sentences(scene: dict, repeated: list[str]) -> dict:
     }
 
 
+def _add_missing_opening_elements(scene: dict, opening_scene: dict, failed: set[str]) -> dict:
+    """Append the grounded sentence(s) a model-written opening lacks instead of discarding its prose.
+
+    The contract wants a named person or object from the brief, an in-world pressure, and the reason the
+    character is here. A fluent draft that merely forgot one is better kept and completed than replaced.
+    """
+    additions: list[str] = []
+    if "concrete_npc_object" in failed:
+        npcs = [str(n).strip() for n in opening_scene.get("named_npcs") or [] if str(n).strip()]
+        things = [str(o).strip() for o in opening_scene.get("key_objects_or_clues") or [] if str(o).strip()]
+        if npcs:
+            additions.append(f"{npcs[0]} is close enough to see all of it.")
+        elif things:
+            additions.append(f"Everyone keeps looking back at {things[0]}.")
+    if "pressure_timer" in failed and str(opening_scene.get("pressure_or_timer") or "").strip():
+        additions.append(str(opening_scene["pressure_or_timer"]).strip())
+    if "personal_hook" in failed and str(opening_scene.get("personal_hook") or "").strip():
+        additions.append(str(opening_scene["personal_hook"]).strip())
+    if not additions:
+        return scene
+    body = str(scene.get("narrative_body") or "").rstrip()
+    completed = body + "\n\n" + " ".join(additions)
+    prompt = str(scene.get("player_prompt") or "").strip()
+    return {
+        **scene,
+        "narrative_body": completed,
+        "text": f"{completed}\n\n{prompt}".strip(),
+        "generation_debug": {**(scene.get("generation_debug") or {}), "contract_sentences_added": sorted(failed)},
+    }
+
+
 def _apply_concrete_opening_scene_contract(
     scene: dict,
     *,
@@ -554,6 +585,19 @@ def _apply_concrete_opening_scene_contract(
         validation["valid"] = True
         validation["issues"] = []
         validation["optional_unestablished_checks"] = sorted(failed_checks)
+    elif model_written and failed_checks and failed_checks <= (soft_checks | {"concrete_npc_object"}):
+        # It forgot to name the person or clue the brief set up: complete it rather than replace it.
+        completed = _add_missing_opening_elements(scene, opening_scene, failed_checks)
+        if completed is not scene:
+            rechecked = validate_opening_scene_contract(
+                scene=completed, opening_scene=opening_scene, campaign_brief=campaign_brief,
+                anchor=opening_anchor, player_name=player_name, source_intent=source_intent,
+            )
+            if rechecked.get("valid") or {k for k, ok in (rechecked.get("checks") or {}).items() if not ok} <= soft_checks:
+                scene, validation = completed, rechecked
+                if not validation.get("valid"):
+                    validation["valid"] = True
+                    validation["issues"] = []
     if not validation.get("valid"):
         actions = opening_scene.get("action_options") or []
         scene = {

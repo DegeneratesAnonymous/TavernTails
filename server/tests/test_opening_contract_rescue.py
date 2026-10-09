@@ -65,3 +65,21 @@ def test_a_scene_that_was_already_a_fallback_is_never_rescued(monkeypatch):
 def test_trimming_refuses_to_gut_a_mostly_copied_draft():
     gutted = {"narrative_body": BRIEF_SENTENCE + " Yes.", "player_prompt": "", "generation_debug": {"fallback_used": False}}
     assert sessions._strip_repeated_brief_sentences(gutted, [BRIEF_SENTENCE]) is gutted
+
+
+def test_a_draft_missing_the_named_person_is_completed_not_replaced(monkeypatch):
+    contract = {"named_npcs": ["Elias Vane"], "key_objects_or_clues": ["fresh footprints"],
+                "pressure_or_timer": "Before the tide turns, the tower floods.", "personal_hook": ""}
+    monkeypatch.setattr(sessions, "build_opening_scene_contract", lambda **k: contract)
+    result, validation = _apply(monkeypatch, [_validation(concrete_npc_object=True), _validation()], _scene())
+    assert result["generation_debug"]["fallback_used"] is False
+    assert result["generation_debug"]["contract_sentences_added"] == ["concrete_npc_object"]
+    assert MODEL_PROSE in result["narrative_body"] and "Elias Vane is close enough to see all of it." in result["narrative_body"]
+    assert validation["valid"]
+
+
+def test_completion_that_still_fails_a_hard_check_falls_back(monkeypatch):
+    contract = {"named_npcs": ["Elias Vane"], "pressure_or_timer": "", "personal_hook": ""}
+    monkeypatch.setattr(sessions, "build_opening_scene_contract", lambda **k: contract)
+    result, _ = _apply(monkeypatch, [_validation(concrete_npc_object=True), _validation(mentions_location=True), _validation()], _scene())
+    assert result["generation_debug"]["fallback_reason"] == "opening_contract_repair"
