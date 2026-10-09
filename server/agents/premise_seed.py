@@ -107,12 +107,15 @@ def extract_premise_seed(
     premise = _premise(settings, contract)
     if len(premise.split()) < MIN_PREMISE_WORDS:
         return None
-    if complete is None:
-        from ..steward_llm import chat_complete as complete
+    call = complete
+    if call is None:
+        from ..steward_llm import chat_complete
+
+        call = chat_complete
     genre = str(settings.get("genre") or (contract.get("campaign_dna") or {}).get("genre") or "fantasy")
     tone = str(settings.get("tone") or (contract.get("campaign_dna") or {}).get("tone") or "balanced")
     try:
-        raw = complete(
+        raw = call(
             [{"role": "system", "content": SYSTEM},
              {"role": "user", "content": f"Genre: {genre}\nTone: {tone}\nPremise: {premise}"}],
             task_scope="taverntails_plot", max_tokens=520, temperature=0.5, timeout=timeout,
