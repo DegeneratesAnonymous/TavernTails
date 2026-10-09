@@ -1101,6 +1101,15 @@
   border-color: rgba(200, 148, 26, 0.28);
 }
 
+/* The themed card alert above outranks .inline-alert-error, which made errors look like notes. */
+[data-theme="medieval"] .card .inline-alert-error,
+[data-theme="medieval"] .inline-alert-error {
+  background: rgba(200, 64, 26, 0.16);
+  border-color: var(--error, #c8401a);
+  border-left-width: 4px;
+  color: #6b1707;
+}
+
 /* ── Section titles and page headers inside dashboard panels ── */
 [data-theme="medieval"] .dashboard-panel .page-title,
 [data-theme="medieval"] .dashboard-panel .section-title {

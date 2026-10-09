@@ -739,7 +739,7 @@ export default function CampaignSetupView({
       {viewMode === 'list' ? (
         <div className="stack" style={{ gap: 16 }}>
           <div className="row-wrap" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-            <div className="card-section-header" style={{ border: 'none', paddingBottom: 0 }}>My Campaigns</div>
+            <div className="card-section-header" style={{ border: 'none', paddingBottom: 0, color: 'var(--highlight, #f0c040)' }}>My Campaigns</div>
             <button className="btn btn-secondary btn-sm" type="button" onClick={onCreateCampaign}>
               <NewIcon />
               <span style={{ marginLeft: 6 }}>New Campaign</span>

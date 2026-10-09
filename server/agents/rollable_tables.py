@@ -27,7 +27,9 @@ DEFAULT_INDEX = STORAGE_DIR / "index.json"
 
 # Scene kinds the director/composer use, mapped to the table categories that suit them.
 CATEGORY_WEIGHTS: dict[str, dict[str, float]] = {
-    "opening": {"encounter": 3, "complication": 3, "npc": 2, "rumor": 2, "place": 1, "object": 1, "event": 2, "sensory": 1},
+    # The player's own premise is the point of an opening, so it gets a detail to colour it, never a creature or
+    # a second plot: no encounter/npc tables here (a storm-giant reunion at a marsh lighthouse sank the scene).
+    "opening": {"sensory": 3, "clue": 2, "rumor": 2, "event": 2, "complication": 1},
     "dialogue": {"npc": 4, "rumor": 3, "event": 2, "encounter": 2},
     "investigation": {"clue": 4, "rumor": 2, "sensory": 2, "complication": 1, "event": 1},
     "exploration": {"sensory": 3, "place": 3, "encounter": 2, "complication": 2, "event": 1},
@@ -448,4 +450,4 @@ def corpus_status(path: Path | None = None) -> dict[str, Any]:
 
 
 def rolls_needed(is_opening: bool) -> int:
-    return 2 if is_opening else 1
+    return 1

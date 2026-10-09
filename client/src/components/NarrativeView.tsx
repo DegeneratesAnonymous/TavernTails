@@ -1,6 +1,7 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import { buildApiUrl } from '../api'
 import './NarrativeView.css'
+import SceneStartProgress from './SceneStartProgress'
 
 type VisualStateMeta = {
   visual_type?: string
@@ -119,6 +120,7 @@ export default function NarrativeView({sessionId, showChoicesInScene = false, en
   // Scene ownership is intentionally local: this component fetches and renders
   // prose/art, then broadcasts scene metadata for the surrounding play layout.
   const [scene, setScene] = useState<Scene|null>(null)
+  const [waitingForScene, setWaitingForScene] = useState(false)
   const [choicesOpen, setChoicesOpen] = useState(false)
   const [imageError, setImageError] = useState(false)
   const narrativeCardRef = useRef<HTMLDivElement | null>(null)
@@ -183,52 +185,53 @@ export default function NarrativeView({sessionId, showChoicesInScene = false, en
     window.dispatchEvent(new CustomEvent('narrative:scene-meta', { detail: scene }))
   }, [scene])
 
-  useEffect(()=>{
-    let mounted = true
-    setScene(null)
+  const loadScene = useCallback(async (mountedRef: { current: boolean }) => {
     const token = localStorage.getItem('access_token')
     const headers: any = { 'Content-Type': 'application/json' }
     if(token) headers['Authorization'] = `Bearer ${token}`
     const seedUrl = sessionId ? buildApiUrl(`/sessions/${sessionId}/file/scene.json`) : buildApiUrl('/content/campaigns/seed')
-    const load = async () => {
-      try{
-        const r = await fetch(seedUrl, { headers })
-        if(!r.ok) throw new Error('scene missing')
-        const data = await r.json()
-        if(!mounted) return
-        const normalized: Scene = {
-          ...data,
-          choices: Array.isArray(data?.choices) ? data.choices : []
-        }
-        setScene(normalized)
-      }catch{
-        if(sessionId){
-          try{
-            await fetch(buildApiUrl(`/sessions/${sessionId}/start`), { method:'POST', headers, body: JSON.stringify({}) })
-            const r2 = await fetch(seedUrl, { headers })
-            if(r2.ok){
-              const data2 = await r2.json()
-              if(mounted){
-                setScene({ ...data2, choices: Array.isArray(data2?.choices) ? data2.choices : [] })
-                return
-              }
-            }
-          }catch{/* ignore */}
-        }
-        if(mounted){
-          setScene({
-            id:'seed',
-            title:'The Abandoned Mill',
-            image:'',
-            text:'The wind howls as you step into the mill. Broken gears and faded banners tell a story of a sudden evacuation...',
-            choices:[{id:'search',label:'Search the sacks'},{id:'listen',label:'Listen at the door'}]
-          })
-        }
+    try{
+      const r = await fetch(seedUrl, { headers })
+      if(!r.ok) throw new Error('scene missing')
+      const data = await r.json()
+      if(!mountedRef.current) return
+      if(sessionId && data?.setup_pending){
+        // A new session ships a placeholder scene that already has text. It is not the story: wait for the real one.
+        setScene(null)
+        setWaitingForScene(true)
+        return
       }
+      setWaitingForScene(false)
+      setScene({ ...data, choices: Array.isArray(data?.choices) ? data.choices : [] })
+    }catch{
+      if(!mountedRef.current) return
+      if(sessionId){
+        // The scene is still being written (or never started): show real progress. Starting it is the
+        // progress panel's job, and the server joins a start that is already running.
+        setWaitingForScene(true)
+        return
+      }
+      setScene({
+        id:'seed',
+        title:'The Abandoned Mill',
+        image:'',
+        text:'The wind howls as you step into the mill. Broken gears and faded banners tell a story of a sudden evacuation...',
+        choices:[{id:'search',label:'Search the sacks'},{id:'listen',label:'Listen at the door'}]
+      })
     }
-    load()
-    return ()=>{ mounted=false }
-  },[sessionId])
+  }, [sessionId])
+
+  useEffect(()=>{
+    const mountedRef = { current: true }
+    setScene(null)
+    setWaitingForScene(false)
+    void loadScene(mountedRef)
+    return ()=>{ mountedRef.current = false }
+  },[sessionId, loadScene])
+
+  const handleSceneReady = useCallback(() => {
+    void loadScene({ current: true })
+  }, [loadScene])
 
   useEffect(()=>{
     const handler = (event: Event) => {
@@ -275,6 +278,7 @@ export default function NarrativeView({sessionId, showChoicesInScene = false, en
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scene?.id, scene?.text, scene?.narrative_body, entities.length])
 
+  if(!scene && waitingForScene && sessionId) return <SceneStartProgress sessionId={sessionId} onReady={handleSceneReady} />
   if(!scene) return <div className="narrative-loading">Loading scene…</div>
 
   const hasChoices = Array.isArray(scene.choices) && scene.choices.length > 0

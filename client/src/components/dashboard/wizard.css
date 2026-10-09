@@ -302,6 +302,52 @@
   border-radius: var(--radius, 10px);
   color: var(--text);
   width: 100%;
+  box-sizing: border-box;  /* width:100% plus padding and border used to overflow the card */
+}
+
+/* A paragraph the player writes: body text, not the small-caps UI face used for short names. */
+.wizard-premise-input {
+  font-family: var(--font-body, Georgia, serif);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.5;
+  text-transform: none;
+  font-variant: normal;
+  letter-spacing: 0;
+}
+
+.wizard-premise-input::placeholder {
+  font-size: 15px;
+  opacity: 0.7;
+}
+
+.wizard-seat--invalid {
+  border-color: var(--error, #c8401a) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--error, #c8401a) 35%, transparent);
+}
+
+.wizard-seat--invalid select {
+  border-color: var(--error, #c8401a);
+}
+
+.wizard-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-weight: 600;
+}
+
+.wizard-error::before {
+  content: '!';
+  flex: none;
+  width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  border-radius: 50%;
+  background: var(--error, #c8401a);
+  color: #fff;
+  font-weight: 700;
 }
 
 .wizard-name-input:focus {

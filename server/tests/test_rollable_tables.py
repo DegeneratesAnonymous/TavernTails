@@ -155,7 +155,7 @@ def test_narrative_prompt_carries_the_rolls_and_retries_once_when_ignored(monkey
 
     monkeypatch.setattr(narrative, "chat_complete", fake_chat)
     result = narrative.generate_narrative(narrative.NarrativeRequest(scene="Ashfall road", player="Mara", table_rolls=rolls))
-    assert all("THE DICE HAVE SPOKEN" in p and "toll collector" in p for p in prompts)
+    assert all("THE DICE HAVE SPOKEN" in p and "toll collector" in p for p in prompts[:2])  # kept until a draft misses the bar
     assert len(prompts) >= 2 and "toll collector" in result.narrative
     assert result.score_detail["table_rolls_woven"] is True
     assert result.score_detail["table_rolls"][0]["die"] == "1d6"
@@ -297,3 +297,35 @@ def test_no_names_rerolls_results_that_introduce_a_proper_name():
         assert rolls and "Christoff" not in rolls[0]["result"]
     assert rt.roll_for_scene(scene_type="travel", seed=1, index={"tables": [named]}, no_names=True) == []
     assert "Christoff" in rt.roll_for_scene(scene_type="travel", seed=1, index={"tables": [named]})[0]["result"]
+
+
+def test_a_draft_below_the_quality_bar_is_retried_without_the_rolls(monkeypatch):
+    narrative = _narrative()
+    rolls = [{"category": "sensory", "die": "1d6", "roll": 4, "table": "T", "source": "b.pdf", "page": 1,
+              "result": "The characters see a violent thunderstorm masking a storm giant family reunion."}]
+    prompts: list[str] = []
+    monkeypatch.setattr(narrative, "score_scene", lambda *a, **k: narrative.ScoreResult(score=40, passes_threshold=False))
+
+    def fake_chat(messages, **_):
+        prompts.append(messages[0]["content"])
+        return '{"narrative": "Mara waited at the gate as rain hammered the stone and a storm giant roared over the marsh.", "prompt": "What does Mara do?"}'
+
+    monkeypatch.setattr(narrative, "chat_complete", fake_chat)
+    result = narrative.generate_narrative(narrative.NarrativeRequest(scene="gate", player="Mara", table_rolls=rolls))
+    assert "THE DICE HAVE SPOKEN" in prompts[0]
+    assert all("THE DICE HAVE SPOKEN" not in p for p in prompts[1:]) and len(prompts) > 1
+    assert result.score_detail["table_rolls_dropped"] is True
+
+
+def test_openings_roll_one_gentle_ingredient_never_a_creature_encounter():
+    assert rt.rolls_needed(True) == 1 and rt.rolls_needed(False) == 1
+    assert not {"encounter", "npc"} & set(rt.CATEGORY_WEIGHTS["opening"])
+    index = {"tables": [
+        {"id": "e", "title": "The party encounters...", "lead": "The party encounters", "die": 4, "category": "encounter",
+         "rows": [{"lo": i, "hi": i, "text": "a storm giant family reunion in the rain"} for i in range(1, 5)]},
+        {"id": "s", "title": "The space smells of...", "lead": "", "die": 4, "category": "sensory",
+         "rows": [{"lo": i, "hi": i, "text": "Brine and lamp oil hang in the cold air."} for i in range(1, 5)]},
+    ]}
+    for seed in range(25):
+        rolls = rt.roll_for_scene(scene_type="opening", seed=seed, index=index, count=rt.rolls_needed(True))
+        assert [r["category"] for r in rolls] == ["sensory"]

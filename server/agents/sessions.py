@@ -1,5 +1,7 @@
+import asyncio
 import json
 import re
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -61,6 +63,7 @@ from .opening_setup import (
     validate_opening_scene_contract,
 )
 from .player_intent_parser import parse_player_intent
+from .premise_seed import extract_premise_seed
 from .scene_beat_selector import select_scene_beat_plan
 from .scene_director import SceneDirectorOutput, SceneDirectorRequest, build_image_prompt
 from .scene_privacy import player_npc_list, player_view
@@ -477,6 +480,30 @@ def _strip_invented_sentences(scene: dict, anchor: dict, player_name: str, sourc
     }
 
 
+def _strip_repeated_brief_sentences(scene: dict, repeated: list[str]) -> dict:
+    """Drop sentences the model copied word for word from the campaign brief, keeping the rest of its prose.
+
+    The brief is shown to the player just before the scene, so copying it is a style fault, not a reason to
+    discard a model-written opening.  Only a mostly-intact draft is trimmed; anything else is left to the caller.
+    """
+    body = str(scene.get("narrative_body") or "")
+    cleaned = body
+    for sentence in repeated:
+        cleaned = re.sub(r"\s*" + re.escape(sentence.strip()) + r"\s*", " ", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"[ \t]+", " ", cleaned)
+    cleaned = re.sub(r"[ \t]*\n[ \t]*", "\n", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+    if not cleaned or cleaned == body.strip() or len(cleaned) < 0.55 * len(body):
+        return scene
+    prompt = str(scene.get("player_prompt") or "").strip()
+    return {
+        **scene,
+        "narrative_body": cleaned,
+        "text": f"{cleaned}\n\n{prompt}".strip(),
+        "generation_debug": {**(scene.get("generation_debug") or {}), "brief_repetition_removed": True},
+    }
+
+
 def _apply_concrete_opening_scene_contract(
     scene: dict,
     *,
@@ -508,15 +535,25 @@ def _apply_concrete_opening_scene_contract(
         player_name=player_name,
         source_intent=source_intent,
     )
-    # A model-written scene must not be replaced merely for omitting an
-    # invented personal hook or timer from a generated opening contract.
-    has_authored_object = any(f.kind == "object" and f.established for f in source_intent.facts()) if source_intent else False
+    # A model-written scene must not be replaced wholesale for a style fault: omitting an invented personal hook
+    # or timer, or echoing a sentence of the brief. (This used to apply only to premises with an authored object,
+    # so most model-written openings were thrown away for "no_brief_repetition" and replaced by the template.)
+    soft_checks = {"personal_hook", "pressure_timer", "no_brief_repetition"}
     failed_checks = {key for key, passed in (validation.get("checks") or {}).items() if not passed}
-    if has_authored_object and not (scene.get("generation_debug") or {}).get("fallback_used", True):
-        if failed_checks <= {"personal_hook", "pressure_timer", "no_brief_repetition"}:
-            validation["valid"] = True
-            validation["issues"] = []
-            validation["optional_unestablished_checks"] = sorted(failed_checks)
+    model_written = not (scene.get("generation_debug") or {}).get("fallback_used", True)
+    if model_written and failed_checks and "no_brief_repetition" in failed_checks and validation.get("repeated_brief_sentences"):
+        trimmed = _strip_repeated_brief_sentences(scene, list(validation["repeated_brief_sentences"]))
+        if trimmed is not scene:
+            scene = trimmed
+            validation = validate_opening_scene_contract(
+                scene=scene, opening_scene=opening_scene, campaign_brief=campaign_brief,
+                anchor=opening_anchor, player_name=player_name, source_intent=source_intent,
+            )
+            failed_checks = {key for key, passed in (validation.get("checks") or {}).items() if not passed}
+    if model_written and failed_checks and failed_checks <= soft_checks:
+        validation["valid"] = True
+        validation["issues"] = []
+        validation["optional_unestablished_checks"] = sorted(failed_checks)
     if not validation.get("valid"):
         actions = opening_scene.get("action_options") or []
         scene = {
@@ -1722,6 +1759,12 @@ def _build_opening_setup_questionnaire(folder: Path, meta: dict, setup: dict | N
         ).get("required_content") or {}
     except Exception:
         opening_seed = {}
+    # The seed so far is a keyword template or a random pool pick. Both match on single words ("drowned" +
+    # "tide" opened a lighthouse premise at a reef gate) or ignore the premise entirely, so let one bounded
+    # model call read what the player actually wrote; any failure keeps the seed we already have.
+    extracted = extract_premise_seed(campaign_settings, campaign_contract)
+    if extracted:
+        opening_seed = extracted
     if setup is not None and opening_seed:
         # The brief the player answers is built from this seed; session start reuses it so the first
         # scene happens where the brief said it would instead of at a second, independently drawn place.
@@ -2308,8 +2351,98 @@ class StartSessionRequest(BaseModel):
     time_of_day: str | None = None
 
 
+# --- Session start: one pipeline per session, with visible progress -------------------------------
+# A scene takes minutes on the local model and only one model call runs at a time, so a second
+# pipeline for the same session (a reload, a second tab, a client fallback) used to double the wait.
+# Concurrent /start calls now join the running pipeline instead of starting another.
+START_STAGES: list[tuple[str, str]] = [
+    ("planning", "Planning the opening"),
+    ("scene", "Building the scene"),
+    ("composing", "Shaping the narration"),
+    ("writing", "Writing the prose"),
+    ("finishing", "Saving the scene"),
+]
+_START_JOBS: dict[str, asyncio.Task] = {}
+_START_STATUS: dict[str, dict[str, Any]] = {}
+
+
+def _start_progress(session_id: str, stage: str) -> None:
+    status = _START_STATUS.get(session_id)
+    if status and status.get("state") == "running":
+        status["stage"] = stage
+
+
+def _scene_ready(folder: Path) -> bool:
+    try:
+        scene = json.loads((folder / 'scene.json').read_text())
+    except Exception:
+        return False
+    # A new session starts with a placeholder scene that already has text ("Complete the campaign brief...").
+    return bool(isinstance(scene, dict) and not scene.get('setup_pending') and (scene.get('narrative_body') or scene.get('text')))
+
+
+async def _run_start_job(session_id: str, payload: "StartSessionRequest", current_user) -> dict:
+    status = _START_STATUS[session_id]
+    try:
+        result = await _start_session_impl(session_id, payload, current_user)
+    except BaseException as err:
+        status.update(state="failed", finished_at=time.time(), error=str(getattr(err, "detail", None) or err)[:300])
+        raise
+    finally:
+        _START_JOBS.pop(session_id, None)
+    needs_setup = isinstance(result, dict) and result.get("requires_opening_setup")
+    status.update(state="needs_setup" if needs_setup else "done", finished_at=time.time(), error=None)
+    return result
+
+
 @router.post('/{session_id}/start')
 async def start_session(session_id: str, payload: StartSessionRequest, current_user=Depends(get_current_user)):
+    folder = BASE / session_id
+    meta_path = folder / 'meta.json'
+    if not folder.exists() or not meta_path.exists():
+        raise HTTPException(status_code=404, detail='Session not found')
+    _require_session_member(json.loads(meta_path.read_text()), current_user)
+    job = _START_JOBS.get(session_id)
+    if job is None or job.done():
+        _START_STATUS[session_id] = {"state": "running", "stage": START_STAGES[0][0], "started_at": time.time(), "error": None}
+        job = asyncio.create_task(_run_start_job(session_id, payload, current_user))
+        _START_JOBS[session_id] = job
+    # shield: a client that gives up (reload, navigation) must not cancel the scene being written
+    return await asyncio.shield(job)
+
+
+@router.get('/{session_id}/start-status')
+def get_start_status(session_id: str, current_user=Depends(get_current_user)):
+    folder = BASE / session_id
+    meta_path = folder / 'meta.json'
+    if not folder.exists() or not meta_path.exists():
+        raise HTTPException(status_code=404, detail='Session not found')
+    _require_session_member(json.loads(meta_path.read_text()), current_user)
+    status = dict(_START_STATUS.get(session_id) or {})
+    ready = _scene_ready(folder)
+    setup = (json.loads(meta_path.read_text()).get("opening_setup") or {})
+    if status.get("state") in (None, "needs_setup") and not ready:
+        # Nothing running and no real scene yet: either the player still owes the opening questions, or the
+        # start was never kicked off (or was lost to a restart) and the client should start it.
+        status["state"] = "needs_setup" if setup.get("required") and not setup.get("completed") else "idle"
+    state = status.get("state") or ("done" if ready else "idle")
+    if state == "running" and not _START_JOBS.get(session_id):
+        state = "done" if ready else "failed"  # the server restarted mid-start
+        status.setdefault("error", None if ready else "The server restarted while the scene was being written.")
+    stage = status.get("stage") or START_STAGES[0][0]
+    started = status.get("started_at")
+    ended = status.get("finished_at") or time.time()
+    return {
+        "state": state,
+        "stage": stage,
+        "stages": [{"id": sid, "label": label} for sid, label in START_STAGES],
+        "elapsed_s": round(ended - started, 1) if started else 0,
+        "error": status.get("error"),
+        "scene_ready": ready,
+    }
+
+
+async def _start_session_impl(session_id: str, payload: "StartSessionRequest", current_user) -> dict:
     """Orchestrate the New Session Workflow (Steps 1–5).
 
     Step 1 – Storyboard Agent builds a story plot from players, campaign settings, and docs.
@@ -2575,6 +2708,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         except Exception:
             return None
 
+    _start_progress(session_id, "planning")
     plot_result, narrative_director_output = await asyncio.gather(
         run_generation(_run_storyboard), run_generation(_run_director),
     )
@@ -2708,6 +2842,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
             pass
 
     # --- Step 2: Scene Director Agent — converts raw material into a concrete scene plan ---
+    _start_progress(session_id, "scene")
     director_output: SceneDirectorOutput = await run_generation(scene_director_agent.direct_scene, SceneDirectorRequest(
         campaign_settings=campaign_settings,
         campaign_variables=campaign_variables,
@@ -2953,6 +3088,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
     )
     director_data_dict["fact_discipline"] = fact_discipline_prompt(opening_source_intent)
     director_data_dict["approved_object"] = (opening_content_bundle.get("required_content") or {}).get("approved_object") or ""
+    _start_progress(session_id, "composing")
     composer_output = await run_generation(narrative_composer_agent.compose_scene,
         scene_director_data=director_data_dict,
         player_name=player_name,
@@ -2975,6 +3111,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         campaign_contract=campaign_contract,
         approved_object=director_data_dict["approved_object"],
     )
+    _start_progress(session_id, "writing")
     narrative = await _write_scene(narrative_request)
     if _seed_source == "premise_seed" and (narrative.score_detail or {}).get("fallback_used"):
         _seed_required = locals().get("_bsrc") or {}
@@ -3253,6 +3390,7 @@ async def start_session(session_id: str, payload: StartSessionRequest, current_u
         except Exception:
             pass
     loc_name = str(scene.get('location') or loc_name)
+    _start_progress(session_id, "finishing")
     (folder / 'scene.json').write_text(json.dumps(scene))
 
     # --- Step 4b: Visual Director + Image generation ---

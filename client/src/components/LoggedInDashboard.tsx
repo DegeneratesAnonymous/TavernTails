@@ -1269,6 +1269,16 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     }
   }, [activeCampaignId, activeCharacterId, openingSetupAnswers, openingSetupBusy, openingSetupCharacterHook, openingSetupData, openingSetupSessionId])
 
+  // The gameplay screen's "Continue setup" button asks for the opening questions to be reopened.
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const sessionId = String((event as CustomEvent).detail?.sessionId || '')
+      if (sessionId) void loadOpeningSetup(sessionId)
+    }
+    window.addEventListener('session:open-opening-setup', handler)
+    return () => window.removeEventListener('session:open-opening-setup', handler)
+  }, [loadOpeningSetup])
+
   const skipOpeningSetup = useCallback(async () => {
     if (!openingSetupSessionId || openingSetupBusy) return
     setOpeningSetupBusy(true)
@@ -1775,6 +1785,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                             <button
                               key={option.id}
                               type="button"
+                              aria-pressed={selected}
                               className={`opening-choice-card ${selected ? 'opening-choice-card--selected' : ''}`}
                               onClick={() => {
                                 setOpeningSetupCustomOpen(prev => ({ ...prev, [activeQuestion.id]: false }))
@@ -1784,7 +1795,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                                 }))
                               }}
                             >
-                              <span className="opening-choice-radio">{selected ? 'x' : ''}</span>
+                              <span className="opening-choice-radio" aria-hidden="true">{selected ? '✓' : ''}</span>
                               <span>{option.label}</span>
                             </button>
                           )
