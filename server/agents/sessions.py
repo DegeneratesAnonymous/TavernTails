@@ -279,6 +279,15 @@ _NULL_ANSWER = re.compile(
 )
 
 
+# Our own placeholder wording for an answer nobody gave ("... the campaign has not yet decided what personal
+# history connects them to it"). It describes the setup, not the character, so it is never read back to the player.
+_SYSTEM_PLACEHOLDER = re.compile(
+    r"has not yet decided|have not yet decided|not (?:yet )?established|remains the player.s choice|"
+    r"established background gives|without assuming|the campaign has not",
+    re.IGNORECASE,
+)
+
+
 def _anchor_repair_text(anchor: dict, loc_name: str, player_name: str) -> str:
     """Restate the character's setup answers as their own words.
 
@@ -292,7 +301,7 @@ def _anchor_repair_text(anchor: dict, loc_name: str, player_name: str) -> str:
 
     def said(key: str) -> str:
         text = str(anchor.get(key) or "").strip()
-        return "" if not text or _NULL_ANSWER.match(text) else text.replace('"', "'")
+        return "" if not text or _NULL_ANSWER.match(text) or _SYSTEM_PLACEHOLDER.search(text) else text.replace('"', "'")
 
     def quoted(text: str) -> str:
         """Quote ``text`` keeping its own terminal mark (?, !, .) instead of adding a second one."""

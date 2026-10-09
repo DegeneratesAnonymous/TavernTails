@@ -83,3 +83,15 @@ def test_completion_that_still_fails_a_hard_check_falls_back(monkeypatch):
     monkeypatch.setattr(sessions, "build_opening_scene_contract", lambda **k: contract)
     result, _ = _apply(monkeypatch, [_validation(concrete_npc_object=True), _validation(mentions_location=True), _validation()], _scene())
     assert result["generation_debug"]["fallback_reason"] == "opening_contract_repair"
+
+
+def test_system_placeholder_answers_are_never_read_back_to_the_player():
+    anchor = {
+        "character_name": "Maren Holt",
+        "arrival_reason": "Study first sign of trouble before it is hidden.",
+        "personal_stake": "Maren Holt's established background gives them a reason to pay attention, but the campaign has not yet decided what personal history connects them to it.",
+        "followed_complication": "A rival or debt collector is close behind.",
+    }
+    text = sessions._anchor_repair_text(anchor, "Drowned Lighthouse", "Maren Holt")
+    assert "Study first sign of trouble" in text and "debt collector" in text
+    assert "has not yet decided" not in text and "Why it matters" not in text
