@@ -946,8 +946,13 @@
   background: rgba(22, 17, 12, 0.78);
   color: rgba(255,255,255,0.82);
   text-align: left;
-  font-size: 14px;
-  line-height: 1.35;
+  /* Answers are full sentences: read them in body type, not the all-caps small-caps UI face. */
+  font-family: var(--font-body, Georgia, serif);
+  font-size: 15px;
+  font-variant: normal;
+  text-transform: none;
+  letter-spacing: 0;
+  line-height: 1.4;
 }
 
 .opening-choice-card:hover {

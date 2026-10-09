@@ -269,10 +269,11 @@
 .narrative-text {
   margin: 0 0 1.05em;
   white-space: pre-wrap;
-  line-height: 1.76;
-  font-size: clamp(1rem, 1.15vw, 1.12rem);
+  line-height: 1.7;
+  font-size: clamp(1.06rem, 1.2vw, 1.2rem);
   color: rgba(255,255,255,0.92);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  /* Story prose is read for minutes at a time: a book face, not the monospace it used to be set in. */
+  font-family: var(--font-body, 'IM Fell English', 'Palatino Linotype', Georgia, serif);
   text-shadow: 0 1px 8px rgba(0,0,0,0.7);
 }
 

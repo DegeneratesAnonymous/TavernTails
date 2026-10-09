@@ -646,6 +646,8 @@ export default function GameplayLayout({
     const handler = (event: Event) => {
       const s = (event as CustomEvent).detail as any
       if (!s) return
+      // A real scene has arrived (the setup placeholder does not count), so the session has started.
+      if (!s.setup_pending && (s.narrative_body || s.text)) setSessionStarted(true)
       const clock = s.world_clock || {}
       const currentSituation = s.current_situation || {}
       // Prefer world_moves (new field); fall back to hooks (legacy)

@@ -778,6 +778,11 @@ def generate_narrative(payload: NarrativeRequest) -> NarrativeResponse:
 
         # Build targeted feedback for next attempt
         feedback = feedback_for_regeneration(result)
+        if active_rolls:
+            # A draft that missed the quality bar with the rolls in is retried without them, so a roll that fits
+            # badly (a storm-giant reunion at a marsh lighthouse) can only ever cost one attempt, never the scene.
+            active_rolls = []
+            rolls_dropped = True
 
     score_dict: dict = {**(best_score.to_dict() if best_score else {}),
                         "attempts": attempts, "elapsed_ms": round((time.perf_counter() - started) * 1000),

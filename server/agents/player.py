@@ -210,7 +210,8 @@ def set_beyond20_domains(identifier: str = Body(...), domains_text: str | None =
 
 @router.get("/player/me")
 def player_me(current_user=Depends(get_current_user)):
-    return {"profile": current_user.profile}
+    # Include email/username: clients match "me" against session members by that identity.
+    return {"profile": db._profile_with_identity(current_user)}
 
 
 @router.put("/player/me")

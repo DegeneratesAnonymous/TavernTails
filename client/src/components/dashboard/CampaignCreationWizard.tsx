@@ -385,13 +385,15 @@ function SeatChoice({
   draft,
   characters,
   onChange,
+  invalid = false,
 }: {
   draft: CampaignDraft
   characters: CampaignCharacterOption[]
   onChange: (patch: Partial<CampaignDraft>) => void
+  invalid?: boolean
 }) {
   return (
-    <div className="card card-pad" style={{ display: 'grid', gap: 10, marginTop: 14 }}>
+    <div id="campaign-seat" className={`card card-pad${invalid ? ' wizard-seat--invalid' : ''}`} style={{ display: 'grid', gap: 10, marginTop: 14 }}>
       <div style={{ fontWeight: 750 }}>Your seat</div>
       <div className="row-wrap" style={{ gap: 8 }}>
         <label className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
@@ -416,6 +418,7 @@ function SeatChoice({
           <select
             className="input"
             value={draft.ownerCharacterId}
+            aria-invalid={invalid || undefined}
             onChange={(e) => onChange({ ownerCharacterId: e.target.value })}
           >
             <option value="">Select a character</option>
@@ -569,7 +572,7 @@ function StepQuickDetails({
           </label>
           <textarea
             id="quick-campaign-premise"
-            className="wizard-name-input"
+            className="wizard-name-input wizard-premise-input"
             value={draft.quickPremise}
             onChange={(e) => onPremiseChange(e.target.value)}
             placeholder="One or two concrete sentences. Example: The royal succession is disputed after the dead king's signet appears in a rebel camp. I want the opening to begin during the public funeral."
@@ -1323,6 +1326,14 @@ export default function CampaignCreationWizard({ onDone, onCampaignCreated, char
   const [seeds, setSeeds] = useState<CampaignSeed[]>([])
 
   const derived = deriveCampaignSettings(draft.quizAnswers)
+  const seatInvalid = Boolean(error) && draft.ownerRole === 'player' && !draft.ownerCharacterId
+
+  // Someone with exactly one character has nothing to choose: seat them instead of making them find the field.
+  useEffect(() => {
+    if (characters.length === 1 && draft.ownerRole === 'player' && !draft.ownerCharacterId) {
+      setDraft((d) => (d.ownerRole === 'player' && !d.ownerCharacterId ? { ...d, ownerCharacterId: String(characters[0].id) } : d))
+    }
+  }, [characters, draft.ownerRole, draft.ownerCharacterId])
 
   // Lazy-load seeds when user picks that path
   useEffect(() => {
@@ -1392,6 +1403,7 @@ export default function CampaignCreationWizard({ onDone, onCampaignCreated, char
       if (draft.ownerRole === 'player' && !draft.ownerCharacterId) {
         setError('Choose which character you are joining with, or designate yourself as DM.')
         setBusy(false)
+        document.getElementById('campaign-seat')?.scrollIntoView({ block: 'center', behavior: 'smooth' })
         return
       }
       let created: CreatedCampaignResult
@@ -1510,9 +1522,10 @@ export default function CampaignCreationWizard({ onDone, onCampaignCreated, char
             <SeatChoice
               draft={draft}
               characters={characters}
+              invalid={seatInvalid}
               onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
             />
-            {error && <div className="inline-alert inline-alert-error" style={{ marginTop: 12 }}>{error}</div>}
+            {error && <div className="inline-alert inline-alert-error wizard-error" role="alert" style={{ marginTop: 12 }}>{error}</div>}
             <div className="wizard-nav" style={{ marginTop: 16 }}>
               <button className="btn btn-secondary" type="button" onClick={goBack}>← Back</button>
               <button className="btn" type="button" disabled={!canAdvance() || busy} onClick={submit}>
@@ -1597,6 +1610,7 @@ export default function CampaignCreationWizard({ onDone, onCampaignCreated, char
             <SeatChoice
               draft={draft}
               characters={characters}
+              invalid={seatInvalid}
               onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
             />
             <div className="wizard-nav" style={{ marginTop: 8 }}>
@@ -1642,9 +1656,10 @@ export default function CampaignCreationWizard({ onDone, onCampaignCreated, char
             <SeatChoice
               draft={draft}
               characters={characters}
+              invalid={seatInvalid}
               onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
             />
-            {error && <div className="inline-alert inline-alert-error" style={{ marginTop: 12 }}>{error}</div>}
+            {error && <div className="inline-alert inline-alert-error wizard-error" role="alert" style={{ marginTop: 12 }}>{error}</div>}
             <div className="wizard-nav" style={{ marginTop: 16 }}>
               <button className="btn btn-secondary" type="button" onClick={() => setStep('import-text')}>← Back</button>
               <button className="btn" type="button" disabled={!draft.name.trim() || busy} onClick={submit}>
@@ -1687,9 +1702,10 @@ export default function CampaignCreationWizard({ onDone, onCampaignCreated, char
             <SeatChoice
               draft={draft}
               characters={characters}
+              invalid={seatInvalid}
               onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
             />
-            {error && <div className="inline-alert inline-alert-error" style={{ marginTop: 12 }}>{error}</div>}
+            {error && <div className="inline-alert inline-alert-error wizard-error" role="alert" style={{ marginTop: 12 }}>{error}</div>}
             <div className="wizard-nav" style={{ marginTop: 16 }}>
               <button className="btn btn-secondary" type="button" onClick={goBack}>← Back</button>
               <button className="btn" type="button" disabled={busy} onClick={submit}>
