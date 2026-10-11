@@ -177,13 +177,11 @@ def name_in_text(name: str, source: str) -> bool:
     parts = re.findall(r"[^\W\d_][\w'-]*", name)
     if not parts:
         return False
-
-    def present(part: str) -> bool:
-        if re.search(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]", part):
-            return part in source  # CJK text has no spaces to bound a word
-        return re.search(rf"(?<![\w'-]){re.escape(part)}(?![\w'-])", source, re.IGNORECASE) is not None
-
-    return all(present(p) for p in parts)
+    if re.search(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]", name):
+        return "".join(parts) in re.sub(r"\s+", "", source)  # CJK text has no spaces to bound a word
+    # The whole name, in order and together: "Maren Holt" and "Tomas Vey" do not make "Maren Vey".
+    pattern = r"[\s.'\u2019-]+".join(re.escape(p) for p in parts)
+    return re.search(rf"(?<![\w'-]){pattern}(?![\w'-])", source, re.IGNORECASE) is not None
 
 
 _LEVEL = re.compile(r"\blevel\s*(\d{1,2})\b|\b(\d{1,2})(?:st|nd|rd|th)?[- ]level\b|\blvl\.?\s*(\d{1,2})\b", re.I)
@@ -244,7 +242,12 @@ def relevant_lore(lore: str, query: str, budget: int = MAX_LORE_PROMPT_CHARS) ->
     if not paragraphs:
         return lore[:budget]
     wanted = content_tokens(query)
-    ranked = sorted(range(1, len(paragraphs)), key=lambda i: -len(content_tokens(paragraphs[i]) & wanted))
+    if wanted:
+        ranked = sorted(range(1, len(paragraphs)), key=lambda i: -len(content_tokens(paragraphs[i]) & wanted))
+    else:
+        # Nothing to rank by (notes but no description): sample across the whole document instead of
+        # filling the budget from its beginning. Golden-ratio steps spread the picks evenly.
+        ranked = sorted(range(1, len(paragraphs)), key=lambda i: (i * 0.6180339887) % 1.0)
     chosen, used = {0}, len(paragraphs[0])
     for i in ranked:
         if used + len(paragraphs[i]) + 2 > budget:

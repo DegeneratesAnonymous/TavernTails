@@ -103,9 +103,13 @@ def reveals_secret(fields: dict[str, str], hidden_truth: dict[str, Any], premise
     public = _tokens(" ".join([premise, str(hidden_truth.get("visible_problem") or ""), str(hidden_truth.get("first_clue") or "")]))
     hidden_text = str(hidden_truth.get("hidden_truth") or "")
     shown_text = " ".join(fields.values())
-    normalize = lambda text: " ".join(re.findall(r"\w+", text.casefold()))  # noqa: E731
-    if len(normalize(hidden_text).split()) >= 3 and normalize(hidden_text) in normalize(shown_text):
-        return True  # repeated word for word
+    compact = lambda text: re.sub(r"[\W_]+", "", text.casefold())  # noqa: E731
+    hidden_compact = compact(hidden_text)
+    # Repeated word for word, in any script: compared without spaces or punctuation, so a Chinese or
+    # Japanese secret (no spaces, no ASCII words) is caught too. Short CJK strings already carry meaning.
+    cjk = re.search(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]", hidden_text) is not None
+    if len(hidden_compact) >= (3 if cjk else 8) and hidden_compact in compact(shown_text):
+        return True
     secret = _tokens(hidden_text) - public
     if not secret:
         # Only short words ("the king did it"): compare the meaningful ones instead.

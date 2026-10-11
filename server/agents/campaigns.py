@@ -633,6 +633,12 @@ def update_world_skeleton(
             raise HTTPException(status_code=422, detail='visibility must be "surprise" or "show"')
         world_skeleton.set_visibility(campaign_id, req.visibility)
     state = dict(((db.get_campaign_by_id(campaign_id) or c).metadata_json or {}).get("world_skeleton") or {})
+    if req.retry:
+        # A retry finishes a world that was asked for; it never starts one that creation skipped
+        # (classic setup, the box unticked, or "Stick to what I wrote").
+        settings = (c.metadata_json or {}).get("settings") or {}
+        if not state or state.get("status") == "not_started" or settings.get("canon_policy") == "strict_canon":
+            raise HTTPException(status_code=409, detail="This campaign was created without a world underneath")
     if req.retry and not world_skeleton.is_active(campaign_id, state):
         world_skeleton.request_retry(campaign_id)
         background_tasks.add_task(world_skeleton.run_world_skeleton, campaign_id)

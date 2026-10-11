@@ -215,7 +215,8 @@ def validate_factions(data: dict[str, Any], authored: list[str]) -> list[dict[st
     for name in authored:  # the player's factions exist whether or not the model kept them
         if name.casefold() not in returned:
             out.insert(0, {"name": name, "wants": "", "plan": "", "if_ignored": ""})
-    return out[: max(3, len(authored))] if len(out) >= 2 else None
+    # The player's own factions are kept even when the model added nothing usable.
+    return out[: max(3, len(authored))] if len(out) >= 2 or authored else None
 
 
 def validate_npcs(
@@ -290,6 +291,9 @@ def _persist(campaign: db.Campaign, piece: str, value: Any, *, thread_id: str | 
     player_text, lore = _player_text(meta), _lore(meta)
     ids: list[str] = []
     with Session(db.engine) as s:
+        if s.get(db.Campaign, campaign_id) is None:
+            # Deleted while the model was answering: writing now would leave orphan rows behind.
+            raise LookupError(f"campaign {campaign_id} no longer exists")
         if piece == "truth":
             ids.append(_add_entity(s, campaign_id, "story_thread", value["thread_name"], {
                 # current_situation is what the orchestrator offers as an available clue, so it carries
@@ -583,6 +587,35 @@ def _prepare_opening_seed(campaign: db.Campaign, truth: dict[str, str] | None, c
     return seed
 
 
+def _adopt_unrecorded_rows(campaign_id: str, pieces: dict[str, Any]) -> None:
+    """Mark pieces ready whose rows a crashed run committed before it could record them.
+
+    Rows are written in one transaction and recorded just after; a process that dies in between leaves
+    them active but unrecorded. Regenerating would add a second, contradicting truth or cast, so the
+    committed rows are adopted instead.
+    """
+    recorded = {eid for entry in pieces.values() for eid in (entry or {}).get("entity_ids") or []}
+    found: dict[str, list[str]] = {}
+    with Session(db.engine) as s:
+        rows = s.exec(select(CampaignEntity).where(CampaignEntity.campaign_id == campaign_id)
+                      .order_by(col(CampaignEntity.created_at))).all()
+        for row in rows:
+            piece = (row.data or {}).get("skeleton_piece")
+            if TAG in (row.tags or []) and piece in ("truth", "factions", "npcs") and row.id not in recorded:
+                found.setdefault(piece, []).append(row.id)
+        thread_ids = (pieces.get("truth") or {}).get("entity_ids") or found.get("truth", [])[:1]
+        if thread_ids:
+            hooks = s.exec(select(CampaignHook).where(CampaignHook.campaign_id == campaign_id,
+                                                      CampaignHook.entity_id == thread_ids[0],
+                                                      CampaignHook.hook_type == "ticking_clock")).all()
+            unrecorded = [h.id for h in hooks if h.id not in recorded]
+            if unrecorded:
+                found["clock"] = unrecorded[:1]
+    for piece, ids in found.items():
+        if (pieces.get(piece) or {}).get("status") != "ready":
+            pieces[piece] = {"status": "ready", "entity_ids": ids[:1] if piece == "truth" else ids}
+
+
 def generate_world_skeleton(
     campaign_id: str,
     *,
@@ -601,6 +634,7 @@ def generate_world_skeleton(
         call = chat_complete
 
     state = _state(campaign)
+    _adopt_unrecorded_rows(campaign_id, state["pieces"])
     job: dict[str, Any] = {"status": "running", "started_at": _now().isoformat(), "pieces": state["pieces"]}
     _save(campaign_id, job)
     pieces = job["pieces"]

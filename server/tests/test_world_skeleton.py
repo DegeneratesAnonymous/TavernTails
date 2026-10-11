@@ -679,3 +679,81 @@ def test_strict_seed_replaces_an_invented_name_with_its_role():
     assert seed["named_npc_or_visible_threat"] == "the dock boy (unnamed)"
     loose = extract_premise_seed(settings, {}, complete=lambda *a, **k: json.dumps(invented))
     assert loose["named_npc_or_visible_threat"] == "Tomas Reed (dock boy)"
+
+
+def test_relationships_to_hidden_entities_are_hidden_too():
+    from server.db import CampaignRelationship
+
+    owner = _user("skeleton-rels@example.com")
+    camp = _campaign("skeleton-rels@example.com")
+    db.set_campaign_metadata_keys(str(camp.id), owner.id, {"owner_participation": {"role": "player", "character_id": None}})
+    world_skeleton.generate_world_skeleton(str(camp.id), complete=_full_model())
+    npc_ids = db.get_campaign_by_id(str(camp.id)).metadata_json["world_skeleton"]["pieces"]["npcs"]["entity_ids"]
+    with Session(db.engine) as s:
+        s.add(CampaignRelationship(id="rel-hidden", campaign_id=str(camp.id), source_entity_id=npc_ids[0],
+                                   target_entity_id=npc_ids[1], relationship_type="blackmails"))
+        s.commit()
+    client = TestClient(main.app)
+    headers = {"Authorization": f"Bearer {create_access_token(owner.email or '')}"}
+    assert client.get(f"/memory/{camp.id}/relationships", headers=headers).json() == []
+    assert client.delete(f"/memory/{camp.id}/relationships/rel-hidden", headers=headers).status_code == 404
+    upsert = client.post(f"/memory/{camp.id}/relationships", headers=headers,
+                         json={"source_entity_id": npc_ids[0], "target_entity_id": npc_ids[1], "relationship_type": "x"})
+    assert upsert.status_code == 404
+
+
+def test_a_lone_confirmed_faction_is_kept():
+    assert world_skeleton.validate_factions({"factions": []}, ["Tidewardens"]) == [
+        {"name": "Tidewardens", "wants": "", "plan": "", "if_ignored": ""}
+    ]
+    assert world_skeleton.validate_factions({"factions": []}, []) is None
+
+
+def test_no_rows_are_written_for_a_campaign_deleted_mid_job():
+    camp = _campaign("skeleton-deleted@example.com")
+    owner = db.get_user_by_identifier("skeleton-deleted@example.com")
+    base = _full_model()
+
+    def model(messages, **kwargs):
+        if '"thread_name"' in messages[0]["content"]:
+            db.delete_campaign_memory(str(camp.id))
+            db.delete_campaign(str(camp.id), owner.id)
+        return base(messages, **kwargs)
+
+    world_skeleton.generate_world_skeleton(str(camp.id), complete=model)
+    assert _entities(str(camp.id)) == []
+
+
+def test_retry_never_starts_a_world_creation_skipped():
+    owner = _user("skeleton-optout@example.com")
+    headers = {"Authorization": f"Bearer {create_access_token(owner.email or '')}"}
+    client = TestClient(main.app)
+    classic = client.post("/campaigns", headers=headers, json={"name": "Classic", "create_session": False}).json()["campaign"]
+    assert client.post(f"/campaigns/{classic['id']}/world", headers=headers, json={"retry": True}).status_code == 409
+
+
+def test_rows_committed_before_a_crash_are_adopted_not_regenerated():
+    camp = _campaign("skeleton-adopt@example.com")
+    owner = db.get_user_by_identifier("skeleton-adopt@example.com")
+    world_skeleton.generate_world_skeleton(str(camp.id), complete=_full_model())
+    before = len(_entities(str(camp.id)))
+    # The process died after committing every piece's rows but before recording them.
+    state = dict(db.get_campaign_by_id(str(camp.id)).metadata_json["world_skeleton"])
+    state["pieces"] = {p: {"status": "pending"} for p in world_skeleton.PIECES}
+    db.set_campaign_metadata_keys(str(camp.id), owner.id, {"world_skeleton": state})
+    asked: list[str] = []
+
+    def model(messages, **kwargs):
+        asked.append(messages[0]["content"])
+        return _full_model()(messages, **kwargs)
+
+    state = world_skeleton.generate_world_skeleton(str(camp.id), complete=model)
+    assert state["status"] == "ready"
+    assert len(_entities(str(camp.id))) == before  # nothing generated twice
+    assert not any('"thread_name"' in a or '"npcs"' in a or '"deadline"' in a for a in asked)
+
+
+def test_a_cjk_secret_repeated_verbatim_is_a_leak():
+    secret = {**TRUTH, "hidden_truth": "港务长出卖了守塔人", "visible_problem": "灯塔熄灭了", "first_clue": "楼梯上的焦油"}
+    assert reveals_secret({**SEED, "immediate_problem": "传言说港务长出卖了守塔人。"}, secret, "灯塔守护人失踪了")
+    assert not reveals_secret(SEED, secret, "灯塔守护人失踪了")

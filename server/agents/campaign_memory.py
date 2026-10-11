@@ -293,7 +293,7 @@ def list_relationships(
     entity_id: str | None = None,
     current_user=Depends(get_current_user),
 ):
-    _require_campaign_access(campaign_id, current_user)
+    hidden = _Hidden(_require_campaign_access(campaign_id, current_user), current_user)
     with Session(db.engine) as s:
         stmt = select(CampaignRelationship).where(CampaignRelationship.campaign_id == campaign_id)
         if entity_id:
@@ -305,7 +305,7 @@ def list_relationships(
                 )
             )
         rels = s.exec(stmt).all()
-    return [_rel_dict(r) for r in rels]
+    return [_rel_dict(r) for r in rels if not (hidden.entity(r.source_entity_id) or hidden.entity(r.target_entity_id))]
 
 
 @router.post("/{campaign_id}/relationships", status_code=201)
@@ -314,7 +314,9 @@ def upsert_relationship(
     req: RelationshipUpsert,
     current_user=Depends(get_current_user),
 ):
-    _require_campaign_access(campaign_id, current_user)
+    hidden = _Hidden(_require_campaign_access(campaign_id, current_user), current_user)
+    hidden.require_visible(req.source_entity_id)
+    hidden.require_visible(req.target_entity_id)
     with Session(db.engine) as s:
         # Look for existing relationship between these two entities
         stmt = select(CampaignRelationship).where(
@@ -352,10 +354,10 @@ def upsert_relationship(
 
 @router.delete("/{campaign_id}/relationships/{rel_id}", status_code=204)
 def delete_relationship(campaign_id: str, rel_id: str, current_user=Depends(get_current_user)):
-    _require_campaign_access(campaign_id, current_user)
+    hidden = _Hidden(_require_campaign_access(campaign_id, current_user), current_user)
     with Session(db.engine) as s:
         r = s.get(CampaignRelationship, rel_id)
-        if not r or r.campaign_id != campaign_id:
+        if not r or r.campaign_id != campaign_id or hidden.entity(r.source_entity_id) or hidden.entity(r.target_entity_id):
             raise HTTPException(status_code=404, detail="Relationship not found")
         s.delete(r)
         s.commit()

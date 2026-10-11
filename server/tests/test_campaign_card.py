@@ -201,3 +201,19 @@ def test_relevant_lore_reaches_into_one_long_paragraph():
     lore = " ".join(f"The grain tithe rose again in year {i}." for i in range(1500)) + " The Tidewardens keep the lighthouse lamp."
     excerpt = relevant_lore(lore, "the Tidewardens and the lighthouse", budget=2000)
     assert len(excerpt) <= 2000 and "Tidewardens keep the lighthouse lamp" in excerpt
+
+
+def test_a_name_must_appear_as_one_name():
+    from server.agents.campaign_card import name_in_text
+
+    assert not name_in_text("Maren Vey", "Maren Holt runs the docks; Tomas Vey keeps the light.")
+    assert name_in_text("Maren Vey", "The keeper, Maren Vey, vanished.")
+
+
+def test_notes_without_a_description_are_sampled_across_the_document():
+    from server.agents.campaign_card import relevant_lore
+
+    lore = "\n\n".join(f"Section {i}: " + "words " * 30 for i in range(200))
+    excerpt = relevant_lore(lore, "", budget=3000)
+    numbers = [int(p.split(":")[0].split()[1]) for p in excerpt.split("\n\n") if p.startswith("Section")]
+    assert max(numbers) > 150  # reaches the end, not just the first pages
