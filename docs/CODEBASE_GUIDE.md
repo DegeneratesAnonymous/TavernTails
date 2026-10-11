@@ -60,7 +60,8 @@ New campaigns start from the player's own description, not from a form of AI set
    player's text, never by the model's word. Names of people, factions and places that the player
    did not write are dropped. Two fixed follow-up questions (where it opens, what is wrong) are
    asked only when those fields are open. If the model fails, the card holds the text and the
-   chosen starter.
+   chosen starter. The card's content rating and limits go into the contract's `safety_policy`
+   (limits as `avoid`), which narration and validation read.
 2. `POST /campaigns` with `card` turns the confirmed card into settings and variables
    (`card_to_campaign`). Canon policy, creativity and posture are derived from the card's
    "how much may the storyteller invent" field instead of being asked for.
@@ -75,7 +76,9 @@ New campaigns start from the player's own description, not from a form of AI set
    when the owner chose "Show me the world", or to a DM. Only the owner may change that choice.
    Campaign metadata holds only progress and row ids, never the contents, because the campaign
    list and detail routes return metadata whole. A piece is marked ready only after its rows are
-   saved.
+   saved. For a player-owner who chose "surprise", the `/memory` GM tools also hide the
+   skeleton's rows and refuse the context and next-actions summaries
+   (`world_skeleton.hidden_from`).
 5. Every change to the skeleton's state goes through `db.update_campaign_metadata`, a
    read-change-write in one row-locked transaction, so a mid-run visibility change survives the
    job's saves. The first opening questionnaire consumes the prepared seed once

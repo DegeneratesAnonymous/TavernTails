@@ -138,3 +138,42 @@ def test_the_whole_advertised_description_is_kept():
     text = ("The harbor keeps its secrets. " * 260)[:7900]
     card = read_campaign_card(text, complete=lambda *a, **k: None)
     assert card["text"] == text.strip()
+
+
+def test_names_match_as_whole_words():
+    from server.agents.campaign_card import name_in_text
+
+    assert name_in_text("Maren Vey", "the keeper maren vey vanished")
+    assert not name_in_text("Art Bell", "artifacts and Belladonna")
+    assert not name_in_text("Vey", "surveyors")
+
+
+def test_an_edited_premise_leads_the_summary_the_world_is_built_from():
+    card = read_campaign_card(TEXT, complete=_answer())
+    editable = {**card, "fields": {**card["fields"], "premise": {"value": "A cozy fishing village festival gone wrong", "status": "said"}}}
+    summary = card_to_campaign(editable)["settings"]["setting_summary"]
+    assert summary.startswith("A cozy fishing village festival gone wrong.")
+    assert card_to_campaign(card)["settings"]["setting_summary"].startswith("A grim harbor town")
+
+
+def test_rating_and_limits_reach_the_contract_safety_policy():
+    from fastapi.testclient import TestClient
+
+    import server.main as main
+    from server import db
+    from server.auth import create_access_token
+
+    email = "card-safety@example.com"
+    user = db.get_user_by_identifier(email) or db.create_user(email=email, password="secret", username="cardsafety")
+    if not user.verified:
+        db.verify_user(email, user.verification_token or "")
+    card = read_campaign_card(TEXT, complete=_answer(content_rating="family"))
+    res = TestClient(main.app).post(
+        "/campaigns",
+        headers={"Authorization": f"Bearer {create_access_token(email)}"},
+        json={"name": "Safe", "card": card, "create_session": False, "generate_world": False},
+    )
+    assert res.status_code == 201, res.text
+    contract = db.get_campaign_by_id(res.json()["campaign"]["id"]).metadata_json["campaign_contract"]
+    assert contract["safety_policy"]["content_rating"] == "family"
+    assert contract["safety_policy"]["avoid"] == ["harm to children"]

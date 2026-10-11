@@ -34,6 +34,7 @@ from sqlmodel import Session, col, select
 
 from .. import db
 from ..db import CampaignChangeLog, CampaignEntity, CampaignHook
+from .campaign_card import name_in_text
 from .generation_intent import clean_text, content_tokens
 from .premise_seed import parse_json_object
 
@@ -167,8 +168,13 @@ def validate_truth(data: dict[str, Any], *, opening_trouble: str = "") -> dict[s
     hidden, visible = content_tokens(out["hidden_truth"]), content_tokens(out["visible_problem"])
     if hidden and len(hidden - visible) < 2:
         return None  # the "truth" only restates what everyone can already see
-    if opening_trouble and not content_tokens(opening_trouble) & (visible | content_tokens(out["thread_name"])):
-        return None  # it planned a different crisis than the one the player described
+    trouble = content_tokens(opening_trouble)
+    if trouble:
+        # Most of what the player said is wrong must be what the party sees: a murder "near the bridge"
+        # does not match "the bridge collapsed". Small models paraphrase, so not every word is required.
+        shared = trouble & (visible | content_tokens(out["thread_name"]))
+        if len(shared) < min(3, (len(trouble) + 1) // 2):
+            return None  # it planned a different crisis than the one the player described
     return out
 
 
@@ -228,13 +234,9 @@ def _now() -> datetime:
 
 
 def _provenance(name: str, player_text: str, lore: str) -> str:
-    def has(hay: str) -> bool:
-        parts = [p.casefold() for p in name.split() if len(p) > 2]
-        return bool(parts) and all(p in hay.casefold() for p in parts)
-
-    if has(player_text):
+    if name_in_text(name, player_text):
         return "user"
-    if lore and has(lore):
+    if lore and name_in_text(name, lore):
         return "imported"
     return "generated_provisional"
 
@@ -454,6 +456,29 @@ def set_visibility(campaign_id: str, visibility: str) -> None:
     _update(campaign_id, change)
 
 
+def hidden_from(campaign: db.Campaign, user_id: int | None) -> bool:
+    """True for a player-owner who chose "Keep it a surprise"; the DM and the assigned GM always see it."""
+    meta = _meta(campaign)
+    state = meta.get("world_skeleton") or {}
+    if not state or state.get("visibility") == "show":
+        return False
+    if user_id is not None and user_id == campaign.gm_user_id:
+        return False
+    return (meta.get("owner_participation") or {}).get("role") != "dm"
+
+
+def skeleton_row_ids(campaign: db.Campaign) -> tuple[set[str], set[str]]:
+    """(entity ids, hook ids) the skeleton wrote, for filtering GM tooling a surprised owner can call."""
+    entity_ids: set[str] = set()
+    with Session(db.engine) as s:
+        for row in s.exec(select(CampaignEntity).where(CampaignEntity.campaign_id == str(campaign.id))).all():
+            if TAG in (row.tags or []):
+                entity_ids.add(row.id)
+    pieces = (_meta(campaign).get("world_skeleton") or {}).get("pieces") or {}
+    hook_ids = set((pieces.get("clock") or {}).get("entity_ids") or [])
+    return entity_ids, hook_ids
+
+
 def is_active(campaign_id: str, state: dict[str, Any]) -> bool:
     """Whether a job is (probably) still working on this state, in this process or another."""
     if is_running(campaign_id):
@@ -476,6 +501,10 @@ def public_view(state: dict[str, Any], *, reveal: bool = False) -> dict[str, Any
         "visibility": state["visibility"],
         "pieces": {p: {"status": state["pieces"][p].get("status", "pending")} for p in PIECES},
     }
+    for piece in PIECES:  # why a piece fell back to play (model_error, unparseable, invalid, ...)
+        reason = state["pieces"][piece].get("reason")
+        if reason and view["pieces"][piece]["status"] == "failed":
+            view["pieces"][piece]["reason"] = reason
     if reveal or view["visibility"] == "show":
         for piece in PIECES:
             contents = _ready_contents(state, piece)
@@ -513,7 +542,8 @@ def _prepare_opening_seed(campaign: db.Campaign, truth: dict[str, str] | None, c
     contract = {**(meta.get("campaign_contract") or {}), "campaign_name": campaign.name}
     seed = extract_premise_seed(settings, contract, complete=call, timeout=timeout, hidden_truth=truth)
     if seed is None and truth is not None:
-        seed = extract_premise_seed(settings, contract, complete=call, timeout=timeout)
+        # Without the hint, but still checked against the secret.
+        seed = extract_premise_seed(settings, contract, complete=call, timeout=timeout, hidden_truth=truth, hint=False)
     return seed
 
 

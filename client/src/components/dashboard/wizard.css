@@ -1233,6 +1233,16 @@
   font-variant: normal;
 }
 
+.card-creator-inputs {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.card-creator-inputs:disabled { opacity: 0.7; }
+
 .card-creator-starters {
   display: grid;
   gap: 6px;

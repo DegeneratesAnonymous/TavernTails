@@ -686,12 +686,18 @@ def _pacing_profile(hay: str, variables: dict[str, Any]) -> dict[str, Any]:
 
 def _safety_profile(hay: str, variables: dict[str, Any]) -> dict[str, Any]:
     rating = variables.get("content_rating") or ("mature" if "mature" in hay else "pg-13")
-    return {
+    profile: dict[str, Any] = {
         "content_rating": rating,
         "violence_detail": "low" if rating == "family" else "moderate",
         "fade_to_black": True,
         "respect_backstory_boundaries": True,
     }
+    # Limits the player wrote ("avoid harm to children"); an "avoid" key becomes a user constraint
+    # in generation_intent, which narration and validation both read.
+    limits = _split_terms(variables.get("content_limits"))
+    if limits:
+        profile["avoid"] = limits
+    return profile
 
 
 def _ui_emphasis(primary: list[str]) -> dict[str, Any]:

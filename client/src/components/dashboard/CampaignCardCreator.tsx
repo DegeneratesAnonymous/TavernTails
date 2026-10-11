@@ -51,6 +51,8 @@ type Props = {
 
 export default function CampaignCardCreator({ seat, owner, validateSeat, fallbackName, onCreated, onClassic }: Props) {
   const [text, setText] = useState('')
+  // The sentence a starter put in the box, so another starter can replace it (but never the player's own words).
+  const [autoText, setAutoText] = useState<string | null>(null)
   const [starter, setStarter] = useState<Record<string, string>>({})
   const [lore, setLore] = useState('')
   const [showLore, setShowLore] = useState(false)
@@ -74,15 +76,22 @@ export default function CampaignCardCreator({ seat, owner, validateSeat, fallbac
     return () => { live = false }
   }, [showSeeds, seeds.length])
 
+  function fillFromStarter(next: string | null) {
+    const untouched = !text.trim() || text === autoText
+    if (!untouched) return
+    setText(next ?? '')
+    setAutoText(next)
+  }
+
   function pickGenre(id: string, starterText: string) {
     const same = starter.genre === id && !starter.seed_id
     setStarter(same ? {} : { genre: id })
-    if (!same && !text.trim()) setText(starterText)
+    fillFromStarter(same ? null : starterText)
   }
 
   function pickSeed(seed: SeedOption) {
     setStarter({ seed_id: seed.id })
-    if (!text.trim()) setText(seed.setting_summary)
+    fillFromStarter(seed.setting_summary)
     setShowSeeds(false)
   }
 
@@ -156,83 +165,86 @@ export default function CampaignCardCreator({ seat, owner, validateSeat, fallbac
             Describe it however you like: the place, the trouble, the feel, the rules you use. I'll read it back so you can check it.
           </div>
         </div>
-        <textarea
-          className="input card-creator-text"
-          aria-label="Describe your campaign"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          rows={6}
-          maxLength={8000}
-          placeholder="A grim harbor town where the lighthouse keeper vanished. Political, not much combat. 5e, level 3."
-        />
-        <div className="card-creator-starters">
-          <span className="wizard-control-label">Start from</span>
-          <div className="row-wrap" style={{ gap: 6 }}>
-            {GENRE_STARTERS.map((g) => (
+        {/* Frozen while reading: the card that comes back is built from what was sent. */}
+        <fieldset className="card-creator-inputs" disabled={busy === 'reading'}>
+          <textarea
+            className="input card-creator-text"
+            aria-label="Describe your campaign"
+            value={text}
+            onChange={(e) => { setText(e.target.value); setAutoText(null) }}
+            rows={6}
+            maxLength={8000}
+            placeholder="A grim harbor town where the lighthouse keeper vanished. Political, not much combat. 5e, level 3."
+          />
+          <div className="card-creator-starters">
+            <span className="wizard-control-label">Start from</span>
+            <div className="row-wrap" style={{ gap: 6 }}>
+              {GENRE_STARTERS.map((g) => (
+                <button
+                  key={g.id}
+                  type="button"
+                  className={`wizard-segment card-creator-chip${starter.genre === g.id && !starter.seed_id ? ' is-selected' : ''}`}
+                  aria-pressed={starter.genre === g.id && !starter.seed_id}
+                  onClick={() => pickGenre(g.id, g.text)}
+                >
+                  {g.emoji} {g.label}
+                </button>
+              ))}
               <button
-                key={g.id}
                 type="button"
-                className={`wizard-segment card-creator-chip${starter.genre === g.id && !starter.seed_id ? ' is-selected' : ''}`}
-                aria-pressed={starter.genre === g.id && !starter.seed_id}
-                onClick={() => pickGenre(g.id, g.text)}
+                className={`wizard-segment card-creator-chip${starter.seed_id ? ' is-selected' : ''}`}
+                aria-expanded={showSeeds}
+                onClick={() => setShowSeeds((v) => !v)}
               >
-                {g.emoji} {g.label}
+                📜 A seed
               </button>
-            ))}
-            <button
-              type="button"
-              className={`wizard-segment card-creator-chip${starter.seed_id ? ' is-selected' : ''}`}
-              aria-expanded={showSeeds}
-              onClick={() => setShowSeeds((v) => !v)}
-            >
-              📜 A seed
-            </button>
-            <button
-              type="button"
-              className={`wizard-segment card-creator-chip${showLore || lore ? ' is-selected' : ''}`}
-              aria-expanded={showLore}
-              onClick={() => setShowLore((v) => !v)}
-            >
-              📎 My setting notes
-            </button>
-          </div>
-        </div>
-        {showSeeds && (
-          <div className="card-creator-seeds">
-            {seeds.length === 0 && <div className="muted">Loading seeds…</div>}
-            {seeds.map((seed) => (
               <button
-                key={seed.id}
                 type="button"
-                className={`wizard-path-card${starter.seed_id === seed.id ? ' is-selected' : ''}`}
-                onClick={() => pickSeed(seed)}
+                className={`wizard-segment card-creator-chip${showLore || lore ? ' is-selected' : ''}`}
+                aria-expanded={showLore}
+                onClick={() => setShowLore((v) => !v)}
               >
-                <strong className="wizard-path-label">{seed.emoji} {seed.title}</strong>
-                <span className="wizard-path-desc">{seed.tagline}</span>
+                📎 My setting notes
               </button>
-            ))}
+            </div>
           </div>
-        )}
-        {showLore && (
-          <div className="wizard-control-group">
-            <label className="wizard-control-label" htmlFor="card-lore">Setting notes</label>
-            <textarea
-              id="card-lore"
-              className="input"
-              value={lore}
-              onChange={(e) => setLore(e.target.value)}
-              rows={6}
-              maxLength={60000}
-              placeholder="Paste lore, a setting bible, or homebrew notes. Names and facts here are kept as canon."
-            />
-            <input
-              type="file"
-              accept=".txt,.md,text/plain,text/markdown"
-              aria-label="Upload setting notes"
-              onChange={(e) => onLoreFile(e.target.files?.[0])}
-            />
-          </div>
-        )}
+          {showSeeds && (
+            <div className="card-creator-seeds">
+              {seeds.length === 0 && <div className="muted">Loading seeds…</div>}
+              {seeds.map((seed) => (
+                <button
+                  key={seed.id}
+                  type="button"
+                  className={`wizard-path-card${starter.seed_id === seed.id ? ' is-selected' : ''}`}
+                  onClick={() => pickSeed(seed)}
+                >
+                  <strong className="wizard-path-label">{seed.emoji} {seed.title}</strong>
+                  <span className="wizard-path-desc">{seed.tagline}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {showLore && (
+            <div className="wizard-control-group">
+              <label className="wizard-control-label" htmlFor="card-lore">Setting notes</label>
+              <textarea
+                id="card-lore"
+                className="input"
+                value={lore}
+                onChange={(e) => setLore(e.target.value)}
+                rows={6}
+                maxLength={60000}
+                placeholder="Paste lore, a setting bible, or homebrew notes. Names and facts here are kept as canon."
+              />
+              <input
+                type="file"
+                accept=".txt,.md,text/plain,text/markdown"
+                aria-label="Upload setting notes"
+                onChange={(e) => onLoreFile(e.target.files?.[0])}
+              />
+            </div>
+          )}
+        </fieldset>
         {error && <div className="inline-alert inline-alert-error wizard-error" role="alert">{error}</div>}
         <div className="wizard-nav">
           <button className="btn btn-quiet" type="button" onClick={onClassic}>Use the classic setup</button>

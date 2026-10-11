@@ -366,6 +366,9 @@ def create_campaign(req: CampaignCreate, background_tasks: BackgroundTasks, curr
         package = _contract_package_for_campaign(
             camp,
             settings=initial_settings,
+            # The card's rating, pacing, themes and limits must shape the contract built now; it is
+            # reused later rather than rebuilt from the variables saved below.
+            variables=(card_values.get("variables") or {}) if req.card else None,
             docs=imported_lore,
             backstories=req.player_backstories or [],
         )

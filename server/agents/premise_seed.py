@@ -113,12 +113,13 @@ def extract_premise_seed(
     complete: Callable[..., str | None] | None = None,
     timeout: float = 45.0,
     hidden_truth: dict[str, Any] | None = None,
+    hint: bool = True,
 ) -> dict[str, Any] | None:
     """One model call -> an opening seed in the shape ``generate_starter_seed`` returns, or None.
 
-    ``hidden_truth`` is the world skeleton's secret behind the opening trouble.  The model is told to
-    let the first clue point toward it; a seed that states the secret outright is rejected, because
-    every seed field is player-facing.
+    ``hidden_truth`` is the world skeleton's secret behind the opening trouble.  With ``hint`` the model
+    is told it and asked to let the first clue point toward it.  Either way a seed that states the
+    secret outright is rejected, because every seed field is player-facing.
     """
     settings, contract = settings or {}, contract or {}
     premise = _premise(settings, contract)
@@ -132,7 +133,7 @@ def extract_premise_seed(
     genre = str(settings.get("genre") or (contract.get("campaign_dna") or {}).get("genre") or "fantasy")
     tone = str(settings.get("tone") or (contract.get("campaign_dna") or {}).get("tone") or "balanced")
     user = f"Genre: {genre}\nTone: {tone}\nPremise: {premise}"
-    if hidden_truth:
+    if hidden_truth and hint:
         user += (
             f"\nThe visible problem: {hidden_truth.get('visible_problem', '')}"
             f"\nGM-only background (never state it in any field): {hidden_truth.get('hidden_truth', '')}"

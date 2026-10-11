@@ -60,6 +60,31 @@ def _require_campaign_access(campaign_id: str, current_user) -> db.Campaign:
     return campaign
 
 
+class _Hidden:
+    """The world-skeleton rows a player-owner who chose "surprise" must not read through these GM tools."""
+
+    def __init__(self, campaign: db.Campaign, current_user) -> None:
+        from . import world_skeleton
+
+        self.active = world_skeleton.hidden_from(campaign, getattr(current_user, "id", None))
+        self.entities, self.hooks = world_skeleton.skeleton_row_ids(campaign) if self.active else (set(), set())
+
+    def entity(self, entity_id: str | None) -> bool:
+        return self.active and entity_id in self.entities
+
+    def require_visible(self, entity_id: str) -> None:
+        if self.entity(entity_id):
+            raise HTTPException(status_code=404, detail="Entity not found")
+
+    def refuse_summary(self) -> None:
+        if self.active:
+            raise HTTPException(
+                status_code=403,
+                detail="The world underneath is a surprise; this GM summary would reveal it. Choose "
+                       "\"Show me the world\" in campaign settings to use it.",
+            )
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -114,7 +139,7 @@ def list_entities(
     status: str | None = None,
     current_user=Depends(get_current_user),
 ):
-    _require_campaign_access(campaign_id, current_user)
+    hidden = _Hidden(_require_campaign_access(campaign_id, current_user), current_user)
     with Session(db.engine) as s:
         stmt = select(CampaignEntity).where(CampaignEntity.campaign_id == campaign_id)
         if entity_type:
@@ -123,7 +148,7 @@ def list_entities(
             stmt = stmt.where(CampaignEntity.status == status)
         stmt = stmt.order_by(CampaignEntity.updated_at.desc())
         entities = s.exec(stmt).all()
-    return [_entity_dict(e) for e in entities]
+    return [_entity_dict(e) for e in entities if not hidden.entity(e.id)]
 
 
 @router.post("/{campaign_id}/entities", status_code=201)
@@ -167,7 +192,7 @@ def create_entity(
 
 @router.get("/{campaign_id}/entities/{entity_id}")
 def get_entity(campaign_id: str, entity_id: str, current_user=Depends(get_current_user)):
-    _require_campaign_access(campaign_id, current_user)
+    _Hidden(_require_campaign_access(campaign_id, current_user), current_user).require_visible(entity_id)
     with Session(db.engine) as s:
         e = s.get(CampaignEntity, entity_id)
         if not e or e.campaign_id != campaign_id:
@@ -182,7 +207,7 @@ def update_entity(
     req: EntityUpdate,
     current_user=Depends(get_current_user),
 ):
-    _require_campaign_access(campaign_id, current_user)
+    _Hidden(_require_campaign_access(campaign_id, current_user), current_user).require_visible(entity_id)
     with Session(db.engine) as s:
         e = s.get(CampaignEntity, entity_id)
         if not e or e.campaign_id != campaign_id:
@@ -222,7 +247,7 @@ def update_entity(
 
 @router.delete("/{campaign_id}/entities/{entity_id}", status_code=204)
 def delete_entity(campaign_id: str, entity_id: str, current_user=Depends(get_current_user)):
-    _require_campaign_access(campaign_id, current_user)
+    _Hidden(_require_campaign_access(campaign_id, current_user), current_user).require_visible(entity_id)
     with Session(db.engine) as s:
         e = s.get(CampaignEntity, entity_id)
         if not e or e.campaign_id != campaign_id:
@@ -377,7 +402,7 @@ def list_hooks(
     hook_type: str | None = None,
     current_user=Depends(get_current_user),
 ):
-    _require_campaign_access(campaign_id, current_user)
+    hidden = _Hidden(_require_campaign_access(campaign_id, current_user), current_user)
     with Session(db.engine) as s:
         stmt = select(CampaignHook).where(CampaignHook.campaign_id == campaign_id)
         if status:
@@ -386,7 +411,7 @@ def list_hooks(
             stmt = stmt.where(CampaignHook.hook_type == hook_type)
         stmt = stmt.order_by(CampaignHook.priority.desc(), CampaignHook.created_at.asc())
         hooks = s.exec(stmt).all()
-    return [_hook_dict(h) for h in hooks]
+    return [_hook_dict(h) for h in hooks if h.id not in hidden.hooks]
 
 
 @router.post("/{campaign_id}/hooks", status_code=201)
@@ -459,7 +484,7 @@ def list_changelog(
     limit: int = 50,
     current_user=Depends(get_current_user),
 ):
-    _require_campaign_access(campaign_id, current_user)
+    hidden = _Hidden(_require_campaign_access(campaign_id, current_user), current_user)
     with Session(db.engine) as s:
         stmt = (
             select(CampaignChangeLog)
@@ -479,6 +504,7 @@ def list_changelog(
             "created_at": r.created_at.isoformat() if r.created_at else None,
         }
         for r in rows
+        if not hidden.entity(r.entity_id)
     ]
 
 
@@ -488,7 +514,7 @@ def entity_changelog(
     entity_id: str,
     current_user=Depends(get_current_user),
 ):
-    _require_campaign_access(campaign_id, current_user)
+    _Hidden(_require_campaign_access(campaign_id, current_user), current_user).require_visible(entity_id)
     with Session(db.engine) as s:
         stmt = (
             select(CampaignChangeLog)
@@ -526,7 +552,7 @@ class ContextRequest(BaseModel):
 
 @router.post("/{campaign_id}/context")
 def get_context(campaign_id: str, req: ContextRequest, current_user=Depends(get_current_user)):
-    _require_campaign_access(campaign_id, current_user)
+    _Hidden(_require_campaign_access(campaign_id, current_user), current_user).refuse_summary()
     from .context_collector import collect_context
     ctx = collect_context(campaign_id, session_id=req.session_id, recent_chat=req.recent_chat)
     return ctx
@@ -535,7 +561,7 @@ def get_context(campaign_id: str, req: ContextRequest, current_user=Depends(get_
 @router.get("/{campaign_id}/next-actions")
 def get_next_actions(campaign_id: str, current_user=Depends(get_current_user)):
     """What will NPCs, factions, and story threads do next if players don't act?"""
-    _require_campaign_access(campaign_id, current_user)
+    _Hidden(_require_campaign_access(campaign_id, current_user), current_user).refuse_summary()
     with Session(db.engine) as s:
         npc_stmt = select(CampaignEntity).where(
             CampaignEntity.campaign_id == campaign_id,

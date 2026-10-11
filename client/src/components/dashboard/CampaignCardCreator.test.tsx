@@ -116,3 +116,53 @@ test('a missing seat stops creation before any request', async () => {
     server.restore()
   }
 })
+
+test('switching genre replaces the starter sentence but never the player\'s own words', () => {
+  render(
+    <CampaignCardCreator
+      seat={null}
+      owner={{ owner_role: 'dm', owner_character_id: null }}
+      validateSeat={() => null}
+      fallbackName="The Last Lantern"
+      onCreated={() => {}}
+      onClassic={() => {}}
+    />,
+  )
+  const box = screen.getByLabelText('Describe your campaign') as HTMLTextAreaElement
+  fireEvent.click(screen.getByRole('button', { name: /fantasy/i }))
+  expect(box.value).toMatch(/fantasy campaign/)
+  fireEvent.click(screen.getByRole('button', { name: /horror/i }))
+  expect(box.value).toMatch(/horror campaign/)
+  fireEvent.click(screen.getByRole('button', { name: /horror/i }))
+  expect(box.value).toBe('')
+  fireEvent.change(box, { target: { value: 'My own idea about haunted canals.' } })
+  fireEvent.click(screen.getByRole('button', { name: /sci-fi/i }))
+  expect(box.value).toBe('My own idea about haunted canals.')
+})
+
+test('the description is frozen while it is being read back', async () => {
+  let release: (value: Response) => void = () => {}
+  const original = global.fetch
+  global.fetch = jest.fn(() => new Promise<Response>((resolve) => { release = resolve })) as unknown as typeof fetch
+  try {
+    render(
+      <CampaignCardCreator
+        seat={null}
+        owner={{ owner_role: 'dm', owner_character_id: null }}
+        validateSeat={() => null}
+        fallbackName="The Last Lantern"
+        onCreated={() => {}}
+        onClassic={() => {}}
+      />,
+    )
+    const box = screen.getByLabelText('Describe your campaign')
+    fireEvent.change(box, { target: { value: CARD.text } })
+    fireEvent.click(screen.getByRole('button', { name: /read it back/i }))
+    expect(box).toBeDisabled()
+    expect(screen.getByRole('button', { name: /mystery/i })).toBeDisabled()
+    release({ ok: true, status: 200, json: async () => ({ card: CARD }) } as Response)
+    expect(await screen.findByText("Here's what I heard")).toBeInTheDocument()
+  } finally {
+    global.fetch = original
+  }
+})

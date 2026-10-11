@@ -387,3 +387,61 @@ def test_a_malformed_card_is_a_422_not_a_500():
     ):
         res = client.post("/campaigns", headers=headers, json={"name": "Bad", "card": card, "create_session": False})
         assert res.status_code == 422, (card, res.text)
+
+
+def test_a_surprised_player_owner_cannot_read_the_world_through_memory_tools():
+    owner = _user("skeleton-memory@example.com")
+    camp = _campaign("skeleton-memory@example.com")
+    db.set_campaign_metadata_keys(str(camp.id), owner.id, {"owner_participation": {"role": "player", "character_id": None}})
+    world_skeleton.generate_world_skeleton(str(camp.id), complete=_full_model())
+    client = TestClient(main.app)
+    headers = {"Authorization": f"Bearer {create_access_token(owner.email or '')}"}
+    base = f"/memory/{camp.id}"
+
+    entities = client.get(f"{base}/entities", headers=headers)
+    assert entities.status_code == 200 and entities.json() == []
+    thread = next(e for e in _entities(str(camp.id)) if e.entity_type == "story_thread")
+    assert client.get(f"{base}/entities/{thread.id}", headers=headers).status_code == 404
+    assert client.get(f"{base}/changelog/{thread.id}", headers=headers).status_code == 404
+    assert client.put(f"{base}/entities/{thread.id}", headers=headers, json={"name": "x"}).status_code == 404
+    assert TRUTH["hidden_truth"] not in client.get(f"{base}/changelog", headers=headers).text
+    assert client.get(f"{base}/hooks", headers=headers).json() == []
+    assert client.post(f"{base}/context", headers=headers, json={}).status_code == 403
+    assert client.get(f"{base}/next-actions", headers=headers).status_code == 403
+
+    # Once the owner chooses to see the world, the GM tools work as before.
+    client.post(f"/campaigns/{camp.id}/world", headers=headers, json={"visibility": "show"})
+    assert len(client.get(f"{base}/entities", headers=headers).json()) == len(_entities(str(camp.id)))
+    assert client.get(f"{base}/next-actions", headers=headers).status_code == 200
+
+
+def test_the_truth_must_cover_the_authored_trouble():
+    bridge = {**TRUTH, "thread_name": "Murder at the Crossing",
+              "visible_problem": "A merchant lies dead near the bridge."}
+    assert world_skeleton.validate_truth(bridge, opening_trouble="The bridge collapsed overnight") is None
+    collapse = {**bridge, "visible_problem": "The bridge collapsed overnight, stranding the caravan."}
+    assert world_skeleton.validate_truth(collapse, opening_trouble="The bridge collapsed overnight") is not None
+
+
+def test_failed_pieces_say_why():
+    camp = _campaign("skeleton-reason@example.com")
+    world_skeleton.generate_world_skeleton(str(camp.id), complete=_full_model(**{'"deadline"': "not json"}))
+    view = world_skeleton.public_view(db.get_campaign_by_id(str(camp.id)).metadata_json["world_skeleton"])
+    assert view["pieces"]["clock"] == {"status": "failed", "reason": "unparseable"}
+    assert "reason" not in view["pieces"]["truth"]
+
+
+def test_the_untold_seed_retry_is_still_checked_for_the_secret():
+    camp = _campaign("skeleton-seed-leak@example.com")
+    leaky = {**SEED, "immediate_problem": "Harbor master Dace sold the keeper to smugglers."}
+    seen_hints: list[bool] = []
+
+    def model(messages, **kwargs):
+        if "opening situation" in messages[0]["content"]:
+            seen_hints.append("GM-only background" in messages[1]["content"])
+            return json.dumps(leaky)
+        return _full_model()(messages, **kwargs)
+
+    state = world_skeleton.generate_world_skeleton(str(camp.id), complete=model)
+    assert seen_hints == [True, False]  # told, then retried without the hint
+    assert not state.get("opening_seed")  # both answers stated the secret, so neither became the seed

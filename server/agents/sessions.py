@@ -1823,7 +1823,7 @@ def _build_opening_setup_questionnaire(folder: Path, meta: dict, setup: dict | N
         truth = world_skeleton.hidden_truth(campaign)
         extracted = extract_premise_seed(campaign_settings, campaign_contract, hidden_truth=truth)
         if not extracted and truth:
-            extracted = extract_premise_seed(campaign_settings, campaign_contract)
+            extracted = extract_premise_seed(campaign_settings, campaign_contract, hidden_truth=truth, hint=False)
     if extracted:
         opening_seed = extracted
     if setup is not None and opening_seed:

@@ -169,11 +169,15 @@ def is_grounded(value: str, source: str, source_tokens: set[str] | None = None) 
     return len(tokens & found) / len(tokens) >= 0.6
 
 
-def _name_in_text(name: str, source: str) -> bool:
-    """A proper name counts only when the player wrote it (each capitalized part present, any case)."""
+def name_in_text(name: str, source: str) -> bool:
+    """A proper name counts only when the text has it: every part of it, as a whole word (any case).
+
+    Whole words, not substrings: "Art Bell" is not in a text about artifacts and belladonna.
+    """
     parts = [p for p in re.findall(r"[A-Za-z][\w'-]+", name) if len(p) > 2]
-    hay = source.casefold()
-    return bool(parts) and all(p.casefold() in hay for p in parts)
+    return bool(parts) and all(
+        re.search(rf"(?<![\w'-]){re.escape(p)}(?![\w'-])", source, re.IGNORECASE) for p in parts
+    )
 
 
 _LEVEL = re.compile(r"\blevel\s*(\d{1,2})\b|\b(\d{1,2})(?:st|nd|rd|th)?[- ]level\b|\blvl\.?\s*(\d{1,2})\b", re.I)
@@ -302,13 +306,13 @@ def _merge_model_answer(card: dict[str, Any], data: dict[str, Any], text: str, l
         if not isinstance(person, dict):
             continue
         name = _clip(person.get("name"))[:80]
-        if name and _name_in_text(name, source) and name.casefold() not in {p["name"].casefold() for p in people}:
+        if name and name_in_text(name, source) and name.casefold() not in {p["name"].casefold() for p in people}:
             people.append({"name": name, "role": _clip(person.get("role"))[:80], "status": SAID})
     card["people"] = people[:6]
     card["factions"] = [
         {"name": name[:80], "status": SAID}
         for name in _str_list(data.get("factions"), 4)
-        if _name_in_text(name, source)
+        if name_in_text(name, source)
     ]
     card["themes"] = _str_list(data.get("themes"), 4)
     card["content_limits"] = [c for c in _str_list(data.get("content_limits"), 4) if is_grounded(c, source, tokens)]
@@ -426,6 +430,9 @@ def card_to_campaign(card: dict[str, Any]) -> dict[str, Any]:
     premise = clean_text(_value(card, "premise"))
     trouble = clean_text(_value(card, "opening_trouble"))
     summary = text or trim_sentence(premise)
+    if text and premise and not is_grounded(premise, text):
+        # The player rewrote the premise on the card: that correction leads, ahead of the first draft.
+        summary = f"{trim_sentence(premise)} {text}"
     if trouble and trouble.casefold() not in summary.casefold():
         summary = f"{summary} {trim_sentence(trouble)}".strip()
 
@@ -457,6 +464,7 @@ def card_to_campaign(card: dict[str, Any]) -> dict[str, Any]:
         "pacing": settings["pacing"],
         "content_rating": settings["content_rating"],
         "factions": [{"name": f["name"]} for f in card.get("factions") or [] if isinstance(f, dict) and f.get("name")],
+        "content_limits": limits,
     }
     return {
         "name": clean_text(_value(card, "name")),
