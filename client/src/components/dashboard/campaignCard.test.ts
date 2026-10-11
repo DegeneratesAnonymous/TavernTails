@@ -1,4 +1,4 @@
-import { buildCreatePayload, editField, groupFields, openFieldsWithoutFollowUps, worldInProgress, type CampaignCard } from './campaignCard'
+import { MAX_POLL_ERRORS, afterPoll, buildCreatePayload, editField, groupFields, openFieldsWithoutFollowUps, worldInProgress, type CampaignCard } from './campaignCard'
 
 function card(): CampaignCard {
   return {
@@ -58,4 +58,15 @@ test('only pending and running worlds are polled', () => {
   expect(worldInProgress({ ...base, status: 'running' })).toBe(true)
   expect(worldInProgress({ ...base, status: 'interrupted' })).toBe(false)
   expect(worldInProgress(null)).toBe(false)
+})
+
+test('a dropped poll keeps the last world and keeps polling; 403/404 stop', () => {
+  const building = { status: 'running' as const, visibility: 'surprise' as const, pieces: {} as never }
+  const error = afterPoll({ kind: 'error' }, building, 0)
+  expect(error).toEqual({ world: building, again: true, errorsInARow: 1 })
+  expect(afterPoll({ kind: 'error' }, null, 0).again).toBe(true)
+  expect(afterPoll({ kind: 'error' }, building, MAX_POLL_ERRORS - 1).again).toBe(false)
+  expect(afterPoll({ kind: 'gone' }, building, 3)).toEqual({ world: null, again: false, errorsInARow: 0 })
+  const done = { ...building, status: 'ready' as const }
+  expect(afterPoll({ kind: 'ok', world: done }, building, 5)).toEqual({ world: done, again: false, errorsInARow: 0 })
 })

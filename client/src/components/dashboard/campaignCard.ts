@@ -132,3 +132,25 @@ export function buildCreatePayload(input: CreateCardInput) {
 export function worldInProgress(world: WorldState | null): boolean {
   return Boolean(world && (world.status === 'pending' || world.status === 'running'))
 }
+
+/** One poll's outcome: the world, a deliberate "not for you / not here" (403, 404), or a transport error. */
+export type WorldPoll = { kind: 'ok'; world: WorldState | null } | { kind: 'gone' } | { kind: 'error' }
+
+export const MAX_POLL_ERRORS = 12
+
+/**
+ * What the panel shows after a poll, and whether to poll again. A transient error keeps the last
+ * known world and keeps polling (up to MAX_POLL_ERRORS in a row), so one dropped request does not
+ * hide a world that is still being built; 403/404 stop.
+ */
+export function afterPoll(
+  poll: WorldPoll,
+  previous: WorldState | null,
+  errorsInARow: number,
+): { world: WorldState | null; again: boolean; errorsInARow: number } {
+  if (poll.kind === 'ok') return { world: poll.world, again: worldInProgress(poll.world), errorsInARow: 0 }
+  if (poll.kind === 'gone') return { world: null, again: false, errorsInARow: 0 }
+  const errors = errorsInARow + 1
+  const unknownOrBuilding = previous === null || worldInProgress(previous)
+  return { world: previous, again: unknownOrBuilding && errors < MAX_POLL_ERRORS, errorsInARow: errors }
+}

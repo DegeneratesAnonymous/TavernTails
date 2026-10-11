@@ -19,7 +19,9 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .generation_intent import clean_text, content_tokens, trim_sentence
 from .premise_seed import parse_json_object
@@ -37,7 +39,7 @@ AI_FREEDOM = ("low", "medium", "high")
 TEXT_FIELDS = ("name", "premise", "world_name", "starting_place", "opening_trouble", "tone", "ruleset")
 CHOICE_FIELDS = {"genre": GENRES, "pacing": PACINGS, "content_rating": RATINGS, "ai_freedom": AI_FREEDOM}
 
-MAX_TEXT_CHARS = 6000
+MAX_TEXT_CHARS = 8000  # the description box and POST /campaigns/card accept this much
 MAX_LORE_CHARS = 12000
 MAX_LORE_PROMPT_CHARS = 3000
 MAX_FIELD_CHARS = 280
@@ -80,6 +82,69 @@ SYSTEM = (
     '  "content_limits": things the player says to avoid or handle carefully\n'
     '  "open_questions": up to 3 short questions about the world the text leaves open'
 )
+
+
+# ---------------------------------------------------------------------------
+# The confirmed card, as POST /campaigns accepts it
+# ---------------------------------------------------------------------------
+
+Status = Literal["said", "guessed", "open"]
+
+
+class CardField(BaseModel):
+    value: str | int | float = Field(default="")
+    status: Status = "open"
+
+    @field_validator("value")
+    @classmethod
+    def _short(cls, value: str | int | float) -> str | int | float:
+        if isinstance(value, str) and len(value) > 2000:
+            raise ValueError("card values are limited to 2000 characters")
+        return value
+
+
+class CardPerson(BaseModel):
+    name: str = Field(max_length=120)
+    role: str = Field(default="", max_length=120)
+    status: Status = "said"
+
+
+class CardFaction(BaseModel):
+    name: str = Field(max_length=120)
+    status: Status = "said"
+
+
+class ConfirmedCard(BaseModel):
+    """What the client sends back; anything the server derived (follow-ups, settings) is recomputed."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    fields: dict[str, CardField] = Field(default_factory=dict, max_length=24)
+    people: list[CardPerson] = Field(default_factory=list, max_length=12)
+    factions: list[CardFaction] = Field(default_factory=list, max_length=8)
+    themes: list[str] = Field(default_factory=list, max_length=8)
+    content_limits: list[str] = Field(default_factory=list, max_length=8)
+    open_questions: list[str] = Field(default_factory=list, max_length=6)
+    text: str = Field(default="", max_length=MAX_TEXT_CHARS)
+    has_lore: bool = False
+    starter: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("fields")
+    @classmethod
+    def _level_is_a_level(cls, fields: dict[str, CardField]) -> dict[str, CardField]:
+        level = fields.get("starting_level")
+        if level is not None and level.status != OPEN and level.value != "":
+            try:
+                number = int(level.value)
+            except (TypeError, ValueError):
+                raise ValueError("starting_level must be a whole number") from None
+            if not 1 <= number <= 20:
+                raise ValueError("starting_level must be between 1 and 20")
+        for key, choices in CHOICE_FIELDS.items():
+            entry = fields.get(key)
+            if entry is not None and entry.status != OPEN and entry.value not in choices:
+                raise ValueError(f"{key} must be one of {', '.join(choices)}")
+        return fields
 
 
 # ---------------------------------------------------------------------------

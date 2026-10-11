@@ -28,9 +28,9 @@ import threading
 import uuid
 from collections.abc import Callable
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, TypeVar
 
-from sqlmodel import Session
+from sqlmodel import Session, col, select
 
 from .. import db
 from ..db import CampaignChangeLog, CampaignEntity, CampaignHook
@@ -48,6 +48,9 @@ _JOB_KEYS = ("status", "pieces", "started_at", "finished_at", "opening_seed")
 # Four calls plus the opening seed take about a minute on one GPU, longer behind a queue. A job silent for
 # this long was lost to a restart (or runs in a process that cannot tell us otherwise).
 STALE_AFTER_S = 15 * 60
+CLOCK_STEP_JOINER = " Then: "
+
+_R = TypeVar("_R")
 MAX_FIELD_CHARS = 240
 MAX_LORE_PROMPT_CHARS = 3000
 
@@ -100,10 +103,19 @@ def _card_names(meta: dict[str, Any], key: str) -> list[str]:
 
 
 def _player_text(meta: dict[str, Any]) -> str:
-    """Everything the player wrote, including the names the card confirmed as theirs."""
+    """What the player typed (description, card edits and follow-up answers), not their setting notes.
+
+    Card names are not added wholesale: the card accepts names found in uploaded notes too, and those
+    must keep ``imported`` provenance.
+    """
     settings = meta.get("settings") or {}
+    card = meta.get("campaign_card") or {}
+    typed = [str(card.get("text") or "")]
+    for entry in (card.get("fields") or {}).values():
+        if isinstance(entry, dict) and entry.get("status") == "said":
+            typed.append(str(entry.get("value") or ""))
     written = [str(settings.get(k) or "") for k in ("setting_summary", "world_name", "starting_location", "opening_trouble")]
-    return " ".join(written + _card_names(meta, "people") + _card_names(meta, "factions"))
+    return " ".join(written + typed)
 
 
 def _lore(meta: dict[str, Any]) -> str:
@@ -241,7 +253,8 @@ def _add_entity(s: Session, campaign_id: str, entity_type: str, name: str, data:
     return eid
 
 
-def _persist(campaign: db.Campaign, piece: str, value: Any, truth: dict[str, str] | None) -> list[str]:
+def _persist(campaign: db.Campaign, piece: str, value: Any, *, thread_id: str | None = None) -> list[str]:
+    """Write one piece as GM-only memory in a single transaction; returns the new row ids."""
     campaign_id = str(campaign.id)
     meta = _meta(campaign)
     player_text, lore = _player_text(meta), _lore(meta)
@@ -287,11 +300,10 @@ def _persist(campaign: db.Campaign, piece: str, value: Any, truth: dict[str, str
             hook_id = uuid.uuid4().hex[:12]
             s.add(CampaignHook(
                 id=hook_id, campaign_id=campaign_id, title=value["title"],
-                description=" Then: ".join(value["steps"]), hook_type="ticking_clock", priority=8,
+                description=CLOCK_STEP_JOINER.join(value["steps"]), hook_type="ticking_clock", priority=8,
                 status="active", deadline=value["deadline"], created_at=_now(), updated_at=_now(),
             ))
             ids.append(hook_id)
-            thread_id = ((meta.get("world_skeleton") or {}).get("pieces") or {}).get("truth", {}).get("entity_ids", [None])[0]
             thread = s.get(CampaignEntity, thread_id) if thread_id else None
             if thread is not None:
                 thread.data = {**(thread.data or {}), "ticking_clock": value["deadline"]}
@@ -302,11 +314,64 @@ def _persist(campaign: db.Campaign, piece: str, value: Any, truth: dict[str, str
 
 
 # ---------------------------------------------------------------------------
+# Reading pieces back
+# ---------------------------------------------------------------------------
+#
+# Campaign metadata is returned whole by the campaign list and detail routes, so it only ever
+# holds progress and row ids. The contents (the secrets) are read from the GM-only rows, and only
+# for a caller who may see them.
+
+def _entities(ids: list[str]) -> list[CampaignEntity]:
+    if not ids:
+        return []
+    with Session(db.engine) as s:
+        rows = {e.id: e for e in s.exec(select(CampaignEntity).where(col(CampaignEntity.id).in_(ids))).all()}
+    return [rows[i] for i in ids if i in rows]
+
+
+def _first(values: Any) -> str:
+    return str(values[0]) if isinstance(values, list) and values else ""
+
+
+def _piece_contents(piece: str, ids: list[str]) -> Any:
+    if piece == "clock":
+        with Session(db.engine) as s:
+            hook = s.get(CampaignHook, ids[0]) if ids else None
+        if hook is None:
+            return None
+        return {"title": hook.title, "steps": [p for p in (hook.description or "").split(CLOCK_STEP_JOINER) if p],
+                "deadline": hook.deadline or ""}
+    rows = _entities(ids)
+    if piece == "truth":
+        if not rows:
+            return None
+        d = rows[0].data or {}
+        return {"thread_name": rows[0].name, "visible_problem": d.get("current_situation", ""),
+                "hidden_truth": d.get("gm_notes", ""), "who_benefits": d.get("who_benefits", ""),
+                "first_clue": d.get("first_clue", ""), "stakes": d.get("stakes", "")}
+    if piece == "factions":
+        return [{"name": e.name, "wants": (e.data or {}).get("current_goal", ""),
+                 "plan": (e.data or {}).get("active_plan", ""), "if_ignored": (e.data or {}).get("likely_escalation", "")}
+                for e in rows]
+    if piece == "npcs":
+        return [{"name": e.name, "role": (e.data or {}).get("role", ""), "wants": (e.data or {}).get("primary_goal", ""),
+                 "secret": _first((e.data or {}).get("secrets")), "knows": _first((e.data or {}).get("known_information")),
+                 "faction": _first((e.data or {}).get("faction_affiliations"))}
+                for e in rows]
+    return None
+
+
+def _ready_contents(state: dict[str, Any], piece: str) -> Any:
+    entry = (state.get("pieces") or {}).get(piece) or {}
+    return _piece_contents(piece, list(entry.get("entity_ids") or [])) if entry.get("status") == "ready" else None
+
+
+# ---------------------------------------------------------------------------
 # State
 # ---------------------------------------------------------------------------
 
-def _state(campaign: db.Campaign) -> dict[str, Any]:
-    state = dict(_meta(campaign).get("world_skeleton") or {})
+def _normalized(stored: Any) -> dict[str, Any]:
+    state = dict(stored or {})
     state.setdefault("status", "not_started")
     state.setdefault("visibility", "surprise")
     pieces = dict(state.get("pieces") or {})
@@ -316,21 +381,36 @@ def _state(campaign: db.Campaign) -> dict[str, Any]:
     return state
 
 
-def _write(campaign: db.Campaign, state: dict[str, Any]) -> db.Campaign:
-    updated = db.set_campaign_metadata_keys(str(campaign.id), campaign.owner_id, {"world_skeleton": state})
-    return updated or campaign
+def _state(campaign: db.Campaign) -> dict[str, Any]:
+    return _normalized(_meta(campaign).get("world_skeleton"))
 
 
-def _save(campaign: db.Campaign, state: dict[str, Any]) -> db.Campaign:
-    """Write the job's keys over the freshest stored state, keeping what requests changed meanwhile."""
-    fresh = db.get_campaign_by_id(str(campaign.id)) or campaign
-    current = dict(_meta(fresh).get("world_skeleton") or {})
-    for key in _JOB_KEYS:
-        if key in state:
-            current[key] = state[key]
-    if current.get("opening_seed_used"):
-        current.pop("opening_seed", None)  # a session already opened without it
-    return _write(fresh, current)
+def _fresh_state(campaign_id: str) -> dict[str, Any]:
+    campaign = db.get_campaign_by_id(campaign_id)
+    return _state(campaign) if campaign is not None else _normalized(None)
+
+
+def _update(campaign_id: str, change: Callable[[dict[str, Any]], _R]) -> _R | None:
+    """Apply ``change`` to the stored state inside one locked transaction."""
+    def mutate(meta: dict[str, Any]) -> _R:
+        state = dict(meta.get("world_skeleton") or {})
+        result = change(state)
+        meta["world_skeleton"] = state
+        return result
+
+    return db.update_campaign_metadata(campaign_id, mutate)
+
+
+def _save(campaign_id: str, job: dict[str, Any]) -> None:
+    """Write the job's keys over the stored state, keeping what requests changed meanwhile."""
+    def change(state: dict[str, Any]) -> None:
+        for key in _JOB_KEYS:
+            if key in job:
+                state[key] = job[key]
+        if state.get("opening_seed_used"):
+            state.pop("opening_seed", None)  # a session already opened without it
+
+    _update(campaign_id, change)
 
 
 def _overall(pieces: dict[str, Any]) -> str:
@@ -342,24 +422,36 @@ def _overall(pieces: dict[str, Any]) -> str:
     return "failed"
 
 
-def init_state(campaign_id: str, owner_id: int, visibility: str = "surprise") -> None:
+def init_state(campaign_id: str, visibility: str = "surprise") -> None:
     """Record that a skeleton is wanted, before the background job starts."""
-    db.set_campaign_metadata_keys(campaign_id, owner_id, {"world_skeleton": {
-        "status": "pending",
-        "visibility": visibility if visibility in VISIBILITIES else "surprise",
-        "pieces": {piece: {"status": "pending"} for piece in PIECES},
-        "requested_at": _now().isoformat(),
-    }})
+    def change(state: dict[str, Any]) -> None:
+        state.clear()
+        state.update({
+            "status": "pending",
+            "visibility": visibility if visibility in VISIBILITIES else "surprise",
+            "pieces": {piece: {"status": "pending"} for piece in PIECES},
+            "requested_at": _now().isoformat(),
+        })
+
+    _update(campaign_id, change)
 
 
-def request_retry(campaign_id: str, owner_id: int, state: dict[str, Any]) -> None:
+def request_retry(campaign_id: str) -> None:
     """Queue another run: finished pieces (and the opening-seed flag) are kept, the rest are retried."""
-    if not state.get("pieces"):
-        init_state(campaign_id, owner_id, str(state.get("visibility") or "surprise"))
-        return
-    db.set_campaign_metadata_keys(campaign_id, owner_id, {"world_skeleton": {
-        **state, "status": "pending", "requested_at": _now().isoformat(), "started_at": None,
-    }})
+    def change(state: dict[str, Any]) -> None:
+        if not state.get("pieces"):
+            state["pieces"] = {piece: {"status": "pending"} for piece in PIECES}
+            state.setdefault("visibility", "surprise")
+        state.update({"status": "pending", "requested_at": _now().isoformat(), "started_at": None})
+
+    _update(campaign_id, change)
+
+
+def set_visibility(campaign_id: str, visibility: str) -> None:
+    def change(state: dict[str, Any]) -> None:
+        state["visibility"] = visibility
+
+    _update(campaign_id, change)
 
 
 def is_active(campaign_id: str, state: dict[str, Any]) -> bool:
@@ -378,16 +470,17 @@ def is_active(campaign_id: str, state: dict[str, Any]) -> bool:
 
 def public_view(state: dict[str, Any], *, reveal: bool = False) -> dict[str, Any]:
     """Status always; contents for a DM (``reveal``) or when the owner chose to see the world."""
+    state = _normalized(state)
     view = {
-        "status": state.get("status", "not_started"),
-        "visibility": state.get("visibility", "surprise"),
-        "pieces": {p: {"status": (state.get("pieces") or {}).get(p, {}).get("status", "pending")} for p in PIECES},
+        "status": state["status"],
+        "visibility": state["visibility"],
+        "pieces": {p: {"status": state["pieces"][p].get("status", "pending")} for p in PIECES},
     }
     if reveal or view["visibility"] == "show":
         for piece in PIECES:
-            entry = (state.get("pieces") or {}).get(piece) or {}
-            if entry.get("status") == "ready":
-                view["pieces"][piece]["data"] = entry.get("data")
+            contents = _ready_contents(state, piece)
+            if contents is not None:
+                view["pieces"][piece]["data"] = contents
     return view
 
 
@@ -434,7 +527,7 @@ def generate_world_skeleton(
     found = db.get_campaign_by_id(campaign_id)
     if found is None:
         return {"status": "failed", "reason": "campaign_missing"}
-    campaign: db.Campaign = found  # typed once so the record() closure keeps it narrowed
+    campaign: db.Campaign = found
     call = complete
     if call is None:
         from ..steward_llm import chat_complete
@@ -442,45 +535,52 @@ def generate_world_skeleton(
         call = chat_complete
 
     state = _state(campaign)
-    state.update({"status": "running", "started_at": _now().isoformat()})
-    campaign = _save(campaign, state)
+    job: dict[str, Any] = {"status": "running", "started_at": _now().isoformat(), "pieces": state["pieces"]}
+    _save(campaign_id, job)
+    pieces = job["pieces"]
 
     meta = _meta(campaign)
     settings = meta.get("settings") or {}
     brief = campaign_brief(campaign)
-    pieces = state["pieces"]
-    truth = pieces["truth"].get("data") if pieces["truth"].get("status") == "ready" else None
+    truth: dict[str, str] | None = _ready_contents(state, "truth")
 
     def record(piece: str, value: Any, reason: str) -> None:
-        nonlocal campaign
         if value is None:
             pieces[piece] = {"status": "failed", "reason": reason}
         else:
-            # Saved before persisting so the clock can find the truth's thread id.
-            pieces[piece] = {"status": "ready", "data": value}
-            campaign = _save(campaign, state)
-            pieces[piece]["entity_ids"] = _persist(campaign, piece, value, truth)
-        campaign = _save(campaign, state)
+            truth_entry = pieces["truth"]
+            thread_ids = list(truth_entry.get("entity_ids") or []) if truth_entry.get("status") == "ready" else []
+            try:
+                ids = _persist(campaign, piece, value, thread_id=thread_ids[0] if thread_ids else None)
+            except Exception:  # noqa: BLE001 - nothing was written; the piece can be retried
+                log.exception("world skeleton could not save %s campaign=%s", piece, campaign_id)
+                pieces[piece] = {"status": "failed", "reason": "persist_error"}
+            else:
+                # Only published as ready once its rows exist, so a retry never skips a piece play cannot see.
+                pieces[piece] = {"status": "ready", "entity_ids": ids}
+        _save(campaign_id, job)
 
     if pieces["truth"].get("status") != "ready":
         data, reason = _ask(call, TRUTH_SYSTEM, brief, max_tokens=420, timeout=timeout)
         truth = validate_truth(data, opening_trouble=clean_text(settings.get("opening_trouble"))) if data else None
         record("truth", truth, reason)
+        if pieces["truth"].get("status") != "ready":
+            truth = None
 
-    stored = _state(db.get_campaign_by_id(campaign_id) or campaign)
+    stored = _fresh_state(campaign_id)
     if not stored.get("opening_seed") and not stored.get("opening_seed_used"):
         seed = _prepare_opening_seed(campaign, truth, call, timeout)
         if seed:
-            state["opening_seed"] = seed
-            campaign = _save(campaign, state)
+            job["opening_seed"] = seed
+            _save(campaign_id, job)
 
     truth_line = f"\nHidden truth (GM only): {truth['hidden_truth']} Who benefits: {truth['who_benefits']}" if truth else ""
-    factions: list[dict[str, str]] = pieces["factions"].get("data") or []
+    factions: list[dict[str, str]] = _ready_contents(state, "factions") or []
     if pieces["factions"].get("status") != "ready":
         data, reason = _ask(call, FACTIONS_SYSTEM, brief + truth_line, max_tokens=520, timeout=timeout)
         found_factions = validate_factions(data, _card_names(meta, "factions")) if data else None
         record("factions", found_factions, reason)
-        factions = found_factions or []
+        factions = found_factions if pieces["factions"].get("status") == "ready" and found_factions else []
 
     if pieces["npcs"].get("status") != "ready":
         faction_names = [f["name"] for f in factions]
@@ -494,12 +594,12 @@ def generate_world_skeleton(
         clock = validate_clock(data) if data else None
         record("clock", clock, reason)
 
-    state["status"] = _overall(pieces)
-    state["finished_at"] = _now().isoformat()
-    _save(campaign, state)
-    log.info("world skeleton campaign=%s status=%s pieces=%s", campaign_id, state["status"],
+    job["status"] = _overall(pieces)
+    job["finished_at"] = _now().isoformat()
+    _save(campaign_id, job)
+    log.info("world skeleton campaign=%s status=%s pieces=%s", campaign_id, job["status"],
              {p: pieces[p].get("status") for p in PIECES})
-    return state
+    return _fresh_state(campaign_id)
 
 
 def run_world_skeleton(campaign_id: str) -> None:
@@ -512,11 +612,7 @@ def run_world_skeleton(campaign_id: str) -> None:
         generate_world_skeleton(campaign_id)
     except Exception:  # noqa: BLE001 - never let a background job take the worker down
         log.exception("world skeleton failed campaign=%s", campaign_id)
-        campaign = db.get_campaign_by_id(campaign_id)
-        if campaign is not None:
-            state = _state(campaign)
-            state["status"] = _overall(state["pieces"])
-            _save(campaign, state)
+        _save(campaign_id, {"status": _overall(_fresh_state(campaign_id)["pieces"])})
     finally:
         with _running_lock:
             _running.discard(campaign_id)
@@ -528,26 +624,28 @@ def is_running(campaign_id: str) -> bool:
 
 
 def hidden_truth(campaign: db.Campaign | None) -> dict[str, str] | None:
+    """The truth piece, read from its GM-only thread (never from campaign metadata)."""
     if campaign is None:
         return None
-    truth = (_state(campaign)["pieces"].get("truth") or {})
-    return truth.get("data") if truth.get("status") == "ready" else None
+    return _ready_contents(_state(campaign), "truth")
 
 
 def take_opening_seed(campaign: db.Campaign | None) -> dict[str, Any] | None:
     """The prepared opening seed, once.
 
-    Taking it closes the slot even when nothing was prepared yet: a seed finished after the first
-    session opened would otherwise be handed to the second session, which should open somewhere new.
+    The read and the "used" mark happen in one locked transaction, so two sessions opening at the same
+    moment cannot both get it. Taking it closes the slot even when nothing was prepared yet: a seed
+    finished after the first session opened would otherwise open the second, which should start
+    somewhere new.
     """
     if campaign is None:
         return None
-    fresh = db.get_campaign_by_id(str(campaign.id)) or campaign
-    stored = (_meta(fresh).get("world_skeleton") or {})
-    if not stored or stored.get("opening_seed_used"):
-        return None
-    state = dict(stored)
-    seed = state.pop("opening_seed", None)
-    state["opening_seed_used"] = True
-    _write(fresh, state)
-    return seed if isinstance(seed, dict) and seed else None
+
+    def change(state: dict[str, Any]) -> dict[str, Any] | None:
+        if not state or state.get("opening_seed_used"):
+            return None
+        seed = state.pop("opening_seed", None)
+        state["opening_seed_used"] = True
+        return seed if isinstance(seed, dict) and seed else None
+
+    return _update(str(campaign.id), change)

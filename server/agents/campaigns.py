@@ -9,7 +9,7 @@ from ..auth import get_current_user
 from ..generation_workers import run_generation
 from . import sessions as sessions_agent
 from . import world_skeleton
-from .campaign_card import apply_answers, card_to_campaign, read_campaign_card
+from .campaign_card import ConfirmedCard, apply_answers, card_to_campaign, read_campaign_card
 from .campaign_interpretation import build_full_contract_package
 
 router = APIRouter(prefix="/campaigns", tags=["campaigns"])
@@ -233,7 +233,7 @@ class CampaignCreate(BaseModel):
     imported_lore_summary: str | None = None
     # Campaign Card setup: the card the player confirmed, their follow-up answers, and whether they
     # want to see the generated world skeleton ("show") or keep it a surprise.
-    card: dict[str, Any] | None = None
+    card: ConfirmedCard | None = None
     follow_up_answers: dict[str, str] | None = None
     world_visibility: str | None = None
     generate_world: bool = True
@@ -322,7 +322,7 @@ async def read_card(req: CampaignCardRequest, current_user=Depends(get_current_u
 
 def _card_campaign_values(req: CampaignCreate) -> tuple[dict[str, Any], dict[str, Any]]:
     """The confirmed card as (campaign values, card with follow-up answers applied)."""
-    card = apply_answers(dict(req.card or {}), req.follow_up_answers)
+    card = apply_answers(req.card.model_dump() if req.card else {}, req.follow_up_answers)
     return card_to_campaign(card), card
 
 
@@ -389,7 +389,7 @@ def create_campaign(req: CampaignCreate, background_tasks: BackgroundTasks, curr
             camp = refreshed
         if req.card and req.generate_world:
             # Runs after the response, while the player picks or builds a character.
-            world_skeleton.init_state(str(campaign_id), owner_id, req.world_visibility or "surprise")
+            world_skeleton.init_state(str(campaign_id), req.world_visibility or "surprise")
             background_tasks.add_task(world_skeleton.run_world_skeleton, str(campaign_id))
             refreshed = db.get_campaign_by_id(str(campaign_id))
             if refreshed:
@@ -618,16 +618,18 @@ def update_world_skeleton(
     background_tasks: BackgroundTasks,
     current_user=Depends(get_current_user),
 ):
-    """Change who sees the skeleton, and/or generate the pieces that are still missing."""
+    """Change who sees the skeleton (owner only), and/or generate the pieces that are still missing."""
     c = _require_owner_or_gm(campaign_id, current_user)
-    state = dict((c.metadata_json or {}).get("world_skeleton") or {})
     if req.visibility is not None:
+        # "Keep it a surprise" is the owner's choice about their own game; a GM may not lift it.
+        if c.owner_id != _require_user_id(current_user):
+            raise HTTPException(status_code=403, detail='Only the campaign owner can change who sees the world')
         if req.visibility not in world_skeleton.VISIBILITIES:
             raise HTTPException(status_code=422, detail='visibility must be "surprise" or "show"')
-        state["visibility"] = req.visibility
-        db.set_campaign_metadata_keys(campaign_id, c.owner_id, {"world_skeleton": state})
+        world_skeleton.set_visibility(campaign_id, req.visibility)
+    state = dict(((db.get_campaign_by_id(campaign_id) or c).metadata_json or {}).get("world_skeleton") or {})
     if req.retry and not world_skeleton.is_active(campaign_id, state):
-        world_skeleton.request_retry(campaign_id, c.owner_id, state)
+        world_skeleton.request_retry(campaign_id)
         background_tasks.add_task(world_skeleton.run_world_skeleton, campaign_id)
     refreshed = db.get_campaign_by_id(campaign_id) or c
     return {'world': _world_view(refreshed, _require_user_id(current_user))}

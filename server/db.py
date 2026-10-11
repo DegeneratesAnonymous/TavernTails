@@ -1,12 +1,16 @@
+import copy
 import os
 import secrets
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, cast
+from typing import Any, Dict, List, TypeVar, cast
 
 from passlib.context import CryptContext
 from sqlalchemy import Column, delete, desc, func, or_
 from sqlalchemy.types import JSON
 from sqlmodel import Field, Session, SQLModel, create_engine, select
+
+_T = TypeVar("_T")
 
 # Use a pure-Python scheme for test reliability (avoids bcrypt backend quirks in CI/dev containers).
 # If you want bcrypt/argon2 in production, add those schemes and verify backend availability.
@@ -348,6 +352,25 @@ def set_campaign_metadata_keys(campaign_id: str, owner_id: int, values: Dict[str
         session.commit()
         session.refresh(camp)
         return camp
+
+
+def update_campaign_metadata(campaign_id: str, mutate: Callable[[Dict[str, Any]], _T]) -> _T | None:
+    """Read, change and write ``metadata_json`` in one transaction with the row locked.
+
+    ``mutate`` edits the dict in place and returns whatever the caller needs back. The row lock
+    (``FOR UPDATE``; SQLite serialises writers instead) keeps two concurrent updates from each
+    writing back the copy they read. Returns None when the campaign does not exist.
+    """
+    with Session(engine) as session:
+        camp = session.exec(select(Campaign).where(Campaign.id == campaign_id).with_for_update()).first()
+        if not camp:
+            return None
+        meta = copy.deepcopy(dict(camp.metadata_json or {}))
+        result = mutate(meta)
+        camp.metadata_json = meta
+        session.add(camp)
+        session.commit()
+        return result
 
 
 def delete_campaign(campaign_id: str, owner_id: int) -> bool:

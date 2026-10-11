@@ -6,7 +6,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react'
 import { apiFetch } from '../../api'
-import { WORLD_PIECES, worldInProgress, type WorldState, type WorldVisibility } from './campaignCard'
+import { WORLD_PIECES, afterPoll, type WorldPoll, type WorldState, type WorldVisibility } from './campaignCard'
 
 const POLL_MS = 5000
 
@@ -59,25 +59,30 @@ export default function WorldSkeletonPanel({ campaignId, canEdit }: { campaignId
   // Bumped after a retry so the polling effect starts again.
   const [pollRound, setPollRound] = useState(0)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<WorldPoll> => {
     try {
       const res = await apiFetch(`/campaigns/${campaignId}/world`)
-      if (!res.ok) return null
+      if (res.status === 403 || res.status === 404) return { kind: 'gone' }
+      if (!res.ok) return { kind: 'error' }
       const body = await res.json()
-      return (body.world ?? null) as WorldState | null
+      return { kind: 'ok', world: (body.world ?? null) as WorldState | null }
     } catch {
-      return null
+      return { kind: 'error' }
     }
   }, [campaignId])
 
   useEffect(() => {
     let live = true
     let timer: ReturnType<typeof setTimeout> | undefined
+    let last: WorldState | null = null
+    let errors = 0
     const tick = async () => {
-      const next = await load()
+      const outcome = afterPoll(await load(), last, errors)
       if (!live) return
-      setWorld(next)
-      if (worldInProgress(next)) timer = setTimeout(tick, POLL_MS)
+      last = outcome.world
+      errors = outcome.errorsInARow
+      setWorld(outcome.world)
+      if (outcome.again) timer = setTimeout(tick, POLL_MS)
     }
     tick()
     return () => {

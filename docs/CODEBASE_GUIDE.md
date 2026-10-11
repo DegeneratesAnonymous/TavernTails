@@ -72,10 +72,16 @@ New campaigns start from the player's own description, not from a form of AI set
    A failed piece stays open for play to fill in, and `POST /campaigns/{id}/world` retries only
    those pieces.
 4. `GET /campaigns/{id}/world` returns progress to the owner or GM. It returns the contents only
-   when the owner chose "Show me the world", or to a DM. The job writes only the keys it owns, so a
-   visibility change made mid-run survives. The first opening questionnaire consumes the prepared
-   seed once (`take_opening_seed`). If no seed is ready yet, it reads the premise with the hidden
-   truth in mind; `premise_seed.reveals_secret` rejects a seed that states the secret.
+   when the owner chose "Show me the world", or to a DM. Only the owner may change that choice.
+   Campaign metadata holds only progress and row ids, never the contents, because the campaign
+   list and detail routes return metadata whole. A piece is marked ready only after its rows are
+   saved.
+5. Every change to the skeleton's state goes through `db.update_campaign_metadata`, a
+   read-change-write in one row-locked transaction, so a mid-run visibility change survives the
+   job's saves. The first opening questionnaire consumes the prepared seed once
+   (`take_opening_seed`, also in one transaction). If no seed is ready yet, the questionnaire reads
+   the premise with the hidden truth in mind; `premise_seed.reveals_secret` rejects a seed that
+   states the secret.
 
 The classic creation paths stay behind "Use the classic setup" until the card flow has been
 play-tested. They do not build a world skeleton.

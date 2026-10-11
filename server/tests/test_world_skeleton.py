@@ -79,9 +79,12 @@ def _campaign(email: str, **settings) -> db.Campaign:
             "setting_summary": "A grim harbor town where the lighthouse keeper vanished and the lamp went dark.",
             **settings,
         },
-        "campaign_card": {"people": [{"name": "Maren Vey"}], "factions": [{"name": "Tidewardens"}]},
+        "campaign_card": {
+            "text": "A grim harbor town where the keeper Maren Vey vanished. The Tidewardens run the docks.",
+            "people": [{"name": "Maren Vey"}], "factions": [{"name": "Tidewardens"}],
+        },
     })
-    world_skeleton.init_state(str(camp.id), user.id)
+    world_skeleton.init_state(str(camp.id))
     return camp
 
 
@@ -135,13 +138,68 @@ def test_truth_must_match_the_players_opening_trouble():
 
 
 def test_contents_are_hidden_unless_shown_or_dm():
-    state = {"status": "ready", "visibility": "surprise",
-             "pieces": {"truth": {"status": "ready", "data": TRUTH}}}
+    camp = _campaign("skeleton-view@example.com")
+    world_skeleton.generate_world_skeleton(str(camp.id), complete=_full_model(**{'"deadline"': "nope"}))
+    state = db.get_campaign_by_id(str(camp.id)).metadata_json["world_skeleton"]
     hidden = world_skeleton.public_view(state)
     assert "data" not in hidden["pieces"]["truth"]
-    assert hidden["pieces"]["clock"]["status"] == "pending"
+    assert hidden["pieces"]["clock"]["status"] == "failed"
+    # Contents are read back from the GM-only rows.
     assert world_skeleton.public_view(state, reveal=True)["pieces"]["truth"]["data"] == TRUTH
-    assert world_skeleton.public_view({**state, "visibility": "show"})["pieces"]["truth"]["data"] == TRUTH
+    shown = world_skeleton.public_view({**state, "visibility": "show"})["pieces"]
+    assert shown["npcs"]["data"][1] == {
+        "name": "Ilsa Dace", "role": "harbor master", "wants": "Stay rich.", "secret": "She sold the keeper.",
+        "knows": "The smugglers' schedule.", "faction": "Harbor Office",
+    }
+    assert "data" not in shown["clock"]
+
+
+def test_secrets_never_reach_campaign_metadata():
+    """GET /campaigns returns metadata whole, so the secrets must live only in GM-only rows."""
+    camp = _campaign("skeleton-metadata@example.com")
+    world_skeleton.generate_world_skeleton(str(camp.id), complete=_full_model())
+    stored = json.dumps(db.get_campaign_by_id(str(camp.id)).metadata_json)
+    for secret in (TRUTH["hidden_truth"], "She sold the keeper.", "Wreckers' Moon", "Land cargo unseen."):
+        assert secret not in stored
+    user = db.get_user_by_identifier("skeleton-metadata@example.com")
+    headers = {"Authorization": f"Bearer {create_access_token(user.email or '')}"}
+    listing = TestClient(main.app).get("/campaigns", headers=headers).text
+    assert TRUTH["hidden_truth"] not in listing and "She sold the keeper." not in listing
+    assert world_skeleton.hidden_truth(db.get_campaign_by_id(str(camp.id))) == TRUTH
+
+
+def test_a_piece_is_ready_only_once_its_rows_are_saved(monkeypatch):
+    camp = _campaign("skeleton-persist@example.com")
+    original = world_skeleton._persist
+
+    def flaky(campaign, piece, value, **kwargs):
+        if piece == "factions":
+            raise RuntimeError("database went away")
+        return original(campaign, piece, value, **kwargs)
+
+    monkeypatch.setattr(world_skeleton, "_persist", flaky)
+    state = world_skeleton.generate_world_skeleton(str(camp.id), complete=_full_model())
+    assert state["pieces"]["factions"] == {"status": "failed", "reason": "persist_error"}
+    assert not [e for e in _entities(str(camp.id)) if e.entity_type == "faction"]
+
+    monkeypatch.setattr(world_skeleton, "_persist", original)
+    state = world_skeleton.generate_world_skeleton(str(camp.id), complete=_full_model())
+    assert state["pieces"]["factions"]["status"] == "ready"
+    assert {e.name for e in _entities(str(camp.id)) if e.entity_type == "faction"} == {"Tidewardens", "Salt Syndicate", "Harbor Office"}
+
+
+def test_names_only_in_setting_notes_keep_imported_provenance():
+    camp = _campaign("skeleton-lore@example.com")
+    owner = db.get_user_by_identifier("skeleton-lore@example.com")
+    meta = dict(db.get_campaign_by_id(str(camp.id)).metadata_json)
+    meta["campaign_card"] = {**meta["campaign_card"], "factions": [{"name": "Tidewardens"}, {"name": "Salt Syndicate"}]}
+    meta["imported_lore"] = ["The Salt Syndicate smuggles brandy past the reef."]
+    db.set_campaign_metadata_keys(str(camp.id), owner.id, meta)
+    world_skeleton.generate_world_skeleton(str(camp.id), complete=_full_model())
+    factions = {e.name: e.data["provenance"] for e in _entities(str(camp.id)) if e.entity_type == "faction"}
+    assert factions["Tidewardens"] == "user"
+    assert factions["Salt Syndicate"] == "imported"
+    assert factions["Harbor Office"] == "generated_provisional"
 
 
 def test_prepared_opening_seed_is_used_once():
@@ -297,3 +355,35 @@ def test_retry_keeps_finished_pieces():
     world = client.get(f"/campaigns/{camp.id}/world", headers=headers).json()["world"]
     assert world["status"] == "ready"
     assert len(asked) == 1 and '"deadline"' in asked[0]  # only the clock was asked for again
+
+
+def test_only_the_owner_can_lift_the_surprise():
+    owner = _user("skeleton-owner@example.com")
+    gm = _user("skeleton-gm@example.com")
+    camp = _campaign("skeleton-owner@example.com")
+    with Session(db.engine) as s:
+        row = s.get(db.Campaign, camp.id)
+        row.gm_user_id = gm.id
+        s.add(row)
+        s.commit()
+    client = TestClient(main.app)
+    gm_headers = {"Authorization": f"Bearer {create_access_token(gm.email or '')}"}
+    denied = client.post(f"/campaigns/{camp.id}/world", headers=gm_headers, json={"visibility": "show"})
+    assert denied.status_code == 403
+    assert db.get_campaign_by_id(str(camp.id)).metadata_json["world_skeleton"]["visibility"] == "surprise"
+    owner_headers = {"Authorization": f"Bearer {create_access_token(owner.email or '')}"}
+    assert client.post(f"/campaigns/{camp.id}/world", headers=owner_headers, json={"visibility": "show"}).status_code == 200
+
+
+def test_a_malformed_card_is_a_422_not_a_500():
+    user = _user("card-malformed@example.com")
+    headers = {"Authorization": f"Bearer {create_access_token(user.email or '')}"}
+    client = TestClient(main.app)
+    for card in (
+        {"fields": {"starting_level": {"value": "three", "status": "said"}}},
+        {"fields": {"pacing": {"value": "glacial", "status": "guessed"}}},
+        {"fields": {"tone": {"value": "grim", "status": "certain"}}},
+        {"fields": "not a mapping"},
+    ):
+        res = client.post("/campaigns", headers=headers, json={"name": "Bad", "card": card, "create_session": False})
+        assert res.status_code == 422, (card, res.text)

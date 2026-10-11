@@ -132,3 +132,9 @@ def test_grounding_needs_most_content_words():
     assert is_grounded("lighthouse keeper vanished", source)
     assert not is_grounded("The Drowned Lighthouse of Saltmere", source)
     assert not is_grounded("", source)
+
+
+def test_the_whole_advertised_description_is_kept():
+    text = ("The harbor keeps its secrets. " * 260)[:7900]
+    card = read_campaign_card(text, complete=lambda *a, **k: None)
+    assert card["text"] == text.strip()
