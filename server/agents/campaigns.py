@@ -1,12 +1,15 @@
 import uuid
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from .. import db
 from ..auth import get_current_user
+from ..generation_workers import run_generation
 from . import sessions as sessions_agent
+from . import world_skeleton
+from .campaign_card import apply_answers, card_to_campaign, read_campaign_card
 from .campaign_interpretation import build_full_contract_package
 
 router = APIRouter(prefix="/campaigns", tags=["campaigns"])
@@ -228,6 +231,23 @@ class CampaignCreate(BaseModel):
     preferences: dict[str, Any] | None = None
     player_backstories: list[dict[str, Any]] | None = None
     imported_lore_summary: str | None = None
+    # Campaign Card setup: the card the player confirmed, their follow-up answers, and whether they
+    # want to see the generated world skeleton ("show") or keep it a surprise.
+    card: dict[str, Any] | None = None
+    follow_up_answers: dict[str, str] | None = None
+    world_visibility: str | None = None
+    generate_world: bool = True
+
+
+class CampaignCardRequest(BaseModel):
+    text: str = Field(default="", max_length=8000)
+    starter: dict[str, Any] | None = None
+    lore: str | None = Field(default=None, max_length=60000)
+
+
+class WorldSkeletonRequest(BaseModel):
+    visibility: str | None = None
+    retry: bool = False
 
 
 class CampaignUpdate(BaseModel):
@@ -288,9 +308,33 @@ def list_campaign_seeds():
     return {'seeds': CAMPAIGN_SEEDS}
 
 
+@router.post('/card', summary='Read a campaign description back as a Campaign Card')
+async def read_card(req: CampaignCardRequest, current_user=Depends(get_current_user)):
+    _require_user_id(current_user)
+    starter = dict(req.starter or {})
+    seed_id = str(starter.get("seed_id") or "")
+    seed = next((s for s in CAMPAIGN_SEEDS if s["id"] == seed_id), None) if seed_id else None
+    if seed:
+        starter = {"genre": seed["genre"], "tone": seed["tone"], "title": seed["title"], "seed_id": seed_id, **starter}
+    card = await run_generation(read_campaign_card, req.text, starter=starter, lore=req.lore or "")
+    return {'card': card}
+
+
+def _card_campaign_values(req: CampaignCreate) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The confirmed card as (campaign values, card with follow-up answers applied)."""
+    card = apply_answers(dict(req.card or {}), req.follow_up_answers)
+    return card_to_campaign(card), card
+
+
 @router.post('', status_code=201)
-def create_campaign(req: CampaignCreate, current_user=Depends(get_current_user)):
+def create_campaign(req: CampaignCreate, background_tasks: BackgroundTasks, current_user=Depends(get_current_user)):
     owner_id = _require_user_id(current_user)
+    card_values: dict[str, Any] = {}
+    confirmed_card: dict[str, Any] = {}
+    if req.card:
+        card_values, confirmed_card = _card_campaign_values(req)
+        req.name = req.name.strip() or card_values.get("name") or "Untitled Campaign"
+        req.description = req.description or card_values.get("description") or ""
     owner_character_id = req.owner_character_id
     owner_role = "dm" if req.owner_role == "dm" else "player"
     if owner_role == "player" and owner_character_id is not None:
@@ -314,7 +358,7 @@ def create_campaign(req: CampaignCreate, current_user=Depends(get_current_user))
                     "setting_summary": seed.get("setting_summary", ""),
                     "creation_posture": seed.get("creation_posture", "guided_builder"),
                 }
-        initial_settings = {**seed_defaults, **dict(req.preferences or {})}
+        initial_settings = {**seed_defaults, **(card_values.get("settings") or {}), **dict(req.preferences or {})}
         posture = req.creation_posture or initial_settings.get("creation_posture") or seed_defaults.get("creation_posture")
         if posture:
             initial_settings["creation_posture"] = posture
@@ -325,7 +369,7 @@ def create_campaign(req: CampaignCreate, current_user=Depends(get_current_user))
             docs=imported_lore,
             backstories=req.player_backstories or [],
         )
-        updated = db.set_campaign_metadata_keys(campaign_id, owner_id, {
+        initial_meta: dict[str, Any] = {
             "settings": initial_settings,
             "imported_lore": imported_lore,
             "player_backstories": req.player_backstories or [],
@@ -333,12 +377,23 @@ def create_campaign(req: CampaignCreate, current_user=Depends(get_current_user))
                 "role": owner_role,
                 "character_id": owner_character_id,
             },
-        })
+        }
+        if req.card:
+            initial_meta["campaign_card"] = confirmed_card
+            initial_meta["variables"] = card_values.get("variables") or {}
+        updated = db.set_campaign_metadata_keys(campaign_id, owner_id, initial_meta)
         if updated:
             camp = updated
         refreshed = _persist_contract_package(campaign_id, owner_id, package, confirmed=False)
         if refreshed:
             camp = refreshed
+        if req.card and req.generate_world:
+            # Runs after the response, while the player picks or builds a character.
+            world_skeleton.init_state(str(campaign_id), owner_id, req.world_visibility or "surprise")
+            background_tasks.add_task(world_skeleton.run_world_skeleton, str(campaign_id))
+            refreshed = db.get_campaign_by_id(str(campaign_id))
+            if refreshed:
+                camp = refreshed
     except Exception:
         pass
     # Optionally create an initial linked session and persist that link to campaign.metadata
@@ -526,6 +581,60 @@ def purge_campaigns(name_like: str | None = None, current_user=Depends(get_curre
         tokens = [part.strip() for part in name_like.split(',') if part.strip()]
     deleted = db.purge_campaigns(owner_id=owner_id, name_tokens=tokens)
     return {'deleted': deleted}
+
+
+def _require_owner_or_gm(campaign_id: str, current_user) -> db.Campaign:
+    user_id = _require_user_id(current_user)
+    c = db.get_campaign_by_id(campaign_id)
+    if not c:
+        raise HTTPException(status_code=404, detail='Campaign not found')
+    if c.owner_id != user_id and c.gm_user_id != user_id:
+        raise HTTPException(status_code=403, detail='Forbidden')
+    return c
+
+
+def _world_view(c: db.Campaign, user_id: int) -> dict[str, Any]:
+    meta = c.metadata_json or {}
+    state = dict(meta.get("world_skeleton") or {})
+    seated_as_dm = c.owner_id == user_id and (meta.get("owner_participation") or {}).get("role") == "dm"
+    view = world_skeleton.public_view(state, reveal=c.gm_user_id == user_id or seated_as_dm)
+    if view["status"] in ("pending", "running") and not world_skeleton.is_running(str(c.id)):
+        # A restart dropped the job; finished pieces are kept and the rest can be retried.
+        view["status"] = "interrupted"
+    return view
+
+
+@router.get('/{campaign_id}/world', response_model=Dict[str, Any])
+def get_world_skeleton(campaign_id: str, current_user=Depends(get_current_user)):
+    """World skeleton progress; its contents only when the owner chose to see them."""
+    c = _require_owner_or_gm(campaign_id, current_user)
+    return {'world': _world_view(c, _require_user_id(current_user))}
+
+
+@router.post('/{campaign_id}/world', response_model=Dict[str, Any])
+def update_world_skeleton(
+    campaign_id: str,
+    req: WorldSkeletonRequest,
+    background_tasks: BackgroundTasks,
+    current_user=Depends(get_current_user),
+):
+    """Change who sees the skeleton, and/or generate the pieces that are still missing."""
+    c = _require_owner_or_gm(campaign_id, current_user)
+    state = dict((c.metadata_json or {}).get("world_skeleton") or {})
+    if req.visibility is not None:
+        if req.visibility not in world_skeleton.VISIBILITIES:
+            raise HTTPException(status_code=422, detail='visibility must be "surprise" or "show"')
+        state["visibility"] = req.visibility
+        db.set_campaign_metadata_keys(campaign_id, c.owner_id, {"world_skeleton": state})
+    if req.retry and not world_skeleton.is_running(campaign_id):
+        if not state:
+            world_skeleton.init_state(campaign_id, c.owner_id)
+        background_tasks.add_task(world_skeleton.run_world_skeleton, campaign_id)
+    refreshed = db.get_campaign_by_id(campaign_id) or c
+    view = _world_view(refreshed, _require_user_id(current_user))
+    if req.retry and view["status"] == "interrupted":
+        view["status"] = "pending"  # the task starts once this response is sent
+    return {'world': view}
 
 
 @router.get('/{campaign_id}/settings', response_model=Dict[str, Any])

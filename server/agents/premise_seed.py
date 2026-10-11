@@ -64,7 +64,8 @@ def _tokens(text: str) -> set[str]:
     return {w for w in re.findall(r"[a-z]{5,}", text.lower()) if w not in _STOP}
 
 
-def _parse(raw: str | None) -> dict[str, Any] | None:
+def parse_json_object(raw: str | None) -> dict[str, Any] | None:
+    """The first JSON object in a model reply (thinking blocks removed), or None."""
     if not raw:
         return None
     text = re.sub(r"<think>.*?</think>", "", raw, flags=re.S).strip()
@@ -95,14 +96,30 @@ def validate(data: dict[str, Any], premise: str) -> dict[str, str] | None:
     return out
 
 
+def reveals_secret(fields: dict[str, str], hidden_truth: dict[str, Any], premise: str) -> bool:
+    """True when the player-facing fields carry most of what only the hidden truth says."""
+    public = _tokens(" ".join([premise, str(hidden_truth.get("visible_problem") or ""), str(hidden_truth.get("first_clue") or "")]))
+    secret = _tokens(str(hidden_truth.get("hidden_truth") or "")) - public
+    if len(secret) < 3:
+        return False
+    shown = _tokens(" ".join(fields.values()))
+    return len(secret & shown) >= max(3, (len(secret) + 1) // 2)
+
+
 def extract_premise_seed(
     settings: dict[str, Any] | None,
     contract: dict[str, Any] | None,
     *,
     complete: Callable[..., str | None] | None = None,
     timeout: float = 45.0,
+    hidden_truth: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    """One model call -> an opening seed in the shape ``generate_starter_seed`` returns, or None."""
+    """One model call -> an opening seed in the shape ``generate_starter_seed`` returns, or None.
+
+    ``hidden_truth`` is the world skeleton's secret behind the opening trouble.  The model is told to
+    let the first clue point toward it; a seed that states the secret outright is rejected, because
+    every seed field is player-facing.
+    """
     settings, contract = settings or {}, contract or {}
     premise = _premise(settings, contract)
     if len(premise.split()) < MIN_PREMISE_WORDS:
@@ -114,18 +131,28 @@ def extract_premise_seed(
         call = chat_complete
     genre = str(settings.get("genre") or (contract.get("campaign_dna") or {}).get("genre") or "fantasy")
     tone = str(settings.get("tone") or (contract.get("campaign_dna") or {}).get("tone") or "balanced")
+    user = f"Genre: {genre}\nTone: {tone}\nPremise: {premise}"
+    if hidden_truth:
+        user += (
+            f"\nThe visible problem: {hidden_truth.get('visible_problem', '')}"
+            f"\nGM-only background (never state it in any field): {hidden_truth.get('hidden_truth', '')}"
+            f"\nMake first_clue_or_question about this concrete clue: {hidden_truth.get('first_clue', '')}"
+        )
     try:
         raw = call(
             [{"role": "system", "content": SYSTEM},
-             {"role": "user", "content": f"Genre: {genre}\nTone: {tone}\nPremise: {premise}"}],
+             {"role": "user", "content": user}],
             task_scope="taverntails_plot", max_tokens=520, temperature=0.5, timeout=timeout,
         )
     except Exception:  # noqa: BLE001 - the pool seed is always an acceptable answer
         log.warning("premise extraction call failed", exc_info=True)
         return None
-    fields = validate(_parse(raw) or {}, premise)
+    fields = validate(parse_json_object(raw) or {}, premise)
     if not fields:
         log.info("premise extraction rejected (incomplete or ungrounded)")
+        return None
+    if hidden_truth and reveals_secret(fields, hidden_truth, premise):
+        log.info("premise extraction rejected (stated the hidden truth)")
         return None
 
     from .content_bundles import annotate_seed

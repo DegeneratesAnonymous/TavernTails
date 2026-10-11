@@ -1,0 +1,503 @@
+"""Decide what is secretly going on in a new campaign before play starts.
+
+The visible world (places, minor people, scenery) is cheap to invent when the
+party gets there.  What lies underneath is not: if the hidden truth behind the
+opening trouble is improvised scene by scene, clues stop adding up.  So after
+the Campaign Card is confirmed, a background job makes four small model calls:
+
+1. the hidden truth behind the opening trouble (and the first clue toward it),
+2. two or three factions and what each wants,
+3. three or four key NPCs, each with a want and a secret,
+4. one clock: what escalates if the party does nothing.
+
+Right after the truth exists, the job also prepares the first session's opening
+seed so the questionnaire does not wait on that call and the first clue points
+at something real.
+
+Every piece is written as soon as it is valid, as GM-only campaign memory
+(``CampaignEntity`` / ``CampaignHook``) that the context orchestrator already
+ranks into scene context.  Generated content is ``generated_provisional``;
+names the player wrote keep ``user`` provenance and names found in imported
+lore keep ``imported``.  A piece that fails stays "open" and play fills it in,
+as it did before this existed; the status records why.
+"""
+from __future__ import annotations
+
+import logging
+import threading
+import uuid
+from collections.abc import Callable
+from datetime import datetime, timezone
+from typing import Any
+
+from sqlmodel import Session
+
+from .. import db
+from ..db import CampaignChangeLog, CampaignEntity, CampaignHook
+from .generation_intent import clean_text, content_tokens
+from .premise_seed import parse_json_object
+
+log = logging.getLogger("taverntails.world_skeleton")
+
+PIECES = ("truth", "factions", "npcs", "clock")
+TAG = "world_skeleton"
+VISIBILITIES = ("surprise", "show")
+MAX_FIELD_CHARS = 240
+MAX_LORE_PROMPT_CHARS = 3000
+
+_running: set[str] = set()
+_running_lock = threading.Lock()
+
+_COMMON = (
+    "You are the game master quietly preparing a tabletop RPG campaign. The players will never see this; "
+    "it is what is true underneath. Keep everything consistent with the campaign brief and the player's own "
+    "words; never contradict them. If setting notes are given, take names and facts from them and invent "
+    "only where they are silent. Keep each value short. Reply with ONLY a JSON object.\n"
+)
+TRUTH_SYSTEM = _COMMON + (
+    'Keys: "thread_name" (2-6 words naming the mystery or conflict), '
+    '"visible_problem" (one sentence: what the party can see is wrong at the start; it must match the opening trouble if one is given), '
+    '"hidden_truth" (one or two sentences: what is really happening and why), '
+    '"who_benefits" (who gains from it, "Name (role)" or a group), '
+    '"first_clue" (one sentence: a concrete thing present at the start that points toward the hidden truth without revealing it), '
+    '"stakes" (one sentence: what is lost if nobody acts).'
+)
+FACTIONS_SYSTEM = _COMMON + (
+    'Keys: "factions": a list of 2 or 3 objects with "name", "wants" (one sentence), '
+    '"plan" (one sentence: what they are doing right now), "if_ignored" (one sentence: what they do next if '
+    "nobody interferes). Include every faction the player named, with the same name. At least one faction "
+    "should be tied to the hidden truth."
+)
+NPCS_SYSTEM = _COMMON + (
+    'Keys: "npcs": a list of 3 or 4 objects with "name" (a full name), "role", "faction" (one of the faction '
+    'names given, or ""), "wants" (one sentence), "secret" (one sentence), "knows" (one sentence: what they '
+    "could tell the party). Include every person the player named, with the same name. At least one of them "
+    "knows part of the hidden truth."
+)
+CLOCK_SYSTEM = _COMMON + (
+    'Keys: "title" (2-6 words), "steps" (a list of exactly 3 short sentences: what happens, in order, if the '
+    'party does nothing), "deadline" (a short phrase for when the last step lands, e.g. "the third night").'
+)
+
+
+# ---------------------------------------------------------------------------
+# Campaign brief
+# ---------------------------------------------------------------------------
+
+def _meta(campaign: db.Campaign) -> dict[str, Any]:
+    return dict(campaign.metadata_json or {}) if isinstance(campaign.metadata_json, dict) else {}
+
+
+def _card_names(meta: dict[str, Any], key: str) -> list[str]:
+    card = meta.get("campaign_card") or {}
+    return [clean_text(item.get("name")) for item in card.get(key) or [] if isinstance(item, dict) and clean_text(item.get("name"))]
+
+
+def _player_text(meta: dict[str, Any]) -> str:
+    """Everything the player wrote, including the names the card confirmed as theirs."""
+    settings = meta.get("settings") or {}
+    written = [str(settings.get(k) or "") for k in ("setting_summary", "world_name", "starting_location", "opening_trouble")]
+    return " ".join(written + _card_names(meta, "people") + _card_names(meta, "factions"))
+
+
+def _lore(meta: dict[str, Any]) -> str:
+    return "\n".join(str(doc) for doc in meta.get("imported_lore") or [] if doc)
+
+
+def campaign_brief(campaign: db.Campaign) -> str:
+    """What every skeleton call is told about the campaign."""
+    meta = _meta(campaign)
+    settings = meta.get("settings") or {}
+    lines = [
+        f"Campaign: {campaign.name}",
+        f"Genre: {settings.get('genre') or 'fantasy'}; tone: {settings.get('tone') or 'balanced'}",
+        f"Premise in the player's words: {clean_text(settings.get('setting_summary')) or clean_text(campaign.description) or '(none)'}",
+    ]
+    for label, key in (("World", "world_name"), ("The story opens at", "starting_location"), ("Opening trouble", "opening_trouble")):
+        if clean_text(settings.get(key)):
+            lines.append(f"{label}: {clean_text(settings.get(key))}")
+    people = _card_names(meta, "people")
+    factions = _card_names(meta, "factions")
+    if people:
+        lines.append("People the player named: " + ", ".join(people))
+    if factions:
+        lines.append("Factions the player named: " + ", ".join(factions))
+    if settings.get("content_limits"):
+        lines.append("Avoid: " + "; ".join(str(c) for c in settings["content_limits"]))
+    lore = _lore(meta)
+    if lore:
+        lines.append(f"Setting notes (excerpt):\n{lore[:MAX_LORE_PROMPT_CHARS]}")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Validation
+# ---------------------------------------------------------------------------
+
+def _clip(value: Any) -> str:
+    """Whitespace collapsed; sentence punctuation kept, since these are read back as prose."""
+    return " ".join(str(value or "").split())[:MAX_FIELD_CHARS]
+
+
+def validate_truth(data: dict[str, Any], *, opening_trouble: str = "") -> dict[str, str] | None:
+    keys = ("thread_name", "visible_problem", "hidden_truth", "who_benefits", "first_clue", "stakes")
+    out = {k: _clip(data.get(k)) for k in keys}
+    if not all(out.values()):
+        return None
+    if not 1 <= len(out["thread_name"].split()) <= 8:
+        return None
+    hidden, visible = content_tokens(out["hidden_truth"]), content_tokens(out["visible_problem"])
+    if hidden and len(hidden - visible) < 2:
+        return None  # the "truth" only restates what everyone can already see
+    if opening_trouble and not content_tokens(opening_trouble) & (visible | content_tokens(out["thread_name"])):
+        return None  # it planned a different crisis than the one the player described
+    return out
+
+
+def _named_list(data: dict[str, Any], key: str) -> list[dict[str, Any]]:
+    items = data.get(key)
+    return [item for item in items if isinstance(item, dict)] if isinstance(items, list) else []
+
+
+def validate_factions(data: dict[str, Any], authored: list[str]) -> list[dict[str, str]] | None:
+    out: list[dict[str, str]] = []
+    for item in _named_list(data, "factions"):
+        entry = {k: _clip(item.get(k)) for k in ("name", "wants", "plan", "if_ignored")}
+        if entry["name"] and entry["wants"] and entry["name"].casefold() not in {f["name"].casefold() for f in out}:
+            entry["name"] = entry["name"][:80]
+            out.append(entry)
+    returned = {f["name"].casefold() for f in out}
+    for name in authored:  # the player's factions exist whether or not the model kept them
+        if name.casefold() not in returned:
+            out.insert(0, {"name": name, "wants": "", "plan": "", "if_ignored": ""})
+    return out[: max(3, len(authored))] if len(out) >= 2 else None
+
+
+def validate_npcs(data: dict[str, Any], authored: list[str], faction_names: list[str]) -> list[dict[str, str]] | None:
+    taken = {f.casefold() for f in faction_names}
+    known_factions = {f.casefold(): f for f in faction_names}
+    out: list[dict[str, str]] = []
+    for item in _named_list(data, "npcs"):
+        entry = {k: _clip(item.get(k)) for k in ("name", "role", "faction", "wants", "secret", "knows")}
+        name = entry["name"][:80]
+        if not (name and entry["wants"] and entry["secret"]) or name.casefold() in taken:
+            continue
+        taken.add(name.casefold())
+        entry["name"] = name
+        entry["faction"] = known_factions.get(entry["faction"].casefold(), "")
+        out.append(entry)
+    returned = {n["name"].casefold() for n in out}
+    for name in authored:
+        if name.casefold() not in returned:
+            out.insert(0, {"name": name, "role": "", "faction": "", "wants": "", "secret": "", "knows": ""})
+    return out[: max(4, len(authored))] if len(out) >= 2 else None
+
+
+def validate_clock(data: dict[str, Any]) -> dict[str, Any] | None:
+    title, deadline = _clip(data.get("title")), _clip(data.get("deadline"))
+    steps = [_clip(s) for s in data.get("steps") or [] if _clip(s)] if isinstance(data.get("steps"), list) else []
+    if not title or not deadline or len(steps) < 2:
+        return None
+    return {"title": title[:80], "steps": steps[:3], "deadline": deadline[:80]}
+
+
+# ---------------------------------------------------------------------------
+# Persistence
+# ---------------------------------------------------------------------------
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _provenance(name: str, player_text: str, lore: str) -> str:
+    def has(hay: str) -> bool:
+        parts = [p.casefold() for p in name.split() if len(p) > 2]
+        return bool(parts) and all(p in hay.casefold() for p in parts)
+
+    if has(player_text):
+        return "user"
+    if lore and has(lore):
+        return "imported"
+    return "generated_provisional"
+
+
+def _add_entity(s: Session, campaign_id: str, entity_type: str, name: str, data: dict[str, Any]) -> str:
+    eid = uuid.uuid4().hex[:12]
+    s.add(CampaignEntity(
+        id=eid, campaign_id=campaign_id, entity_type=entity_type, name=name, status="active",
+        visibility="gm_only", tags=[TAG], data=data, created_at=_now(), updated_at=_now(),
+    ))
+    s.add(CampaignChangeLog(
+        id=uuid.uuid4().hex[:12], campaign_id=campaign_id, entity_id=eid, change_type="create",
+        summary=f"World skeleton created {entity_type} '{name}'", before_data={}, after_data=data,
+        caused_by_player_action=False, created_at=_now(),
+    ))
+    return eid
+
+
+def _persist(campaign: db.Campaign, piece: str, value: Any, truth: dict[str, str] | None) -> list[str]:
+    campaign_id = str(campaign.id)
+    meta = _meta(campaign)
+    player_text, lore = _player_text(meta), _lore(meta)
+    ids: list[str] = []
+    with Session(db.engine) as s:
+        if piece == "truth":
+            ids.append(_add_entity(s, campaign_id, "story_thread", value["thread_name"], {
+                # current_situation is what the orchestrator offers as an available clue, so it carries
+                # only what the party can already see; the truth itself goes in gm_notes (never revealed).
+                "current_situation": value["visible_problem"],
+                "stakes": value["stakes"],
+                "gm_notes": value["hidden_truth"],
+                "who_benefits": value["who_benefits"],
+                "first_clue": value["first_clue"],
+                "next_recommended_dm_move": f"Put this within reach: {value['first_clue']}",
+                "current_priority": 8,
+                "provenance": "generated_provisional",
+                "skeleton_piece": "truth",
+            }))
+        elif piece == "factions":
+            for faction in value:
+                ids.append(_add_entity(s, campaign_id, "faction", faction["name"], {
+                    "current_goal": faction["wants"],
+                    "active_plan": faction["plan"],
+                    "likely_escalation": faction["if_ignored"],
+                    "provenance": _provenance(faction["name"], player_text, lore),
+                    "details_provenance": "generated_provisional",
+                    "skeleton_piece": "factions",
+                }))
+        elif piece == "npcs":
+            for npc in value:
+                ids.append(_add_entity(s, campaign_id, "npc", npc["name"], {
+                    "role": npc["role"],
+                    "primary_goal": npc["wants"],
+                    "secrets": [npc["secret"]] if npc["secret"] else [],
+                    "known_information": [npc["knows"]] if npc["knows"] else [],
+                    "faction_affiliations": [npc["faction"]] if npc["faction"] else [],
+                    "provenance": _provenance(npc["name"], player_text, lore),
+                    "details_provenance": "generated_provisional",
+                    "skeleton_piece": "npcs",
+                }))
+        elif piece == "clock":
+            hook_id = uuid.uuid4().hex[:12]
+            s.add(CampaignHook(
+                id=hook_id, campaign_id=campaign_id, title=value["title"],
+                description=" Then: ".join(value["steps"]), hook_type="ticking_clock", priority=8,
+                status="active", deadline=value["deadline"], created_at=_now(), updated_at=_now(),
+            ))
+            ids.append(hook_id)
+            thread_id = ((meta.get("world_skeleton") or {}).get("pieces") or {}).get("truth", {}).get("entity_ids", [None])[0]
+            thread = s.get(CampaignEntity, thread_id) if thread_id else None
+            if thread is not None:
+                thread.data = {**(thread.data or {}), "ticking_clock": value["deadline"]}
+                thread.updated_at = _now()
+                s.add(thread)
+        s.commit()
+    return ids
+
+
+# ---------------------------------------------------------------------------
+# State
+# ---------------------------------------------------------------------------
+
+def _state(campaign: db.Campaign) -> dict[str, Any]:
+    state = dict(_meta(campaign).get("world_skeleton") or {})
+    state.setdefault("status", "not_started")
+    state.setdefault("visibility", "surprise")
+    pieces = dict(state.get("pieces") or {})
+    for piece in PIECES:
+        pieces.setdefault(piece, {"status": "pending"})
+    state["pieces"] = pieces
+    return state
+
+
+def _save(campaign: db.Campaign, state: dict[str, Any]) -> db.Campaign:
+    updated = db.set_campaign_metadata_keys(str(campaign.id), campaign.owner_id, {"world_skeleton": state})
+    return updated or campaign
+
+
+def _overall(pieces: dict[str, Any]) -> str:
+    statuses = [pieces[p].get("status") for p in PIECES]
+    if all(s == "ready" for s in statuses):
+        return "ready"
+    if any(s == "ready" for s in statuses):
+        return "partial"
+    return "failed"
+
+
+def init_state(campaign_id: str, owner_id: int, visibility: str = "surprise") -> None:
+    """Record that a skeleton is wanted, before the background job starts."""
+    db.set_campaign_metadata_keys(campaign_id, owner_id, {"world_skeleton": {
+        "status": "pending",
+        "visibility": visibility if visibility in VISIBILITIES else "surprise",
+        "pieces": {piece: {"status": "pending"} for piece in PIECES},
+    }})
+
+
+def public_view(state: dict[str, Any], *, reveal: bool = False) -> dict[str, Any]:
+    """Status always; contents for a DM (``reveal``) or when the owner chose to see the world."""
+    view = {
+        "status": state.get("status", "not_started"),
+        "visibility": state.get("visibility", "surprise"),
+        "pieces": {p: {"status": (state.get("pieces") or {}).get(p, {}).get("status", "pending")} for p in PIECES},
+    }
+    if reveal or view["visibility"] == "show":
+        for piece in PIECES:
+            entry = (state.get("pieces") or {}).get(piece) or {}
+            if entry.get("status") == "ready":
+                view["pieces"][piece]["data"] = entry.get("data")
+    return view
+
+
+# ---------------------------------------------------------------------------
+# Generation
+# ---------------------------------------------------------------------------
+
+def _ask(call: Callable[..., str | None], system: str, user: str, *, max_tokens: int, timeout: float) -> tuple[dict[str, Any] | None, str]:
+    """The parsed answer, and the failure reason to record if it turns out unusable."""
+    try:
+        raw = call(
+            [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            task_scope="taverntails_plot", max_tokens=max_tokens, temperature=0.7, timeout=timeout,
+        )
+    except Exception:  # noqa: BLE001 - a missing piece stays open and play fills it in
+        log.warning("world skeleton call failed", exc_info=True)
+        return None, "model_error"
+    if not raw:
+        return None, "no_answer"
+    data = parse_json_object(raw)
+    return data, "invalid" if data is not None else "unparseable"
+
+
+def _prepare_opening_seed(campaign: db.Campaign, truth: dict[str, str] | None, call: Callable[..., str | None], timeout: float) -> dict[str, Any] | None:
+    """The first session's opening seed, read from the premise with the truth in mind."""
+    from .premise_seed import extract_premise_seed
+
+    meta = _meta(campaign)
+    settings = meta.get("settings") or {}
+    contract = {**(meta.get("campaign_contract") or {}), "campaign_name": campaign.name}
+    seed = extract_premise_seed(settings, contract, complete=call, timeout=timeout, hidden_truth=truth)
+    if seed is None and truth is not None:
+        seed = extract_premise_seed(settings, contract, complete=call, timeout=timeout)
+    return seed
+
+
+def generate_world_skeleton(
+    campaign_id: str,
+    *,
+    complete: Callable[..., str | None] | None = None,
+    timeout: float = 45.0,
+) -> dict[str, Any]:
+    """Generate every piece that is not ready yet; returns the saved state."""
+    found = db.get_campaign_by_id(campaign_id)
+    if found is None:
+        return {"status": "failed", "reason": "campaign_missing"}
+    campaign: db.Campaign = found  # typed once so the record() closure keeps it narrowed
+    call = complete
+    if call is None:
+        from ..steward_llm import chat_complete
+
+        call = chat_complete
+
+    state = _state(campaign)
+    state.update({"status": "running", "started_at": _now().isoformat()})
+    campaign = _save(campaign, state)
+
+    meta = _meta(campaign)
+    settings = meta.get("settings") or {}
+    brief = campaign_brief(campaign)
+    pieces = state["pieces"]
+    truth = pieces["truth"].get("data") if pieces["truth"].get("status") == "ready" else None
+
+    def record(piece: str, value: Any, reason: str) -> None:
+        nonlocal campaign
+        if value is None:
+            pieces[piece] = {"status": "failed", "reason": reason}
+        else:
+            # Saved before persisting so the clock can find the truth's thread id.
+            pieces[piece] = {"status": "ready", "data": value}
+            campaign = _save(campaign, state)
+            pieces[piece]["entity_ids"] = _persist(campaign, piece, value, truth)
+        campaign = _save(campaign, state)
+
+    if pieces["truth"].get("status") != "ready":
+        data, reason = _ask(call, TRUTH_SYSTEM, brief, max_tokens=420, timeout=timeout)
+        truth = validate_truth(data, opening_trouble=clean_text(settings.get("opening_trouble"))) if data else None
+        record("truth", truth, reason)
+
+    if not state.get("opening_seed") and not state.get("opening_seed_used"):
+        seed = _prepare_opening_seed(campaign, truth, call, timeout)
+        if seed:
+            state["opening_seed"] = seed
+            campaign = _save(campaign, state)
+
+    truth_line = f"\nHidden truth (GM only): {truth['hidden_truth']} Who benefits: {truth['who_benefits']}" if truth else ""
+    factions: list[dict[str, str]] = pieces["factions"].get("data") or []
+    if pieces["factions"].get("status") != "ready":
+        data, reason = _ask(call, FACTIONS_SYSTEM, brief + truth_line, max_tokens=520, timeout=timeout)
+        found_factions = validate_factions(data, _card_names(meta, "factions")) if data else None
+        record("factions", found_factions, reason)
+        factions = found_factions or []
+
+    if pieces["npcs"].get("status") != "ready":
+        faction_names = [f["name"] for f in factions]
+        listing = f"\nFactions: {', '.join(faction_names)}" if faction_names else ""
+        data, reason = _ask(call, NPCS_SYSTEM, brief + truth_line + listing, max_tokens=700, timeout=timeout)
+        found_npcs = validate_npcs(data, _card_names(meta, "people"), faction_names) if data else None
+        record("npcs", found_npcs, reason)
+
+    if pieces["clock"].get("status") != "ready":
+        data, reason = _ask(call, CLOCK_SYSTEM, brief + truth_line, max_tokens=300, timeout=timeout)
+        clock = validate_clock(data) if data else None
+        record("clock", clock, reason)
+
+    state["status"] = _overall(pieces)
+    state["finished_at"] = _now().isoformat()
+    _save(campaign, state)
+    log.info("world skeleton campaign=%s status=%s pieces=%s", campaign_id, state["status"],
+             {p: pieces[p].get("status") for p in PIECES})
+    return state
+
+
+def run_world_skeleton(campaign_id: str) -> None:
+    """Background entry point: at most one job per campaign in this process."""
+    with _running_lock:
+        if campaign_id in _running:
+            return
+        _running.add(campaign_id)
+    try:
+        generate_world_skeleton(campaign_id)
+    except Exception:  # noqa: BLE001 - never let a background job take the worker down
+        log.exception("world skeleton failed campaign=%s", campaign_id)
+        campaign = db.get_campaign_by_id(campaign_id)
+        if campaign is not None:
+            state = _state(campaign)
+            state["status"] = _overall(state["pieces"])
+            _save(campaign, state)
+    finally:
+        with _running_lock:
+            _running.discard(campaign_id)
+
+
+def is_running(campaign_id: str) -> bool:
+    with _running_lock:
+        return campaign_id in _running
+
+
+def hidden_truth(campaign: db.Campaign | None) -> dict[str, str] | None:
+    if campaign is None:
+        return None
+    truth = (_state(campaign)["pieces"].get("truth") or {})
+    return truth.get("data") if truth.get("status") == "ready" else None
+
+
+def take_opening_seed(campaign: db.Campaign | None) -> dict[str, Any] | None:
+    """The prepared opening seed, once: later sessions of the campaign open somewhere new."""
+    if campaign is None:
+        return None
+    state = _state(campaign)
+    seed = state.pop("opening_seed", None)
+    if not seed:
+        return None
+    state["opening_seed_used"] = True
+    _save(campaign, state)
+    return seed if isinstance(seed, dict) else None
