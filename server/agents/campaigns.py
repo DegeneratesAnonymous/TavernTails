@@ -598,7 +598,7 @@ def _world_view(c: db.Campaign, user_id: int) -> dict[str, Any]:
     state = dict(meta.get("world_skeleton") or {})
     seated_as_dm = c.owner_id == user_id and (meta.get("owner_participation") or {}).get("role") == "dm"
     view = world_skeleton.public_view(state, reveal=c.gm_user_id == user_id or seated_as_dm)
-    if view["status"] in ("pending", "running") and not world_skeleton.is_running(str(c.id)):
+    if view["status"] in ("pending", "running") and not world_skeleton.is_active(str(c.id), state):
         # A restart dropped the job; finished pieces are kept and the rest can be retried.
         view["status"] = "interrupted"
     return view
@@ -626,15 +626,11 @@ def update_world_skeleton(
             raise HTTPException(status_code=422, detail='visibility must be "surprise" or "show"')
         state["visibility"] = req.visibility
         db.set_campaign_metadata_keys(campaign_id, c.owner_id, {"world_skeleton": state})
-    if req.retry and not world_skeleton.is_running(campaign_id):
-        if not state:
-            world_skeleton.init_state(campaign_id, c.owner_id)
+    if req.retry and not world_skeleton.is_active(campaign_id, state):
+        world_skeleton.request_retry(campaign_id, c.owner_id, state)
         background_tasks.add_task(world_skeleton.run_world_skeleton, campaign_id)
     refreshed = db.get_campaign_by_id(campaign_id) or c
-    view = _world_view(refreshed, _require_user_id(current_user))
-    if req.retry and view["status"] == "interrupted":
-        view["status"] = "pending"  # the task starts once this response is sent
-    return {'world': view}
+    return {'world': _world_view(refreshed, _require_user_id(current_user))}
 
 
 @router.get('/{campaign_id}/settings', response_model=Dict[str, Any])

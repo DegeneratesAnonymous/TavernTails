@@ -225,3 +225,75 @@ def test_campaigns_created_without_a_card_do_not_build_a_world():
     res = client.post("/campaigns", headers=headers, json={"name": "Classic", "create_session": False})
     cid = res.json()["campaign"]["id"]
     assert client.get(f"/campaigns/{cid}/world", headers=headers).json()["world"]["status"] == "not_started"
+
+
+def test_a_visibility_change_during_the_job_survives_its_saves():
+    camp = _campaign("skeleton-race@example.com")
+    base = _full_model()
+
+    def model(messages, **kwargs):
+        if '"thread_name"' in messages[0]["content"]:
+            # The owner presses "Show me the world" while the truth call is running.
+            fresh = db.get_campaign_by_id(str(camp.id))
+            state = dict(fresh.metadata_json["world_skeleton"])
+            db.set_campaign_metadata_keys(str(camp.id), fresh.owner_id, {"world_skeleton": {**state, "visibility": "show"}})
+        return base(messages, **kwargs)
+
+    world_skeleton.generate_world_skeleton(str(camp.id), complete=model)
+    stored = db.get_campaign_by_id(str(camp.id)).metadata_json["world_skeleton"]
+    assert stored["visibility"] == "show"
+    assert stored["status"] == "ready"
+
+
+def test_a_session_that_opened_first_closes_the_seed_slot():
+    camp = _campaign("skeleton-seed-race@example.com")
+    assert world_skeleton.take_opening_seed(db.get_campaign_by_id(str(camp.id))) is None  # questionnaire built early
+    asked: list[str] = []
+    base = _full_model()
+
+    def model(messages, **kwargs):
+        asked.append(messages[0]["content"])
+        return base(messages, **kwargs)
+
+    state = world_skeleton.generate_world_skeleton(str(camp.id), complete=model)
+    assert not any("opening situation" in system for system in asked)  # no seed is prepared for a later session
+    assert "opening_seed" not in state or not db.get_campaign_by_id(str(camp.id)).metadata_json["world_skeleton"].get("opening_seed")
+    assert world_skeleton.take_opening_seed(db.get_campaign_by_id(str(camp.id))) is None
+
+
+def test_activity_is_judged_by_age_not_by_process():
+    from datetime import timedelta
+
+    recent = (world_skeleton._now() - timedelta(minutes=2)).isoformat()
+    old = (world_skeleton._now() - timedelta(minutes=40)).isoformat()
+    assert world_skeleton.is_active("elsewhere", {"status": "running", "started_at": recent})
+    assert not world_skeleton.is_active("elsewhere", {"status": "running", "started_at": old})
+    assert world_skeleton.is_active("elsewhere", {"status": "pending", "requested_at": recent})
+    assert not world_skeleton.is_active("elsewhere", {"status": "ready", "started_at": recent})
+    assert not world_skeleton.is_active("elsewhere", {"status": "pending"})
+
+
+def test_retry_keeps_finished_pieces():
+    user = _user("skeleton-retry@example.com")
+    headers = {"Authorization": f"Bearer {create_access_token(user.email or '')}"}
+    camp = _campaign("skeleton-retry@example.com")
+    world_skeleton.generate_world_skeleton(str(camp.id), complete=_full_model(**{'"deadline"': "nope"}))
+    client = TestClient(main.app)
+    import server.steward_llm as steward_llm
+
+    asked: list[str] = []
+
+    def model(messages, **kwargs):
+        asked.append(messages[0]["content"])
+        return _full_model()(messages, **kwargs)
+
+    steward_llm_original = steward_llm.chat_complete
+    steward_llm.chat_complete = model
+    try:
+        queued = client.post(f"/campaigns/{camp.id}/world", headers=headers, json={"retry": True}).json()["world"]
+    finally:
+        steward_llm.chat_complete = steward_llm_original
+    assert queued["status"] == "pending"  # the response is sent before the background job runs
+    world = client.get(f"/campaigns/{camp.id}/world", headers=headers).json()["world"]
+    assert world["status"] == "ready"
+    assert len(asked) == 1 and '"deadline"' in asked[0]  # only the clock was asked for again

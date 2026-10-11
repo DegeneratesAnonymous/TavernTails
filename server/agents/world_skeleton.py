@@ -42,6 +42,12 @@ log = logging.getLogger("taverntails.world_skeleton")
 PIECES = ("truth", "factions", "npcs", "clock")
 TAG = "world_skeleton"
 VISIBILITIES = ("surprise", "show")
+# Keys the background job owns. Everything else in the stored state (the visibility the owner picks,
+# whether the opening seed was used) is written by requests while the job runs and must survive its saves.
+_JOB_KEYS = ("status", "pieces", "started_at", "finished_at", "opening_seed")
+# Four calls plus the opening seed take about a minute on one GPU, longer behind a queue. A job silent for
+# this long was lost to a restart (or runs in a process that cannot tell us otherwise).
+STALE_AFTER_S = 15 * 60
 MAX_FIELD_CHARS = 240
 MAX_LORE_PROMPT_CHARS = 3000
 
@@ -310,9 +316,21 @@ def _state(campaign: db.Campaign) -> dict[str, Any]:
     return state
 
 
-def _save(campaign: db.Campaign, state: dict[str, Any]) -> db.Campaign:
+def _write(campaign: db.Campaign, state: dict[str, Any]) -> db.Campaign:
     updated = db.set_campaign_metadata_keys(str(campaign.id), campaign.owner_id, {"world_skeleton": state})
     return updated or campaign
+
+
+def _save(campaign: db.Campaign, state: dict[str, Any]) -> db.Campaign:
+    """Write the job's keys over the freshest stored state, keeping what requests changed meanwhile."""
+    fresh = db.get_campaign_by_id(str(campaign.id)) or campaign
+    current = dict(_meta(fresh).get("world_skeleton") or {})
+    for key in _JOB_KEYS:
+        if key in state:
+            current[key] = state[key]
+    if current.get("opening_seed_used"):
+        current.pop("opening_seed", None)  # a session already opened without it
+    return _write(fresh, current)
 
 
 def _overall(pieces: dict[str, Any]) -> str:
@@ -330,7 +348,32 @@ def init_state(campaign_id: str, owner_id: int, visibility: str = "surprise") ->
         "status": "pending",
         "visibility": visibility if visibility in VISIBILITIES else "surprise",
         "pieces": {piece: {"status": "pending"} for piece in PIECES},
+        "requested_at": _now().isoformat(),
     }})
+
+
+def request_retry(campaign_id: str, owner_id: int, state: dict[str, Any]) -> None:
+    """Queue another run: finished pieces (and the opening-seed flag) are kept, the rest are retried."""
+    if not state.get("pieces"):
+        init_state(campaign_id, owner_id, str(state.get("visibility") or "surprise"))
+        return
+    db.set_campaign_metadata_keys(campaign_id, owner_id, {"world_skeleton": {
+        **state, "status": "pending", "requested_at": _now().isoformat(), "started_at": None,
+    }})
+
+
+def is_active(campaign_id: str, state: dict[str, Any]) -> bool:
+    """Whether a job is (probably) still working on this state, in this process or another."""
+    if is_running(campaign_id):
+        return True
+    if state.get("status") not in ("pending", "running"):
+        return False
+    stamp = state.get("started_at") or state.get("requested_at")
+    try:
+        started = datetime.fromisoformat(str(stamp))
+    except ValueError:
+        return False
+    return (_now() - started).total_seconds() < STALE_AFTER_S
 
 
 def public_view(state: dict[str, Any], *, reveal: bool = False) -> dict[str, Any]:
@@ -424,7 +467,8 @@ def generate_world_skeleton(
         truth = validate_truth(data, opening_trouble=clean_text(settings.get("opening_trouble"))) if data else None
         record("truth", truth, reason)
 
-    if not state.get("opening_seed") and not state.get("opening_seed_used"):
+    stored = _state(db.get_campaign_by_id(campaign_id) or campaign)
+    if not stored.get("opening_seed") and not stored.get("opening_seed_used"):
         seed = _prepare_opening_seed(campaign, truth, call, timeout)
         if seed:
             state["opening_seed"] = seed
@@ -491,13 +535,19 @@ def hidden_truth(campaign: db.Campaign | None) -> dict[str, str] | None:
 
 
 def take_opening_seed(campaign: db.Campaign | None) -> dict[str, Any] | None:
-    """The prepared opening seed, once: later sessions of the campaign open somewhere new."""
+    """The prepared opening seed, once.
+
+    Taking it closes the slot even when nothing was prepared yet: a seed finished after the first
+    session opened would otherwise be handed to the second session, which should open somewhere new.
+    """
     if campaign is None:
         return None
-    state = _state(campaign)
-    seed = state.pop("opening_seed", None)
-    if not seed:
+    fresh = db.get_campaign_by_id(str(campaign.id)) or campaign
+    stored = (_meta(fresh).get("world_skeleton") or {})
+    if not stored or stored.get("opening_seed_used"):
         return None
+    state = dict(stored)
+    seed = state.pop("opening_seed", None)
     state["opening_seed_used"] = True
-    _save(campaign, state)
-    return seed if isinstance(seed, dict) else None
+    _write(fresh, state)
+    return seed if isinstance(seed, dict) and seed else None
