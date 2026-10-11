@@ -445,3 +445,27 @@ def test_the_untold_seed_retry_is_still_checked_for_the_secret():
     state = world_skeleton.generate_world_skeleton(str(camp.id), complete=model)
     assert seen_hints == [True, False]  # told, then retried without the hint
     assert not state.get("opening_seed")  # both answers stated the secret, so neither became the seed
+
+
+def test_confirmed_roles_reach_the_brief_and_win_over_the_model():
+    camp = _campaign("skeleton-roles@example.com")
+    owner = db.get_user_by_identifier("skeleton-roles@example.com")
+    meta = dict(db.get_campaign_by_id(str(camp.id)).metadata_json)
+    meta["campaign_card"] = {**meta["campaign_card"], "people": [{"name": "Maren Vey", "role": "lighthouse keeper"}]}
+    db.set_campaign_metadata_keys(str(camp.id), owner.id, meta)
+    assert "Maren Vey (lighthouse keeper)" in world_skeleton.campaign_brief(db.get_campaign_by_id(str(camp.id)))
+    npcs = {**NPCS, "npcs": [*NPCS["npcs"], {"name": "Maren Vey", "role": "smuggler queen", "faction": "",
+                                             "wants": "Escape.", "secret": "She staged it.", "knows": "Everything."}]}
+    found = world_skeleton.validate_npcs(npcs, ["Maren Vey"], [], {"maren vey": "lighthouse keeper"})
+    assert next(n for n in found if n["name"] == "Maren Vey")["role"] == "lighthouse keeper"
+
+
+def test_long_setting_notes_contribute_their_relevant_parts():
+    from server.agents.campaign_card import relevant_lore
+
+    filler = "\n\n".join(f"Chapter {i}: the grain tithes of the inland farms rose again." for i in range(400))
+    lore = "The Gull Coast gazetteer.\n\n" + filler + "\n\nThe Tidewardens keep the lighthouse lamp and answer to Harbor Master Dace."
+    excerpt = relevant_lore(lore, "the lighthouse keeper vanished; the Tidewardens run the docks", budget=2000)
+    assert len(excerpt) <= 2000
+    assert excerpt.startswith("The Gull Coast gazetteer.")
+    assert "Harbor Master Dace" in excerpt  # from the very end of a 20k-character document

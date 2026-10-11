@@ -34,7 +34,7 @@ from sqlmodel import Session, col, select
 
 from .. import db
 from ..db import CampaignChangeLog, CampaignEntity, CampaignHook
-from .campaign_card import name_in_text
+from .campaign_card import name_in_text, relevant_lore
 from .generation_intent import clean_text, content_tokens
 from .premise_seed import parse_json_object
 
@@ -53,7 +53,7 @@ CLOCK_STEP_JOINER = " Then: "
 
 _R = TypeVar("_R")
 MAX_FIELD_CHARS = 240
-MAX_LORE_PROMPT_CHARS = 3000
+MAX_LORE_PROMPT_CHARS = 6000
 
 _running: set[str] = set()
 _running_lock = threading.Lock()
@@ -98,6 +98,16 @@ def _meta(campaign: db.Campaign) -> dict[str, Any]:
     return dict(campaign.metadata_json or {}) if isinstance(campaign.metadata_json, dict) else {}
 
 
+def _card_roles(meta: dict[str, Any]) -> dict[str, str]:
+    """Roles the player confirmed for the people they named ("Maren Vey" -> "lighthouse keeper")."""
+    card = meta.get("campaign_card") or {}
+    roles: dict[str, str] = {}
+    for item in card.get("people") or []:
+        if isinstance(item, dict) and clean_text(item.get("name")) and clean_text(item.get("role")):
+            roles[clean_text(item.get("name")).casefold()] = clean_text(item.get("role"))
+    return roles
+
+
 def _card_names(meta: dict[str, Any], key: str) -> list[str]:
     card = meta.get("campaign_card") or {}
     return [clean_text(item.get("name")) for item in card.get(key) or [] if isinstance(item, dict) and clean_text(item.get("name"))]
@@ -138,14 +148,17 @@ def campaign_brief(campaign: db.Campaign) -> str:
     people = _card_names(meta, "people")
     factions = _card_names(meta, "factions")
     if people:
-        lines.append("People the player named: " + ", ".join(people))
+        roles = _card_roles(meta)
+        named = [f"{p} ({roles[p.casefold()]})" if p.casefold() in roles else p for p in people]
+        lines.append("People the player named (keep these roles): " + ", ".join(named))
     if factions:
         lines.append("Factions the player named: " + ", ".join(factions))
     if settings.get("content_limits"):
         lines.append("Avoid: " + "; ".join(str(c) for c in settings["content_limits"]))
     lore = _lore(meta)
     if lore:
-        lines.append(f"Setting notes (excerpt):\n{lore[:MAX_LORE_PROMPT_CHARS]}")
+        query = " ".join([str(settings.get(k) or "") for k in ("setting_summary", "starting_location", "opening_trouble")] + people + factions)
+        lines.append(f"Setting notes (the parts most relevant to this campaign):\n{relevant_lore(lore, query, MAX_LORE_PROMPT_CHARS)}")
     return "\n".join(lines)
 
 
@@ -197,7 +210,11 @@ def validate_factions(data: dict[str, Any], authored: list[str]) -> list[dict[st
     return out[: max(3, len(authored))] if len(out) >= 2 else None
 
 
-def validate_npcs(data: dict[str, Any], authored: list[str], faction_names: list[str]) -> list[dict[str, str]] | None:
+def validate_npcs(
+    data: dict[str, Any], authored: list[str], faction_names: list[str], roles: dict[str, str] | None = None,
+) -> list[dict[str, str]] | None:
+    """Usable NPCs; the player's named people are always present, with the roles they confirmed."""
+    roles = roles or {}
     taken = {f.casefold() for f in faction_names}
     known_factions = {f.casefold(): f for f in faction_names}
     out: list[dict[str, str]] = []
@@ -208,12 +225,14 @@ def validate_npcs(data: dict[str, Any], authored: list[str], faction_names: list
             continue
         taken.add(name.casefold())
         entry["name"] = name
+        entry["role"] = roles.get(name.casefold(), entry["role"])  # a confirmed role is a fact, not a suggestion
         entry["faction"] = known_factions.get(entry["faction"].casefold(), "")
         out.append(entry)
     returned = {n["name"].casefold() for n in out}
     for name in authored:
         if name.casefold() not in returned:
-            out.insert(0, {"name": name, "role": "", "faction": "", "wants": "", "secret": "", "knows": ""})
+            out.insert(0, {"name": name, "role": roles.get(name.casefold(), ""), "faction": "", "wants": "",
+                           "secret": "", "knows": ""})
     return out[: max(4, len(authored))] if len(out) >= 2 else None
 
 
@@ -616,7 +635,7 @@ def generate_world_skeleton(
         faction_names = [f["name"] for f in factions]
         listing = f"\nFactions: {', '.join(faction_names)}" if faction_names else ""
         data, reason = _ask(call, NPCS_SYSTEM, brief + truth_line + listing, max_tokens=700, timeout=timeout)
-        found_npcs = validate_npcs(data, _card_names(meta, "people"), faction_names) if data else None
+        found_npcs = validate_npcs(data, _card_names(meta, "people"), faction_names, _card_roles(meta)) if data else None
         record("npcs", found_npcs, reason)
 
     if pieces["clock"].get("status") != "ready":

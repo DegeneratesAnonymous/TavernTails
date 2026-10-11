@@ -1278,6 +1278,30 @@
 .card-group--guessed { border-left-color: var(--highlight, #f0c040); border-left-style: dashed; }
 .card-group--open { border-left-color: var(--muted-text); border-left-style: dotted; }
 .card-group--world { border-left-color: var(--accent-secondary, #8b1a1a); }
+.card-group--extras { border-left-color: var(--accent, #c8941a); }
+
+.card-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.card-chip-remove {
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.card-chip-source {
+  margin-left: 6px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
 
 .card-group-head {
   display: flex;

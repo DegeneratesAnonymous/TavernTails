@@ -40,8 +40,8 @@ TEXT_FIELDS = ("name", "premise", "world_name", "starting_place", "opening_troub
 CHOICE_FIELDS = {"genre": GENRES, "pacing": PACINGS, "content_rating": RATINGS, "ai_freedom": AI_FREEDOM}
 
 MAX_TEXT_CHARS = 8000  # the description box and POST /campaigns/card accept this much
-MAX_LORE_CHARS = 12000
-MAX_LORE_PROMPT_CHARS = 3000
+MAX_LORE_CHARS = 60000  # matches the API and the notes box
+MAX_LORE_PROMPT_CHARS = 6000
 MAX_FIELD_CHARS = 280
 MAX_FOLLOW_UPS = 2
 
@@ -207,6 +207,29 @@ def stated_ruleset(text: str) -> str:
     return ""
 
 
+def relevant_lore(lore: str, query: str, budget: int = MAX_LORE_PROMPT_CHARS) -> str:
+    """The parts of the setting notes that matter most to ``query``, within ``budget`` characters.
+
+    One local GPU cannot read a 60k-character setting bible on every call, and its first few pages are
+    rarely the parts that matter. Paragraphs are ranked by the content words they share with the query
+    (the premise, the opening trouble, the names); the opening paragraph is always kept as orientation.
+    The chosen paragraphs keep their original order.
+    """
+    lore = lore.strip()
+    if len(lore) <= budget:
+        return lore
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n|\n(?=#)", lore) if p.strip()]
+    wanted = content_tokens(query)
+    ranked = sorted(range(1, len(paragraphs)), key=lambda i: -len(content_tokens(paragraphs[i]) & wanted))
+    chosen, used = {0}, len(paragraphs[0])
+    for i in ranked:
+        if used + len(paragraphs[i]) + 2 > budget:
+            continue
+        chosen.add(i)
+        used += len(paragraphs[i]) + 2
+    return "\n\n".join(paragraphs[i] for i in sorted(chosen))[:budget]
+
+
 # ---------------------------------------------------------------------------
 # Card construction
 # ---------------------------------------------------------------------------
@@ -369,7 +392,7 @@ def read_campaign_card(
             hints.append(f"Tone chosen: {picked['tone']}")
         user = "\n".join([*hints, f"Player's description:\n{text or '(none)'}"])
         if lore:
-            user += f"\n\nTheir setting notes (excerpt):\n{lore[:MAX_LORE_PROMPT_CHARS]}"
+            user += f"\n\nTheir setting notes (the parts most relevant to the description):\n{relevant_lore(lore, text)}"
         try:
             raw = call(
                 [{"role": "system", "content": SYSTEM}, {"role": "user", "content": user}],

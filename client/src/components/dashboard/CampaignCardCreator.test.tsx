@@ -19,8 +19,8 @@ const CARD = {
   },
   people: [{ name: 'Maren Vey', role: 'keeper', status: 'said' }],
   factions: [],
-  themes: [],
-  content_limits: [],
+  themes: ['corruption', 'loyalty'],
+  content_limits: ['harm to children'],
   open_questions: ['Who profits from the dark lamp?'],
   follow_ups: [
     { id: 'starting_place', field: 'starting_place', question: 'Where does the story open?', placeholder: '' },
@@ -77,6 +77,11 @@ test('describe, read it back, answer a follow-up, and create', async () => {
     const cardRequest = server.calls.find((c) => c.url.endsWith('/campaigns/card'))
     expect(cardRequest?.body.starter).toEqual({ genre: 'mystery' })
 
+    // Everything Create will save is visible first, and a wrong guess can be removed.
+    expect(screen.getByRole('region', { name: 'Limits and themes' })).toHaveTextContent('harm to children')
+    fireEvent.click(screen.getByRole('button', { name: 'Remove theme: loyalty' }))
+    expect(screen.queryByText('loyalty')).not.toBeInTheDocument()
+
     fireEvent.change(screen.getByLabelText('Genre'), { target: { value: 'horror' } })
     expect(screen.getByText('edited')).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Where does the story open?'), { target: { value: 'the Gull Steps' } })
@@ -88,6 +93,8 @@ test('describe, read it back, answer a follow-up, and create', async () => {
     expect(create?.body.card.fields.genre).toEqual({ value: 'horror', status: 'said' })
     expect(create?.body.follow_up_answers).toEqual({ starting_place: 'the Gull Steps' })
     expect(create?.body.world_visibility).toBe('show')
+    expect(create?.body.card.themes).toEqual(['corruption'])
+    expect(create?.body.card.content_limits).toEqual(['harm to children'])
     expect(create?.body.owner_role).toBe('dm')
   } finally {
     server.restore()

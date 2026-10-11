@@ -340,6 +340,40 @@ export default function CampaignCardCreator({ seat, owner, validateSeat, fallbac
         )
       ))}
 
+      {(card.content_limits.length > 0 || card.themes.length > 0) && (
+        <section className="card-group card-group--extras" aria-label="Limits and themes">
+          {/* Everything Create saves is shown here, so nothing is accepted unseen; remove what is wrong. */}
+          {card.content_limits.length > 0 && (
+            <div className="card-field">
+              <span className="wizard-control-label">Keep out of the story <span className="card-chip-source">you said</span></span>
+              <div className="row-wrap" style={{ gap: 6 }}>
+                {card.content_limits.map((limit) => (
+                  <span key={`l-${limit}`} className="badge card-chip">
+                    {limit}
+                    <button type="button" className="card-chip-remove" aria-label={`Remove limit: ${limit}`}
+                      onClick={() => setCard({ ...card, content_limits: card.content_limits.filter((x) => x !== limit) })}>×</button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {card.themes.length > 0 && (
+            <div className="card-field">
+              <span className="wizard-control-label">Themes <span className="card-chip-source">I guessed</span></span>
+              <div className="row-wrap" style={{ gap: 6 }}>
+                {card.themes.map((theme) => (
+                  <span key={`t-${theme}`} className="badge card-chip">
+                    {theme}
+                    <button type="button" className="card-chip-remove" aria-label={`Remove theme: ${theme}`}
+                      onClick={() => setCard({ ...card, themes: card.themes.filter((x) => x !== theme) })}>×</button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
       {(card.follow_ups.length > 0 || openKeys.length > 0 || card.open_questions.length > 0) && (
       <section className="card-group card-group--open" aria-label={STATUS_LABELS.open.title}>
         <div className="card-group-head">
