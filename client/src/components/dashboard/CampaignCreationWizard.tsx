@@ -1,7 +1,13 @@
 /**
  * CampaignCreationWizard.tsx
  *
- * Four creation paths:
+ * New campaigns start in CampaignCardCreator: the player describes the game,
+ * the server reads it back as a Campaign Card, and the world skeleton is
+ * built in the background. The classic paths below stay reachable from a
+ * link until the card flow has been play-tested; they still produce a
+ * Campaign Contract but no world skeleton.
+ *
+ * Classic creation paths:
  *   Quick Start   — minimal form: genre + name, start immediately
  *   Guided Builder — narrative quiz that infers tone/genre (original flow)
  *   Import         — paste lore and backstory text
@@ -13,6 +19,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { apiFetch } from '../../api'
 import PageHeader from '../ui/PageHeader'
+import CampaignCardCreator from './CampaignCardCreator'
 import {
   CAMPAIGN_QUIZ,
   deriveCampaignSettings,
@@ -1324,6 +1331,8 @@ export default function CampaignCreationWizard({ onDone, onCampaignCreated, char
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [seeds, setSeeds] = useState<CampaignSeed[]>([])
+  const [classic, setClassic] = useState(false)
+  const [fallbackName] = useState(pickRandomName)
 
   const derived = deriveCampaignSettings(draft.quizAnswers)
   const seatInvalid = Boolean(error) && draft.ownerRole === 'player' && !draft.ownerCharacterId
@@ -1481,12 +1490,19 @@ export default function CampaignCreationWizard({ onDone, onCampaignCreated, char
 
   const isFirstStep = step === 'path'
   const showProgress = draft.path === 'guided' && step !== 'path'
+  const useCard = isFirstStep && !classic
+
+  function validateSeat(): string | null {
+    return draft.ownerRole === 'player' && !draft.ownerCharacterId
+      ? 'Choose which character you are joining with, or designate yourself as DM.'
+      : null
+  }
 
   return (
     <section className="dashboard-panel stack">
       <PageHeader
         title={title}
-        subtitle={isFirstStep ? 'Choose a creation style to begin.' : undefined}
+        subtitle={isFirstStep && classic ? 'Choose a creation style to begin.' : undefined}
         actions={
           <button className="btn btn-quiet" type="button" onClick={onDone}>
             Cancel
@@ -1498,11 +1514,42 @@ export default function CampaignCreationWizard({ onDone, onCampaignCreated, char
         <WizardProgress steps={GUIDED_STEPS} current={step as QuizStep} />
       )}
 
-      <div className="card card-pad" style={{ maxWidth: 680 }}>
+      <div className={`card card-pad${useCard ? ' card-creator-panel' : ''}`} style={useCard ? undefined : { maxWidth: 680 }}>
 
-        {/* Path chooser */}
-        {step === 'path' && (
-          <StepPath onPick={pickPath} />
+        {/* Describe it, read it back, create */}
+        {useCard && (
+          <CampaignCardCreator
+            seat={(
+              <SeatChoice
+                draft={draft}
+                characters={characters}
+                invalid={seatInvalid}
+                onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
+              />
+            )}
+            owner={ownerParticipationPayload(draft)}
+            validateSeat={validateSeat}
+            fallbackName={fallbackName}
+            onClassic={() => setClassic(true)}
+            onCreated={(campaignId, sessionId) => {
+              onCampaignCreated?.(
+                campaignId,
+                sessionId,
+                draft.ownerRole === 'player' && draft.ownerCharacterId ? Number(draft.ownerCharacterId) : null,
+              )
+              onDone()
+            }}
+          />
+        )}
+
+        {/* Classic path chooser */}
+        {step === 'path' && classic && (
+          <>
+            <StepPath onPick={pickPath} />
+            <div className="wizard-nav" style={{ marginTop: 16, justifyContent: 'flex-start' }}>
+              <button className="btn btn-quiet" type="button" onClick={() => setClassic(false)}>← Describe it instead</button>
+            </div>
+          </>
         )}
 
         {/* Quick Start */}

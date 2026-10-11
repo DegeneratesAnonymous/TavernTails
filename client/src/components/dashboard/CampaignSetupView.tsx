@@ -4,6 +4,7 @@ import { apiFetch } from '../../api'
 import PageHeader from '../ui/PageHeader'
 import Toast from '../ui/Toast'
 import CampaignSetupWizard from './CampaignSetupWizard'
+import WorldSkeletonPanel from './WorldSkeletonPanel'
 
 const SettingsIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="btn-icon">
@@ -826,6 +827,8 @@ export default function CampaignSetupView({
                   />
                 </div>
               </div>
+
+              {activeCampaignId ? <WorldSkeletonPanel campaignId={activeCampaignId} canEdit={canEdit} /> : null}
 
               <div className="card card-pad" style={{ opacity: loading ? 0.7 : 1, marginTop: 12 }}>
                 <div className="stack" style={{ gap: 10 }}>

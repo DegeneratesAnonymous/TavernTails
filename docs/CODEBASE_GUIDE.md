@@ -9,7 +9,7 @@ client and renders the application component in `client/src/App.tsx`.
 | Behavior | Backend | Client |
 | --- | --- | --- |
 | Accounts and access | `server/auth.py`, `server/agents/player.py` | `agents/LoginSignupAgent.tsx`, `api.ts` |
-| Campaign creation and settings | `server/agents/campaigns.py`, `opening_setup.py`, `campaign_interpretation.py` | `components/dashboard/CampaignCreationWizard.tsx`, `CampaignSetupView.tsx` |
+| Campaign creation and settings | `server/agents/campaigns.py`, `campaign_card.py`, `world_skeleton.py`, `opening_setup.py`, `campaign_interpretation.py` | `components/dashboard/CampaignCardCreator.tsx`, `CampaignCreationWizard.tsx`, `CampaignSetupView.tsx`, `WorldSkeletonPanel.tsx` |
 | Character CRUD and imports | `server/agents/characters.py`, `ddb_sheet.py`, `ocr_sheet.py` | `components/dashboard/CharacterWizard.tsx`, `ImportCharacterView.tsx` |
 | Session start and advance | `server/agents/sessions.py`, `server/generation_workers.py` | `components/GameplayLayout.tsx`, `hooks/useSessionRequests.ts` |
 | Chat and dice | `server/agents/chat.py`, `rolls.py`, `ws.py` | `components/Chat.tsx`, `components/chat/` |
@@ -49,6 +49,50 @@ The session routes in `sessions.py` coordinate generation and persist its result
 These stages have different inputs and responsibilities. Do not combine them
 just because they all call a model. Preserve authored facts, NPC secrecy,
 explicit action outcomes, and generation diagnostics when changing their flow.
+
+## Campaign setup
+
+New campaigns start from the player's own description, not from a form of AI settings:
+
+1. `POST /campaigns/card` makes one bounded model call (`campaign_card.read_campaign_card`) that
+   reads the description, plus optional setting notes, into a Campaign Card. Each field is
+   **said**, **guessed** or **open**. "Said" is decided by checking the value against the
+   player's text, never by the model's word. Names of people, factions and places that the player
+   did not write are dropped. Two fixed follow-up questions (where it opens, what is wrong) are
+   asked only when those fields are open. If the model fails, the card holds the text and the
+   chosen starter. The card's content rating and limits go into the contract's `safety_policy`
+   (limits as `avoid`), which narration and validation read.
+2. `POST /campaigns` with `card` turns the confirmed card into settings and variables
+   (`card_to_campaign`). Canon policy, creativity and posture are derived from the card's
+   "how much may the storyteller invent" field instead of being asked for.
+3. A background task (`world_skeleton.run_world_skeleton`) makes four small calls: hidden truth,
+   factions, NPCs, clock. Right after the truth it prepares the first session's opening seed. Every
+   valid piece is written at once as GM-only `CampaignEntity` rows (tag `world_skeleton`) and a
+   `ticking_clock` hook, which the context orchestrator already ranks into scene context. The truth's
+   secret goes in `gm_notes`, which is a "do not reveal" constraint, never in `current_situation`.
+   A failed piece stays open for play to fill in, and `POST /campaigns/{id}/world` retries only
+   those pieces.
+4. `GET /campaigns/{id}/world` returns progress to the owner or GM. It returns the contents only
+   when the owner chose "Show me the world", or to a DM. Only the owner may change that choice.
+   Campaign metadata holds only progress and row ids, never the contents, because the campaign
+   list and detail routes return metadata whole. A piece is marked ready only after its rows are
+   saved. For a player-owner who chose "surprise", the `/memory` GM tools also hide the
+   skeleton's rows and refuse the context and next-actions summaries
+   (`world_skeleton.hidden_from`).
+5. Every change to the skeleton's state goes through `db.update_campaign_metadata`. That helper
+   and every other whole-metadata writer in `db.py` (settings, variables, sessions, metadata keys)
+   hold `METADATA_LOCK` plus a row lock, so no writer saves a stale copy over another's change.
+   Postgres is safe across processes. SQLite is safe within one process only; run one worker on
+   SQLite.
+6. The first opening questionnaire waits up to 25 s for a running truth (`wait_for_opening`), then
+   consumes the prepared seed once (`take_opening_seed`, a compare-and-set). If no seed is ready,
+   the questionnaire reads the premise with the hidden truth in mind; `premise_seed.reveals_secret`
+   rejects a seed that states the secret.
+7. If the truth fails, factions, NPCs and the clock wait for it (`needs_truth`) instead of being
+   built without it. "Stick to what I wrote" (strict canon) builds no skeleton at all.
+
+The classic creation paths stay behind "Use the classic setup" until the card flow has been
+play-tested. They do not build a world skeleton.
 
 ## Storage boundaries
 

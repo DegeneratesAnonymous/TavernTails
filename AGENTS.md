@@ -10,6 +10,7 @@ entry points, storage boundaries, and generation flow are mapped in
 | Scene planning and validation | `server/agents/scene_director.py`, `scene_validator.py` |
 | NPC profiles and state | `server/agents/npc.py`, `campaign_memory.py`, `simulation.py` |
 | Story guidance and continuity | `server/agents/narrative_director.py`, `storyboard.py` |
+| Campaign setup and the world underneath | `server/agents/campaign_card.py`, `world_skeleton.py` |
 | Notes and recaps | `server/agents/notes.py`, `memory_extractor.py` |
 | Images and visual continuity | `server/agents/image.py`, `visual_director.py`, `visual_state.py` |
 

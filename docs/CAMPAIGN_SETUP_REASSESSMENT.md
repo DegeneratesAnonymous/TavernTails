@@ -40,7 +40,10 @@ Re-run the walkthrough once the GPU is free.
 
 ## Still open (design, not bugs)
 
-- "Quick Start" exposes about eight decisions (canon, AI creativity, playstyle, "Session zero preview",
-  "Posture") for a flow that promises "pick a genre and name your campaign".
+- ~~"Quick Start" exposes about eight decisions (canon, AI creativity, playstyle, "Session zero preview",
+  "Posture") for a flow that promises "pick a genre and name your campaign".~~ Replaced by the Campaign
+  Card flow (see "Campaign setup" in `CODEBASE_GUIDE.md`): one description, one read-back call, settings
+  derived from the card. The classic paths remain behind a link until the new flow is play-tested on the
+  real model.
 - Wizard cards are a fixed ~770 px column, left-aligned, on wide screens.
 - 90 s + 60 s double timeout on overload (retrying the same busy machine).

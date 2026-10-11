@@ -26,6 +26,7 @@ from . import scene_director as scene_director_agent
 from . import simulation as simulation_agent
 from . import storyboard as storyboard_agent
 from . import suggestions as suggestions_agent
+from . import world_skeleton
 from .action_resolution import movement_destination
 from .arc_planner import plan_arc
 from .campaign_interpretation import build_full_contract_package
@@ -1815,9 +1816,25 @@ def _build_opening_setup_questionnaire(folder: Path, meta: dict, setup: dict | N
     # The seed so far is a keyword template or a random pool pick. Both match on single words ("drowned" +
     # "tide" opened a lighthouse premise at a reef gate) or ignore the premise entirely, so let one bounded
     # model call read what the player actually wrote; any failure keeps the seed we already have.
-    extracted = extract_premise_seed(campaign_settings, campaign_contract)
+    # The world skeleton prepares this seed in the background (with the hidden truth in mind, so the first
+    # clue points at something real); use it once, otherwise read the premise now.
+    campaign = world_skeleton.wait_for_opening(campaign)
+    extracted = world_skeleton.take_opening_seed(campaign)
+    if not extracted:
+        truth = world_skeleton.hidden_truth(campaign)
+        # "Stick to what I wrote": the seed may describe a person by role but not invent a name.
+        strict = campaign_settings.get("canon_policy") == "strict_canon"
+        extracted = extract_premise_seed(campaign_settings, campaign_contract, hidden_truth=truth, strict=strict)
+        if not extracted and truth:
+            extracted = extract_premise_seed(campaign_settings, campaign_contract, hidden_truth=truth, hint=False, strict=strict)
     if extracted:
         opening_seed = extracted
+    elif campaign_settings.get("canon_policy") == "strict_canon":
+        # The template/pool seed above invents a place, an event and a person; "Stick to what I wrote"
+        # keeps only what the player authored and lets the scene work from that.
+        opening_seed = {k: campaign_settings[k] for k in ("starting_location",) if campaign_settings.get(k)}
+        if campaign_settings.get("opening_trouble"):
+            opening_seed["inciting_event"] = campaign_settings["opening_trouble"]
     if setup is not None and opening_seed:
         # The brief the player answers is built from this seed; session start reuses it so the first
         # scene happens where the brief said it would instead of at a second, independently drawn place.

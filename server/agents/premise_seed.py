@@ -14,6 +14,8 @@ import re
 from collections.abc import Callable
 from typing import Any
 
+from .generation_intent import content_tokens
+
 log = logging.getLogger("taverntails.premise_seed")
 
 TEXT_FIELDS = (
@@ -64,7 +66,8 @@ def _tokens(text: str) -> set[str]:
     return {w for w in re.findall(r"[a-z]{5,}", text.lower()) if w not in _STOP}
 
 
-def _parse(raw: str | None) -> dict[str, Any] | None:
+def parse_json_object(raw: str | None) -> dict[str, Any] | None:
+    """The first JSON object in a model reply (thinking blocks removed), or None."""
     if not raw:
         return None
     text = re.sub(r"<think>.*?</think>", "", raw, flags=re.S).strip()
@@ -95,14 +98,46 @@ def validate(data: dict[str, Any], premise: str) -> dict[str, str] | None:
     return out
 
 
+def reveals_secret(fields: dict[str, str], hidden_truth: dict[str, Any], premise: str) -> bool:
+    """True when the player-facing fields carry most of what only the hidden truth says."""
+    public = _tokens(" ".join([premise, str(hidden_truth.get("visible_problem") or ""), str(hidden_truth.get("first_clue") or "")]))
+    hidden_text = str(hidden_truth.get("hidden_truth") or "")
+    shown_text = " ".join(fields.values())
+    compact = lambda text: re.sub(r"[\W_]+", "", text.casefold())  # noqa: E731
+    hidden_compact = compact(hidden_text)
+    # Repeated word for word, in any script: compared without spaces or punctuation, so a Chinese or
+    # Japanese secret (no spaces, no ASCII words) is caught too. Short CJK strings already carry meaning.
+    cjk = re.search(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]", hidden_text) is not None
+    if len(hidden_compact) >= (3 if cjk else 8) and hidden_compact in compact(shown_text):
+        return True
+    secret = _tokens(hidden_text) - public
+    if not secret:
+        # Only short words ("the king did it"): compare the meaningful ones instead.
+        secret = content_tokens(hidden_text) - content_tokens(" ".join([premise, str(hidden_truth.get("visible_problem") or ""), str(hidden_truth.get("first_clue") or "")]))
+        return bool(secret) and secret <= content_tokens(shown_text)
+    shown = _tokens(shown_text)
+    if len(secret) < 3:
+        # A short secret ("Maren is guilty") has little to overlap: showing all of it is the reveal.
+        return secret <= shown
+    return len(secret & shown) >= max(3, (len(secret) + 1) // 2)
+
+
 def extract_premise_seed(
     settings: dict[str, Any] | None,
     contract: dict[str, Any] | None,
     *,
     complete: Callable[..., str | None] | None = None,
     timeout: float = 45.0,
+    hidden_truth: dict[str, Any] | None = None,
+    hint: bool = True,
+    strict: bool = False,
 ) -> dict[str, Any] | None:
-    """One model call -> an opening seed in the shape ``generate_starter_seed`` returns, or None."""
+    """One model call -> an opening seed in the shape ``generate_starter_seed`` returns, or None.
+
+    ``hidden_truth`` is the world skeleton's secret behind the opening trouble.  With ``hint`` the model
+    is told it and asked to let the first clue point toward it.  Either way a seed that states the
+    secret outright is rejected, because every seed field is player-facing.
+    """
     settings, contract = settings or {}, contract or {}
     premise = _premise(settings, contract)
     if len(premise.split()) < MIN_PREMISE_WORDS:
@@ -114,18 +149,41 @@ def extract_premise_seed(
         call = chat_complete
     genre = str(settings.get("genre") or (contract.get("campaign_dna") or {}).get("genre") or "fantasy")
     tone = str(settings.get("tone") or (contract.get("campaign_dna") or {}).get("tone") or "balanced")
+    user = f"Genre: {genre}\nTone: {tone}\nPremise: {premise}"
+    if strict:
+        user += ("\nThe author asked that nothing be invented: if the premise names no one, give the person "
+                 "only as a role in that field, e.g. \"the harbor clerk (unnamed)\", never a new name.")
+    if hidden_truth and hint:
+        user += (
+            f"\nThe visible problem: {hidden_truth.get('visible_problem', '')}"
+            f"\nGM-only background (never state it in any field): {hidden_truth.get('hidden_truth', '')}"
+            f"\nMake first_clue_or_question about this concrete clue: {hidden_truth.get('first_clue', '')}"
+        )
     try:
         raw = call(
             [{"role": "system", "content": SYSTEM},
-             {"role": "user", "content": f"Genre: {genre}\nTone: {tone}\nPremise: {premise}"}],
+             {"role": "user", "content": user}],
             task_scope="taverntails_plot", max_tokens=520, temperature=0.5, timeout=timeout,
         )
     except Exception:  # noqa: BLE001 - the pool seed is always an acceptable answer
         log.warning("premise extraction call failed", exc_info=True)
         return None
-    fields = validate(_parse(raw) or {}, premise)
+    fields = validate(parse_json_object(raw) or {}, premise)
     if not fields:
         log.info("premise extraction rejected (incomplete or ungrounded)")
+        return None
+    if strict:
+        # The prompt asks for no invented names; this makes sure. A name the premise does not contain is
+        # replaced by the role it was given, so "Maren Vey (clerk)" becomes "the clerk (unnamed)".
+        from .campaign_card import name_in_text
+
+        npc = fields["named_npc_or_visible_threat"]
+        name, _, rest = npc.partition("(")
+        role = rest.rstrip(")").strip() or "local contact"
+        if "unnamed" not in npc.casefold() and not name_in_text(name.strip(), premise):
+            fields["named_npc_or_visible_threat"] = f"the {role} (unnamed)"
+    if hidden_truth and reveals_secret(fields, hidden_truth, premise):
+        log.info("premise extraction rejected (stated the hidden truth)")
         return None
 
     from .content_bundles import annotate_seed
