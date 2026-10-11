@@ -79,12 +79,17 @@ New campaigns start from the player's own description, not from a form of AI set
    saved. For a player-owner who chose "surprise", the `/memory` GM tools also hide the
    skeleton's rows and refuse the context and next-actions summaries
    (`world_skeleton.hidden_from`).
-5. Every change to the skeleton's state goes through `db.update_campaign_metadata`, a
-   read-change-write in one row-locked transaction, so a mid-run visibility change survives the
-   job's saves. The first opening questionnaire consumes the prepared seed once
-   (`take_opening_seed`, also in one transaction). If no seed is ready yet, the questionnaire reads
-   the premise with the hidden truth in mind; `premise_seed.reveals_secret` rejects a seed that
-   states the secret.
+5. Every change to the skeleton's state goes through `db.update_campaign_metadata`. That helper
+   and every other whole-metadata writer in `db.py` (settings, variables, sessions, metadata keys)
+   hold `_METADATA_LOCK` plus a row lock, so no writer saves a stale copy over another's change.
+   Postgres is safe across processes. SQLite is safe within one process only; run one worker on
+   SQLite.
+6. The first opening questionnaire waits up to 25 s for a running truth (`wait_for_opening`), then
+   consumes the prepared seed once (`take_opening_seed`, a compare-and-set). If no seed is ready,
+   the questionnaire reads the premise with the hidden truth in mind; `premise_seed.reveals_secret`
+   rejects a seed that states the secret.
+7. If the truth fails, factions, NPCs and the clock wait for it (`needs_truth`) instead of being
+   built without it. "Stick to what I wrote" (strict canon) builds no skeleton at all.
 
 The classic creation paths stay behind "Use the classic setup" until the card flow has been
 play-tested. They do not build a world skeleton.

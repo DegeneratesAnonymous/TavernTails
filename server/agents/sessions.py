@@ -1818,6 +1818,7 @@ def _build_opening_setup_questionnaire(folder: Path, meta: dict, setup: dict | N
     # model call read what the player actually wrote; any failure keeps the seed we already have.
     # The world skeleton prepares this seed in the background (with the hidden truth in mind, so the first
     # clue points at something real); use it once, otherwise read the premise now.
+    campaign = world_skeleton.wait_for_opening(campaign)
     extracted = world_skeleton.take_opening_seed(campaign)
     if not extracted:
         truth = world_skeleton.hidden_truth(campaign)

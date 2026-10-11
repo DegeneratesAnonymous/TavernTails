@@ -395,42 +395,54 @@ export default function CampaignCardCreator({ seat, owner, validateSeat, fallbac
         ))}
         {openKeys.length > 0 && <div className="card-group-fields">{openKeys.map(renderField)}</div>}
         {card.open_questions.length > 0 && (
-          <ul className="card-open-questions" aria-label="Questions the story will answer">
+          <ul className="card-open-questions" aria-label="Open questions the world underneath will answer">
             {card.open_questions.map((q) => <li key={q}>{q}</li>)}
           </ul>
         )}
       </section>
       )}
 
-      <section className="card-group card-group--world" aria-label="The world">
-        <div className="card-group-head">
-          <span className="wizard-section-kicker">The world underneath</span>
-        </div>
-        <p className="wizard-control-help" style={{ margin: 0 }}>
-          While you pick a character, the storyteller quietly decides what's really going on: the hidden truth, the factions,
-          the key people and their secrets, and what gets worse if nobody acts. Your facts above always win.
-        </p>
-        <div className="wizard-segmented card-segmented-2" role="radiogroup" aria-label="Who sees the world">
-          <button
-            type="button"
-            role="radio"
-            aria-checked={visibility === 'surprise'}
-            className={`wizard-segment${visibility === 'surprise' ? ' is-selected' : ''}`}
-            onClick={() => setVisibility('surprise')}
-          >
-            Keep it a surprise
-          </button>
-          <button
-            type="button"
-            role="radio"
-            aria-checked={visibility === 'show'}
-            className={`wizard-segment${visibility === 'show' ? ' is-selected' : ''}`}
-            onClick={() => setVisibility('show')}
-          >
-            Show me the world
-          </button>
-        </div>
-      </section>
+      {freedom === 'low' ? (
+        <section className="card-group card-group--world" aria-label="The world">
+          <div className="card-group-head">
+            <span className="wizard-section-kicker">The world underneath</span>
+          </div>
+          <p className="wizard-control-help" style={{ margin: 0 }}>
+            You chose &ldquo;Stick to what I wrote&rdquo;, so nothing is invented ahead of play: no hidden truth, factions or
+            people beyond yours. Change that under Advanced if you want the world built for you.
+          </p>
+        </section>
+      ) : (
+        <section className="card-group card-group--world" aria-label="The world">
+          <div className="card-group-head">
+            <span className="wizard-section-kicker">The world underneath</span>
+          </div>
+          <p className="wizard-control-help" style={{ margin: 0 }}>
+            While you pick a character, the storyteller quietly decides what's really going on: the hidden truth, the factions,
+            the key people and their secrets, and what gets worse if nobody acts. Your facts above always win.
+          </p>
+          <div className="wizard-segmented card-segmented-2" role="radiogroup" aria-label="Who sees the world">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={visibility === 'surprise'}
+              className={`wizard-segment${visibility === 'surprise' ? ' is-selected' : ''}`}
+              onClick={() => setVisibility('surprise')}
+            >
+              Keep it a surprise
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={visibility === 'show'}
+              className={`wizard-segment${visibility === 'show' ? ' is-selected' : ''}`}
+              onClick={() => setVisibility('show')}
+            >
+              Show me the world
+            </button>
+          </div>
+        </section>
+      )}
 
       <details className="card-advanced">
         <summary>Advanced</summary>

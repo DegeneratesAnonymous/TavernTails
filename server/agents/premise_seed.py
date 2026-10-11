@@ -100,9 +100,12 @@ def reveals_secret(fields: dict[str, str], hidden_truth: dict[str, Any], premise
     """True when the player-facing fields carry most of what only the hidden truth says."""
     public = _tokens(" ".join([premise, str(hidden_truth.get("visible_problem") or ""), str(hidden_truth.get("first_clue") or "")]))
     secret = _tokens(str(hidden_truth.get("hidden_truth") or "")) - public
-    if len(secret) < 3:
+    if not secret:
         return False
     shown = _tokens(" ".join(fields.values()))
+    if len(secret) < 3:
+        # A short secret ("Maren is guilty") has little to overlap: showing all of it is the reveal.
+        return secret <= shown
     return len(secret & shown) >= max(3, (len(secret) + 1) // 2)
 
 

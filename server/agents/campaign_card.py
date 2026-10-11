@@ -330,7 +330,9 @@ def _merge_model_answer(card: dict[str, Any], data: dict[str, Any], text: str, l
             continue
         name = _clip(person.get("name"))[:80]
         if name and name_in_text(name, source) and name.casefold() not in {p["name"].casefold() for p in people}:
-            people.append({"name": name, "role": _clip(person.get("role"))[:80], "status": SAID})
+            role = _clip(person.get("role"))[:80]
+            # The name is the player's; a role the text does not give is a guess and must not become canon.
+            people.append({"name": name, "role": role if is_grounded(role, source, tokens) else "", "status": SAID})
     card["people"] = people[:6]
     card["factions"] = [
         {"name": name[:80], "status": SAID}

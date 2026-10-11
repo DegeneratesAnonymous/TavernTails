@@ -76,6 +76,10 @@ class _Hidden:
         if self.entity(entity_id):
             raise HTTPException(status_code=404, detail="Entity not found")
 
+    def require_visible_hook(self, hook_id: str) -> None:
+        if self.active and hook_id in self.hooks:
+            raise HTTPException(status_code=404, detail="Hook not found")
+
     def refuse_summary(self) -> None:
         if self.active:
             raise HTTPException(
@@ -439,7 +443,7 @@ def create_hook(campaign_id: str, req: HookCreate, current_user=Depends(get_curr
 
 @router.put("/{campaign_id}/hooks/{hook_id}")
 def update_hook(campaign_id: str, hook_id: str, req: HookUpdate, current_user=Depends(get_current_user)):
-    _require_campaign_access(campaign_id, current_user)
+    _Hidden(_require_campaign_access(campaign_id, current_user), current_user).require_visible_hook(hook_id)
     with Session(db.engine) as s:
         h = s.get(CampaignHook, hook_id)
         if not h or h.campaign_id != campaign_id:
@@ -465,7 +469,7 @@ def update_hook(campaign_id: str, hook_id: str, req: HookUpdate, current_user=De
 
 @router.delete("/{campaign_id}/hooks/{hook_id}", status_code=204)
 def delete_hook(campaign_id: str, hook_id: str, current_user=Depends(get_current_user)):
-    _require_campaign_access(campaign_id, current_user)
+    _Hidden(_require_campaign_access(campaign_id, current_user), current_user).require_visible_hook(hook_id)
     with Session(db.engine) as s:
         h = s.get(CampaignHook, hook_id)
         if not h or h.campaign_id != campaign_id:

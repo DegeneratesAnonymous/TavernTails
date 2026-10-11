@@ -113,7 +113,7 @@ export default function WorldSkeletonPanel({ campaignId, canEdit }: { campaignId
     <div className="card card-pad" style={{ marginTop: 12 }} aria-live="polite">
       <div className="row-wrap card-section-header" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
         <div>The world underneath</div>
-        {canEdit && (
+        {canEdit && world.can_change_visibility && (
           <button
             className="btn btn-quiet btn-sm"
             type="button"

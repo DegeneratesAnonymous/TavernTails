@@ -469,3 +469,112 @@ def test_long_setting_notes_contribute_their_relevant_parts():
     assert len(excerpt) <= 2000
     assert excerpt.startswith("The Gull Coast gazetteer.")
     assert "Harbor Master Dace" in excerpt  # from the very end of a 20k-character document
+
+
+def test_a_short_secret_shown_whole_is_a_leak():
+    short = {**TRUTH, "hidden_truth": "Maren is guilty.", "visible_problem": "The lamp is dark.", "first_clue": "Tar on the stair."}
+    premise = "A grim harbor town where the keeper Maren Vey vanished."
+    assert reveals_secret({**SEED, "immediate_problem": "Everyone knows Maren is guilty."}, short, premise)
+    assert not reveals_secret(SEED, short, premise)
+
+
+def test_a_surprised_owner_cannot_read_the_clock_through_hook_updates():
+    owner = _user("skeleton-hooks@example.com")
+    camp = _campaign("skeleton-hooks@example.com")
+    db.set_campaign_metadata_keys(str(camp.id), owner.id, {"owner_participation": {"role": "player", "character_id": None}})
+    world_skeleton.generate_world_skeleton(str(camp.id), complete=_full_model())
+    hook_id = db.get_campaign_by_id(str(camp.id)).metadata_json["world_skeleton"]["pieces"]["clock"]["entity_ids"][0]
+    client = TestClient(main.app)
+    headers = {"Authorization": f"Bearer {create_access_token(owner.email or '')}"}
+    assert client.put(f"/memory/{camp.id}/hooks/{hook_id}", headers=headers, json={}).status_code == 404
+    assert client.delete(f"/memory/{camp.id}/hooks/{hook_id}", headers=headers).status_code == 404
+
+
+def test_without_a_truth_the_dependent_pieces_wait_for_it():
+    camp = _campaign("skeleton-needs-truth@example.com")
+    state = world_skeleton.generate_world_skeleton(str(camp.id), complete=_full_model(**{'"thread_name"': "nope"}))
+    assert state["pieces"]["truth"]["status"] == "failed"
+    for piece in ("factions", "npcs", "clock"):
+        assert state["pieces"][piece] == {"status": "failed", "reason": "needs_truth"}
+    assert not [e for e in _entities(str(camp.id)) if e.entity_type in ("faction", "npc")]
+    state = world_skeleton.generate_world_skeleton(str(camp.id), complete=_full_model())
+    assert state["status"] == "ready"  # the retry builds them around the truth it now has
+
+
+def test_open_questions_reach_the_brief():
+    camp = _campaign("skeleton-questions@example.com")
+    owner = db.get_user_by_identifier("skeleton-questions@example.com")
+    meta = dict(db.get_campaign_by_id(str(camp.id)).metadata_json)
+    meta["campaign_card"] = {**meta["campaign_card"], "open_questions": ["Who profits from the dark lamp?"]}
+    db.set_campaign_metadata_keys(str(camp.id), owner.id, meta)
+    assert "Who profits from the dark lamp?" in world_skeleton.campaign_brief(db.get_campaign_by_id(str(camp.id)))
+
+
+def test_the_questionnaire_waits_for_a_running_truth(monkeypatch):
+    camp = _campaign("skeleton-wait@example.com")
+    owner = db.get_user_by_identifier("skeleton-wait@example.com")
+    calls = {"n": 0}
+
+    def settle_on_second_look(seconds):
+        calls["n"] += 1
+        if calls["n"] == 1:  # the job finishes the truth and its seed while the questionnaire waits
+            fresh = db.get_campaign_by_id(str(camp.id))
+            state = dict(fresh.metadata_json["world_skeleton"])
+            state["pieces"] = {**state["pieces"], "truth": {"status": "ready", "entity_ids": []}}
+            state["opening_seed"] = {"starting_location": "Gull Steps lighthouse"}
+            db.set_campaign_metadata_keys(str(camp.id), owner.id, {"world_skeleton": state})
+
+    monkeypatch.setattr("time.sleep", settle_on_second_look)
+    fresh = world_skeleton.wait_for_opening(db.get_campaign_by_id(str(camp.id)), timeout=5)
+    assert calls["n"] == 1
+    assert world_skeleton.take_opening_seed(fresh) == {"starting_location": "Gull Steps lighthouse"}
+
+
+def test_stick_to_what_i_wrote_builds_no_world_and_only_the_owner_gets_the_toggle():
+    owner = _user("skeleton-strict@example.com")
+    gm = _user("skeleton-strict-gm@example.com")
+    card = read_campaign_card("A grim harbor town where the lighthouse keeper vanished.", complete=lambda *a, **k: None)
+    card["fields"]["ai_freedom"] = {"value": "low", "status": "said"}
+    client = TestClient(main.app)
+    headers = {"Authorization": f"Bearer {create_access_token(owner.email or '')}"}
+    strict = client.post("/campaigns", headers=headers, json={"name": "Strict", "card": card, "create_session": False})
+    cid = strict.json()["campaign"]["id"]
+    assert client.get(f"/campaigns/{cid}/world", headers=headers).json()["world"]["status"] == "not_started"
+
+    camp = _campaign("skeleton-strict@example.com")
+    with Session(db.engine) as s:
+        row = s.get(db.Campaign, camp.id)
+        row.gm_user_id = gm.id
+        s.add(row)
+        s.commit()
+    assert client.get(f"/campaigns/{camp.id}/world", headers=headers).json()["world"]["can_change_visibility"] is True
+    gm_headers = {"Authorization": f"Bearer {create_access_token(gm.email or '')}"}
+    assert client.get(f"/campaigns/{camp.id}/world", headers=gm_headers).json()["world"]["can_change_visibility"] is False
+
+
+def test_other_metadata_writers_do_not_overwrite_the_jobs_saves():
+    """A settings save that read before the job wrote must not put back a stale world_skeleton."""
+    import threading
+
+    camp = _campaign("skeleton-writers@example.com")
+    owner = db.get_user_by_identifier("skeleton-writers@example.com")
+    errors: list[BaseException] = []
+
+    def churn():
+        try:
+            for i in range(30):
+                db.set_campaign_settings(str(camp.id), owner.id, {"genre": "mystery", "tone": f"grim {i}"})
+                db.add_session_to_campaign(str(camp.id), owner.id, f"s{i}")
+        except BaseException as err:  # noqa: BLE001
+            errors.append(err)
+
+    worker = threading.Thread(target=churn)
+    worker.start()
+    for i in range(30):
+        world_skeleton.set_visibility(str(camp.id), "show" if i % 2 else "surprise")
+    worker.join()
+    world_skeleton.set_visibility(str(camp.id), "show")
+    meta = db.get_campaign_by_id(str(camp.id)).metadata_json
+    assert not errors
+    assert meta["world_skeleton"]["visibility"] == "show"
+    assert len(meta["sessions"]) == 30

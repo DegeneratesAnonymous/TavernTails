@@ -177,3 +177,10 @@ def test_rating_and_limits_reach_the_contract_safety_policy():
     contract = db.get_campaign_by_id(res.json()["campaign"]["id"]).metadata_json["campaign_contract"]
     assert contract["safety_policy"]["content_rating"] == "family"
     assert contract["safety_policy"]["avoid"] == ["harm to children"]
+
+
+def test_a_role_the_text_does_not_give_is_dropped():
+    card = read_campaign_card(TEXT, complete=_answer(people=[{"name": "Maren Vey", "role": "smuggler queen"}]))
+    assert card["people"] == [{"name": "Maren Vey", "role": "", "status": "said"}]
+    kept = read_campaign_card(TEXT, complete=_answer(people=[{"name": "Maren Vey", "role": "lighthouse keeper"}]))
+    assert kept["people"][0]["role"] == "lighthouse keeper"

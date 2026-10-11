@@ -155,6 +155,9 @@ def campaign_brief(campaign: db.Campaign) -> str:
         lines.append("Factions the player named: " + ", ".join(factions))
     if settings.get("content_limits"):
         lines.append("Avoid: " + "; ".join(str(c) for c in settings["content_limits"]))
+    questions = [str(q) for q in (meta.get("campaign_card") or {}).get("open_questions") or [] if q]
+    if questions:
+        lines.append("Questions the player left open (the hidden truth should answer them): " + " ".join(questions))
     lore = _lore(meta)
     if lore:
         query = " ".join([str(settings.get(k) or "") for k in ("setting_summary", "starting_location", "opening_trouble")] + people + factions)
@@ -623,7 +626,19 @@ def generate_world_skeleton(
             job["opening_seed"] = seed
             _save(campaign_id, job)
 
-    truth_line = f"\nHidden truth (GM only): {truth['hidden_truth']} Who benefits: {truth['who_benefits']}" if truth else ""
+    if truth is None:
+        # Factions, people and the clock are built around the truth; made without it they would not fit the
+        # truth a retry produces, and a retry would keep them. Leave them for the retry that has the truth.
+        for piece in ("factions", "npcs", "clock"):
+            if pieces[piece].get("status") != "ready":
+                pieces[piece] = {"status": "failed", "reason": "needs_truth"}
+        job["status"] = _overall(pieces)
+        job["finished_at"] = _now().isoformat()
+        _save(campaign_id, job)
+        log.info("world skeleton campaign=%s stopped: no truth", campaign_id)
+        return _fresh_state(campaign_id)
+
+    truth_line = f"\nHidden truth (GM only): {truth['hidden_truth']} Who benefits: {truth['who_benefits']}"
     factions: list[dict[str, str]] = _ready_contents(state, "factions") or []
     if pieces["factions"].get("status") != "ready":
         data, reason = _ask(call, FACTIONS_SYSTEM, brief + truth_line, max_tokens=520, timeout=timeout)
@@ -677,6 +692,31 @@ def hidden_truth(campaign: db.Campaign | None) -> dict[str, str] | None:
     if campaign is None:
         return None
     return _ready_contents(_state(campaign), "truth")
+
+
+TRUTH_WAIT_S = 25.0
+
+
+def wait_for_opening(campaign: db.Campaign | None, timeout: float = TRUTH_WAIT_S, poll: float = 1.0) -> db.Campaign | None:
+    """Give a running job up to ``timeout`` seconds to finish the truth and its opening seed.
+
+    The first questionnaire can be opened while the truth call (about 10 s) is still running. Taking the seed
+    slot then would make the first scene ignore the truth for good, so wait a little; the job prepares the seed
+    right after the truth. Returns the freshest campaign.
+    """
+    import time
+
+    if campaign is None:
+        return None
+    deadline = time.monotonic() + timeout
+    while True:
+        fresh = db.get_campaign_by_id(str(campaign.id)) or campaign
+        state = _state(fresh)
+        truth_settled = state["pieces"]["truth"].get("status") != "pending"
+        seed_settled = bool(state.get("opening_seed")) or state.get("status") not in ("pending", "running")
+        if (truth_settled and seed_settled) or not is_active(str(fresh.id), state) or time.monotonic() >= deadline:
+            return fresh
+        time.sleep(poll)
 
 
 def take_opening_seed(campaign: db.Campaign | None) -> dict[str, Any] | None:

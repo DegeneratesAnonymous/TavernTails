@@ -173,3 +173,27 @@ test('the description is frozen while it is being read back', async () => {
     global.fetch = original
   }
 })
+
+test('"Stick to what I wrote" says nothing is invented ahead of play', async () => {
+  const server = mockServer()
+  try {
+    render(
+      <CampaignCardCreator
+        seat={null}
+        owner={{ owner_role: 'dm', owner_character_id: null }}
+        validateSeat={() => null}
+        fallbackName="The Last Lantern"
+        onCreated={() => {}}
+        onClassic={() => {}}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText('Describe your campaign'), { target: { value: CARD.text } })
+    fireEvent.click(screen.getByRole('button', { name: /read it back/i }))
+    expect(await screen.findByRole('radio', { name: 'Show me the world' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('radio', { name: 'Stick to what I wrote' }))
+    expect(screen.queryByRole('radio', { name: 'Show me the world' })).not.toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'The world' })).toHaveTextContent(/nothing is invented ahead of play/)
+  } finally {
+    server.restore()
+  }
+})

@@ -390,7 +390,8 @@ def create_campaign(req: CampaignCreate, background_tasks: BackgroundTasks, curr
         refreshed = _persist_contract_package(campaign_id, owner_id, package, confirmed=False)
         if refreshed:
             camp = refreshed
-        if req.card and req.generate_world:
+        # "Stick to what I wrote" (strict canon) means nothing is invented ahead of play.
+        if req.card and req.generate_world and initial_settings.get("canon_policy") != "strict_canon":
             # Runs after the response, while the player picks or builds a character.
             world_skeleton.init_state(str(campaign_id), req.world_visibility or "surprise")
             background_tasks.add_task(world_skeleton.run_world_skeleton, str(campaign_id))
@@ -601,6 +602,7 @@ def _world_view(c: db.Campaign, user_id: int) -> dict[str, Any]:
     state = dict(meta.get("world_skeleton") or {})
     seated_as_dm = c.owner_id == user_id and (meta.get("owner_participation") or {}).get("role") == "dm"
     view = world_skeleton.public_view(state, reveal=c.gm_user_id == user_id or seated_as_dm)
+    view["can_change_visibility"] = c.owner_id == user_id
     if view["status"] in ("pending", "running") and not world_skeleton.is_active(str(c.id), state):
         # A restart dropped the job; finished pieces are kept and the rest can be retried.
         view["status"] = "interrupted"

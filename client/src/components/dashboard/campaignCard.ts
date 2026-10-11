@@ -35,7 +35,9 @@ export type WorldPieceName = 'truth' | 'factions' | 'npcs' | 'clock'
 export type WorldState = {
   status: 'not_started' | 'pending' | 'running' | 'ready' | 'partial' | 'failed' | 'interrupted'
   visibility: WorldVisibility
-  pieces: Record<WorldPieceName, { status: 'pending' | 'ready' | 'failed'; data?: any }>
+  pieces: Record<WorldPieceName, { status: 'pending' | 'ready' | 'failed'; reason?: string; data?: any }>
+  /** Only the owner may lift or restore the surprise; a GM sees the world but not this choice. */
+  can_change_visibility?: boolean
 }
 
 export const WORLD_PIECES: { id: WorldPieceName; label: string }[] = [
