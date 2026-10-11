@@ -82,15 +82,37 @@ test('a failed start explains itself and offers to try again', async () => {
 })
 
 test('says so when the opening questions have not been answered', async () => {
-  const server = mockServer([status({ state: 'needs_setup' })])
+  const server = mockServer([status({ state: 'needs_setup', setup: { state: 'ready', error: null, elapsed_s: 0 } })])
   try {
     render(<SceneStartProgress sessionId="s1" onReady={jest.fn()} />)
     expect(await screen.findByText('One more step before the story begins')).toBeInTheDocument()
     const opened = jest.fn()
     window.addEventListener('session:open-opening-setup', opened)
-    fireEvent.click(screen.getByRole('button', { name: 'Continue setup' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Answer the opening questions' }))
     expect(opened).toHaveBeenCalledTimes(1)
     expect((opened.mock.calls[0][0] as CustomEvent).detail).toEqual({ sessionId: 's1' })
+    // Pressing it shows that something is happening and can't be pressed twice.
+    expect(screen.getByRole('button', { name: 'Opening…' })).toBeDisabled()
     window.removeEventListener('session:open-opening-setup', opened)
+  } finally { server.restore() }
+})
+
+test('the questions button waits until the questions are prepared', async () => {
+  const server = mockServer([status({ state: 'needs_setup', setup: { state: 'preparing', error: null, elapsed_s: 12 } })])
+  try {
+    render(<SceneStartProgress sessionId="s1" onReady={jest.fn()} />)
+    expect(await screen.findByText('Preparing your opening questions')).toBeInTheDocument()
+    expect(screen.getByText('0:12 elapsed')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Preparing…' })).toBeDisabled()
+  } finally { server.restore() }
+})
+
+test('questions that failed to prepare can be tried again', async () => {
+  const server = mockServer([status({ state: 'needs_setup', setup: { state: 'failed', error: 'model unavailable', elapsed_s: 0 } })])
+  try {
+    render(<SceneStartProgress sessionId="s1" onReady={jest.fn()} />)
+    expect(await screen.findByRole('alert')).toHaveTextContent('The opening questions didn’t come together')
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    await waitFor(() => expect(server.calls.some(c => c.method === 'POST' && c.url.endsWith('/sessions/s1/opening-setup/prepare'))).toBe(true))
   } finally { server.restore() }
 })

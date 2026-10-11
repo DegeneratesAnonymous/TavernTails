@@ -1,6 +1,7 @@
 import asyncio
 import json
 import re
+import threading
 import time
 import uuid
 from datetime import datetime, timezone
@@ -1956,6 +1957,84 @@ def _campaign_brief_with_hook(campaign_brief: dict, hook: str | None) -> dict:
     return brief
 
 
+# --- Opening questions: prepared once, in the background ----------------------------------------------
+# Building the questionnaire can wait on the world skeleton and make up to two model calls, which takes
+# minutes behind a busy single-GPU queue. Doing that inside the "Continue setup" request left the player
+# looking at a button that did nothing (and a proxy could cut the request off, losing the prepared seed).
+# The start-status poll now starts the build as soon as the questions are owed, and every reader shares
+# that one build instead of starting its own.
+_SETUP_PREP: dict[str, dict[str, Any]] = {}
+_SETUP_PREP_GUARD = threading.Lock()
+_SETUP_BUILD_LOCKS: dict[str, threading.Lock] = {}
+
+
+def _setup_build_lock(session_id: str) -> threading.Lock:
+    with _SETUP_PREP_GUARD:
+        return _SETUP_BUILD_LOCKS.setdefault(session_id, threading.Lock())
+
+
+def _prepare_opening_questionnaire(session_id: str) -> dict:
+    """The session's opening questionnaire, building and saving it if nobody has yet.
+
+    One build per session at a time; a second caller waits for the first and reuses its result.
+    Returns the session meta as saved after the build.
+    """
+    folder = BASE / session_id
+    meta_path = folder / 'meta.json'
+    with _setup_build_lock(session_id):
+        meta = json.loads(meta_path.read_text())
+        setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
+        if setup.get("completed") or setup.get("questionnaire"):
+            return meta
+        built_setup = dict(setup)
+        questionnaire = _build_opening_setup_questionnaire(folder, meta, built_setup)
+        # Re-read: the build took a while and other requests may have written the meta meanwhile.
+        meta = json.loads(meta_path.read_text())
+        setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
+        if not setup.get("completed") and not setup.get("questionnaire"):
+            setup["questionnaire"] = questionnaire
+            setup["questionnaire_id"] = questionnaire.get("questionnaire_id")
+            setup["campaign_brief"] = questionnaire.get("campaign_brief") or {}
+            if built_setup.get("seed"):
+                setup["seed"] = built_setup["seed"]
+            meta["opening_setup"] = setup
+            # Atomic: the start-status poll reads this file every couple of seconds while the build runs.
+            simulation_agent.atomic_write_json(meta_path, meta)
+        return meta
+
+
+def _run_setup_prep(session_id: str) -> None:
+    try:
+        _prepare_opening_questionnaire(session_id)
+    except Exception as err:  # noqa: BLE001 - reported to the player, who can try again
+        _SETUP_PREP[session_id] = {"state": "failed", "error": str(err)[:300] or "The opening questions could not be prepared."}
+        return
+    _SETUP_PREP[session_id] = {"state": "ready", "error": None}
+
+
+def _opening_setup_prep_status(session_id: str, setup: dict, *, start: bool = True) -> dict:
+    """Where the opening questions stand: ready, preparing (started here if needed) or failed."""
+    if setup.get("questionnaire") or setup.get("completed"):
+        return {"state": "ready", "error": None, "elapsed_s": 0}
+    with _SETUP_PREP_GUARD:
+        prep = _SETUP_PREP.get(session_id) or {}
+        running = prep.get("state") == "preparing" and prep.get("thread") is not None and prep["thread"].is_alive()
+        if not running and prep.get("state") != "failed" and start:
+            thread = threading.Thread(target=_run_setup_prep, args=(session_id,), daemon=True, name=f"opening-setup-{session_id[:8]}")
+            prep = {"state": "preparing", "error": None, "started_at": time.time(), "thread": thread}
+            _SETUP_PREP[session_id] = prep
+            thread.start()
+        elif not running and prep.get("state") == "preparing":
+            # The thread ended between its save and this read; the meta we were handed predates the save.
+            prep = {"state": "ready", "error": None}
+    started = prep.get("started_at")
+    return {
+        "state": prep.get("state") or "preparing",
+        "error": prep.get("error"),
+        "elapsed_s": round(time.time() - started, 1) if started else 0,
+    }
+
+
 @router.get('/{session_id}/opening-setup')
 def get_opening_setup(session_id: str, current_user=Depends(get_current_user)):
     folder = BASE / session_id
@@ -1965,18 +2044,30 @@ def get_opening_setup(session_id: str, current_user=Depends(get_current_user)):
     meta = json.loads(meta_path.read_text())
     _require_session_member(meta, current_user)
     setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
-    meta["opening_setup"] = setup
     if setup.get("completed"):
-        meta_path.write_text(json.dumps(meta))
         return {"opening_setup": setup, "completed": True, "anchors": setup.get("anchors") or []}
-    questionnaire = setup.get("questionnaire")
-    if not questionnaire:
-        questionnaire = _build_opening_setup_questionnaire(folder, meta, setup)
-        setup["questionnaire"] = questionnaire
-        setup["questionnaire_id"] = questionnaire.get("questionnaire_id")
-        setup["campaign_brief"] = questionnaire.get("campaign_brief") or {}
-        meta_path.write_text(json.dumps(meta))
-    return {"opening_setup": setup, "questionnaire": questionnaire, "completed": False}
+    if not setup.get("questionnaire"):
+        # Joins a background build if one is running, otherwise builds here.
+        meta = _prepare_opening_questionnaire(session_id)
+        setup = meta.get("opening_setup") or setup
+        _SETUP_PREP[session_id] = {"state": "ready", "error": None}
+    return {"opening_setup": setup, "questionnaire": setup.get("questionnaire"), "completed": bool(setup.get("completed"))}
+
+
+@router.post('/{session_id}/opening-setup/prepare')
+def prepare_opening_setup(session_id: str, current_user=Depends(get_current_user)):
+    """Start (or restart after a failure) preparing the opening questions without waiting for them."""
+    folder = BASE / session_id
+    meta_path = folder / 'meta.json'
+    if not folder.exists() or not meta_path.exists():
+        raise HTTPException(status_code=404, detail='Session not found')
+    meta = json.loads(meta_path.read_text())
+    _require_session_member(meta, current_user)
+    setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
+    with _SETUP_PREP_GUARD:
+        if (_SETUP_PREP.get(session_id) or {}).get("state") == "failed":
+            _SETUP_PREP.pop(session_id, None)
+    return _opening_setup_prep_status(session_id, setup)
 
 
 @router.post('/{session_id}/opening-setup')
@@ -1987,8 +2078,10 @@ def submit_opening_setup(session_id: str, payload: OpeningSetupSubmit, current_u
         raise HTTPException(status_code=404, detail='Session not found')
     meta = json.loads(meta_path.read_text())
     _require_session_member(meta, current_user)
+    if not (meta.get("opening_setup") or {}).get("questionnaire"):
+        meta = _prepare_opening_questionnaire(session_id)
     setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
-    questionnaire = setup.get("questionnaire") or _build_opening_setup_questionnaire(folder, meta, setup)
+    questionnaire = setup.get("questionnaire") or {}
     if payload.questionnaire_id != questionnaire.get("questionnaire_id"):
         raise HTTPException(status_code=400, detail="Questionnaire mismatch")
     character = _selected_character_from_meta(meta)
@@ -2046,8 +2139,10 @@ def skip_opening_setup(session_id: str, payload: OpeningSetupSkip | None = None,
         raise HTTPException(status_code=404, detail='Session not found')
     meta = json.loads(meta_path.read_text())
     _require_session_member(meta, current_user)
+    if not (meta.get("opening_setup") or {}).get("questionnaire"):
+        meta = _prepare_opening_questionnaire(session_id)
     setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
-    questionnaire = setup.get("questionnaire") or _build_opening_setup_questionnaire(folder, meta, setup)
+    questionnaire = setup.get("questionnaire") or {}
     character = _selected_character_from_meta(meta)
     campaign_brief = _campaign_brief_with_hook(
         questionnaire.get("campaign_brief") or setup.get("campaign_brief") or {},
@@ -2502,7 +2597,7 @@ def get_start_status(session_id: str, current_user=Depends(get_current_user)):
     stage = status.get("stage") or START_STAGES[0][0]
     started = status.get("started_at")
     ended = status.get("finished_at") or time.time()
-    return {
+    result = {
         "state": state,
         "stage": stage,
         "stages": [{"id": sid, "label": label} for sid, label in START_STAGES],
@@ -2510,6 +2605,10 @@ def get_start_status(session_id: str, current_user=Depends(get_current_user)):
         "error": status.get("error"),
         "scene_ready": ready,
     }
+    if state == "needs_setup":
+        # The questions are owed: have them ready by the time the player presses "Continue setup".
+        result["setup"] = _opening_setup_prep_status(session_id, setup)
+    return result
 
 
 async def _start_session_impl(session_id: str, payload: "StartSessionRequest", current_user) -> dict:

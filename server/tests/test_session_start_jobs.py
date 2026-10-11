@@ -100,6 +100,8 @@ def test_the_setup_pending_placeholder_is_not_a_ready_scene_and_asks_for_the_que
         assert scene.get("setup_pending") and scene.get("narrative_body"), "fixture assumption: the placeholder has text"
         status = client.get(f"/sessions/{session_id}/start-status", headers=headers).json()
         assert status["scene_ready"] is False and status["state"] == "needs_setup"
+        # Asking for the questions starts preparing them; let that save land before editing the meta here.
+        assert _wait_for(lambda: client.get(f"/sessions/{session_id}/start-status", headers=headers).json()["setup"]["state"] == "ready")
 
         # once the questions are answered but nothing has started, the client is told to start it
         meta_path = sessions.BASE / session_id / "meta.json"
@@ -107,3 +109,76 @@ def test_the_setup_pending_placeholder_is_not_a_ready_scene_and_asks_for_the_que
         meta["opening_setup"]["completed"] = True
         meta_path.write_text(json.dumps(meta))
         assert client.get(f"/sessions/{session_id}/start-status", headers=headers).json()["state"] == "idle"
+
+
+def _wait_for(predicate, timeout: float = 5.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.02)
+    return False
+
+
+def test_opening_questions_are_prepared_in_the_background_once(monkeypatch):
+    """The "Continue setup" button used to build the questions inside its own request, which takes minutes
+    on the local model; now the status poll starts one shared build and the button opens a finished one."""
+    import threading
+
+    real_build = sessions._build_opening_setup_questionnaire
+    release = threading.Event()
+    builds: list[str] = []
+
+    def slow_build(folder, meta, setup=None):
+        builds.append(folder.name)
+        release.wait(5)
+        return real_build(folder, meta, setup)
+
+    monkeypatch.setattr(sessions, "_build_opening_setup_questionnaire", slow_build)
+    with TestClient(main.app) as client:
+        session_id, headers = _session(client, "setup-prep@example.com")
+        sessions._START_STATUS.pop(session_id, None)
+        first = client.get(f"/sessions/{session_id}/start-status", headers=headers).json()
+        assert first["state"] == "needs_setup"
+        assert first["setup"]["state"] == "preparing"
+        assert client.get(f"/sessions/{session_id}/start-status", headers=headers).json()["setup"]["state"] == "preparing"
+
+        # Opening the questions while they are being prepared joins that build instead of starting a second.
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            opened = pool.submit(client.get, f"/sessions/{session_id}/opening-setup", headers=headers)
+            time.sleep(0.2)
+            release.set()
+            body = opened.result().json()
+        assert body["questionnaire"]["questions"]
+        assert builds == [session_id]
+        assert _wait_for(lambda: client.get(f"/sessions/{session_id}/start-status", headers=headers).json()["setup"]["state"] == "ready")
+        saved = json.loads((sessions.BASE / session_id / "meta.json").read_text())["opening_setup"]
+        assert saved["questionnaire_id"] == body["questionnaire"]["questionnaire_id"]
+        assert builds == [session_id]
+
+
+def test_questions_that_fail_to_prepare_are_reported_and_can_be_retried(monkeypatch):
+    real_build = sessions._build_opening_setup_questionnaire
+    attempts = {"n": 0}
+
+    def flaky_build(folder, meta, setup=None):
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            raise RuntimeError("model unavailable")
+        return real_build(folder, meta, setup)
+
+    monkeypatch.setattr(sessions, "_build_opening_setup_questionnaire", flaky_build)
+    with TestClient(main.app) as client:
+        session_id, headers = _session(client, "setup-prep-fail@example.com")
+        sessions._START_STATUS.pop(session_id, None)
+        status_url = f"/sessions/{session_id}/start-status"
+        client.get(status_url, headers=headers)
+        assert _wait_for(lambda: client.get(status_url, headers=headers).json()["setup"]["state"] == "failed")
+        failed = client.get(status_url, headers=headers).json()["setup"]
+        assert "model unavailable" in failed["error"]
+        assert attempts["n"] == 1, "a failed build is not retried behind the player's back"
+
+        retried = client.post(f"/sessions/{session_id}/opening-setup/prepare", headers=headers)
+        assert retried.status_code == 200 and retried.json()["state"] in ("preparing", "ready")
+        assert _wait_for(lambda: client.get(status_url, headers=headers).json()["setup"]["state"] == "ready")
+        assert client.get(f"/sessions/{session_id}/opening-setup", headers=headers).json()["questionnaire"]["questions"]
