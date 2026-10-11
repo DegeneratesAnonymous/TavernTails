@@ -217,3 +217,18 @@ def test_notes_without_a_description_are_sampled_across_the_document():
     excerpt = relevant_lore(lore, "", budget=3000)
     numbers = [int(p.split(":")[0].split()[1]) for p in excerpt.split("\n\n") if p.startswith("Section")]
     assert max(numbers) > 150  # reaches the end, not just the first pages
+
+
+def test_a_role_must_sit_beside_its_own_person():
+    text = "Maren Vey is the baker; Tomas Reed is the captain."
+    swapped = read_campaign_card(text, complete=_answer(people=[{"name": "Maren Vey", "role": "captain"}]))
+    assert swapped["people"][0]["role"] == ""
+    right = read_campaign_card(text, complete=_answer(people=[{"name": "Maren Vey", "role": "baker"}]))
+    assert right["people"][0]["role"] == "baker"
+
+
+def test_grounded_people_are_kept_up_to_the_card_limit():
+    names = [f"Person{chr(65 + i)} Smith" for i in range(9)]
+    text = " ".join(f"{n} lives here." for n in names)
+    card = read_campaign_card(text, complete=_answer(people=[{"name": n, "role": ""} for n in names]))
+    assert len(card["people"]) == 9

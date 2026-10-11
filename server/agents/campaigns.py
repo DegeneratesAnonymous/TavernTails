@@ -398,6 +398,8 @@ def create_campaign(req: CampaignCreate, background_tasks: BackgroundTasks, curr
             refreshed = db.get_campaign_by_id(str(campaign_id))
             if refreshed:
                 camp = refreshed
+        elif req.card:
+            world_skeleton.persist_authored(camp)  # the player's named people and factions, without a world
     except Exception:
         pass
     # Optionally create an initial linked session and persist that link to campaign.metadata

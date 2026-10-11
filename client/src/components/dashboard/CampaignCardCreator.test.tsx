@@ -71,7 +71,7 @@ test('describe, read it back, answer a follow-up, and create', async () => {
     fireEvent.click(readBack)
 
     expect(await screen.findByText("Here's what I heard")).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: 'You said' })).toHaveTextContent('Maren Vey')
+    expect(screen.getByRole('region', { name: 'People and groups you named' })).toHaveTextContent('Maren Vey')
     expect(screen.getByLabelText('Tone')).toHaveValue('grim')
     expect(screen.getByText('Who profits from the dark lamp?')).toBeInTheDocument()
     const cardRequest = server.calls.find((c) => c.url.endsWith('/campaigns/card'))

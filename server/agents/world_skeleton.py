@@ -193,13 +193,15 @@ def validate_truth(data: dict[str, Any], *, opening_trouble: str = "") -> dict[s
         return None
     if not 1 <= len(out["thread_name"].split()) <= 8:
         return None
-    hidden, visible = content_tokens(out["hidden_truth"]), content_tokens(out["visible_problem"])
+    # content_tokens only knows ASCII words; text in other scripts is compared by Unicode words / CJK pairs.
+    tokens = content_tokens if content_tokens(out["hidden_truth"]) else _unicode_tokens
+    hidden, visible = tokens(out["hidden_truth"]), tokens(out["visible_problem"])
     if hidden and len(hidden - visible) < 2:
         return None  # the "truth" only restates what everyone can already see
     # The first clue is shown to players and treated as public by the seed's leak check, so it must point
     # at the truth without carrying it.
     secret_only = hidden - visible
-    if secret_only and len(secret_only & content_tokens(out["first_clue"])) >= max(2, (len(secret_only) + 1) // 2):
+    if secret_only and len(secret_only & tokens(out["first_clue"])) >= max(2, (len(secret_only) + 1) // 2):
         return None
     trouble = content_tokens(opening_trouble)
     if not trouble and opening_trouble.strip():
@@ -291,15 +293,17 @@ def _provenance(name: str, player_text: str, lore: str) -> str:
     return "generated_provisional"
 
 
-def _add_entity(s: Session, campaign_id: str, entity_type: str, name: str, data: dict[str, Any]) -> str:
+def _add_entity(s: Session, campaign_id: str, entity_type: str, name: str, data: dict[str, Any], *,
+                tags: list[str] | None = None, visibility: str = "gm_only") -> str:
     eid = uuid.uuid4().hex[:12]
     s.add(CampaignEntity(
         id=eid, campaign_id=campaign_id, entity_type=entity_type, name=name, status="active",
-        visibility="gm_only", tags=[TAG], data=data, created_at=_now(), updated_at=_now(),
+        visibility=visibility, tags=tags if tags is not None else [TAG], data=data, created_at=_now(), updated_at=_now(),
     ))
     s.add(CampaignChangeLog(
         id=uuid.uuid4().hex[:12], campaign_id=campaign_id, entity_id=eid, change_type="create",
-        summary=f"World skeleton created {entity_type} '{name}'", before_data={}, after_data=data,
+        summary=f"{'World skeleton' if TAG in (tags or [TAG]) else 'Campaign card'} created {entity_type} '{name}'",
+        before_data={}, after_data=data,
         caused_by_player_action=False, created_at=_now(),
     ))
     return eid
@@ -538,6 +542,51 @@ def skeleton_row_ids(campaign: db.Campaign) -> tuple[set[str], set[str]]:
             if hook.entity_id in entity_ids:  # the clock, or any hook a GM attached to a hidden entity
                 hook_ids.add(hook.id)
     return entity_ids, hook_ids
+
+
+def forget_row(campaign_id: str, row_id: str) -> None:
+    """A GM deleted one of the skeleton's rows: drop it from its piece, and reopen a piece left empty.
+
+    Without this the piece stays "ready" pointing at nothing, and a retry (which skips ready pieces) could
+    never rebuild it. The truth is a single row, so deleting it always reopens it.
+    """
+    def change(state: dict[str, Any]) -> None:
+        for piece, entry in (state.get("pieces") or {}).items():
+            ids = list((entry or {}).get("entity_ids") or [])
+            if row_id in ids:
+                ids.remove(row_id)
+                if ids:
+                    entry["entity_ids"] = ids
+                else:
+                    state["pieces"][piece] = {"status": "failed", "reason": "deleted"}
+                if state.get("status") == "ready" and not ids:
+                    state["status"] = "partial"
+
+    _update(campaign_id, change)
+
+
+def persist_authored(campaign: db.Campaign) -> list[str]:
+    """Memory rows for the people and factions the player named, when no world skeleton will be built.
+
+    The skeleton is the only other path that turns them into campaign memory; without a skeleton (strict
+    canon, or the box unticked) they would otherwise be stored on the card alone and missing in play.
+    """
+    meta = _meta(campaign)
+    card = meta.get("campaign_card") or {}
+    ids: list[str] = []
+    with Session(db.engine) as s:
+        for person in card.get("people") or []:
+            if isinstance(person, dict) and clean_text(person.get("name")):
+                ids.append(_add_entity(s, str(campaign.id), "npc", clean_text(person["name"]), {
+                    "role": clean_text(person.get("role")), "provenance": "user", "source": "campaign_card",
+                }, tags=["campaign_card"], visibility="shared"))
+        for faction in card.get("factions") or []:
+            if isinstance(faction, dict) and clean_text(faction.get("name")):
+                ids.append(_add_entity(s, str(campaign.id), "faction", clean_text(faction["name"]), {
+                    "provenance": "user", "source": "campaign_card",
+                }, tags=["campaign_card"], visibility="shared"))
+        s.commit()
+    return ids
 
 
 def is_active(campaign_id: str, state: dict[str, Any]) -> bool:

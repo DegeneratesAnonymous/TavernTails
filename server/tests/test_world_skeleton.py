@@ -804,3 +804,35 @@ def test_visibility_and_retry_need_a_world_that_was_asked_for():
     assert "world_skeleton" not in (db.get_campaign_by_id(classic["id"]).metadata_json or {})
     # The GM summary tools keep working for an owner with no world at all.
     assert client.get(f"/memory/{classic['id']}/next-actions", headers=headers).status_code == 200
+
+
+def test_a_cjk_clue_that_repeats_the_truth_is_rejected():
+    truth = {**TRUTH, "thread_name": "黑暗的灯塔", "visible_problem": "灯塔熄灭了。",
+             "hidden_truth": "港务长把守塔人卖给了走私犯。", "first_clue": "楼梯上新鲜的焦油。"}
+    assert world_skeleton.validate_truth(truth) is not None
+    assert world_skeleton.validate_truth({**truth, "first_clue": "一张收据：港务长把守塔人卖给了走私犯。"}) is None
+
+
+def test_deleting_a_skeleton_row_reopens_its_piece():
+    owner = _user("skeleton-forget@example.com")
+    camp = _campaign("skeleton-forget@example.com")
+    world_skeleton.generate_world_skeleton(str(camp.id), complete=_full_model())
+    thread_id = db.get_campaign_by_id(str(camp.id)).metadata_json["world_skeleton"]["pieces"]["truth"]["entity_ids"][0]
+    headers = {"Authorization": f"Bearer {create_access_token(owner.email or '')}"}
+    client = TestClient(main.app)
+    client.post(f"/campaigns/{camp.id}/world", headers=headers, json={"visibility": "show"})
+    assert client.delete(f"/memory/{camp.id}/entities/{thread_id}", headers=headers).status_code == 204
+    state = db.get_campaign_by_id(str(camp.id)).metadata_json["world_skeleton"]
+    assert state["pieces"]["truth"] == {"status": "failed", "reason": "deleted"}
+    assert state["status"] == "partial"
+
+
+def test_named_people_reach_memory_without_a_world():
+    owner = _user("skeleton-authored@example.com")
+    headers = {"Authorization": f"Bearer {create_access_token(owner.email or '')}"}
+    card = read_campaign_card("A harbor town where the keeper Maren Vey vanished.", complete=lambda *a, **k: None)
+    card["people"] = [{"name": "Maren Vey", "role": "keeper", "status": "said"}]
+    res = TestClient(main.app).post("/campaigns", headers=headers,
+                                    json={"name": "No world", "card": card, "create_session": False, "generate_world": False})
+    rows = _entities(res.json()["campaign"]["id"])
+    assert [(e.entity_type, e.name, e.data["role"], e.visibility) for e in rows] == [("npc", "Maren Vey", "keeper", "shared")]

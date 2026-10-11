@@ -335,28 +335,36 @@ export default function CampaignCardCreator({ seat, owner, validateSeat, fallbac
               <span className="wizard-control-help">{STATUS_LABELS[status].help}</span>
             </div>
             <div className="card-group-fields">{groups[status].map(renderField)}</div>
-            {status === 'said' && (card.people.length > 0 || card.factions.length > 0) && (
-              <div className="row-wrap" style={{ gap: 6 }}>
-                {/* The words are the player's, but whether each is a person or a group was the model's call. */}
-                {card.people.map((p) => (
-                  <span key={`p-${p.name}`} className="badge card-chip">
-                    👤 {p.name}{p.role ? `, ${p.role}` : ''}
-                    <button type="button" className="card-chip-remove" aria-label={`Remove person: ${p.name}`}
-                      onClick={() => setCard({ ...card, people: card.people.filter((x) => x.name !== p.name) })}>×</button>
-                  </span>
-                ))}
-                {card.factions.map((f) => (
-                  <span key={`f-${f.name}`} className="badge card-chip">
-                    ⚑ {f.name}
-                    <button type="button" className="card-chip-remove" aria-label={`Remove faction: ${f.name}`}
-                      onClick={() => setCard({ ...card, factions: card.factions.filter((x) => x.name !== f.name) })}>×</button>
-                  </span>
-                ))}
-              </div>
-            )}
           </section>
         )
       ))}
+
+      {(card.people.length > 0 || card.factions.length > 0) && (
+        <section className="card-group card-group--said" aria-label="People and groups you named">
+          {/* Shown even when no other field is "said" (a notes-only card), so nothing is confirmed unseen. */}
+          <div className="card-group-head">
+            <span className="wizard-section-kicker">People and groups you named</span>
+            <span className="wizard-control-help">Remove any I got wrong.</span>
+          </div>
+          <div className="row-wrap" style={{ gap: 6 }}>
+            {/* The words are the player's, but whether each is a person or a group was the model's call. */}
+            {card.people.map((p) => (
+              <span key={`p-${p.name}`} className="badge card-chip">
+                👤 {p.name}{p.role ? `, ${p.role}` : ''}
+                <button type="button" className="card-chip-remove" aria-label={`Remove person: ${p.name}`}
+                  onClick={() => setCard({ ...card, people: card.people.filter((x) => x.name !== p.name) })}>×</button>
+              </span>
+            ))}
+            {card.factions.map((f) => (
+              <span key={`f-${f.name}`} className="badge card-chip">
+                ⚑ {f.name}
+                <button type="button" className="card-chip-remove" aria-label={`Remove faction: ${f.name}`}
+                  onClick={() => setCard({ ...card, factions: card.factions.filter((x) => x.name !== f.name) })}>×</button>
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="card-group card-group--extras" aria-label="Limits and themes">
         {/* Everything Create saves is shown here, so nothing is accepted unseen; remove what is wrong. */}

@@ -359,11 +359,11 @@ def _merge_model_answer(card: dict[str, Any], data: dict[str, Any], text: str, l
         if name and name_in_text(name, source) and name.casefold() not in {p["name"].casefold() for p in people}:
             role = _clip(person.get("role"))[:80]
             # The name is the player's; a role the text does not give is a guess and must not become canon.
-            people.append({"name": name, "role": role if is_grounded(role, source, tokens) else "", "status": SAID})
-    card["people"] = people[:6]
+            people.append({"name": name, "role": role if _role_beside_name(name, role, source) else "", "status": SAID})
+    card["people"] = people[:12]  # ConfirmedCard.people allows 12
     card["factions"] = [
         {"name": name[:80], "status": SAID}
-        for name in _str_list(data.get("factions"), 4)
+        for name in _str_list(data.get("factions"), 8)  # ConfirmedCard.factions allows 8
         if name_in_text(name, source)
     ]
     card["themes"] = _str_list(data.get("themes"), 4)
@@ -371,6 +371,16 @@ def _merge_model_answer(card: dict[str, Any], data: dict[str, Any], text: str, l
     card["open_questions"] = [q for q in _str_list(data.get("open_questions"), 3) if q.endswith("?")]
     filled += len(people) + len(card["factions"])
     return filled
+
+
+def _role_beside_name(name: str, role: str, source: str) -> bool:
+    """A role counts only in the same clause as its own person ("Maren is the baker; Tomas the captain")."""
+    if not role:
+        return False
+    for clause in re.split(r"[.;!?\n]|,|\band\b|\bwhile\b|\bbut\b", source):
+        if name_in_text(name, clause) and is_grounded(role, clause):
+            return True
+    return False
 
 
 def follow_ups(card: dict[str, Any]) -> list[dict[str, str]]:

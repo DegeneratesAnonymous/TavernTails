@@ -256,8 +256,13 @@ def delete_entity(campaign_id: str, entity_id: str, current_user=Depends(get_cur
         e = s.get(CampaignEntity, entity_id)
         if not e or e.campaign_id != campaign_id:
             raise HTTPException(status_code=404, detail="Entity not found")
+        from . import world_skeleton
+
+        skeleton_row = world_skeleton.TAG in (e.tags or [])
         s.delete(e)
         s.commit()
+    if skeleton_row:
+        world_skeleton.forget_row(campaign_id, entity_id)  # so a retry can rebuild the piece
 
 
 # ---------------------------------------------------------------------------
@@ -478,6 +483,9 @@ def delete_hook(campaign_id: str, hook_id: str, current_user=Depends(get_current
             raise HTTPException(status_code=404, detail="Hook not found")
         s.delete(h)
         s.commit()
+    from . import world_skeleton
+
+    world_skeleton.forget_row(campaign_id, hook_id)  # a no-op unless it was the skeleton's clock
 
 
 # ---------------------------------------------------------------------------
