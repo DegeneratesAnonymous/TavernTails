@@ -625,6 +625,13 @@ def update_world_skeleton(
 ):
     """Change who sees the skeleton (owner only), and/or generate the pieces that are still missing."""
     c = _require_owner_or_gm(campaign_id, current_user)
+    existing = dict((c.metadata_json or {}).get("world_skeleton") or {})
+    settings = (c.metadata_json or {}).get("settings") or {}
+    # Both actions need a world creation asked for: classic setup, the box unticked, or "Stick to what I
+    # wrote" have none, and a retry must never start one (checked before anything is written).
+    has_world = bool(existing.get("pieces")) and settings.get("canon_policy") != "strict_canon"
+    if (req.retry or req.visibility is not None) and not has_world:
+        raise HTTPException(status_code=409, detail="This campaign was created without a world underneath")
     if req.visibility is not None:
         # "Keep it a surprise" is the owner's choice about their own game; a GM may not lift it.
         if c.owner_id != _require_user_id(current_user):
@@ -633,12 +640,6 @@ def update_world_skeleton(
             raise HTTPException(status_code=422, detail='visibility must be "surprise" or "show"')
         world_skeleton.set_visibility(campaign_id, req.visibility)
     state = dict(((db.get_campaign_by_id(campaign_id) or c).metadata_json or {}).get("world_skeleton") or {})
-    if req.retry:
-        # A retry finishes a world that was asked for; it never starts one that creation skipped
-        # (classic setup, the box unticked, or "Stick to what I wrote").
-        settings = (c.metadata_json or {}).get("settings") or {}
-        if not state or state.get("status") == "not_started" or settings.get("canon_policy") == "strict_canon":
-            raise HTTPException(status_code=409, detail="This campaign was created without a world underneath")
     if req.retry and not world_skeleton.is_active(campaign_id, state):
         world_skeleton.request_retry(campaign_id)
         background_tasks.add_task(world_skeleton.run_world_skeleton, campaign_id)

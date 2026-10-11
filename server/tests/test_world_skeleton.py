@@ -690,13 +690,14 @@ def test_relationships_to_hidden_entities_are_hidden_too():
     world_skeleton.generate_world_skeleton(str(camp.id), complete=_full_model())
     npc_ids = db.get_campaign_by_id(str(camp.id)).metadata_json["world_skeleton"]["pieces"]["npcs"]["entity_ids"]
     with Session(db.engine) as s:
-        s.add(CampaignRelationship(id="rel-hidden", campaign_id=str(camp.id), source_entity_id=npc_ids[0],
+        rel_id = f"rel-{camp.id}"
+        s.add(CampaignRelationship(id=rel_id, campaign_id=str(camp.id), source_entity_id=npc_ids[0],
                                    target_entity_id=npc_ids[1], relationship_type="blackmails"))
         s.commit()
     client = TestClient(main.app)
     headers = {"Authorization": f"Bearer {create_access_token(owner.email or '')}"}
     assert client.get(f"/memory/{camp.id}/relationships", headers=headers).json() == []
-    assert client.delete(f"/memory/{camp.id}/relationships/rel-hidden", headers=headers).status_code == 404
+    assert client.delete(f"/memory/{camp.id}/relationships/{rel_id}", headers=headers).status_code == 404
     upsert = client.post(f"/memory/{camp.id}/relationships", headers=headers,
                          json={"source_entity_id": npc_ids[0], "target_entity_id": npc_ids[1], "relationship_type": "x"})
     assert upsert.status_code == 404
@@ -757,3 +758,49 @@ def test_a_cjk_secret_repeated_verbatim_is_a_leak():
     secret = {**TRUTH, "hidden_truth": "港务长出卖了守塔人", "visible_problem": "灯塔熄灭了", "first_clue": "楼梯上的焦油"}
     assert reveals_secret({**SEED, "immediate_problem": "传言说港务长出卖了守塔人。"}, secret, "灯塔守护人失踪了")
     assert not reveals_secret(SEED, secret, "灯塔守护人失踪了")
+
+
+def test_confirmed_people_and_factions_survive_the_cap():
+    many = {"npcs": [{"name": f"Extra {chr(65 + i)}", "role": "r", "faction": "", "wants": "w", "secret": "s", "knows": "k"}
+                     for i in range(4)] + [{"name": "Maren Vey", "role": "keeper", "faction": "", "wants": "w", "secret": "s", "knows": "k"}]}
+    found = world_skeleton.validate_npcs(many, ["Maren Vey"], [])
+    assert found[0]["name"] == "Maren Vey" and found[0]["secret"] == "s" and len(found) == 4
+    factions = {"factions": [{"name": f"Guild {i}", "wants": "w", "plan": "p", "if_ignored": "i"} for i in range(3)]
+                + [{"name": "Tidewardens", "wants": "Order.", "plan": "p", "if_ignored": "i"}]}
+    found_f = world_skeleton.validate_factions(factions, ["Tidewardens"])
+    assert found_f[0] == {"name": "Tidewardens", "wants": "Order.", "plan": "p", "if_ignored": "i"} and len(found_f) == 3
+
+
+def test_non_latin_opening_trouble_is_checked():
+    truth = {**TRUTH, "thread_name": "黑暗的灯塔", "visible_problem": "灯塔熄灭了，守塔人失踪了。"}
+    assert world_skeleton.validate_truth(truth, opening_trouble="灯塔熄灭了") is not None
+    assert world_skeleton.validate_truth(truth, opening_trouble="桥梁在夜里倒塌了") is None
+
+
+def test_hooks_a_gm_attaches_to_hidden_entities_are_hidden():
+    owner = _user("skeleton-gm-hooks@example.com")
+    camp = _campaign("skeleton-gm-hooks@example.com")
+    db.set_campaign_metadata_keys(str(camp.id), owner.id, {"owner_participation": {"role": "player", "character_id": None}})
+    world_skeleton.generate_world_skeleton(str(camp.id), complete=_full_model())
+    npc_id = db.get_campaign_by_id(str(camp.id)).metadata_json["world_skeleton"]["pieces"]["npcs"]["entity_ids"][0]
+    with Session(db.engine) as s:
+        hook_id = f"gm-hook-{camp.id}"
+        s.add(CampaignHook(id=hook_id, campaign_id=str(camp.id), entity_id=npc_id, title="Ilsa's ledger",
+                           description="She keeps the smugglers' accounts.", hook_type="unresolved"))
+        s.commit()
+    client = TestClient(main.app)
+    headers = {"Authorization": f"Bearer {create_access_token(owner.email or '')}"}
+    assert client.get(f"/memory/{camp.id}/hooks", headers=headers).json() == []
+    assert client.put(f"/memory/{camp.id}/hooks/{hook_id}", headers=headers, json={}).status_code == 404
+
+
+def test_visibility_and_retry_need_a_world_that_was_asked_for():
+    owner = _user("skeleton-optout-both@example.com")
+    headers = {"Authorization": f"Bearer {create_access_token(owner.email or '')}"}
+    client = TestClient(main.app)
+    classic = client.post("/campaigns", headers=headers, json={"name": "Classic", "create_session": False}).json()["campaign"]
+    both = client.post(f"/campaigns/{classic['id']}/world", headers=headers, json={"visibility": "show", "retry": True})
+    assert both.status_code == 409
+    assert "world_skeleton" not in (db.get_campaign_by_id(classic["id"]).metadata_json or {})
+    # The GM summary tools keep working for an owner with no world at all.
+    assert client.get(f"/memory/{classic['id']}/next-actions", headers=headers).status_code == 200

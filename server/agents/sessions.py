@@ -1829,6 +1829,12 @@ def _build_opening_setup_questionnaire(folder: Path, meta: dict, setup: dict | N
             extracted = extract_premise_seed(campaign_settings, campaign_contract, hidden_truth=truth, hint=False, strict=strict)
     if extracted:
         opening_seed = extracted
+    elif campaign_settings.get("canon_policy") == "strict_canon":
+        # The template/pool seed above invents a place, an event and a person; "Stick to what I wrote"
+        # keeps only what the player authored and lets the scene work from that.
+        opening_seed = {k: campaign_settings[k] for k in ("starting_location",) if campaign_settings.get(k)}
+        if campaign_settings.get("opening_trouble"):
+            opening_seed["inciting_event"] = campaign_settings["opening_trouble"]
     if setup is not None and opening_seed:
         # The brief the player answers is built from this seed; session start reuses it so the first
         # scene happens where the brief said it would instead of at a second, independently drawn place.

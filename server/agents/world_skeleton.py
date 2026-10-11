@@ -24,6 +24,7 @@ as it did before this existed; the status records why.
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import uuid
 from collections.abc import Callable
@@ -174,6 +175,17 @@ def _clip(value: Any) -> str:
     return " ".join(str(value or "").split())[:MAX_FIELD_CHARS]
 
 
+def _unicode_tokens(text: str) -> set[str]:
+    """Words in any script; runs of CJK characters (no spaces) become overlapping character pairs."""
+    tokens: set[str] = set()
+    for word in re.findall(r"\w+", text.casefold()):
+        if re.search(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]", word):
+            tokens.update(word[i:i + 2] for i in range(max(1, len(word) - 1)))
+        elif len(word) > 2:
+            tokens.add(word)
+    return tokens
+
+
 def validate_truth(data: dict[str, Any], *, opening_trouble: str = "") -> dict[str, str] | None:
     keys = ("thread_name", "visible_problem", "hidden_truth", "who_benefits", "first_clue", "stakes")
     out = {k: _clip(data.get(k)) for k in keys}
@@ -190,6 +202,14 @@ def validate_truth(data: dict[str, Any], *, opening_trouble: str = "") -> dict[s
     if secret_only and len(secret_only & content_tokens(out["first_clue"])) >= max(2, (len(secret_only) + 1) // 2):
         return None
     trouble = content_tokens(opening_trouble)
+    if not trouble and opening_trouble.strip():
+        # content_tokens only knows ASCII words; compare other scripts by Unicode words and CJK bigrams.
+        trouble = _unicode_tokens(opening_trouble)
+        visible = _unicode_tokens(out["visible_problem"])
+        out_title = _unicode_tokens(out["thread_name"])
+        if trouble and len(trouble & (visible | out_title)) < min(3, (len(trouble) + 1) // 2):
+            return None
+        trouble = set()
     if trouble:
         # Most of what the player said is wrong must be what the party sees: a murder "near the bridge"
         # does not match "the bridge collapsed". Small models paraphrase, so not every word is required.
@@ -211,10 +231,11 @@ def validate_factions(data: dict[str, Any], authored: list[str]) -> list[dict[st
         if entry["name"] and entry["wants"] and entry["name"].casefold() not in {f["name"].casefold() for f in out}:
             entry["name"] = entry["name"][:80]
             out.append(entry)
-    returned = {f["name"].casefold() for f in out}
-    for name in authored:  # the player's factions exist whether or not the model kept them
-        if name.casefold() not in returned:
-            out.insert(0, {"name": name, "wants": "", "plan": "", "if_ignored": ""})
+    by_name = {f["name"].casefold(): f for f in out}
+    # The player's factions exist whether or not the model kept them, and come first so the cap below can
+    # only drop generated ones.
+    mine = [by_name.get(name.casefold()) or {"name": name, "wants": "", "plan": "", "if_ignored": ""} for name in authored]
+    out = mine + [f for f in out if f["name"].casefold() not in {a.casefold() for a in authored}]
     # The player's own factions are kept even when the model added nothing usable.
     return out[: max(3, len(authored))] if len(out) >= 2 or authored else None
 
@@ -237,11 +258,11 @@ def validate_npcs(
         entry["role"] = roles.get(name.casefold(), entry["role"])  # a confirmed role is a fact, not a suggestion
         entry["faction"] = known_factions.get(entry["faction"].casefold(), "")
         out.append(entry)
-    returned = {n["name"].casefold() for n in out}
-    for name in authored:
-        if name.casefold() not in returned:
-            out.insert(0, {"name": name, "role": roles.get(name.casefold(), ""), "faction": "", "wants": "",
-                           "secret": "", "knows": ""})
+    by_name = {n["name"].casefold(): n for n in out}
+    mine = [by_name.get(name.casefold()) or {"name": name, "role": roles.get(name.casefold(), ""), "faction": "",
+                                             "wants": "", "secret": "", "knows": ""} for name in authored]
+    # The player's people come first so the cap below can only drop generated ones.
+    out = mine + [n for n in out if n["name"].casefold() not in {a.casefold() for a in authored}]
     # The player's own people are kept even when the model added nobody usable.
     return out[: max(4, len(authored))] if len(out) >= 2 or authored else None
 
@@ -494,7 +515,7 @@ def hidden_from(campaign: db.Campaign, user_id: int | None) -> bool:
     """True for a player-owner who chose "Keep it a surprise"; the DM and the assigned GM always see it."""
     meta = _meta(campaign)
     state = meta.get("world_skeleton") or {}
-    if not state or state.get("visibility") == "show":
+    if not state.get("pieces") or state.get("visibility") == "show":
         return False
     if user_id is not None and user_id == campaign.gm_user_id:
         return False
@@ -514,7 +535,7 @@ def skeleton_row_ids(campaign: db.Campaign) -> tuple[set[str], set[str]]:
             if TAG in (row.tags or []):
                 entity_ids.add(row.id)
         for hook in s.exec(select(CampaignHook).where(CampaignHook.campaign_id == str(campaign.id))).all():
-            if hook.hook_type == "ticking_clock" and hook.entity_id in entity_ids:
+            if hook.entity_id in entity_ids:  # the clock, or any hook a GM attached to a hidden entity
                 hook_ids.add(hook.id)
     return entity_ids, hook_ids
 
