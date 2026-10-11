@@ -81,7 +81,7 @@ New campaigns start from the player's own description, not from a form of AI set
    (`world_skeleton.hidden_from`).
 5. Every change to the skeleton's state goes through `db.update_campaign_metadata`. That helper
    and every other whole-metadata writer in `db.py` (settings, variables, sessions, metadata keys)
-   hold `_METADATA_LOCK` plus a row lock, so no writer saves a stale copy over another's change.
+   hold `METADATA_LOCK` plus a row lock, so no writer saves a stale copy over another's change.
    Postgres is safe across processes. SQLite is safe within one process only; run one worker on
    SQLite.
 6. The first opening questionnaire waits up to 25 s for a running truth (`wait_for_opening`), then

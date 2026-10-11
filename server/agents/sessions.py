@@ -1822,9 +1822,11 @@ def _build_opening_setup_questionnaire(folder: Path, meta: dict, setup: dict | N
     extracted = world_skeleton.take_opening_seed(campaign)
     if not extracted:
         truth = world_skeleton.hidden_truth(campaign)
-        extracted = extract_premise_seed(campaign_settings, campaign_contract, hidden_truth=truth)
+        # "Stick to what I wrote": the seed may describe a person by role but not invent a name.
+        strict = campaign_settings.get("canon_policy") == "strict_canon"
+        extracted = extract_premise_seed(campaign_settings, campaign_contract, hidden_truth=truth, strict=strict)
         if not extracted and truth:
-            extracted = extract_premise_seed(campaign_settings, campaign_contract, hidden_truth=truth, hint=False)
+            extracted = extract_premise_seed(campaign_settings, campaign_contract, hidden_truth=truth, hint=False, strict=strict)
     if extracted:
         opening_seed = extracted
     if setup is not None and opening_seed:

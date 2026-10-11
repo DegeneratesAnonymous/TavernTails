@@ -935,8 +935,8 @@ def send_gm_invite(
 
     # Store pending invite in campaign metadata
     from sqlmodel import Session as DBSession
-    with DBSession(db.engine) as session:
-        stmt = select(db.Campaign).where(db.Campaign.id == campaign_id)
+    with db.METADATA_LOCK, DBSession(db.engine) as session:  # see db.METADATA_LOCK
+        stmt = select(db.Campaign).where(db.Campaign.id == campaign_id).with_for_update()
         camp = session.exec(stmt).first()
         if not camp:
             raise HTTPException(status_code=404, detail='Campaign not found')
@@ -1007,8 +1007,8 @@ def respond_gm_invite(
         raise HTTPException(status_code=403, detail='This invite is not for your account')
 
     from sqlmodel import Session, select
-    with Session(db.engine) as session:
-        stmt = select(db.Campaign).where(db.Campaign.id == campaign_id)
+    with db.METADATA_LOCK, Session(db.engine) as session:  # see db.METADATA_LOCK
+        stmt = select(db.Campaign).where(db.Campaign.id == campaign_id).with_for_update()
         camp = session.exec(stmt).first()
         if not camp:
             raise HTTPException(status_code=404, detail='Campaign not found')

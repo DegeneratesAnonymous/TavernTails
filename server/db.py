@@ -18,7 +18,7 @@ _T = TypeVar("_T")
 # with the row locked: the row lock serialises processes on Postgres; SQLite takes no lock on read, so within a
 # process it is this lock that keeps one writer from saving a stale copy over another's change. Several
 # processes sharing one SQLite file are not protected; run one worker on SQLite.
-_METADATA_LOCK = threading.RLock()
+METADATA_LOCK = threading.RLock()
 
 
 def _owned_campaign_for_update(session: Session, campaign_id: str, owner_id: int) -> "Campaign | None":
@@ -308,7 +308,7 @@ def get_campaign_settings(campaign_id: str, owner_id: int) -> Dict[str, Any] | N
 
 
 def set_campaign_settings(campaign_id: str, owner_id: int, settings: Dict[str, Any]) -> Campaign | None:
-    with _METADATA_LOCK, Session(engine) as session:
+    with METADATA_LOCK, Session(engine) as session:
         camp = _owned_campaign_for_update(session, campaign_id, owner_id)
         if not camp:
             return None
@@ -335,7 +335,7 @@ def get_campaign_variables(campaign_id: str, owner_id: int) -> Dict[str, Any] | 
 
 def set_campaign_variables(campaign_id: str, owner_id: int, variables: Dict[str, Any]) -> Campaign | None:
     """Persist campaign variables into metadata_json['variables']."""
-    with _METADATA_LOCK, Session(engine) as session:
+    with METADATA_LOCK, Session(engine) as session:
         camp = _owned_campaign_for_update(session, campaign_id, owner_id)
         if not camp:
             return None
@@ -350,7 +350,7 @@ def set_campaign_variables(campaign_id: str, owner_id: int, variables: Dict[str,
 
 def set_campaign_metadata_keys(campaign_id: str, owner_id: int, values: Dict[str, Any]) -> Campaign | None:
     """Merge top-level campaign metadata keys without requiring a schema migration."""
-    with _METADATA_LOCK, Session(engine) as session:
+    with METADATA_LOCK, Session(engine) as session:
         camp = _owned_campaign_for_update(session, campaign_id, owner_id)
         if not camp:
             return None
@@ -368,10 +368,10 @@ def update_campaign_metadata(campaign_id: str, mutate: Callable[[Dict[str, Any]]
     """Read, change and write ``metadata_json`` in one transaction with the row locked.
 
     ``mutate`` edits the dict in place and returns whatever the caller needs back. The row lock
-    (``FOR UPDATE``) and ``_METADATA_LOCK``, shared with every other metadata writer, keep two concurrent
+    (``FOR UPDATE``) and ``METADATA_LOCK``, shared with every other metadata writer, keep two concurrent
     updates from each writing back the copy they read. Returns None when the campaign does not exist.
     """
-    with _METADATA_LOCK, Session(engine) as session:
+    with METADATA_LOCK, Session(engine) as session:
         camp = session.exec(select(Campaign).where(Campaign.id == campaign_id).with_for_update()).first()
         if not camp:
             return None
@@ -419,7 +419,7 @@ def purge_campaigns(owner_id: int, name_tokens: List[str] | None = None) -> int:
 
 
 def add_session_to_campaign(campaign_id: str, owner_id: int, session_id: str) -> Campaign | None:
-    with _METADATA_LOCK, Session(engine) as session:
+    with METADATA_LOCK, Session(engine) as session:
         camp = _owned_campaign_for_update(session, campaign_id, owner_id)
         if not camp:
             return None

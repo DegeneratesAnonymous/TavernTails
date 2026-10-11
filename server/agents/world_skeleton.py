@@ -184,6 +184,11 @@ def validate_truth(data: dict[str, Any], *, opening_trouble: str = "") -> dict[s
     hidden, visible = content_tokens(out["hidden_truth"]), content_tokens(out["visible_problem"])
     if hidden and len(hidden - visible) < 2:
         return None  # the "truth" only restates what everyone can already see
+    # The first clue is shown to players and treated as public by the seed's leak check, so it must point
+    # at the truth without carrying it.
+    secret_only = hidden - visible
+    if secret_only and len(secret_only & content_tokens(out["first_clue"])) >= max(2, (len(secret_only) + 1) // 2):
+        return None
     trouble = content_tokens(opening_trouble)
     if trouble:
         # Most of what the player said is wrong must be what the party sees: a murder "near the bridge"
@@ -620,7 +625,8 @@ def generate_world_skeleton(
             truth = None
 
     stored = _fresh_state(campaign_id)
-    if not stored.get("opening_seed") and not stored.get("opening_seed_used"):
+    # Only a truth-aware seed is prepared: one made without the truth would be kept after a retry made it.
+    if truth is not None and not stored.get("opening_seed") and not stored.get("opening_seed_used"):
         seed = _prepare_opening_seed(campaign, truth, call, timeout)
         if seed:
             job["opening_seed"] = seed
@@ -646,7 +652,11 @@ def generate_world_skeleton(
         record("factions", found_factions, reason)
         factions = found_factions if pieces["factions"].get("status") == "ready" and found_factions else []
 
-    if pieces["npcs"].get("status") != "ready":
+    if pieces["npcs"].get("status") != "ready" and pieces["factions"].get("status") != "ready":
+        # People are tied to factions; made without them they would not fit the factions a retry makes.
+        pieces["npcs"] = {"status": "failed", "reason": "needs_factions"}
+        _save(campaign_id, job)
+    elif pieces["npcs"].get("status") != "ready":
         faction_names = [f["name"] for f in factions]
         listing = f"\nFactions: {', '.join(faction_names)}" if faction_names else ""
         data, reason = _ask(call, NPCS_SYSTEM, brief + truth_line + listing, max_tokens=700, timeout=timeout)

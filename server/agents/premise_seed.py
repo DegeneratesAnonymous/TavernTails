@@ -14,6 +14,8 @@ import re
 from collections.abc import Callable
 from typing import Any
 
+from .generation_intent import content_tokens
+
 log = logging.getLogger("taverntails.premise_seed")
 
 TEXT_FIELDS = (
@@ -99,10 +101,17 @@ def validate(data: dict[str, Any], premise: str) -> dict[str, str] | None:
 def reveals_secret(fields: dict[str, str], hidden_truth: dict[str, Any], premise: str) -> bool:
     """True when the player-facing fields carry most of what only the hidden truth says."""
     public = _tokens(" ".join([premise, str(hidden_truth.get("visible_problem") or ""), str(hidden_truth.get("first_clue") or "")]))
-    secret = _tokens(str(hidden_truth.get("hidden_truth") or "")) - public
+    hidden_text = str(hidden_truth.get("hidden_truth") or "")
+    shown_text = " ".join(fields.values())
+    normalize = lambda text: " ".join(re.findall(r"\w+", text.casefold()))  # noqa: E731
+    if len(normalize(hidden_text).split()) >= 3 and normalize(hidden_text) in normalize(shown_text):
+        return True  # repeated word for word
+    secret = _tokens(hidden_text) - public
     if not secret:
-        return False
-    shown = _tokens(" ".join(fields.values()))
+        # Only short words ("the king did it"): compare the meaningful ones instead.
+        secret = content_tokens(hidden_text) - content_tokens(" ".join([premise, str(hidden_truth.get("visible_problem") or ""), str(hidden_truth.get("first_clue") or "")]))
+        return bool(secret) and secret <= content_tokens(shown_text)
+    shown = _tokens(shown_text)
     if len(secret) < 3:
         # A short secret ("Maren is guilty") has little to overlap: showing all of it is the reveal.
         return secret <= shown
@@ -117,6 +126,7 @@ def extract_premise_seed(
     timeout: float = 45.0,
     hidden_truth: dict[str, Any] | None = None,
     hint: bool = True,
+    strict: bool = False,
 ) -> dict[str, Any] | None:
     """One model call -> an opening seed in the shape ``generate_starter_seed`` returns, or None.
 
@@ -136,6 +146,9 @@ def extract_premise_seed(
     genre = str(settings.get("genre") or (contract.get("campaign_dna") or {}).get("genre") or "fantasy")
     tone = str(settings.get("tone") or (contract.get("campaign_dna") or {}).get("tone") or "balanced")
     user = f"Genre: {genre}\nTone: {tone}\nPremise: {premise}"
+    if strict:
+        user += ("\nThe author asked that nothing be invented: if the premise names no one, give the person "
+                 "only as a role in that field, e.g. \"the harbor clerk (unnamed)\", never a new name.")
     if hidden_truth and hint:
         user += (
             f"\nThe visible problem: {hidden_truth.get('visible_problem', '')}"

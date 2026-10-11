@@ -184,3 +184,20 @@ def test_a_role_the_text_does_not_give_is_dropped():
     assert card["people"] == [{"name": "Maren Vey", "role": "", "status": "said"}]
     kept = read_campaign_card(TEXT, complete=_answer(people=[{"name": "Maren Vey", "role": "lighthouse keeper"}]))
     assert kept["people"][0]["role"] == "lighthouse keeper"
+
+
+def test_unicode_and_short_names_are_kept_as_whole_words():
+    from server.agents.campaign_card import name_in_text
+
+    assert name_in_text("Élodie Marchand", "the healer élodie marchand runs the clinic")
+    assert name_in_text("Li Wei", "Captain Li Wei commands the fleet")
+    assert not name_in_text("Li Wei", "a lively weir")
+    assert name_in_text("李明", "村长李明失踪了")
+
+
+def test_relevant_lore_reaches_into_one_long_paragraph():
+    from server.agents.campaign_card import relevant_lore
+
+    lore = " ".join(f"The grain tithe rose again in year {i}." for i in range(1500)) + " The Tidewardens keep the lighthouse lamp."
+    excerpt = relevant_lore(lore, "the Tidewardens and the lighthouse", budget=2000)
+    assert len(excerpt) <= 2000 and "Tidewardens keep the lighthouse lamp" in excerpt

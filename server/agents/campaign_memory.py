@@ -667,7 +667,8 @@ def process_recap(campaign_id: str, req: RecapRequest, current_user=Depends(get_
     Returns a list of proposed changes. If auto_apply=True, also applies them.
     The user can call PUT /entities/{id} to apply individual proposals.
     """
-    _require_campaign_access(campaign_id, current_user)
+    # The recap prompt lists every entity and auto_apply can change them, so it is refused like the summaries.
+    _Hidden(_require_campaign_access(campaign_id, current_user), current_user).refuse_summary()
 
     # Load current entity names for context
     with Session(db.engine) as s:

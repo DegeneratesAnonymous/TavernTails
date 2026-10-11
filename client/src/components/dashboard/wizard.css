@@ -1296,6 +1296,13 @@
   line-height: 1;
   cursor: pointer;
 }
+.card-add-limit {
+  gap: 6px;
+  margin-top: 6px;
+  flex-wrap: nowrap;
+}
+.card-add-limit .input { flex: 1; min-width: 0; }
+
 .card-chip-source {
   margin-left: 6px;
   font-weight: 600;

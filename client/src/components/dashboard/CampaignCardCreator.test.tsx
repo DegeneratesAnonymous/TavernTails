@@ -197,3 +197,32 @@ test('"Stick to what I wrote" says nothing is invented ahead of play', async () 
     server.restore()
   }
 })
+
+test('a mistaken person can be removed and a missing limit added before Create', async () => {
+  const server = mockServer()
+  const onCreated = jest.fn()
+  try {
+    render(
+      <CampaignCardCreator
+        seat={null}
+        owner={{ owner_role: 'dm', owner_character_id: null }}
+        validateSeat={() => null}
+        fallbackName="The Last Lantern"
+        onCreated={onCreated}
+        onClassic={() => {}}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText('Describe your campaign'), { target: { value: CARD.text } })
+    fireEvent.click(screen.getByRole('button', { name: /read it back/i }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove person: Maren Vey' }))
+    fireEvent.change(screen.getByLabelText('Add something to keep out of the story'), { target: { value: 'graphic gore' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+    fireEvent.click(screen.getByRole('button', { name: /create campaign/i }))
+    await waitFor(() => expect(onCreated).toHaveBeenCalled())
+    const create = server.calls.find((c) => c.url.endsWith('/campaigns') && c.method === 'POST')
+    expect(create?.body.card.people).toEqual([])
+    expect(create?.body.card.content_limits).toEqual(['harm to children', 'graphic gore'])
+  } finally {
+    server.restore()
+  }
+})

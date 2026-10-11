@@ -174,10 +174,16 @@ def name_in_text(name: str, source: str) -> bool:
 
     Whole words, not substrings: "Art Bell" is not in a text about artifacts and belladonna.
     """
-    parts = [p for p in re.findall(r"[A-Za-z][\w'-]+", name) if len(p) > 2]
-    return bool(parts) and all(
-        re.search(rf"(?<![\w'-]){re.escape(p)}(?![\w'-])", source, re.IGNORECASE) for p in parts
-    )
+    parts = re.findall(r"[^\W\d_][\w'-]*", name)
+    if not parts:
+        return False
+
+    def present(part: str) -> bool:
+        if re.search(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]", part):
+            return part in source  # CJK text has no spaces to bound a word
+        return re.search(rf"(?<![\w'-]){re.escape(part)}(?![\w'-])", source, re.IGNORECASE) is not None
+
+    return all(present(p) for p in parts)
 
 
 _LEVEL = re.compile(r"\blevel\s*(\d{1,2})\b|\b(\d{1,2})(?:st|nd|rd|th)?[- ]level\b|\blvl\.?\s*(\d{1,2})\b", re.I)
@@ -218,7 +224,25 @@ def relevant_lore(lore: str, query: str, budget: int = MAX_LORE_PROMPT_CHARS) ->
     lore = lore.strip()
     if len(lore) <= budget:
         return lore
-    paragraphs = [p.strip() for p in re.split(r"\n\s*\n|\n(?=#)", lore) if p.strip()]
+    paragraphs: list[str] = []
+    chunk = max(400, budget // 6)
+    for block in re.split(r"\n\s*\n|\n(?=#)", lore):
+        block = block.strip()
+        if len(block) > chunk:
+            # One long paragraph (or single-newline text): split into sentence-aligned pieces so retrieval
+            # can still reach its later parts instead of keeping only its beginning.
+            piece = ""
+            for sentence in re.split(r"(?<=[.!?])\s+|\n", block):
+                if piece and len(piece) + len(sentence) + 1 > chunk:
+                    paragraphs.append(piece.strip())
+                    piece = ""
+                piece = f"{piece} {sentence}" if piece else sentence
+            if piece.strip():
+                paragraphs.append(piece.strip()[:chunk * 2])
+        elif block:
+            paragraphs.append(block)
+    if not paragraphs:
+        return lore[:budget]
     wanted = content_tokens(query)
     ranked = sorted(range(1, len(paragraphs)), key=lambda i: -len(content_tokens(paragraphs[i]) & wanted))
     chosen, used = {0}, len(paragraphs[0])

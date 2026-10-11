@@ -578,3 +578,54 @@ def test_other_metadata_writers_do_not_overwrite_the_jobs_saves():
     assert not errors
     assert meta["world_skeleton"]["visibility"] == "show"
     assert len(meta["sessions"]) == 30
+
+
+def test_short_word_and_verbatim_secrets_are_leaks():
+    premise = "A grim harbor town where the keeper vanished."
+    king = {**TRUTH, "hidden_truth": "The king did it.", "visible_problem": "The lamp is dark.", "first_clue": "Tar on the stair."}
+    assert reveals_secret({**SEED, "immediate_problem": "Rumor says the king did it."}, king, premise)
+    assert not reveals_secret(SEED, king, premise)
+    assert reveals_secret({**SEED, "inciting_event": TRUTH["hidden_truth"]}, TRUTH, premise)
+
+
+def test_a_first_clue_that_states_the_truth_is_rejected():
+    leaky = {**TRUTH, "first_clue": "A receipt showing harbor master Dace sold the keeper to smugglers."}
+    assert world_skeleton.validate_truth(leaky) is None
+    assert world_skeleton.validate_truth(TRUTH) is not None
+
+
+def test_npcs_wait_for_factions_and_no_truthless_seed_is_kept():
+    camp = _campaign("skeleton-needs-factions@example.com")
+    state = world_skeleton.generate_world_skeleton(str(camp.id), complete=_full_model(**{'"factions"': "nope"}))
+    assert state["pieces"]["npcs"] == {"status": "failed", "reason": "needs_factions"}
+    assert state["pieces"]["clock"]["status"] == "ready"
+
+    no_truth = _campaign("skeleton-no-truth-seed@example.com")
+    state = world_skeleton.generate_world_skeleton(str(no_truth.id), complete=_full_model(**{'"thread_name"': "nope"}))
+    assert not state.get("opening_seed")  # a seed made now would be kept after a retry produced the truth
+    state = world_skeleton.generate_world_skeleton(str(no_truth.id), complete=_full_model())
+    assert state["opening_seed"]["generated_by"] == "premise_seed"
+
+
+def test_recap_is_refused_while_the_world_is_a_surprise():
+    owner = _user("skeleton-recap@example.com")
+    camp = _campaign("skeleton-recap@example.com")
+    db.set_campaign_metadata_keys(str(camp.id), owner.id, {"owner_participation": {"role": "player", "character_id": None}})
+    headers = {"Authorization": f"Bearer {create_access_token(owner.email or '')}"}
+    res = TestClient(main.app).post(f"/memory/{camp.id}/recap", headers=headers, json={"recap_text": "We met Ilsa."})
+    assert res.status_code == 403
+
+
+def test_strict_canon_seed_names_nobody_new():
+    from server.agents.premise_seed import extract_premise_seed
+
+    prompts: list[str] = []
+
+    def model(messages, **kwargs):
+        prompts.append(messages[1]["content"])
+        return json.dumps(SEED)
+
+    settings = {"setting_summary": "A grim harbor town where the lighthouse keeper vanished and the lamp went dark tonight."}
+    extract_premise_seed(settings, {}, complete=model, strict=True)
+    extract_premise_seed(settings, {}, complete=model)
+    assert "never a new name" in prompts[0] and "never a new name" not in prompts[1]

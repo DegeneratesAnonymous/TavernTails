@@ -61,6 +61,7 @@ export default function CampaignCardCreator({ seat, owner, validateSeat, fallbac
   const [card, setCard] = useState<CampaignCard | null>(null)
   const [arrival, setArrival] = useState<CampaignCard | null>(null)
   const [answers, setAnswers] = useState<Record<string, string>>({})
+  const [newLimit, setNewLimit] = useState('')
   const [visibility, setVisibility] = useState<WorldVisibility>('surprise')
   const [generateWorld, setGenerateWorld] = useState(true)
   const [busy, setBusy] = useState<'reading' | 'creating' | null>(null)
@@ -332,47 +333,77 @@ export default function CampaignCardCreator({ seat, owner, validateSeat, fallbac
             <div className="card-group-fields">{groups[status].map(renderField)}</div>
             {status === 'said' && (card.people.length > 0 || card.factions.length > 0) && (
               <div className="row-wrap" style={{ gap: 6 }}>
-                {card.people.map((p) => <span key={`p-${p.name}`} className="badge">👤 {p.name}{p.role ? `, ${p.role}` : ''}</span>)}
-                {card.factions.map((f) => <span key={`f-${f.name}`} className="badge">⚑ {f.name}</span>)}
+                {/* The words are the player's, but whether each is a person or a group was the model's call. */}
+                {card.people.map((p) => (
+                  <span key={`p-${p.name}`} className="badge card-chip">
+                    👤 {p.name}{p.role ? `, ${p.role}` : ''}
+                    <button type="button" className="card-chip-remove" aria-label={`Remove person: ${p.name}`}
+                      onClick={() => setCard({ ...card, people: card.people.filter((x) => x.name !== p.name) })}>×</button>
+                  </span>
+                ))}
+                {card.factions.map((f) => (
+                  <span key={`f-${f.name}`} className="badge card-chip">
+                    ⚑ {f.name}
+                    <button type="button" className="card-chip-remove" aria-label={`Remove faction: ${f.name}`}
+                      onClick={() => setCard({ ...card, factions: card.factions.filter((x) => x.name !== f.name) })}>×</button>
+                  </span>
+                ))}
               </div>
             )}
           </section>
         )
       ))}
 
-      {(card.content_limits.length > 0 || card.themes.length > 0) && (
-        <section className="card-group card-group--extras" aria-label="Limits and themes">
-          {/* Everything Create saves is shown here, so nothing is accepted unseen; remove what is wrong. */}
-          {card.content_limits.length > 0 && (
-            <div className="card-field">
-              <span className="wizard-control-label">Keep out of the story <span className="card-chip-source">you said</span></span>
-              <div className="row-wrap" style={{ gap: 6 }}>
-                {card.content_limits.map((limit) => (
-                  <span key={`l-${limit}`} className="badge card-chip">
-                    {limit}
-                    <button type="button" className="card-chip-remove" aria-label={`Remove limit: ${limit}`}
-                      onClick={() => setCard({ ...card, content_limits: card.content_limits.filter((x) => x !== limit) })}>×</button>
-                  </span>
-                ))}
-              </div>
+      <section className="card-group card-group--extras" aria-label="Limits and themes">
+        {/* Everything Create saves is shown here, so nothing is accepted unseen; remove what is wrong. */}
+          <div className="card-field">
+            <span className="wizard-control-label">Keep out of the story <span className="card-chip-source">you said</span></span>
+            <div className="row-wrap" style={{ gap: 6 }}>
+              {card.content_limits.map((limit) => (
+                <span key={`l-${limit}`} className="badge card-chip">
+                  {limit}
+                  <button type="button" className="card-chip-remove" aria-label={`Remove limit: ${limit}`}
+                    onClick={() => setCard({ ...card, content_limits: card.content_limits.filter((x) => x !== limit) })}>×</button>
+                </span>
+              ))}
             </div>
-          )}
-          {card.themes.length > 0 && (
-            <div className="card-field">
-              <span className="wizard-control-label">Themes <span className="card-chip-source">I guessed</span></span>
-              <div className="row-wrap" style={{ gap: 6 }}>
-                {card.themes.map((theme) => (
-                  <span key={`t-${theme}`} className="badge card-chip">
-                    {theme}
-                    <button type="button" className="card-chip-remove" aria-label={`Remove theme: ${theme}`}
-                      onClick={() => setCard({ ...card, themes: card.themes.filter((x) => x !== theme) })}>×</button>
-                  </span>
-                ))}
-              </div>
+            <form
+              className="row-wrap card-add-limit"
+              onSubmit={(e) => {
+                e.preventDefault()
+                const value = newLimit.trim()
+                if (value && !card.content_limits.includes(value)) {
+                  setCard({ ...card, content_limits: [...card.content_limits, value] })
+                }
+                setNewLimit('')
+              }}
+            >
+              <input
+                className="input"
+                aria-label="Add something to keep out of the story"
+                placeholder="Add a limit, e.g. graphic gore"
+                value={newLimit}
+                maxLength={120}
+                onChange={(e) => setNewLimit(e.target.value)}
+              />
+              <button className="btn btn-secondary btn-sm" type="submit" disabled={!newLimit.trim()}>Add</button>
+            </form>
+          </div>
+        {card.themes.length > 0 && (
+          <div className="card-field">
+            <span className="wizard-control-label">Themes <span className="card-chip-source">I guessed</span></span>
+            <div className="row-wrap" style={{ gap: 6 }}>
+              {card.themes.map((theme) => (
+                <span key={`t-${theme}`} className="badge card-chip">
+                  {theme}
+                  <button type="button" className="card-chip-remove" aria-label={`Remove theme: ${theme}`}
+                    onClick={() => setCard({ ...card, themes: card.themes.filter((x) => x !== theme) })}>×</button>
+                </span>
+              ))}
             </div>
-          )}
-        </section>
-      )}
+          </div>
+        )}
+      </section>
 
       {(card.follow_ups.length > 0 || openKeys.length > 0 || card.open_questions.length > 0) && (
       <section className="card-group card-group--open" aria-label={STATUS_LABELS.open.title}>
