@@ -168,6 +168,16 @@ def extract_premise_seed(
     if not fields:
         log.info("premise extraction rejected (incomplete or ungrounded)")
         return None
+    if strict:
+        # The prompt asks for no invented names; this makes sure. A name the premise does not contain is
+        # replaced by the role it was given, so "Maren Vey (clerk)" becomes "the clerk (unnamed)".
+        from .campaign_card import name_in_text
+
+        npc = fields["named_npc_or_visible_threat"]
+        name, _, rest = npc.partition("(")
+        role = rest.rstrip(")").strip() or "local contact"
+        if "unnamed" not in npc.casefold() and not name_in_text(name.strip(), premise):
+            fields["named_npc_or_visible_threat"] = f"the {role} (unnamed)"
     if hidden_truth and reveals_secret(fields, hidden_truth, premise):
         log.info("premise extraction rejected (stated the hidden truth)")
         return None

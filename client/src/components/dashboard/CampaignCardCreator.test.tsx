@@ -226,3 +226,32 @@ test('a mistaken person can be removed and a missing limit added before Create',
     server.restore()
   }
 })
+
+test('open questions can be removed and limits stop at the server cap', async () => {
+  const server = mockServer()
+  try {
+    render(
+      <CampaignCardCreator
+        seat={null}
+        owner={{ owner_role: 'dm', owner_character_id: null }}
+        validateSeat={() => null}
+        fallbackName="The Last Lantern"
+        onCreated={() => {}}
+        onClassic={() => {}}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText('Describe your campaign'), { target: { value: CARD.text } })
+    fireEvent.click(screen.getByRole('button', { name: /read it back/i }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove question: Who profits from the dark lamp?' }))
+    expect(screen.queryByText('Who profits from the dark lamp?')).not.toBeInTheDocument()
+    const input = screen.getByLabelText('Add something to keep out of the story')
+    for (let i = 0; i < 10; i += 1) {
+      fireEvent.change(input, { target: { value: `limit ${i}` } })
+      fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+    }
+    expect(screen.getAllByRole('button', { name: /Remove limit:/ })).toHaveLength(8)
+    expect(input).toBeDisabled()
+  } finally {
+    server.restore()
+  }
+})

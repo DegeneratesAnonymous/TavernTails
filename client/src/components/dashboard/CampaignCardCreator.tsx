@@ -34,6 +34,9 @@ const GENRE_STARTERS: { id: string; label: string; emoji: string; text: string }
   { id: 'post-apocalyptic', label: 'Survival', emoji: '🌋', text: 'A survival campaign where resources run out and trust is a luxury.' },
 ]
 
+/** The server accepts this many content limits on a card (ConfirmedCard.content_limits). */
+const MAX_LIMITS = 8
+
 const STATUS_LABELS = {
   said: { title: 'You said', help: 'Taken from your words.' },
   guessed: { title: 'I guessed', help: 'Change anything that is not right.' },
@@ -261,6 +264,7 @@ export default function CampaignCardCreator({ seat, owner, validateSeat, fallbac
   const openKeys = openFieldsWithoutFollowUps(arrival, groups.open)
   const fieldLabel = (key: string) => MAIN_FIELDS.find((f) => f.key === key)?.label ?? key
   const freedom = String(card.fields.ai_freedom?.value || 'medium')
+  const limitsFull = card.content_limits.length >= MAX_LIMITS
 
   const renderField = (key: string) => {
     const field = card.fields[key] ?? { value: '', status: 'open' }
@@ -372,7 +376,7 @@ export default function CampaignCardCreator({ seat, owner, validateSeat, fallbac
               onSubmit={(e) => {
                 e.preventDefault()
                 const value = newLimit.trim()
-                if (value && !card.content_limits.includes(value)) {
+                if (value && !limitsFull && !card.content_limits.includes(value)) {
                   setCard({ ...card, content_limits: [...card.content_limits, value] })
                 }
                 setNewLimit('')
@@ -381,12 +385,13 @@ export default function CampaignCardCreator({ seat, owner, validateSeat, fallbac
               <input
                 className="input"
                 aria-label="Add something to keep out of the story"
-                placeholder="Add a limit, e.g. graphic gore"
+                placeholder={limitsFull ? `Up to ${MAX_LIMITS} limits` : 'Add a limit, e.g. graphic gore'}
+                disabled={limitsFull}
                 value={newLimit}
                 maxLength={120}
                 onChange={(e) => setNewLimit(e.target.value)}
               />
-              <button className="btn btn-secondary btn-sm" type="submit" disabled={!newLimit.trim()}>Add</button>
+              <button className="btn btn-secondary btn-sm" type="submit" disabled={!newLimit.trim() || limitsFull}>Add</button>
             </form>
           </div>
         {card.themes.length > 0 && (
@@ -427,7 +432,13 @@ export default function CampaignCardCreator({ seat, owner, validateSeat, fallbac
         {openKeys.length > 0 && <div className="card-group-fields">{openKeys.map(renderField)}</div>}
         {card.open_questions.length > 0 && (
           <ul className="card-open-questions" aria-label="Open questions the world underneath will answer">
-            {card.open_questions.map((q) => <li key={q}>{q}</li>)}
+            {card.open_questions.map((q) => (
+              <li key={q}>
+                {q}
+                <button type="button" className="card-chip-remove" aria-label={`Remove question: ${q}`}
+                  onClick={() => setCard({ ...card, open_questions: card.open_questions.filter((x) => x !== q) })}>×</button>
+              </li>
+            ))}
           </ul>
         )}
       </section>

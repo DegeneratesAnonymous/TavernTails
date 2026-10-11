@@ -629,3 +629,53 @@ def test_strict_canon_seed_names_nobody_new():
     extract_premise_seed(settings, {}, complete=model, strict=True)
     extract_premise_seed(settings, {}, complete=model)
     assert "never a new name" in prompts[0] and "never a new name" not in prompts[1]
+
+
+def test_deleting_a_campaign_with_a_world_removes_its_memory_first(monkeypatch):
+    owner = _user("skeleton-delete@example.com")
+    camp = _campaign("skeleton-delete@example.com")
+    world_skeleton.generate_world_skeleton(str(camp.id), complete=_full_model())
+    order: list[str] = []
+    real_memory, real_campaign = db.delete_campaign_memory, db.delete_campaign
+    monkeypatch.setattr(db, "delete_campaign_memory", lambda cid: (order.append("memory"), real_memory(cid))[1])
+    monkeypatch.setattr(db, "delete_campaign", lambda cid, oid: (order.append("campaign"), real_campaign(cid, oid))[1])
+    headers = {"Authorization": f"Bearer {create_access_token(owner.email or '')}"}
+    assert TestClient(main.app).delete(f"/campaigns/{camp.id}", headers=headers).status_code == 200
+    assert order == ["memory", "campaign"]
+    assert not _entities(str(camp.id))
+
+
+def test_a_lone_confirmed_person_is_kept():
+    found = world_skeleton.validate_npcs({"npcs": []}, ["Maren Vey"], [], {"maren vey": "lighthouse keeper"})
+    assert found == [{"name": "Maren Vey", "role": "lighthouse keeper", "faction": "", "wants": "", "secret": "", "knows": ""}]
+    assert world_skeleton.validate_npcs({"npcs": []}, [], []) is None
+
+
+def test_skeleton_rows_stay_hidden_without_metadata_ids():
+    camp = _campaign("skeleton-orphans@example.com")
+    owner = db.get_user_by_identifier("skeleton-orphans@example.com")
+    world_skeleton.generate_world_skeleton(str(camp.id), complete=_full_model())
+    fresh = db.get_campaign_by_id(str(camp.id))
+    state = dict(fresh.metadata_json["world_skeleton"])
+    clock_id = state["pieces"]["clock"]["entity_ids"][0]
+    npc_ids = state["pieces"]["npcs"]["entity_ids"]
+    # The job died before recording the clock, and a GM deleted an NPC (its changelog remains).
+    state["pieces"] = {**state["pieces"], "clock": {"status": "pending"}}
+    db.set_campaign_metadata_keys(str(camp.id), owner.id, {"world_skeleton": state})
+    with Session(db.engine) as s:
+        s.delete(s.get(CampaignEntity, npc_ids[0]))
+        s.commit()
+    entities, hooks = world_skeleton.skeleton_row_ids(db.get_campaign_by_id(str(camp.id)))
+    assert clock_id in hooks
+    assert npc_ids[0] in entities
+
+
+def test_strict_seed_replaces_an_invented_name_with_its_role():
+    from server.agents.premise_seed import extract_premise_seed
+
+    settings = {"setting_summary": "A grim harbor town where the lighthouse keeper vanished and the lamp went dark tonight."}
+    invented = {**SEED, "named_npc_or_visible_threat": "Tomas Reed (dock boy)"}
+    seed = extract_premise_seed(settings, {}, complete=lambda *a, **k: json.dumps(invented), strict=True)
+    assert seed["named_npc_or_visible_threat"] == "the dock boy (unnamed)"
+    loose = extract_premise_seed(settings, {}, complete=lambda *a, **k: json.dumps(invented))
+    assert loose["named_npc_or_visible_threat"] == "Tomas Reed (dock boy)"

@@ -241,7 +241,8 @@ def validate_npcs(
         if name.casefold() not in returned:
             out.insert(0, {"name": name, "role": roles.get(name.casefold(), ""), "faction": "", "wants": "",
                            "secret": "", "knows": ""})
-    return out[: max(4, len(authored))] if len(out) >= 2 else None
+    # The player's own people are kept even when the model added nobody usable.
+    return out[: max(4, len(authored))] if len(out) >= 2 or authored else None
 
 
 def validate_clock(data: dict[str, Any]) -> dict[str, Any] | None:
@@ -328,7 +329,9 @@ def _persist(campaign: db.Campaign, piece: str, value: Any, *, thread_id: str | 
         elif piece == "clock":
             hook_id = uuid.uuid4().hex[:12]
             s.add(CampaignHook(
-                id=hook_id, campaign_id=campaign_id, title=value["title"],
+                # Linked to the truth thread so the hook is recognisably the skeleton's even if the job dies
+                # before its id reaches campaign metadata.
+                id=hook_id, campaign_id=campaign_id, entity_id=thread_id, title=value["title"],
                 description=CLOCK_STEP_JOINER.join(value["steps"]), hook_type="ticking_clock", priority=8,
                 status="active", deadline=value["deadline"], created_at=_now(), updated_at=_now(),
             ))
@@ -496,13 +499,19 @@ def hidden_from(campaign: db.Campaign, user_id: int | None) -> bool:
 
 def skeleton_row_ids(campaign: db.Campaign) -> tuple[set[str], set[str]]:
     """(entity ids, hook ids) the skeleton wrote, for filtering GM tooling a surprised owner can call."""
-    entity_ids: set[str] = set()
+    pieces = (_meta(campaign).get("world_skeleton") or {}).get("pieces") or {}
+    # Ids recorded in state stay hidden even after a GM deletes the row: its changelog entries remain.
+    entity_ids: set[str] = {
+        eid for piece in ("truth", "factions", "npcs") for eid in (pieces.get(piece) or {}).get("entity_ids") or []
+    }
+    hook_ids = set((pieces.get("clock") or {}).get("entity_ids") or [])
     with Session(db.engine) as s:
         for row in s.exec(select(CampaignEntity).where(CampaignEntity.campaign_id == str(campaign.id))).all():
             if TAG in (row.tags or []):
                 entity_ids.add(row.id)
-    pieces = (_meta(campaign).get("world_skeleton") or {}).get("pieces") or {}
-    hook_ids = set((pieces.get("clock") or {}).get("entity_ids") or [])
+        for hook in s.exec(select(CampaignHook).where(CampaignHook.campaign_id == str(campaign.id))).all():
+            if hook.hook_type == "ticking_clock" and hook.entity_id in entity_ids:
+                hook_ids.add(hook.id)
     return entity_ids, hook_ids
 
 

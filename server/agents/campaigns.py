@@ -546,6 +546,9 @@ def delete_campaign(campaign_id: str, current_user=Depends(get_current_user)):
     # Collect session IDs before deleting the campaign record
     session_ids: List[str] = (camp.metadata_json or {}).get('sessions', [])
 
+    # Memory rows (entities, hooks, changelog) reference the campaign, so they go first: a database that
+    # enforces foreign keys refuses to delete a campaign that still has them.
+    db.delete_campaign_memory(campaign_id)
     ok = db.delete_campaign(campaign_id, owner_id)
     if not ok:
         raise HTTPException(status_code=404, detail='Campaign not found or forbidden')
@@ -568,9 +571,6 @@ def delete_campaign(campaign_id: str, current_user=Depends(get_current_user)):
             shutil.rmtree(camp_dir)
         except Exception:
             pass
-
-    # Delete orphaned DB records tied to this campaign
-    db.delete_campaign_memory(campaign_id)
 
     return {'ok': True}
 
