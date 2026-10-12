@@ -565,7 +565,7 @@ def test_safe_fallback_answers_have_no_doubled_punctuation():
     assert ".," not in opening_setup_module._safe_auto_answer(questionnaire["questions"][1], questionnaire)
 
 
-def test_anchor_repair_quotes_first_person_answers_and_skips_null_answers():
+def test_anchor_repair_restates_first_person_answers_as_narration_and_skips_null_answers():
     anchor = {
         "character_name": "Maris Vale",
         "arrival_reason": "I came to audit a cracked signal mirror",
@@ -577,7 +577,9 @@ def test_anchor_repair_quotes_first_person_answers_and_skips_null_answers():
     text = sessions_module._anchor_repair_text(anchor, "Coldbrook Camp", "Maris Vale")
     assert "because I" not in text and "trying to i" not in text
     assert "complication" not in text.lower() and "assumed history" not in text  # null answers are skipped
-    assert '"I came to audit a cracked signal mirror."' in text
+    assert "Maris Vale did not come by chance: they came to audit a cracked signal mirror." in text
+    assert '"I came' not in text  # restated as narration, not quoted back like a character sheet
+    assert len(sessions_module._anchor_repair_text(anchor, "Coldbrook Camp", "Maris Vale").split(". ")) <= 2
     assert find_malformed_sentences(text) == []
 
 
@@ -637,7 +639,7 @@ def test_scene_contract_uses_an_honest_unnamed_witness_not_a_made_up_npc():
     assert UNNAMED_WITNESS in opening["opening_narrative"]
     assert opening["action_options"][1] == "Question the nearest witness"
     assert find_malformed_sentences(opening["opening_narrative"]) == []
-    assert opening["opening_narrative"].split("\n\n")[1].startswith("The party arrives")
+    assert "The party arrives" in opening["opening_narrative"].split("\n\n")[0]
 
 
 # ---------------------------------------------------------------------------
@@ -801,8 +803,8 @@ def test_quoted_answers_keep_their_own_terminal_punctuation():
         "fear_of_loss": "I do not want the evidence to disappear",
     }
     text = sessions_module._anchor_repair_text(anchor, "Coldbrook Camp", "Maris Vale")
+    # Questions and exclamations are not first-person statements: kept word for word as the character's thought.
     assert '"Who moved the mirror?"' in text and '"I will not let it vanish!"' in text
-    assert '"I do not want the evidence to disappear."' in text  # no terminal mark supplied: exactly one is added
     assert "?." not in text and "!." not in text
     assert find_malformed_sentences(text) == []
 

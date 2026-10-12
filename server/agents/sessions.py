@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import queue
 import re
 import threading
@@ -25,10 +26,10 @@ from . import notes as notes_agent
 from . import npc as npc_agent
 from . import scene as scene_agent
 from . import scene_director as scene_director_agent
+from . import scene_weaver, world_skeleton
 from . import simulation as simulation_agent
 from . import storyboard as storyboard_agent
 from . import suggestions as suggestions_agent
-from . import world_skeleton
 from .action_resolution import movement_destination
 from .arc_planner import plan_arc
 from .campaign_interpretation import build_full_contract_package
@@ -55,6 +56,7 @@ from .memory_extractor import extract_memory
 from .narrative_director import DirectorOutput
 from .narrative_director import direct_scene as narrative_direct_scene
 from .opening_setup import (
+    _brief_sentences,
     answers_to_anchor,
     auto_generate_anchor,
     auto_generate_answers,
@@ -65,6 +67,7 @@ from .opening_setup import (
     validate_opening_anchor,
     validate_opening_scene_contract,
 )
+from .opening_voice import anchor_sentences as _anchor_sentences
 from .player_intent_parser import parse_player_intent
 from .premise_seed import extract_premise_seed
 from .scene_beat_selector import select_scene_beat_plan
@@ -91,6 +94,8 @@ from .story_validator import validate_story_quality as validate_story_structure
 from .ui_payload_builder import build_ui_payload as build_full_ui_payload
 from .visual_director import run_visual_pipeline
 from .visual_state import load_visual_state, save_visual_state
+
+logger = logging.getLogger("taverntails.sessions")
 
 router = APIRouter(prefix="/sessions")
 
@@ -272,59 +277,14 @@ def _opening_anchor_context(anchor: dict) -> dict:
     }
 
 
-# The exact "nothing here" forms our own safe defaults produce.  A player's own
-# answer that merely starts with "no"/"never" ("Never let my sister vanish again")
-# is a real stake and must be kept.
-_NULL_ANSWER = re.compile(
-    r"^\s*(?:no extra complication|no complication|no one here has an assumed history|nothing (?:has )?followed me|"
-    r"nobody (?:here )?(?:followed|knows) me|none of (?:them|it) followed me)\b",
-    re.IGNORECASE,
-)
-
-
-# Our own placeholder wording for an answer nobody gave ("... the campaign has not yet decided what personal
-# history connects them to it"). It describes the setup, not the character, so it is never read back to the player.
-_SYSTEM_PLACEHOLDER = re.compile(
-    r"has not yet decided|have not yet decided|not (?:yet )?established|remains the player.s choice|"
-    r"established background gives|without assuming|the campaign has not",
-    re.IGNORECASE,
-)
-
-
 def _anchor_repair_text(anchor: dict, loc_name: str, player_name: str) -> str:
-    """Restate the character's setup answers as their own words.
+    """The character's own reason for being here, restated as one sentence of narration.
 
-    Answers are first-person ("I came to...") or bare option text, so splicing
-    them into third-person grammar produces broken sentences.  They are quoted
-    instead, and "no / nothing" answers are skipped rather than contradicted.
+    Setup answers are first-person ("I came to..."); they are restated with the character's name and "they"
+    rather than quoted back or spliced into third-person grammar, and only one sentence is added so a scene never
+    opens with a recital of the character's answers.
     """
-    pc = str(anchor.get("character_name") or player_name or "the party").strip() or "the party"
-    pc_sentence = pc[0].upper() + pc[1:] if pc else "The party"
-    loc = loc_name or "the opening scene"
-
-    def said(key: str) -> str:
-        text = str(anchor.get(key) or "").strip()
-        return "" if not text or _NULL_ANSWER.match(text) or _SYSTEM_PLACEHOLDER.search(text) else text.replace('"', "'")
-
-    def quoted(text: str) -> str:
-        """Quote ``text`` keeping its own terminal mark (?, !, .) instead of adding a second one."""
-        text = text.rstrip()
-        return f'"{text if text.endswith((".", "?", "!")) else text + "."}"'
-
-    pieces: list[str] = []
-    if said("arrival_reason"):
-        pieces.append(f"{pc_sentence} reaches {loc} with one purpose in mind: {quoted(said('arrival_reason'))}")
-    if said("personal_stake"):
-        pieces.append(f"Why it matters to {pc}: {quoted(said('personal_stake'))}")
-    if said("followed_complication"):
-        pieces.append(f"What followed {pc} here: {quoted(said('followed_complication'))}")
-    if said("fear_of_loss"):
-        pieces.append(f"What {pc} cannot afford to lose: {quoted(said('fear_of_loss'))}")
-    if said("known_npc_connection"):
-        pieces.append(f"On the people present, {pc} says: {quoted(said('known_npc_connection'))}")
-    if said("party_bond") and pc.lower() == "the party":
-        pieces.append(f"The party stays together: {quoted(said('party_bond'))}")
-    return "\n\n".join(pieces[:3])
+    return _anchor_sentences(anchor, str(anchor.get("character_name") or player_name or "").strip())
 
 
 def _apply_opening_anchor_validation(
@@ -545,6 +505,118 @@ def _add_missing_opening_elements(scene: dict, opening_scene: dict, failed: set[
         "text": f"{completed}\n\n{prompt}".strip(),
         "generation_debug": {**(scene.get("generation_debug") or {}), "contract_sentences_added": sorted(failed)},
     }
+
+
+_BODY_PROMPT = re.compile(r"(?:^|(?<=[.!?\n]))\s*What (?:does|do|will|would) [^.?!\n]{1,60}?\b(?:do|do next)\s*\?\s*\.?\s*$", re.IGNORECASE)
+
+
+def _strip_prompt_from_body(scene: dict) -> dict:
+    """Remove "What does X do?" from the end of the prose: the prompt is shown on its own, never inside the story."""
+    body = str(scene.get("narrative_body") or "")
+    paragraphs = [p for p in re.split(r"\n\s*\n", body) if p.strip()]
+    if not paragraphs:
+        return scene
+    kept = [_BODY_PROMPT.sub("", p).rstrip() for p in paragraphs]
+    if kept == [p.rstrip() for p in paragraphs]:
+        return scene
+    paragraphs = [p for p in kept if p]
+    cleaned = "\n\n".join(paragraphs)
+    prompt = str(scene.get("player_prompt") or "").strip()
+    return {**scene, "narrative_body": cleaned, "text": f"{cleaned}\n\n{prompt}".strip()}
+
+
+def _opening_was_patched(scene: dict) -> bool:
+    """True when the opening was assembled by fallbacks and repairs rather than written whole by the model."""
+    debug = scene.get("generation_debug") or {}
+    return bool(
+        debug.get("fallback_used")
+        or scene.get("quality_repairs_applied")
+        or (scene.get("anchor_validation") or {}).get("repair_applied")
+        or (scene.get("opening_scene_validation") or {}).get("repair_applied")
+        or (scene.get("first_scene_validation") or {}).get("repair_applied")
+    )
+
+
+def _compose_final_opening(
+    scene: dict,
+    *,
+    required: dict,
+    opening_anchor: dict,
+    campaign_brief: dict,
+    player_name: str,
+    time_of_day: str,
+    weather: str,
+    source_intent: OpeningIntent | None,
+) -> dict:
+    """Replace a patched-together opening with one scene written whole, when that scene passes every opening check.
+
+    Fallbacks and repairs each add something valid, but together they repeat facts and read as a list.  One bounded
+    model call writes the scene in order from the established facts; the result is used only if the contract, the
+    anchor and the first-scene validators all accept it, otherwise the scene we already have is kept unchanged.
+    """
+    scene = _strip_prompt_from_body(scene)
+    if not _opening_was_patched(scene):
+        return scene
+    pc = str((opening_anchor or {}).get("character_name") or player_name or "").strip()
+    contract = dict(scene.get("opening_scene") or {})
+    brief_sentences = _brief_sentences(campaign_brief or {})
+    effective_required = {
+        **(required or {}),
+        "starting_location": scene.get("location") or (required or {}).get("starting_location") or "",
+    }
+    facts = scene_weaver.build_facts(
+        location=str(effective_required["starting_location"]),
+        time_of_day=time_of_day,
+        weather=weather,
+        player_name=pc or player_name,
+        anchor=opening_anchor,
+        required=effective_required,
+        opening_scene=contract,
+        brief_sentences=brief_sentences,
+    )
+    body = scene_weaver.weave_opening(facts)
+    if not body:
+        return scene
+    prompt = f"What does {pc or player_name or 'the party'} do?"
+    candidate = {**scene, "narrative_body": body, "player_prompt": prompt, "text": f"{body}\n\n{prompt}"}
+    # Record which sentences carry the character's reason and the clock, so the opening checks judge what is written.
+    anchor_text = " ".join(str(v or "") for v in (
+        (opening_anchor or {}).get("arrival_reason"), (opening_anchor or {}).get("personal_stake"),
+        (opening_anchor or {}).get("fear_of_loss")))
+    checked = {
+        **contract,
+        "personal_hook": scene_weaver.best_sentence(body, anchor_text, facts["location"]) or contract.get("personal_hook", ""),
+        "pressure_or_timer": scene_weaver.best_sentence(body, facts.get("stakes", ""), facts["location"]) or contract.get("pressure_or_timer", ""),
+    }
+    contract_check = validate_opening_scene_contract(
+        scene=candidate, opening_scene=checked, campaign_brief=campaign_brief,
+        anchor=opening_anchor, player_name=player_name, source_intent=source_intent,
+    )
+    anchor_check = validate_opening_anchor(
+        scene_text=candidate["text"], anchor=opening_anchor, selected_character_name=pc or player_name,
+    )
+    first_check = validate_first_scene_contract(scene=candidate, anchor=opening_anchor, player_name=player_name, dice_rolls=[])
+    if str((opening_anchor or {}).get("source") or "") == "auto_generated":
+        # Answers nobody wrote are not something a scene has to echo; every other check still applies.
+        unwritten = ("fewer than two anchor elements", "does not explain why the character is present")
+        anchor_check = {**anchor_check, "issues": [i for i in anchor_check.get("issues", []) if not any(u in i for u in unwritten)]}
+        anchor_check["valid"] = not anchor_check["issues"]
+        first_check = {**first_check, "issues": [i for i in first_check.get("issues", []) if not any(u in i for u in unwritten)]}
+        first_check["valid"] = not first_check["issues"]
+        contract_check = {**contract_check, "issues": [i for i in contract_check.get("issues", []) if "why the character is present" not in i]}
+        contract_check["valid"] = not contract_check["issues"]
+    if not (contract_check.get("valid") and anchor_check.get("valid") and first_check.get("valid")):
+        logger.info(
+            "composed opening rejected: contract=%s anchor=%s first_scene=%s",
+            contract_check.get("issues"), anchor_check.get("issues"), first_check.get("issues"),
+        )
+        return scene
+    candidate["opening_scene"] = checked
+    candidate["opening_scene_validation"] = contract_check
+    candidate["anchor_validation"] = anchor_check
+    candidate["first_scene_validation"] = first_check
+    candidate["generation_debug"] = {**(scene.get("generation_debug") or {}), "composed_by": "scene_weaver"}
+    return candidate
 
 
 def _apply_concrete_opening_scene_contract(
@@ -3844,6 +3916,16 @@ async def _start_session_impl(session_id: str, payload: "StartSessionRequest", c
     simulation_agent.seed_location_state(folder, scene, opening_world_state)
     simulation_agent.atomic_write_json(folder / 'last_memory_delta.json', opening_memory_delta)
     simulation_agent.append_canon_memory(folder, scene.get('id', 'opening'), opening_memory_delta)
+    scene = _compose_final_opening(
+        scene,
+        required=(opening_content_bundle.get("required_content") or {}),
+        opening_anchor=opening_anchor,
+        campaign_brief=opening_campaign_brief,
+        player_name=player_name,
+        time_of_day=time_of_day,
+        weather=weather,
+        source_intent=opening_source_intent,
+    )
     simulation_agent.atomic_write_json(folder / 'scene.json', scene)
 
     # --- Step 6: NPC Manager — enrich profiles from Scene Director data ---

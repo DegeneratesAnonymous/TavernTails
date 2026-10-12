@@ -1,0 +1,230 @@
+"""The opening scene reads as one scene: restated setup answers, one written-whole draft, no menus in prose."""
+import json
+
+import pytest
+
+from server import steward_llm
+from server.agents import scene_weaver, sessions
+from server.agents.opening_setup import UNNAMED_WITNESS, build_opening_scene_contract
+from server.agents.opening_voice import anchor_sentences, first_to_third, usable_answer
+from server.agents.scene_qa import apply_targeted_scene_repairs
+
+REQUIRED = {
+    "starting_location": "Greywood Market",
+    "location_identity": "Greywood Market is a crowded square beneath old chapel bells.",
+    "first_clue_or_question": "Who moved the reliquary?",
+    "specific_stakes": "If no one acts, the reliquary leaves by dusk.",
+    "named_npc_or_visible_threat": "Mara Voss (watch captain)",
+    "inciting_event": "A chapel reliquary appears on a fishmonger's table.",
+}
+ANCHOR = {"character_name": "Bastog", "arrival_reason": "I came to inspect chapel marks on the cloth",
+          "personal_stake": "my oath depends on proving the relic was moved", "source": "player_answered"}
+
+GOOD_DRAFT = (
+    "Greywood Market hums beneath the old chapel bells, and the morning is cold enough that breath shows in the air. "
+    "Bastog crosses the square, drawn here to inspect the chapel marks that were pressed into a fishmonger's cloth.\n\n"
+    "A chapel reliquary sits on that table, and the stallholders keep their eyes on their baskets. "
+    "Nobody will touch it, and the smell of salt and old wax hangs over everything.\n\n"
+    "A watch captain stands at the edge of the crowd, one hand on her belt and her eyes on the reliquary. "
+    "She is Mara Voss, and she has not moved in a long while.\n\n"
+    "Bastog's oath rests on showing the relic was carried here from somewhere else, and the cloth is the only proof "
+    "within reach. The bells will ring dusk soon, and the reliquary will not be here to see it. "
+    "Down the lane a cart wheel creaks and stops."
+)
+
+
+# --- the player's own answers, restated -------------------------------------------------------------------------
+
+def test_first_person_answers_are_restated_with_they_not_quoted():
+    assert first_to_third("I do not want the evidence to disappear.") == "they do not want the evidence to disappear."
+    assert first_to_third("I'm the one who signed her in; my name is on it.") == "they're the one who signed her in; their name is on it."
+    assert first_to_third("The road is closed.") == "The road is closed."  # nothing first-person: unchanged
+
+
+def test_anchor_sentences_cover_clauses_statements_and_fragments_without_broken_grammar():
+    clause = anchor_sentences({"arrival_reason": "I came to inspect the cloth", "personal_stake": "My oath depends on it."}, "Bastog")
+    assert clause == ("Bastog did not come by chance: they came to inspect the cloth. "
+                      "The reason this matters to Bastog: their oath depends on it.")
+    thoughts = anchor_sentences({"arrival_reason": "Who moved the mirror?", "personal_stake": "Never let my sister vanish"}, "Maris")
+    assert '"Who moved the mirror?"' in thoughts and '"Never let my sister vanish."' in thoughts
+    assert "?." not in thoughts
+    statement = anchor_sentences({"arrival_reason": "I came to look", "followed_complication": "A rival is close behind."}, "Maren")
+    assert statement.endswith("A rival is close behind.")
+
+
+def test_anchor_sentences_skip_placeholders_and_null_answers_and_stop_at_two():
+    anchor = {"arrival_reason": "I came to look", "personal_stake": "The campaign has not yet decided what ties them here",
+              "followed_complication": "No extra complication followed me here.", "fear_of_loss": "I fear losing the trail"}
+    text = anchor_sentences(anchor, "Maren")
+    assert "has not yet decided" not in text and "complication" not in text.lower()
+    assert text.count(":") == 2  # arrival + fear; never a recital of every answer
+    assert anchor_sentences({"arrival_reason": "I came here"}, "the party").startswith("The party did not come by chance")
+    assert usable_answer("Never let my sister vanish again") == "Never let my sister vanish again"  # "never" is a real stake
+    assert anchor_sentences({}, "Maren") == ""
+
+
+# --- the fallback template ----------------------------------------------------------------------------------------
+
+def test_template_opening_is_one_scene_without_menu_repeat_or_wrong_time_of_day():
+    opening = build_opening_scene_contract(required=REQUIRED, anchor=ANCHOR, campaign_brief={}, player_name="Bastog", time_of_day="day")
+    body = opening["opening_narrative"]
+    assert body.count("arrives") == 1 and "reaches" not in body  # the arrival is stated once
+    assert "A watch captain, Mara Voss, stands" in body  # the person is introduced by what they are, then by name
+    assert " can " not in body.split("\n\n")[-1] and "or Question" not in body  # no list of options in the story
+    assert body.count("?") == 1  # the one unanswered question, stated once
+    assert "sinking light" not in body  # it is day: the deadline is in the future
+    assert "Bastog did not come by chance: they came to inspect chapel marks on the cloth" in body
+    assert len(opening["action_options"]) >= 3  # the options stay as data for the validators and for suggestions
+
+
+def test_template_still_uses_an_honest_unnamed_witness():
+    opening = build_opening_scene_contract(required={"starting_location": "Marrow Gate", "inciting_event": "A bell rings."},
+                                           anchor={"character_name": "the party"}, campaign_brief={}, player_name="")
+    assert UNNAMED_WITNESS in opening["opening_narrative"]
+
+
+def test_qa_repair_never_writes_the_options_into_the_player_prompt():
+    scene = {"location": "Alderbrook", "narrative_body": "Ada Reed waits.", "player_prompt": "What does Aria do?",
+             "suggested_actions": [], "choices": []}
+    qa = {"repair_targets": ["suggested_actions"], "truth_table": {"approved_possible_actions": ["inspect the watch", "ask Ada", "leave"]}}
+    result = apply_targeted_scene_repairs(scene, qa, player_name="Aria")
+    assert result["player_prompt"] == "What does Aria do?"
+    assert len(result["choices"]) == 3 and "or something else" not in result["text"]
+
+
+# --- the scene writer's checks -------------------------------------------------------------------------------------
+
+def _facts(**overrides):
+    facts = scene_weaver.build_facts(location="Greywood Market", time_of_day="day", weather="clear", player_name="Bastog",
+                                     anchor=ANCHOR, required=REQUIRED)
+    facts.update(overrides)
+    return facts
+
+
+def test_a_good_draft_passes_every_check():
+    assert scene_weaver.check_woven(GOOD_DRAFT, _facts()) == []
+
+
+@pytest.mark.parametrize("mutate, expected", [
+    (lambda t: t.replace("\n\n", " "), "paragraphs"),
+    (lambda t: t + "\n\nWhat does he do?", "question"),
+    (lambda t: t + "\n\nBastog can inspect the cloth, question Mara, watch the crowd, or follow the cart.", "could do"),
+    (lambda t: t.replace("Bastog", "Aldric"), "Never names Bastog"),
+    (lambda t: t.replace("Mara Voss", "the captain"), "Never names Mara Voss"),
+    (lambda t: t.replace("morning is cold", "midnight is moonlit"), "night"),
+    (lambda t: t + " " + t, "Too long"),
+])
+def test_draft_problems_are_named_so_the_model_can_fix_them(mutate, expected):
+    issues = " | ".join(scene_weaver.check_woven(mutate(GOOD_DRAFT), _facts()))
+    assert expected.lower() in issues.lower()
+
+
+def test_copying_the_players_words_or_the_brief_is_rejected():
+    copied = GOOD_DRAFT.replace("Bastog's oath rests on", "my oath depends on proving the relic was moved. Bastog's oath rests on")
+    assert "Copies the character's own words" in " ".join(scene_weaver.check_woven(copied, _facts()))
+    brief = ["The bells will ring dusk soon, and the reliquary will not be here to see it."]
+    assert "already read" in " ".join(scene_weaver.check_woven(GOOD_DRAFT, _facts(brief_sentences=brief)))
+
+
+def test_the_party_is_a_valid_name_when_no_character_is_selected():
+    facts = _facts(player="the party", reason_for_coming="", why_it_matters="", what_they_fear_losing="")
+    draft = GOOD_DRAFT.replace("Bastog's", "The party's").replace("Bastog", "The party")
+    assert scene_weaver.check_woven(draft, facts) == []
+
+
+def test_auto_generated_answers_are_not_passed_to_the_writer_as_facts():
+    facts = scene_weaver.build_facts(location="X", time_of_day="day", player_name="Ari",
+                                     anchor={**ANCHOR, "source": "auto_generated"}, required=REQUIRED)
+    assert facts["reason_for_coming"] == "" and facts["why_it_matters"] == ""
+
+
+# --- writing the scene ----------------------------------------------------------------------------------------------
+
+def test_weave_returns_the_first_draft_that_passes_and_sends_back_what_was_wrong(monkeypatch):
+    calls = []
+
+    def fake(messages, **kwargs):
+        calls.append(messages)
+        return "Too short." if len(calls) == 1 else json.dumps({"narrative": GOOD_DRAFT})
+
+    monkeypatch.setattr(steward_llm, "chat_complete", fake)
+    assert scene_weaver.weave_opening(_facts()) == GOOD_DRAFT
+    assert len(calls) == 2
+    assert "REJECTED" in calls[1][1]["content"] and "Too short" in calls[1][1]["content"]
+
+
+def test_weave_gives_up_quietly_when_the_model_fails_or_never_passes(monkeypatch):
+    monkeypatch.setattr(steward_llm, "chat_complete", lambda *a, **k: None)
+    assert scene_weaver.weave_opening(_facts()) == ""
+    monkeypatch.setattr(steward_llm, "chat_complete", lambda *a, **k: "Nope.")
+    assert scene_weaver.weave_opening(_facts(), attempts=2) == ""
+
+    def boom(*a, **k):
+        raise RuntimeError("provider down")
+
+    monkeypatch.setattr(steward_llm, "chat_complete", boom)
+    assert scene_weaver.weave_opening(_facts()) == ""
+
+
+def test_best_sentence_finds_the_sentence_that_carries_a_fact():
+    sentence = scene_weaver.best_sentence(GOOD_DRAFT, "If no one acts, the reliquary leaves by dusk.", "Greywood Market")
+    assert "dusk" in sentence and "reliquary" in sentence
+    assert scene_weaver.best_sentence(GOOD_DRAFT, "Nothing in common whatsoever", "Greywood Market") == ""
+
+
+# --- putting it in the pipeline ---------------------------------------------------------------------------------------
+
+def _patched_scene():
+    opening = build_opening_scene_contract(required=REQUIRED, anchor=ANCHOR, campaign_brief={}, player_name="Bastog", time_of_day="day")
+    body = opening["opening_narrative"]
+    return {
+        "location": "Greywood Market", "narrative_body": body, "player_prompt": "What does Bastog do?",
+        "text": f"{body}\n\nWhat does Bastog do?", "opening_scene": opening,
+        "choices": [{"id": f"a{i}", "label": label} for i, label in enumerate(opening["action_options"])],
+        "suggested_actions": list(opening["action_options"]), "generation_debug": {"fallback_used": True},
+    }
+
+
+def _compose(scene, monkeypatch, draft, anchor=ANCHOR):
+    monkeypatch.setattr(scene_weaver, "weave_opening", lambda facts, **k: draft)
+    return sessions._compose_final_opening(scene, required=REQUIRED, opening_anchor=anchor, campaign_brief={},
+                                           player_name="Bastog", time_of_day="day", weather="clear", source_intent=None)
+
+
+def test_a_patched_opening_is_replaced_by_the_scene_written_whole(monkeypatch):
+    result = _compose(_patched_scene(), monkeypatch, GOOD_DRAFT)
+    assert result["narrative_body"] == GOOD_DRAFT
+    assert result["player_prompt"] == "What does Bastog do?" and result["text"].endswith("What does Bastog do?")
+    assert result["generation_debug"]["composed_by"] == "scene_weaver"
+    assert len(result["choices"]) >= 3  # options kept as data
+    assert result["opening_scene_validation"]["valid"]
+
+
+def test_a_draft_that_fails_an_opening_check_leaves_the_scene_alone(monkeypatch):
+    scene = _patched_scene()
+    before = scene["narrative_body"]
+    no_person = GOOD_DRAFT.replace("Mara Voss", "the captain")
+    assert _compose(scene, monkeypatch, no_person)["narrative_body"] == before
+    assert _compose(scene, monkeypatch, "")["narrative_body"] == before
+
+
+def test_an_opening_the_model_wrote_whole_is_not_rewritten(monkeypatch):
+    scene = {**_patched_scene(), "generation_debug": {"fallback_used": False}}
+    before = scene["narrative_body"]
+    assert _compose(scene, monkeypatch, GOOD_DRAFT)["narrative_body"] == before
+
+
+def test_unwritten_anchor_answers_do_not_block_a_good_scene(monkeypatch):
+    generic = {"character_name": "Bastog", "source": "auto_generated", "arrival_reason": "I came to understand what is here",
+               "personal_stake": "my oath matters here"}
+    draft = GOOD_DRAFT.replace("drawn here to inspect the chapel marks that were pressed into a fishmonger's cloth", "with no one to meet")
+    draft = draft.replace("Bastog's oath rests on showing the relic was carried here from somewhere else, and the cloth is the only proof within reach.",
+                          "Bastog watches the cloth and says nothing.")
+    assert _compose(_patched_scene(), monkeypatch, draft, anchor=generic)["narrative_body"] == draft
+
+
+def test_the_prompt_is_taken_out_of_the_prose():
+    scene = {"narrative_body": "He waits. What does the party do? .\n\nA bell tolls.", "player_prompt": "What does the party do?"}
+    cleaned = sessions._strip_prompt_from_body(scene)
+    assert cleaned["narrative_body"] == "He waits.\n\nA bell tolls."
+    assert sessions._strip_prompt_from_body({"narrative_body": "Nothing to strip.", "player_prompt": "x"})["narrative_body"] == "Nothing to strip."

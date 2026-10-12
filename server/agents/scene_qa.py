@@ -877,7 +877,8 @@ def apply_targeted_scene_repairs(
         options = truth.approved_possible_actions or [
             "inspect the clue", "question the witness", "secure the location", "follow the freshest lead",
         ]
-        prompt = f"What does {pc} do: {', '.join(options[:3])}, or something else?"
+        # The options stay as data for the validators; the player is asked an open question and never shown a menu.
+        prompt = f"What does {pc} do?"
         scene["suggested_actions"] = options[:4]
         scene["choices"] = [{"id": f"action_{i}", "label": action} for i, action in enumerate(options[:4])]
     repair_paras = [
