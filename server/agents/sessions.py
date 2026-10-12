@@ -2022,19 +2022,26 @@ def _setup_build_lock(session_id: str) -> threading.Lock:
         return _SETUP_BUILD_LOCKS.setdefault(session_id, threading.Lock())
 
 
-def _has_current_questionnaire(meta: dict) -> bool:
-    """A saved questionnaire that was built for the character now seated (or before this was recorded).
+def _questionnaire_signature(folder: Path, meta: dict) -> str:
+    """What the questions depend on: the seated character and whether the table is a party."""
+    character = _selected_character_from_meta(meta)
+    party_mode = len(_session_player_names(folder, meta)) > 1 or not character.get("id")
+    return f"{character.get('id') or ''}|{'party' if party_mode else 'solo'}"
 
-    Questions are prepared as soon as they are owed, which can be before a character is chosen; choosing
-    one afterwards must not leave the generic "the party" questions in place.
+
+def _has_current_questionnaire(folder: Path, meta: dict) -> bool:
+    """A saved questionnaire built for the table as it is now (or saved before this was recorded).
+
+    Questions are prepared as soon as they are owed, which can be before a character is chosen or
+    another player joins; neither may leave the earlier questions in place.
     """
     setup = meta.get("opening_setup") or {}
     if not setup.get("questionnaire"):
         return False
-    built_for = setup.get("questionnaire_character_id")
+    built_for = setup.get("questionnaire_signature")
     if built_for is None or setup.get("completed"):
         return True
-    return str(built_for) == str(_selected_character_from_meta(meta).get("id") or "")
+    return str(built_for) == _questionnaire_signature(folder, meta)
 
 
 def _prepare_opening_questionnaire(session_id: str) -> dict:
@@ -2048,7 +2055,7 @@ def _prepare_opening_questionnaire(session_id: str) -> dict:
     with _setup_build_lock(session_id):
         meta = json.loads(meta_path.read_text())
         setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
-        if setup.get("completed") or _has_current_questionnaire(meta):
+        if setup.get("completed") or _has_current_questionnaire(folder, meta):
             return meta
         # A build that failed while this caller waited for the lock is shared, not run again: a retry is
         # the player's choice (/opening-setup/prepare clears the record), so nobody lands back in the
@@ -2057,7 +2064,7 @@ def _prepare_opening_questionnaire(session_id: str) -> dict:
         if failed.get("state") == "failed":
             raise _SetupPrepError(str(failed.get("error") or "The opening questions could not be prepared."))
         built_setup = dict(setup)
-        built_for = str(_selected_character_from_meta(meta).get("id") or "")
+        built_for = _questionnaire_signature(folder, meta)
         try:
             questionnaire = _build_opening_setup_questionnaire(folder, meta, built_setup)
         except Exception as err:  # noqa: BLE001 - recorded for everyone waiting, then re-raised
@@ -2067,9 +2074,9 @@ def _prepare_opening_questionnaire(session_id: str) -> dict:
         # Re-read: the build took a while and other requests may have written the meta meanwhile.
         meta = json.loads(meta_path.read_text())
         setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
-        if not setup.get("completed") and not _has_current_questionnaire(meta):
+        if not setup.get("completed") and not _has_current_questionnaire(folder, meta):
             setup["questionnaire"] = questionnaire
-            setup["questionnaire_character_id"] = built_for
+            setup["questionnaire_signature"] = built_for
             setup["questionnaire_id"] = questionnaire.get("questionnaire_id")
             setup["campaign_brief"] = questionnaire.get("campaign_brief") or {}
             if built_setup.get("seed"):
@@ -2094,8 +2101,12 @@ def _run_setup_prep(session_id: str) -> None:
 def _opening_setup_prep_status(session_id: str, meta: dict, *, start: bool = True) -> dict:
     """Where the opening questions stand: ready, preparing (started here if needed) or failed."""
     setup = meta.get("opening_setup") or {}
-    if setup.get("completed") or _has_current_questionnaire(meta):
+    if setup.get("completed") or _has_current_questionnaire(BASE / session_id, meta):
         return {"state": "ready", "error": None, "elapsed_s": 0}
+    recorded = _SETUP_PREP.get(session_id) or {}
+    if recorded.get("state") == "failed":
+        # Reported for every table, including player-run ones whose on-demand build failed.
+        return {"state": "failed", "error": recorded.get("error"), "elapsed_s": 0}
     if is_player_run_mode(session_id):
         # A human GM runs this table: opening the page must not queue model work. The questions are
         # built only if the player asks for them.
@@ -2133,7 +2144,7 @@ def get_opening_setup(session_id: str, current_user=Depends(get_current_user)):
     setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
     if setup.get("completed"):
         return {"opening_setup": setup, "completed": True, "anchors": setup.get("anchors") or []}
-    if not _has_current_questionnaire(meta):
+    if not _has_current_questionnaire(folder, meta):
         # Joins a background build if one is running, otherwise builds here.
         meta = _prepared_meta_or_503(session_id)
         setup = meta.get("opening_setup") or setup

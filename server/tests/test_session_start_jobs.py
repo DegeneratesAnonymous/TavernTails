@@ -314,3 +314,52 @@ def test_player_run_tables_do_not_start_preparing_questions_on_their_own(monkeyp
         assert status["state"] == "needs_setup" and status["setup"]["state"] == "ready"
         time.sleep(0.3)
         assert builds == [], "opening a human-GM table must not queue model work"
+
+
+def test_questions_prepared_for_one_player_are_rebuilt_when_another_joins(monkeypatch):
+    real_build = sessions._build_opening_setup_questionnaire
+    party_modes: list[bool] = []
+
+    def recording_build(folder, meta, setup=None):
+        party_modes.append(len(sessions._session_player_names(folder, meta)) > 1)
+        return real_build(folder, meta, setup)
+
+    monkeypatch.setattr(sessions, "_build_opening_setup_questionnaire", recording_build)
+    with TestClient(main.app) as client:
+        session_id, headers = _session(client, "setup-prep-join@example.com")
+        status_url = f"/sessions/{session_id}/start-status"
+        sessions._START_STATUS.pop(session_id, None)
+        sessions._SETUP_PREP.pop(session_id, None)
+        client.get(status_url, headers=headers)
+        assert _wait_for(lambda: client.get(status_url, headers=headers).json()["setup"]["state"] == "ready")
+        assert party_modes == [False]
+
+        meta_path = sessions.BASE / session_id / "meta.json"
+        meta = json.loads(meta_path.read_text())
+        meta["members"].append({"email": "second-player@example.com", "character_id": 987654, "character_name": "Second Player", "role": "member"})
+        meta_path.write_text(json.dumps(meta))
+        assert client.get(status_url, headers=headers).json()["setup"]["state"] == "preparing"
+        assert _wait_for(lambda: client.get(status_url, headers=headers).json()["setup"]["state"] == "ready")
+        assert party_modes == [False, True], "the second player turns the table into a party, so the questions are rebuilt"
+
+
+def test_a_failed_on_demand_build_at_a_player_run_table_is_reported_so_it_can_be_retried(monkeypatch):
+    from server import db
+
+    def failing_build(folder, meta, setup=None):
+        raise RuntimeError("model unavailable")
+
+    monkeypatch.setattr(sessions, "_build_opening_setup_questionnaire", failing_build)
+    with TestClient(main.app) as client:
+        session_id, headers = _session(client, "setup-prep-player-run-fail@example.com")
+        meta = json.loads((sessions.BASE / session_id / "meta.json").read_text())
+        campaign = db.get_campaign_by_id(str(meta["campaign_id"]))
+        db.set_campaign_settings(campaign.id, campaign.owner_id, {"player_run_mode": True})
+        sessions._START_STATUS.pop(session_id, None)
+        sessions._SETUP_PREP.pop(session_id, None)
+        status_url = f"/sessions/{session_id}/start-status"
+
+        assert client.get(status_url, headers=headers).json()["setup"]["state"] == "ready"
+        assert client.get(f"/sessions/{session_id}/opening-setup", headers=headers).status_code == 503
+        failed = client.get(status_url, headers=headers).json()["setup"]
+        assert failed["state"] == "failed" and "model unavailable" in failed["error"]
