@@ -4,6 +4,7 @@ import re
 import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -1966,6 +1967,15 @@ def _campaign_brief_with_hook(campaign_brief: dict, hook: str | None) -> dict:
 _SETUP_PREP: dict[str, dict[str, Any]] = {}
 _SETUP_PREP_GUARD = threading.Lock()
 _SETUP_BUILD_LOCKS: dict[str, threading.Lock] = {}
+_SETUP_PREP_WORKERS = 2
+_SETUP_PREP_POOL: ThreadPoolExecutor | None = None
+
+
+def _setup_prep_pool() -> ThreadPoolExecutor:
+    global _SETUP_PREP_POOL
+    if _SETUP_PREP_POOL is None:
+        _SETUP_PREP_POOL = ThreadPoolExecutor(max_workers=_SETUP_PREP_WORKERS, thread_name_prefix="opening-setup")
+    return _SETUP_PREP_POOL
 
 
 class _SetupPrepError(Exception):
@@ -2043,14 +2053,16 @@ def _opening_setup_prep_status(session_id: str, setup: dict, *, start: bool = Tr
         return {"state": "ready", "error": None, "elapsed_s": 0}
     with _SETUP_PREP_GUARD:
         prep = _SETUP_PREP.get(session_id) or {}
-        running = prep.get("state") == "preparing" and prep.get("thread") is not None and prep["thread"].is_alive()
+        future = prep.get("future")
+        running = prep.get("state") == "preparing" and future is not None and not future.done()
         if not running and prep.get("state") != "failed" and start:
-            thread = threading.Thread(target=_run_setup_prep, args=(session_id,), daemon=True, name=f"opening-setup-{session_id[:8]}")
-            prep = {"state": "preparing", "error": None, "started_at": time.time(), "thread": thread}
+            # A small shared pool, not a thread per session: the builds mostly wait on the one model
+            # queue, so more workers would only pile up. Extra sessions show "preparing" until a slot frees.
+            future = _setup_prep_pool().submit(_run_setup_prep, session_id)
+            prep = {"state": "preparing", "error": None, "started_at": time.time(), "future": future}
             _SETUP_PREP[session_id] = prep
-            thread.start()
         elif not running and prep.get("state") == "preparing":
-            # The thread ended between its save and this read; the meta we were handed predates the save.
+            # The job ended between its save and this read; the meta we were handed predates the save.
             prep = {"state": "ready", "error": None}
     started = prep.get("started_at")
     return {

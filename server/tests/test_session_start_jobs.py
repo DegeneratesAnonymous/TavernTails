@@ -217,3 +217,34 @@ def test_a_request_waiting_on_a_failing_build_shares_the_failure_instead_of_rebu
         monkeypatch.setattr(sessions, "_build_opening_setup_questionnaire", lambda folder, meta, setup=None: {"questionnaire_id": "q", "questions": [], "campaign_brief": {}})
         assert client.post(f"/sessions/{session_id}/opening-setup/prepare", headers=headers).status_code == 200
         assert _wait_for(lambda: client.get(status_url, headers=headers).json()["setup"]["state"] == "ready")
+
+
+def test_background_preparation_uses_a_bounded_pool_not_a_thread_per_session(monkeypatch):
+    import threading
+
+    release = threading.Event()
+    started: list[str] = []
+
+    def blocked_build(folder, meta, setup=None):
+        started.append(folder.name)
+        release.wait(5)
+        return {"questionnaire_id": "q", "questions": [], "campaign_brief": {}}
+
+    monkeypatch.setattr(sessions, "_build_opening_setup_questionnaire", blocked_build)
+    monkeypatch.setattr(sessions, "_SETUP_PREP_POOL", None)
+    monkeypatch.setattr(sessions, "_SETUP_PREP_WORKERS", 1)
+    with TestClient(main.app) as client:
+        first, headers = _session(client, "setup-pool-a@example.com")
+        second, headers2 = _session(client, "setup-pool-b@example.com")
+        for sid in (first, second):
+            sessions._START_STATUS.pop(sid, None)
+        before = threading.active_count()
+        assert client.get(f"/sessions/{first}/start-status", headers=headers).json()["setup"]["state"] == "preparing"
+        assert client.get(f"/sessions/{second}/start-status", headers=headers2).json()["setup"]["state"] == "preparing"
+        assert _wait_for(lambda: len(started) >= 1)
+        time.sleep(0.2)
+        assert started == [first], "with one worker the second session waits its turn"
+        assert threading.active_count() <= before + 1
+        release.set()
+        assert _wait_for(lambda: client.get(f"/sessions/{second}/start-status", headers=headers2).json()["setup"]["state"] == "ready")
+        assert started == [first, second]
