@@ -9,6 +9,8 @@ type StartStatus = {
   elapsed_s: number
   error: string | null
   scene_ready: boolean
+  /** Present while the opening questions are owed: whether they are ready to answer yet. */
+  setup?: { state: 'preparing' | 'ready' | 'failed'; error: string | null; elapsed_s: number; builds_on_click?: boolean }
 }
 
 type Props = {
@@ -18,6 +20,8 @@ type Props = {
 
 const POLL_MS = 2000
 const SLOW_AFTER_S = 150
+const SETUP_SLOW_AFTER_S = 90
+const OPENING_TIMEOUT_MS = 20000
 
 function authHeaders(): Record<string, string> {
   const token = localStorage.getItem('access_token')
@@ -34,6 +38,7 @@ export default function SceneStartProgress({ sessionId, onReady }: Props) {
   const [status, setStatus] = useState<StartStatus | null>(null)
   const [pollError, setPollError] = useState(false)
   const [retrying, setRetrying] = useState(false)
+  const [opening, setOpening] = useState(false)
   const autoStarted = useRef(false)
   const readyFired = useRef(false)
 
@@ -73,6 +78,42 @@ export default function SceneStartProgress({ sessionId, onReady }: Props) {
     return () => { cancelled = true; if (timer) clearTimeout(timer) }
   }, [sessionId, onReady, startScene])
 
+  // Servers that prepare the questions ahead answer the click at once, so a click that changed nothing
+  // within a few seconds was lost: give the button back. Older servers (no `setup` in the status) build
+  // the questions inside that very request, which can legitimately run for minutes; the dashboard swaps
+  // this screen out when that request finishes or fails, so no timer may re-enable the button early.
+  // The component is reused when the player switches sessions; a click made in the old one must not
+  // leave the new one's button disabled.
+  useEffect(() => { setOpening(false) }, [sessionId])
+  const preparesAhead = Boolean(status?.setup) && !status?.setup?.builds_on_click
+  const setupState = status?.setup?.state
+  // A failure (or a fresh preparation after Try again) ends the click that was in flight.
+  useEffect(() => {
+    if (setupState === 'failed' || setupState === 'preparing') setOpening(false)
+  }, [setupState])
+  useEffect(() => {
+    if (!opening || !preparesAhead) return
+    const timer = setTimeout(() => setOpening(false), OPENING_TIMEOUT_MS)
+    return () => clearTimeout(timer)
+  }, [opening, preparesAhead])
+
+  const openSetup = () => {
+    setOpening(true)
+    window.dispatchEvent(new CustomEvent('session:open-opening-setup', { detail: { sessionId } }))
+  }
+
+  const retryPrepare = async () => {
+    setRetrying(true)
+    try {
+      const res = await fetch(buildApiUrl(`/sessions/${sessionId}/opening-setup/prepare`), { method: 'POST', headers: authHeaders(), body: JSON.stringify({}) })
+      if (res.ok) {
+        const setup = (await res.json()) as StartStatus['setup']
+        if (setup?.state) setStatus(prev => (prev ? { ...prev, setup } : prev))
+      }
+    } catch { /* the next status poll reports what happened */ }
+    setRetrying(false)
+  }
+
   const retry = async () => {
     setRetrying(true)
     setStatus(prev => (prev ? { ...prev, state: 'running', error: null, elapsed_s: 0 } : prev))
@@ -107,18 +148,47 @@ export default function SceneStartProgress({ sessionId, onReady }: Props) {
   }
 
   if (status.state === 'needs_setup') {
+    // Older servers don't report preparation; their questions are built when the button is pressed.
+    const setup = status.setup || { state: 'ready' as const, error: null, elapsed_s: 0 }
+    if (setup.state === 'failed') {
+      return (
+        <div className="scene-start" role="alert">
+          <div className="scene-start__card scene-start__card--error">
+            <h2 className="scene-start__title">The opening questions didn’t come together</h2>
+            <p className="scene-start__note">{setup.error || 'The story engine stopped before the questions were ready.'}</p>
+            <p className="scene-start__note">Your campaign and character are saved. Trying again won’t lose anything.</p>
+            <button type="button" className="scene-start__button" onClick={retryPrepare} disabled={retrying}>
+              {retrying ? 'Starting…' : 'Try again'}
+            </button>
+          </div>
+        </div>
+      )
+    }
+    const preparing = setup.state === 'preparing'
     return (
       <div className="scene-start" role="status" aria-live="polite">
         <div className="scene-start__card">
-          <h2 className="scene-start__title">One more step before the story begins</h2>
-          <p className="scene-start__note">Answer the opening questions for this session, then your first scene will be written.</p>
-          <button
-            type="button"
-            className="scene-start__button"
-            onClick={() => window.dispatchEvent(new CustomEvent('session:open-opening-setup', { detail: { sessionId } }))}
-          >
-            Continue setup
+          <h2 className="scene-start__title">{preparing ? 'Preparing your opening questions' : 'One more step before the story begins'}</h2>
+          {preparing ? (
+            <>
+              <p className="scene-start__note">
+                The storyteller is reading your campaign and the world behind it, then setting up a few questions
+                that tie your character to the first scene.
+              </p>
+              <p className="scene-start__elapsed">{formatElapsed(setup.elapsed_s)} elapsed</p>
+              <p className="scene-start__note">
+                {setup.elapsed_s > SETUP_SLOW_AFTER_S
+                  ? 'The model is busy with your world, so this is taking a little longer. It’s still working.'
+                  : 'This usually takes under a minute. The button below unlocks as soon as they’re ready.'}
+              </p>
+            </>
+          ) : (
+            <p className="scene-start__note">A few quick questions tie your character to the opening moment, then your first scene is written.</p>
+          )}
+          <button type="button" className="scene-start__button" onClick={openSetup} disabled={preparing || opening}>
+            {preparing ? 'Preparing…' : opening ? 'Opening…' : 'Answer the opening questions'}
           </button>
+          {pollError && <p className="scene-start__note scene-start__note--warn">Lost contact with the server; still trying…</p>}
         </div>
       </div>
     )
