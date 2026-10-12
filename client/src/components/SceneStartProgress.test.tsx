@@ -167,3 +167,14 @@ test('a table whose click builds the questions keeps the button disabled instead
     expect(screen.getByRole('button', { name: 'Opening…' })).toBeDisabled()
   } finally { server.restore(); jest.useRealTimers() }
 })
+
+test('switching sessions clears a click made in the previous one', async () => {
+  const server = mockServer([status({ state: 'needs_setup' })]) // older server: no timer would clear the click
+  try {
+    const { rerender } = render(<SceneStartProgress sessionId="s1" onReady={jest.fn()} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Answer the opening questions' }))
+    expect(screen.getByRole('button', { name: 'Opening…' })).toBeDisabled()
+    rerender(<SceneStartProgress sessionId="s2" onReady={jest.fn()} />)
+    expect(await screen.findByRole('button', { name: 'Answer the opening questions' })).toBeEnabled()
+  } finally { server.restore() }
+})

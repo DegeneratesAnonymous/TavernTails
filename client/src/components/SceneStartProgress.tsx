@@ -82,6 +82,9 @@ export default function SceneStartProgress({ sessionId, onReady }: Props) {
   // within a few seconds was lost: give the button back. Older servers (no `setup` in the status) build
   // the questions inside that very request, which can legitimately run for minutes; the dashboard swaps
   // this screen out when that request finishes or fails, so no timer may re-enable the button early.
+  // The component is reused when the player switches sessions; a click made in the old one must not
+  // leave the new one's button disabled.
+  useEffect(() => { setOpening(false) }, [sessionId])
   const preparesAhead = Boolean(status?.setup) && !status?.setup?.builds_on_click
   const setupState = status?.setup?.state
   // A failure (or a fresh preparation after Try again) ends the click that was in flight.
