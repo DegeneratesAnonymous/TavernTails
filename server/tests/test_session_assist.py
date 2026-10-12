@@ -350,3 +350,14 @@ def test_a_paused_table_does_not_generate_an_opening_either(table):
     assert _safety(table, "friend", kind="pause").json()["paused"] is True
     started = table["client"].post(f"/sessions/{table['sid']}/start", headers=_auth(table["owner"]), json={})
     assert started.status_code == 409
+
+
+def test_a_notice_may_not_turn_backstory_into_something_in_the_room(monkeypatch):
+    char = {"name": "Arin Quickstep", "class_name": "Rogue", "notes": "Once owed a debt to Blackthorn."}
+    view = player_view(SCENE)
+    monkeypatch.setattr(steward_llm, "chat_complete", lambda *a, **k: "You notice Blackthorn watching you from the doorway.")
+    assert assist.generate_notice(view, char, HIDDEN) == ""
+    monkeypatch.setattr(steward_llm, "chat_complete", lambda *a, **k: "You notice how Ada Reed keeps one hand flat on the page.")
+    assert assist.generate_notice(view, char, HIDDEN).startswith("You notice how Ada Reed")
+    # a suggestion, by contrast, may draw on what the character knows from their own past
+    assert not assist.check_suggestion("I ask Ada Reed about Blackthorn.", visible=assist.visible_text(view, char), hidden=HIDDEN)

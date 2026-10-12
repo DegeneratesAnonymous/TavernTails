@@ -165,7 +165,7 @@ def hidden_strings(scene: dict) -> list[str]:
     return [s for s in out if len(s.split()) >= 2]
 
 
-def visible_text(view: dict, character: dict[str, str]) -> str:
+def visible_text(view: dict, character: dict[str, str], *, scene_only: bool = False) -> str:
     """Everything the player can see or knows: the story text, who is present, the open question, their character."""
     sv = view.get("scene_view") or {}
     parts = [
@@ -173,7 +173,9 @@ def visible_text(view: dict, character: dict[str, str]) -> str:
         " ".join(f"{p.get('name', '')} {p.get('role', '')}" for p in sv.get("present", [])),
         str(sv.get("hook") or ""), str(sv.get("situation") or ""), str(sv.get("place") or ""),
         " ".join(str(c) for c in (view.get("visible_clues") or [])),
-        character.get("name", ""), character.get("class_name", ""), character.get("notes", ""),
+        character.get("name", ""), character.get("class_name", ""),
+        # Backstory is something the character knows, not something in the room: a notice may not use it as a scene fact.
+        "" if scene_only else character.get("notes", ""),
     ]
     return " ".join(parts)
 
@@ -350,7 +352,7 @@ def generate_notice(view: dict, character: dict[str, str], hidden: list[str]) ->
     """What the character notices, or ``""`` when there is no character or no draft passed the checks."""
     if not character.get("name") or character["name"].lower() == "the party":
         return ""
-    visible = visible_text(view, character)
+    visible = visible_text(view, character, scene_only=True)
     feedback = ""
     for _ in range(2):
         try:

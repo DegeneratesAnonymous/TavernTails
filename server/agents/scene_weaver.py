@@ -220,7 +220,7 @@ def check_woven(text: str, facts: dict[str, Any]) -> list[str]:
     future = f"{facts.get('stakes', '')} {facts.get('clock', '')}"  # a deadline at night is in the future, not the present
     if time in _DAY_TIMES and _NIGHT_WORDS.search(body) and not _NIGHT_WORDS.search(future):
         issues.append("Describes night although the scene happens in the " + time + ".")
-    if time in _NIGHT_TIMES and _DAY_WORDS.search(body):
+    if time in _NIGHT_TIMES and _DAY_WORDS.search(body) and not _DAY_WORDS.search(future):
         issues.append("Describes daylight although the scene happens at " + time + ".")
     brought = [facts[k] for k in ("reason_for_coming", "why_it_matters", "what_they_fear_losing") if facts.get(k)]
     if brought and not any(_answer_used(answer, lower, facts["location"]) for answer in brought):

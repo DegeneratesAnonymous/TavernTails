@@ -269,3 +269,11 @@ def test_plain_day_and_night_contradictions_are_rejected(time, sentence, bad):
     facts = _facts(time_of_day=time)
     issues = " ".join(scene_weaver.check_woven(draft, facts)).lower()
     assert ("although the scene happens" in issues) is bad
+
+
+def test_a_night_opening_may_mention_a_deadline_in_the_morning():
+    facts = _facts(time_of_day="night", stakes="The gate opens at dawn, in the morning.")
+    draft = GOOD_DRAFT.replace("the morning is cold enough that breath shows in the air", "the night is cold enough that breath shows in the air")
+    draft = draft.replace("The bells will ring dusk soon", "The gate opens in the morning, and the bells will ring then")
+    assert not [i for i in scene_weaver.check_woven(draft, facts) if "daylight" in i]
+    assert [i for i in scene_weaver.check_woven(draft.replace("night is cold", "sunshine is warm and the night is cold"), _facts(time_of_day="night")) if "daylight" in i]
