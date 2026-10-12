@@ -15,6 +15,8 @@ from __future__ import annotations
 import json
 import logging
 import re
+import tempfile
+import threading
 import zlib
 from datetime import datetime, timezone
 from pathlib import Path
@@ -56,6 +58,19 @@ _CLASS_ACTIONS = {
     "barbarian": "I watch for where a fight wants to start and who has a reason to start it.",
 }
 _MIN_WORDS, _MAX_WORDS = 3, 24
+# Ordinary words of acting and manner: a suggestion may use them without the story having said them first.
+_ACTING_WORDS = frozenset((
+    "examine examining closely carefully quietly quickly slowly around listen listening whisper whispering watching studying "
+    "search searching inspect inspecting question questioning anything something nothing nearby directly politely openly calmly "
+    "gently softly behind between beneath toward towards others himself herself themselves instead before after while because "
+    "whether anyone someone everyone details detail notice noticing follow following approach approaching observe observing "
+    "consider considering reassure standing speaking answer answers clues patterns pattern pretend patiently steady steadily "
+    "briefly bluntly casually cautiously privately plainly simply again second another nervous nervously gaze glance looking "
+    "stepping reaching pressing lifting taking holding offering asking telling trying waiting turning tracing checking "
+    "everything everywhere nowhere upstairs downstairs outside inside across through toward within without really exactly "
+    "whatever whoever however maybe perhaps rather enough means anyone's ordinary unusual strange"
+).split())
+_ACTING_PREFIXES = frozenset(w[:5] for w in _ACTING_WORDS)  # so "noticed" and "examined" count as the words above
 _WORD = re.compile(r"[A-Za-z][A-Za-z'’-]*")
 
 
@@ -91,11 +106,14 @@ def _read_scene(folder: Path) -> dict:
     return scene
 
 
-def _member(meta: dict, identifier: str) -> dict:
-    for member in meta.get("members", []) or []:
-        if _normalize_email(member.get("email")) == identifier:
-            return member
-    return {}
+def _member(meta: dict, identifier: str, character_id: int | None = None) -> dict:
+    """The caller's seat at the table. One email can hold several characters: the one the player is acting as wins."""
+    seats = [m for m in meta.get("members", []) or [] if _normalize_email(m.get("email")) == identifier]
+    if character_id is not None:
+        for seat in seats:
+            if seat.get("character_id") == character_id:
+                return seat
+    return seats[0] if seats else {}
 
 
 def character_for(member: dict) -> dict[str, str]:
@@ -171,13 +189,16 @@ def check_suggestion(
         return ["Too short."]
     if n > max_words:
         issues.append(f"Too long ({n} words); one short sentence.")
-    if len(re.findall(r"[.!?](?:\s|$)", value)) > 2:
+    if re.search(r"[.!?][\"'\u201d)]*\s+[A-Z\"\u201c]", value):
         issues.append("More than one sentence.")
-    if first_person and not re.match(r"^[\"'“]?\s*I\b", value):
+    if first_person and not re.match(r"^[\"'\u201c]?\s*I\b", value):
         issues.append("Write it in the first person, starting with 'I'.")
+    elif first_person and re.match(r"^[\"'\u201c]?\s*I(?:'ll| will| would| want| need| should| might| could)\b", value, re.IGNORECASE):
+        issues.append("Start with 'I' and a plain verb, such as 'I ask' or 'I look', not 'I will'.")
     vis = _words(visible)
+    vis_prefixes = {w[:5] for w in vis}
     # A name or place the player has not met is a leak even if the model made it up.
-    for match in re.finditer(r"(?<![.!?\"'“]\s)(?<!^)\b([A-Z][a-z]{2,})\b", value):
+    for match in re.finditer(r"(?<![.!?\"'\u201c]\s)(?<!^)\b([A-Z][a-z]{2,})\b", value):
         word = match.group(1).lower()
         if word not in vis and word != "i":
             issues.append(f"Names something the story has not shown: {match.group(1)}.")
@@ -185,9 +206,17 @@ def check_suggestion(
     hidden_only: set[str] = set()
     for secret in hidden:
         hidden_only |= {w for w in _words(secret) if len(w) >= 5 and w not in vis}
-    leaked = sorted(w for w in _words(value) if w in hidden_only)
-    if leaked:
-        issues.append("Uses something the player has not been shown: " + ", ".join(leaked[:3]) + ".")
+    if any(w in hidden_only for w in _words(value)):
+        # Say nothing about which word: feedback goes back to the model, and it must never learn a hidden term.
+        issues.append("Uses something the player has not been shown.")
+    # Ordinary nouns too: a thing the story has not shown ("the obsidian vault") is invented, not suggested.
+    invented = sorted(
+        w for w in _words(value)
+        if len(w) >= 6 and w[:5] not in vis_prefixes and w[:5] not in _ACTING_PREFIXES and w not in hidden_only
+        and not value.split()[0].lower().startswith(w)
+    )
+    if invented:
+        issues.append("Mentions something the story has not shown: " + ", ".join(invented[:2]) + ".")
     if re.search(r"\band (?:finds?|discovers?|learns?|realizes?|uncovers?) (?:that|the truth)\b", value, re.IGNORECASE):
         issues.append("States an outcome; describe what the character tries, not what they find.")
     return issues
@@ -278,6 +307,7 @@ def generate_suggestion(
 class SuggestRequest(BaseModel):
     previous: list[str] = Field(default_factory=list, max_length=10)
     angle: str | None = None
+    character_id: int | None = None  # the character the player is acting as, when they hold more than one
 
 
 @router.post("/{session_id}/suggest-action")
@@ -286,7 +316,7 @@ def suggest_action(session_id: str, req: SuggestRequest, current_user=Depends(ge
     folder, meta, identifier = _load(session_id, current_user)
     scene = _read_scene(folder)
     view = player_view(scene)
-    character = character_for(_member(meta, identifier))
+    character = character_for(_member(meta, identifier, req.character_id))
     previous = [_clean(p) for p in req.previous if _clean(p)]
     angle = pick_angle(req.angle, view, f"{scene.get('id', '')}:{identifier}", previous)
     suggestion, source = generate_suggestion(
@@ -344,26 +374,41 @@ def generate_notice(view: dict, character: dict[str, str], hidden: list[str]) ->
     return ""
 
 
+class NoticeRequest(BaseModel):
+    character_id: int | None = None
+
+
+_NOTICE_LOCK = threading.Lock()
+
+
+def _read_notices(path: Path) -> dict:
+    try:
+        data = json.loads(path.read_text()) if path.exists() else {}
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 @router.post("/{session_id}/notice")
-def notice(session_id: str, current_user=Depends(get_current_user)):
+def notice(session_id: str, req: NoticeRequest | None = None, current_user=Depends(get_current_user)):
     """What the caller's character picks up on in the current scene (made once per scene and character)."""
     folder, meta, identifier = _load(session_id, current_user)
     scene = _read_scene(folder)
-    key = f"{scene.get('id', '')}:{identifier}"
+    member = _member(meta, identifier, req.character_id if req else None)
+    key = f"{scene.get('id', '')}:{identifier}:{member.get('character_id')}"
     cache_path = folder / "notices.json"
-    try:
-        cache = json.loads(cache_path.read_text()) if cache_path.exists() else {}
-    except Exception:
-        cache = {}
+    cache = _read_notices(cache_path)
     if key in cache:
         return {"notice": cache[key], "cached": True}
-    text = generate_notice(
-        player_view(scene), character_for(_member(meta, identifier)), hidden_strings(scene),
-    )
-    cache[key] = text
-    tmp = cache_path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(dict(list(cache.items())[-40:])))
-    tmp.replace(cache_path)
+    text = generate_notice(player_view(scene), character_for(member), hidden_strings(scene))
+    # The model call is slow and made outside the lock; the file is re-read inside it so two players arriving together
+    # each keep the other's entry, and each writer uses its own temporary file.
+    with _NOTICE_LOCK:
+        cache = _read_notices(cache_path)
+        cache[key] = text
+        with tempfile.NamedTemporaryFile("w", dir=folder, suffix=".tmp", delete=False) as handle:
+            handle.write(json.dumps(dict(list(cache.items())[-40:])))
+        Path(handle.name).replace(cache_path)
     return {"notice": text, "cached": False}
 
 
@@ -464,9 +509,22 @@ def round_view(session_id: str, current_user=Depends(get_current_user)):
 
 # --- table safety ----------------------------------------------------------------------------------------------
 
+_DIRECTIVE = re.compile(
+    r"\b(?:ignore|disregard|forget|override|instead|instruction|instructions|rules|system|prompt|reveal|always|never|"
+    r"you must|you should|pretend|jailbreak)\b", re.IGNORECASE,
+)
+
+
 def safe_topic(text: str) -> str:
-    """A topic the table wants left out, reduced to plain words: it ends up in the story's instructions."""
-    return _clean(re.sub(r"[^\w\s,'\-]", " ", text or ""))[:120]
+    """A topic the table wants left out, as a few plain words; ``""`` when it reads as an instruction rather than a topic.
+
+    It ends up in the story's instructions, so it is kept short, stripped of punctuation, and refused outright if it
+    contains directive words a topic has no need of.
+    """
+    plain = _clean(re.sub(r"[^\w\s,'\-]", " ", text or ""))
+    if _DIRECTIVE.search(plain):
+        return ""
+    return " ".join(plain.split()[:8])[:80]
 
 
 class SafetyRequest(BaseModel):
@@ -480,8 +538,10 @@ class SafetyRequest(BaseModel):
 async def set_table_safety(session_id: str, req: SafetyRequest, current_user=Depends(get_current_user)):
     """Any player can pause the table or ask the story to leave something out; the DM can resume."""
     folder, meta, identifier = _load(session_id, current_user)
-    safety = {**{"avoid": [], "events": [], "paused": False}, **table_safety(meta)}
+    safety = table_safety(meta)
     topic = safe_topic(req.topic)
+    if _clean(req.topic) and not topic:
+        raise HTTPException(status_code=422, detail="Name the topic in a few plain words.")
     member = _member(meta, identifier)
     who = _clean(member.get("character_name")) or _clean(getattr(current_user, "username", "")) or identifier
     if req.kind == "resume":
@@ -491,7 +551,8 @@ async def set_table_safety(session_id: str, req: SafetyRequest, current_user=Dep
     elif req.kind == "pause":
         safety["paused"] = True
     else:
-        safety["avoid"] = list(dict.fromkeys([*safety.get("avoid", []), topic or "what was just described"]))[-12:]
+        key = "avoid" if req.kind == "skip" else "soften"  # skip leaves it out; soften keeps it but gently
+        safety[key] = list(dict.fromkeys([*safety.get(key, []), topic or "what was just described"]))[-12:]
     safety["events"] = [*safety.get("events", []), {"by": who, "kind": req.kind, "topic": topic, "at": datetime.now(timezone.utc).isoformat()}][-50:]
     meta["table_safety"] = safety
     meta_path = folder / "meta.json"
@@ -500,7 +561,7 @@ async def set_table_safety(session_id: str, req: SafetyRequest, current_user=Dep
     tmp.replace(meta_path)
     note = {
         "pause": f"{who} paused the table.", "resume": "The table has resumed.",
-        "skip": f"{who} asked the story to leave that out.", "soften": f"{who} asked the story to soften that.",
+        "skip": f"{who} asked the story to leave that out.", "soften": f"{who} asked the story to handle that gently.",
     }[req.kind]
     try:
         db.log_chat_message(note, session_id=session_id, campaign_id=meta.get("campaign_id"), role="system", sender_name="Table")
@@ -509,4 +570,5 @@ async def set_table_safety(session_id: str, req: SafetyRequest, current_user=Dep
     await broadcaster.broadcast_json(session_id, {
         "type": "table.safety", "session_id": session_id, "kind": req.kind, "paused": safety["paused"], "message": note,
     })
-    return {"ok": True, "paused": safety["paused"], "avoid": safety["avoid"], "message": note}
+    return {"ok": True, "paused": safety["paused"], "avoid": safety["avoid"], "soften": safety["soften"],
+            "message": note + (" It applies from the next scene." if req.kind in ("skip", "soften") else "")}

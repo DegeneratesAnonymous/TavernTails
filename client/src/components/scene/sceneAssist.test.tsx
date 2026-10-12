@@ -127,6 +127,36 @@ describe('the Suggest button', () => {
   })
 })
 
+describe('a suggestion belongs to the scene it was asked for', () => {
+  test('one that arrives after the scene changed is discarded, not put in the new scene\'s box', async () => {
+    window.localStorage.setItem('tt:hint-dismissed', '1')
+    let release: (v: unknown) => void = () => {}
+    const slow = new Promise(resolve => { release = resolve })
+    const original = global.fetch
+    global.fetch = jest.fn(async (url: RequestInfo | URL) => {
+      if (String(url).includes('/suggest-action')) { await slow; return { ok: true, status: 200, json: async () => ({ suggestion: 'I ask about the old scene.' }) } as Response }
+      return { ok: true, status: 200, json: async () => ROUND } as Response
+    }) as unknown as typeof fetch
+    const onFill = jest.fn()
+    const { rerender } = render(<ActionAssist sessionId="s1" value="" onFill={onFill} sceneKey="a" idleNudgeMs={0} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Suggest' }))
+    rerender(<ActionAssist sessionId="s1" value="" onFill={onFill} sceneKey="b" idleNudgeMs={0} />)
+    await act(async () => { release(null); await slow })
+    expect(onFill).not.toHaveBeenCalled()
+    global.fetch = original
+  })
+
+  test('the character the player is acting as is sent with the request', async () => {
+    window.localStorage.setItem('tt:hint-dismissed', '1')
+    const server = mockFetch({ '/round': ROUND, '/suggest-action': { suggestion: 'I look around.' } })
+    render(<ActionAssist sessionId="s1" value="" onFill={() => {}} idleNudgeMs={0} characterId={42} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Suggest' }))
+    await waitFor(() => expect(server.calls.some(c => c.url.includes('/suggest-action'))).toBe(true))
+    expect(JSON.parse(server.calls.find(c => c.url.includes('/suggest-action'))?.body || '{}').character_id).toBe(42)
+    server.restore()
+  })
+})
+
 describe('guidance', () => {
   test('a first-time tip explains the box, and stays dismissed', async () => {
     const server = mockFetch({ '/round': ROUND })
@@ -218,6 +248,25 @@ describe('coming back', () => {
     expect(screen.getByText(/What is behind the ward\?/)).toBeInTheDocument()
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(onClose).toHaveBeenCalled()
+    server.restore()
+  })
+
+  test('focus moves into the dialog, stays there, and returns to what opened it', async () => {
+    const server = mockFetch({ '/recap': { previously: ['One.'], present: [] } })
+    const Host = () => {
+      const [open, setOpen] = React.useState(false)
+      return (<><button type="button" onClick={() => setOpen(true)}>Open recap</button><RecapDialog sessionId="s1" open={open} onClose={() => setOpen(false)} /></>)
+    }
+    render(<Host />)
+    const trigger = screen.getByRole('button', { name: 'Open recap' })
+    trigger.focus()
+    fireEvent.click(trigger)
+    const close = await screen.findByRole('button', { name: 'Close' })
+    expect(close).toHaveFocus()
+    fireEvent.keyDown(window, { key: 'Tab', shiftKey: true })
+    expect(screen.getByRole('button', { name: 'Back to the story' })).toHaveFocus() // wraps, never reaches the page behind
+    fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => expect(trigger).toHaveFocus())
     server.restore()
   })
 

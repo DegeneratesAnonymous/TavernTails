@@ -20,8 +20,9 @@ logger = logging.getLogger("taverntails.scene_weaver")
 MIN_WORDS = 90
 MAX_WORDS = 260
 
-_NIGHT_WORDS = re.compile(r"\b(?:midnight|moonlit|moonlight|starlit|starlight|stars overhead|after dark)\b", re.IGNORECASE)
-_DAY_WORDS = re.compile(r"\b(?:midday|sunlit|noon sun|bright morning|full daylight)\b", re.IGNORECASE)
+_NIGHT_WORDS = re.compile(
+    r"\b(?:night|nighttime|nightfall|midnight|moonlit|moonlight|moon|starlit|starlight|stars|after dark|darkness fell)\b", re.IGNORECASE)
+_DAY_WORDS = re.compile(r"\b(?:day|daylight|daytime|midday|noon|sunlit|sunshine|sunny|morning|afternoon)\b", re.IGNORECASE)
 # "<Name> can look closely at X, question Y, watch Z, or follow W" - a menu of options written as prose.
 _OPTION_MENU = re.compile(r"\b(?:can|could|may|might)\b[^.!?]{0,160}(?:,[^.!?]{3,90}){2,}[,\s]+or\b", re.IGNORECASE)
 _DAY_TIMES = {"day", "morning", "noon", "midday", "afternoon", "dawn"}
@@ -216,7 +217,8 @@ def check_woven(text: str, facts: dict[str, Any]) -> list[str]:
             issues.append(f"Copies a sentence the player has already read ('{known[:60]}'); use new words.")
             break
     time = facts["time_of_day"].lower()
-    if time in _DAY_TIMES and _NIGHT_WORDS.search(body) and not _NIGHT_WORDS.search(facts.get("stakes", "")):
+    future = f"{facts.get('stakes', '')} {facts.get('clock', '')}"  # a deadline at night is in the future, not the present
+    if time in _DAY_TIMES and _NIGHT_WORDS.search(body) and not _NIGHT_WORDS.search(future):
         issues.append("Describes night although the scene happens in the " + time + ".")
     if time in _NIGHT_TIMES and _DAY_WORDS.search(body):
         issues.append("Describes daylight although the scene happens at " + time + ".")

@@ -310,18 +310,27 @@ export default function GameplayLayout({
     return () => window.removeEventListener('narrative:recap', open)
   }, [])
 
-  // Coming back after a while: show where the story stands before dropping the player into it.
+  // Coming back after a while: show where the story stands before dropping the player into it. A tab left open
+  // overnight counts too, so the check runs when the tab becomes visible again, and "last seen" only advances while
+  // the player can actually see the game.
   useEffect(() => {
     if (!sessionId) return
-    if (shouldShowRecap(sessionId)) setRecapOpen(true)
-    markSeen(sessionId)
-    const timer = window.setInterval(() => markSeen(sessionId), 5 * 60 * 1000)
+    const visible = () => typeof document === 'undefined' || !document.hidden
+    const checkReturn = () => {
+      if (!visible()) return
+      if (shouldShowRecap(sessionId)) setRecapOpen(true)
+      markSeen(sessionId)
+    }
+    checkReturn()
+    const timer = window.setInterval(() => { if (visible()) markSeen(sessionId) }, 5 * 60 * 1000)
     const onLeave = () => markSeen(sessionId)
+    document.addEventListener('visibilitychange', checkReturn)
     window.addEventListener('pagehide', onLeave)
     return () => {
       window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', checkReturn)
       window.removeEventListener('pagehide', onLeave)
-      markSeen(sessionId)
+      if (visible()) markSeen(sessionId)
     }
   }, [sessionId])
 
@@ -821,6 +830,7 @@ export default function GameplayLayout({
   }, [roster, selectedCharId])
 
   const playerStats = selectedCharacter
+  const actingAsCharacterId = activeCharacterId ?? (() => { const n = Number(playerStats?.id); return playerStats?.id != null && Number.isFinite(n) ? n : null })()
   const observedSummary = sceneSummary.observed || ''
   const campaignHeaderName = activeCampaign?.name || activeBanner?.title || 'TavernTails'
   const headerWorldClock = sessionStarted ? [
@@ -1811,6 +1821,7 @@ export default function GameplayLayout({
                   <NarrativeView
                     sessionId={sessionId}
                     mine={[playerStats?.name || '', currentUsername || ''].filter(Boolean)}
+                    characterId={actingAsCharacterId}
                     entities={entityHints}
                     presentationMode={sessionMode}
                     focusMode={focusMode}
@@ -2338,7 +2349,7 @@ export default function GameplayLayout({
                     character={playerStats ?? null}
                     promptLabel={playerStats?.name ? `What does ${playerStats.name} do?` : 'What do you do?'}
                     composerPlaceholder="Say what you do, in your own words…"
-                    assist={{ sceneKey, playerReady }}
+                    assist={{ sceneKey, playerReady, characterId: actingAsCharacterId }}
                     aboveComposer={null}
                     composerInject={actionDraft}
                     onComposerInjectConsumed={() => setActionDraft(null)}

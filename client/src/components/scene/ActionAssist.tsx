@@ -21,13 +21,15 @@ type Props = {
   showSuggest?: boolean
   /** "What does Arin do?", shown on the same line as the buttons so the box stays compact. */
   label?: string
+  /** The character the player is acting as, when they hold more than one. */
+  characterId?: number | null
 }
 
 /**
  * What sits above the player's text box. It never lists actions: an idea appears only when the player presses
  * Suggest, and then it goes into their own box where they can change it or ignore it.
  */
-export default function ActionAssist({ sessionId, value, onFill, sceneKey = '', playerReady = false, idleNudgeMs = 90000, showSuggest: allowSuggest = true, label = '' }: Props) {
+export default function ActionAssist({ sessionId, value, onFill, sceneKey = '', playerReady = false, idleNudgeMs = 90000, showSuggest: allowSuggest = true, label = '', characterId = null }: Props) {
   const [hintOpen, setHintOpen] = useState(() => store.get(HINT_KEY) !== '1')
   const [suggestOn, setSuggestOn] = useState(() => store.get(SUGGEST_KEY) !== '0')
   const showSuggest = allowSuggest && suggestOn
@@ -44,7 +46,9 @@ export default function ActionAssist({ sessionId, value, onFill, sceneKey = '', 
   const previous = useRef<string[]>([])
   const lastFilled = useRef('')
   const valueRef = useRef(value)
+  const context = useRef('')
   valueRef.current = value
+  context.current = `${sessionId || ''}|${sceneKey}|${characterId ?? ''}` // what a suggestion in flight is for
 
   // A new scene: forget the suggestions made for the old one.
   useEffect(() => {
@@ -86,8 +90,10 @@ export default function ActionAssist({ sessionId, value, onFill, sceneKey = '', 
     if (!sessionId || busy) return
     setBusy(true)
     setError('')
-    const result = await fetchSuggestion(sessionId, previous.current)
+    const askedFor = context.current
+    const result = await fetchSuggestion(sessionId, previous.current, characterId)
     setBusy(false)
+    if (askedFor !== context.current) return // the scene, session or character changed while the idea was being made
     const text = (result?.suggestion || '').trim()
     if (!text) {
       setError('No idea came to mind right now. Try again in a moment.')
@@ -103,7 +109,7 @@ export default function ActionAssist({ sessionId, value, onFill, sceneKey = '', 
       setOffered(text) // they have typed their own: offer, never overwrite
     }
     setNudge(false)
-  }, [sessionId, busy, onFill])
+  }, [sessionId, busy, onFill, characterId])
 
   const useOffered = () => {
     lastFilled.current = offered

@@ -41,9 +41,8 @@ def first_to_third(text: str) -> str:
     if not value or not is_first_person(value):
         return value
     for pattern, replacement in _CONTRACTIONS:
-        # "I" is the one word that is capitalised everywhere; leave other case-sensitive matches alone.
-        flags = 0 if pattern.startswith(r"\bI") else re.IGNORECASE
-        value = re.sub(pattern, replacement, value, flags=flags)
+        # Players type "i came to help" as often as "I came to help": both are restated.
+        value = re.sub(pattern, replacement, value, flags=re.IGNORECASE)
     return value
 
 

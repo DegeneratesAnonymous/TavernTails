@@ -51,11 +51,17 @@ async function json<T>(path: string, init?: RequestInit): Promise<T | null> {
   }
 }
 
-export const fetchSuggestion = (sessionId: string, previous: string[]) =>
-  json<Suggestion>(`/sessions/${sessionId}/suggest-action`, { method: 'POST', body: JSON.stringify({ previous }) })
+export const fetchSuggestion = (sessionId: string, previous: string[], characterId?: number | null) =>
+  json<Suggestion>(`/sessions/${sessionId}/suggest-action`, {
+    method: 'POST',
+    body: JSON.stringify({ previous, character_id: characterId ?? null }),
+  })
 
-export const fetchNotice = (sessionId: string) =>
-  json<{ notice: string }>(`/sessions/${sessionId}/notice`, { method: 'POST' })
+export const fetchNotice = (sessionId: string, characterId?: number | null) =>
+  json<{ notice: string }>(`/sessions/${sessionId}/notice`, {
+    method: 'POST',
+    body: JSON.stringify({ character_id: characterId ?? null }),
+  })
 
 export const fetchRecap = (sessionId: string) => json<Recap>(`/sessions/${sessionId}/recap`)
 

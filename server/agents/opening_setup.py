@@ -1059,8 +1059,7 @@ def build_opening_scene_contract(
         narrative = "\n\n".join([
             f"At {location}, {pc_start} pauses to examine {definite(object_name)}.",
             *sentences,
-            f"{pc_start} can {', '.join(action[0].lower() + action[1:] for action in actions[:3])}.",
-        ])
+        ])  # no list of things the character can do: the options stay as data, never in the story
     intent = source_intent or intent_from_opening(required=req, brief=brief, anchor=anch, player_name=pc)
     source_trace = build_source_trace(
         {
@@ -1669,10 +1668,15 @@ def _opening_pressure(required: dict[str, Any], npc_name: str, time_of_day: str 
         stakes = ""
         lower = ""
     evening = str(time_of_day or "").lower() in {"dusk", "evening", "night", "midnight"}
-    if "dusk" in lower or "dawn" in lower or "hour" in lower:
+    lead_gone = "the lead will be gone, and with it the only chance to act on it."
+    if "dusk" in lower:
         if evening:
             return f"{npc_name} keeps glancing at the sinking light because the lead will be gone before the next watch changes."
-        return "By dusk the lead will be gone, and with it the only chance to act on it."
+        return f"By dusk {lead_gone}"
+    if "dawn" in lower:
+        return f"By dawn {lead_gone}"
+    if "hour" in lower:
+        return f"Within the hour {lead_gone}"
     if "road" in lower or "pass" in lower or "close" in lower:
         return f"By dusk, the pass wardens will close the road and {_mid_sentence(npc_name)} will lose the only cooperative witness."
     if "harbor" in lower or "envoy" in lower:

@@ -24,12 +24,23 @@ def _clean_npc(npc: Any) -> Any:
     return {k: v for k, v in npc.items() if k not in GM_ONLY_NPC_KEYS} if isinstance(npc, dict) else npc
 
 
+_HIDDEN_NPC_KEYS = GM_ONLY_NPC_KEYS | {"known_information", "current_goal", "hidden_pressure", "gm_notes", "notes"}
+
+
+def _strip_hidden(value: Any) -> Any:
+    """``value`` with every GM-only key removed at any depth (a generated NPC keeps its notes inside ``traits``)."""
+    if isinstance(value, dict):
+        return {k: _strip_hidden(v) for k, v in value.items() if k not in _HIDDEN_NPC_KEYS}
+    if isinstance(value, list):
+        return [_strip_hidden(v) for v in value]
+    return value
+
+
 def player_npc_list(npcs: Any) -> Any:
     """``npcs.json`` as a player may read it: the DM's notes on what each NPC knows, wants and hides are removed."""
     if not isinstance(npcs, list):
         return npcs
-    hidden = GM_ONLY_NPC_KEYS | {"known_information", "current_goal", "hidden_pressure"}
-    return [{k: v for k, v in npc.items() if k not in hidden} if isinstance(npc, dict) else npc for npc in npcs]
+    return [_strip_hidden(npc) if isinstance(npc, dict) else npc for npc in npcs]
 
 
 def player_view(scene: Any) -> Any:

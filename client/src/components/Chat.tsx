@@ -40,7 +40,7 @@ type Props = {
   currentUserId?: number | null
   composerInject?: string | null
   /** Show the Suggest button, who-is-waiting line and table safety above the box (play screen only). */
-  assist?: { sceneKey?: string; playerReady?: boolean; showSuggest?: boolean } | null
+  assist?: { sceneKey?: string; playerReady?: boolean; showSuggest?: boolean; characterId?: number | null } | null
   composerPlaceholder?: string
   onComposerInjectConsumed?: () => void
   character?: CharacterSummary | null
@@ -823,6 +823,7 @@ export default function Chat({sessionId, variant = 'full', aboveComposer, prompt
             sceneKey={assist.sceneKey}
             playerReady={assist.playerReady}
             showSuggest={assist.showSuggest}
+            characterId={assist.characterId}
             label={promptLabel}
           />
         ) : promptLabel ? <div className="chat-composer-prompt">{promptLabel}</div> : null}

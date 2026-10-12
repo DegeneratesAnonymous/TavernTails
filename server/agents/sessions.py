@@ -526,6 +526,16 @@ def _strip_prompt_from_body(scene: dict) -> dict:
     return {**scene, "narrative_body": cleaned, "text": f"{cleaned}\n\n{prompt}".strip()}
 
 
+def _table_names(meta: dict, messages: list) -> set[str]:
+    """The names this table acts under: rolls carry a name but no session, so they are matched on it."""
+    names = {str(getattr(m, 'sender_name', '') or '') for m in messages}
+    for member in meta.get('members', []) or []:
+        names.add(str(member.get('character_name') or ''))
+        user = db.get_user_by_identifier(_normalize_email(member.get('email'))) if member.get('email') else None
+        names.add(str(getattr(user, 'username', '') or ''))
+    return {n.strip().lower() for n in names if n and n.strip()}
+
+
 def _opening_was_patched(scene: dict) -> bool:
     """True when the opening was assembled by fallbacks and repairs rather than written whole by the model."""
     debug = scene.get("generation_debug") or {}
@@ -2956,6 +2966,9 @@ async def _start_session_impl(session_id: str, payload: "StartSessionRequest", c
         campaign_contract.setdefault("campaign_scale_profile", campaign_scale_profile)
     if story_shape_profile:
         campaign_contract.setdefault("story_shape_profile", story_shape_profile)
+    if table_safety(meta).get("paused"):
+        raise HTTPException(status_code=409, detail='The table is paused')
+    campaign_contract = with_table_safety(campaign_contract, meta)
 
     # --- Context Orchestrator: assemble ranked context packet ---
     from .context_collector import summarize_active_threads, summarize_recent_world_changes
@@ -3923,7 +3936,9 @@ async def _start_session_impl(session_id: str, payload: "StartSessionRequest", c
     simulation_agent.seed_location_state(folder, scene, opening_world_state)
     simulation_agent.atomic_write_json(folder / 'last_memory_delta.json', opening_memory_delta)
     simulation_agent.append_canon_memory(folder, scene.get('id', 'opening'), opening_memory_delta)
-    scene = _compose_final_opening(
+    text_before_composition = scene.get('text')
+    scene = await run_generation(
+        _compose_final_opening,
         scene,
         required=(opening_content_bundle.get("required_content") or {}),
         opening_anchor=opening_anchor,
@@ -3933,6 +3948,14 @@ async def _start_session_impl(session_id: str, payload: "StartSessionRequest", c
         weather=weather,
         source_intent=opening_source_intent,
     )
+    if scene.get('text') != text_before_composition:
+        # The story history appended the opening before it was rewritten; it must hold what the player was shown.
+        history = _load_story_entries(folder)
+        for entry in reversed(history):
+            if entry.get('type') == 'narration' and entry.get('text') == text_before_composition:
+                entry['text'] = scene['text']
+                _write_story_entries(folder, history)
+                break
     simulation_agent.atomic_write_json(folder / 'scene.json', scene)
 
     # --- Step 6: NPC Manager — enrich profiles from Scene Director data ---
@@ -5342,6 +5365,14 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         selected_templates,
         dice_rolls=post_scene_dice_rolls,
     ))
+    try:
+        paused_now = bool(table_safety(json.loads(meta_path.read_text())).get("paused"))
+    except Exception:
+        paused_now = False
+    if paused_now:
+        # Someone paused the table while the scene was being written: nothing has been published, so drop it.
+        simulation_agent.complete_scene_lock(folder, generation_lock, "paused")
+        raise HTTPException(status_code=409, detail='The table was paused while the scene was being written')
     simulation_agent.atomic_write_json(folder / 'world_state.json', world_state)
     simulation_agent.seed_persistent_npcs(folder, new_scene)
     simulation_agent.seed_location_state(folder, new_scene, world_state)
@@ -5352,6 +5383,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
     new_scene["round_recap"] = round_recap(
         recent_messages,
         _story_roll_entries_since(campaign_id, None, _story_last_timestamp(_load_story_entries(folder))),
+        participants=_table_names(meta, recent_messages),
     )
     simulation_agent.atomic_write_json(folder / 'scene.json', new_scene)
 

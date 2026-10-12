@@ -43,22 +43,23 @@ def _name_and_role(value: Any) -> tuple[str, str]:
 
 
 def _named_in(name: str, body_lower: str) -> bool:
-    """True when the story text names the person: by full name, or by a first or last name of three letters or more."""
-    if not name:
-        return False
-    if name.lower() in body_lower:
-        return True
-    return any(len(part) >= 3 and re.search(rf"\b{re.escape(part.lower())}\b", body_lower) for part in name.split())
+    """True when the story text names the person in full ("Warden Corvin"); a title alone ("the warden") is not them."""
+    return bool(name) and bool(re.search(rf"(?<![\w]){re.escape(name.lower())}(?![\w])", body_lower))
 
 
 def _seen(name: str, sentences: list[str]) -> str:
     """The first sentence of the story that names the person, trimmed: what the player has actually seen them do."""
-    parts = [p.lower() for p in name.split() if len(p) >= 3] + [name.lower()]
+    pattern = re.compile(rf"(?<![\w]){re.escape(name.lower())}(?![\w])")
     for sentence in sentences:
-        low = sentence.lower()
-        if any(re.search(rf"\b{re.escape(p)}\b", low) for p in parts):
+        if pattern.search(sentence.lower()):
             return sentence if len(sentence) <= 140 else sentence[:137].rsplit(" ", 1)[0] + "..."
     return ""
+
+
+def _role_shown(role: str, body_lower: str) -> str:
+    """The role only when the story's own words establish it; the director's notes alone do not."""
+    words = re.findall(r"[a-z]{3,}", role.lower())
+    return role if words and any(re.search(rf"\b{w}\b", body_lower) for w in words) else ""
 
 
 def present_people(scene: dict) -> list[dict[str, str]]:
@@ -78,7 +79,7 @@ def present_people(scene: dict) -> list[dict[str, str]]:
         if not _named_in(name, low):
             continue  # not on stage in the prose: the player has not met them, so they are not listed
         seen_names.add(name.lower())
-        people.append({"name": name, "role": role, "seen": _seen(name, sentences)})
+        people.append({"name": name, "role": _role_shown(role, low), "seen": _seen(name, sentences)})
     return people[:MAX_PRESENT]
 
 

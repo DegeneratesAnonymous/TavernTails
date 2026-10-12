@@ -228,3 +228,44 @@ def test_the_prompt_is_taken_out_of_the_prose():
     cleaned = sessions._strip_prompt_from_body(scene)
     assert cleaned["narrative_body"] == "He waits.\n\nA bell tolls."
     assert sessions._strip_prompt_from_body({"narrative_body": "Nothing to strip.", "player_prompt": "x"})["narrative_body"] == "Nothing to strip."
+
+
+def test_each_deadline_is_kept_as_it_was_given():
+    base = {"starting_location": "Gate", "inciting_event": "A bell rings."}
+
+    def line(stakes, time="day"):
+        return build_opening_scene_contract(required={**base, "specific_stakes": stakes}, anchor={}, campaign_brief={},
+                                            player_name="Ari", time_of_day=time)["pressure_or_timer"]
+
+    assert line("The gate opens at dawn.").startswith("By dawn")
+    assert line("The trail vanishes in an hour.").startswith("Within the hour")
+    assert line("The doors lock at dusk.").startswith("By dusk")
+    assert "sinking light" in line("The doors lock at dusk.", time="evening")
+
+
+def test_lowercase_first_person_answers_are_restated_too():
+    assert first_to_third("i came to find my sister") == "they came to find their sister"
+    assert anchor_sentences({"arrival_reason": "i came to find my sister"}, "Maris") == (
+        "Maris did not come by chance: they came to find their sister.")
+
+
+def test_the_authored_object_fallback_has_no_list_of_options_either():
+    required = {"starting_location": "Alderbrook", "approved_object": "stopped brass pocket watch",
+                "field_provenance": {"approved_object": "user"}, "inciting_event": "Every clock stopped at breakfast.",
+                "first_clue_or_question": "Who wound the watch last?"}
+    body = build_opening_scene_contract(required=required, anchor={"character_name": "Ari"}, campaign_brief={}, player_name="Ari")["opening_narrative"]
+    assert " can " not in body and "pocket watch" in body
+
+
+@pytest.mark.parametrize("time, sentence, bad", [
+    ("day", "Night has fallen over the market.", True),
+    ("day", "Moonlight spills across the stones.", True),
+    ("day", "The sun is bright and the day is clear.", False),
+    ("night", "Sunshine floods the market.", True),
+    ("night", "A single lantern burns in the dark.", False),
+])
+def test_plain_day_and_night_contradictions_are_rejected(time, sentence, bad):
+    draft = GOOD_DRAFT.replace("the morning is cold enough that breath shows in the air", sentence.rstrip("."))
+    facts = _facts(time_of_day=time)
+    issues = " ".join(scene_weaver.check_woven(draft, facts)).lower()
+    assert ("although the scene happens" in issues) is bad

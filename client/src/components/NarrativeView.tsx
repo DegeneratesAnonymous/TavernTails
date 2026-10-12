@@ -66,6 +66,8 @@ type Props = {
   sessionId?: string | null
   /** The names this player acts under; only their own actions in "Last round" offer a clarification. */
   mine?: string[]
+  /** The character the player is acting as, when they hold more than one. */
+  characterId?: number | null
   entities?: EntityHint[]
   presentationMode?: 'read' | 'play' | 'world'
   focusMode?: boolean
@@ -137,7 +139,7 @@ function readTextSize(): TextSize {
 
 const canSpeak = () => typeof window !== 'undefined' && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined'
 
-export default function NarrativeView({sessionId, mine = [], entities = [], presentationMode = 'play', focusMode = false, onExitRead}: Props){
+export default function NarrativeView({sessionId, mine = [], characterId = null, entities = [], presentationMode = 'play', focusMode = false, onExitRead}: Props){
   // Scene ownership is intentionally local: this component fetches and renders
   // prose/art, then broadcasts scene metadata for the surrounding play layout.
   const [scene, setScene] = useState<Scene|null>(null)
@@ -174,9 +176,9 @@ export default function NarrativeView({sessionId, mine = [], entities = [], pres
     setNotice('')
     if (!sessionId || !scene?.id || presentationMode !== 'play') return
     let alive = true
-    void fetchNotice(sessionId).then(result => { if (alive && result?.notice) setNotice(result.notice) })
+    void fetchNotice(sessionId, characterId).then(result => { if (alive && result?.notice) setNotice(result.notice) })
     return () => { alive = false }
-  }, [sessionId, scene?.id, presentationMode])
+  }, [sessionId, scene?.id, presentationMode, characterId])
 
   // Stop reading aloud when the scene changes or the view goes away.
   useEffect(() => {
