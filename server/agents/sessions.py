@@ -1820,8 +1820,14 @@ def _build_opening_setup_questionnaire(folder: Path, meta: dict, setup: dict | N
     # model call read what the player actually wrote; any failure keeps the seed we already have.
     # The world skeleton prepares this seed in the background (with the hidden truth in mind, so the first
     # clue points at something real); use it once, otherwise read the premise now.
-    campaign = world_skeleton.wait_for_opening(campaign)
-    extracted = world_skeleton.take_opening_seed(campaign)
+    prior_seed = (setup or {}).get("seed") if isinstance((setup or {}).get("seed"), dict) else None
+    if prior_seed:
+        # Rebuilding for a different character: the place and trouble were already chosen (and the
+        # prepared seed already taken), so keep them instead of drawing a second, different opening.
+        extracted = prior_seed
+    else:
+        campaign = world_skeleton.wait_for_opening(campaign)
+        extracted = world_skeleton.take_opening_seed(campaign)
     if not extracted:
         truth = world_skeleton.hidden_truth(campaign)
         # "Stick to what I wrote": the seed may describe a person by role but not invent a name.
@@ -2016,6 +2022,21 @@ def _setup_build_lock(session_id: str) -> threading.Lock:
         return _SETUP_BUILD_LOCKS.setdefault(session_id, threading.Lock())
 
 
+def _has_current_questionnaire(meta: dict) -> bool:
+    """A saved questionnaire that was built for the character now seated (or before this was recorded).
+
+    Questions are prepared as soon as they are owed, which can be before a character is chosen; choosing
+    one afterwards must not leave the generic "the party" questions in place.
+    """
+    setup = meta.get("opening_setup") or {}
+    if not setup.get("questionnaire"):
+        return False
+    built_for = setup.get("questionnaire_character_id")
+    if built_for is None or setup.get("completed"):
+        return True
+    return str(built_for) == str(_selected_character_from_meta(meta).get("id") or "")
+
+
 def _prepare_opening_questionnaire(session_id: str) -> dict:
     """The session's opening questionnaire, building and saving it if nobody has yet.
 
@@ -2027,7 +2048,7 @@ def _prepare_opening_questionnaire(session_id: str) -> dict:
     with _setup_build_lock(session_id):
         meta = json.loads(meta_path.read_text())
         setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
-        if setup.get("completed") or setup.get("questionnaire"):
+        if setup.get("completed") or _has_current_questionnaire(meta):
             return meta
         # A build that failed while this caller waited for the lock is shared, not run again: a retry is
         # the player's choice (/opening-setup/prepare clears the record), so nobody lands back in the
@@ -2036,6 +2057,7 @@ def _prepare_opening_questionnaire(session_id: str) -> dict:
         if failed.get("state") == "failed":
             raise _SetupPrepError(str(failed.get("error") or "The opening questions could not be prepared."))
         built_setup = dict(setup)
+        built_for = str(_selected_character_from_meta(meta).get("id") or "")
         try:
             questionnaire = _build_opening_setup_questionnaire(folder, meta, built_setup)
         except Exception as err:  # noqa: BLE001 - recorded for everyone waiting, then re-raised
@@ -2045,8 +2067,9 @@ def _prepare_opening_questionnaire(session_id: str) -> dict:
         # Re-read: the build took a while and other requests may have written the meta meanwhile.
         meta = json.loads(meta_path.read_text())
         setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
-        if not setup.get("completed") and not setup.get("questionnaire"):
+        if not setup.get("completed") and not _has_current_questionnaire(meta):
             setup["questionnaire"] = questionnaire
+            setup["questionnaire_character_id"] = built_for
             setup["questionnaire_id"] = questionnaire.get("questionnaire_id")
             setup["campaign_brief"] = questionnaire.get("campaign_brief") or {}
             if built_setup.get("seed"):
@@ -2068,9 +2091,14 @@ def _run_setup_prep(session_id: str) -> None:
     _SETUP_PREP[session_id] = {"state": "ready", "error": None}
 
 
-def _opening_setup_prep_status(session_id: str, setup: dict, *, start: bool = True) -> dict:
+def _opening_setup_prep_status(session_id: str, meta: dict, *, start: bool = True) -> dict:
     """Where the opening questions stand: ready, preparing (started here if needed) or failed."""
-    if setup.get("questionnaire") or setup.get("completed"):
+    setup = meta.get("opening_setup") or {}
+    if setup.get("completed") or _has_current_questionnaire(meta):
+        return {"state": "ready", "error": None, "elapsed_s": 0}
+    if is_player_run_mode(session_id):
+        # A human GM runs this table: opening the page must not queue model work. The questions are
+        # built only if the player asks for them.
         return {"state": "ready", "error": None, "elapsed_s": 0}
     with _SETUP_PREP_GUARD:
         prep = _SETUP_PREP.get(session_id) or {}
@@ -2105,7 +2133,7 @@ def get_opening_setup(session_id: str, current_user=Depends(get_current_user)):
     setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
     if setup.get("completed"):
         return {"opening_setup": setup, "completed": True, "anchors": setup.get("anchors") or []}
-    if not setup.get("questionnaire"):
+    if not _has_current_questionnaire(meta):
         # Joins a background build if one is running, otherwise builds here.
         meta = _prepared_meta_or_503(session_id)
         setup = meta.get("opening_setup") or setup
@@ -2122,11 +2150,10 @@ def prepare_opening_setup(session_id: str, current_user=Depends(get_current_user
         raise HTTPException(status_code=404, detail='Session not found')
     meta = json.loads(meta_path.read_text())
     _require_session_member(meta, current_user)
-    setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
     with _SETUP_PREP_GUARD:
         if (_SETUP_PREP.get(session_id) or {}).get("state") == "failed":
             _SETUP_PREP.pop(session_id, None)
-    return _opening_setup_prep_status(session_id, setup)
+    return _opening_setup_prep_status(session_id, meta)
 
 
 @router.post('/{session_id}/opening-setup')
@@ -2666,7 +2693,7 @@ def get_start_status(session_id: str, current_user=Depends(get_current_user)):
     }
     if state == "needs_setup":
         # The questions are owed: have them ready by the time the player presses "Continue setup".
-        result["setup"] = _opening_setup_prep_status(session_id, setup)
+        result["setup"] = _opening_setup_prep_status(session_id, json.loads(meta_path.read_text()))
     return result
 
 

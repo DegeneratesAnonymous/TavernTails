@@ -139,3 +139,20 @@ test('a click that is lost on a server that prepares ahead gives the button back
     expect(screen.getByRole('button', { name: 'Answer the opening questions' })).toBeEnabled()
   } finally { server.restore(); jest.useRealTimers() }
 })
+
+test('a click in flight ends when the server then reports the preparation failed', async () => {
+  const server = mockServer([
+    status({ state: 'needs_setup', setup: { state: 'ready', error: null, elapsed_s: 0 } }),
+    status({ state: 'needs_setup', setup: { state: 'failed', error: 'model unavailable', elapsed_s: 0 } }),
+    status({ state: 'needs_setup', setup: { state: 'preparing', error: null, elapsed_s: 1 } }),
+    status({ state: 'needs_setup', setup: { state: 'ready', error: null, elapsed_s: 0 } }),
+  ])
+  try {
+    render(<SceneStartProgress sessionId="s1" onReady={jest.fn()} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Answer the opening questions' }))
+    expect(await screen.findByRole('alert', {}, { timeout: 5000 })).toHaveTextContent('The opening questions didn’t come together')
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    // Once preparation succeeds the button is usable again rather than stuck on "Opening…".
+    expect(await screen.findByRole('button', { name: 'Answer the opening questions' }, { timeout: 8000 })).toBeEnabled()
+  } finally { server.restore() }
+}, 20000)

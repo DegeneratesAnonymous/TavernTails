@@ -83,6 +83,11 @@ export default function SceneStartProgress({ sessionId, onReady }: Props) {
   // the questions inside that very request, which can legitimately run for minutes; the dashboard swaps
   // this screen out when that request finishes or fails, so no timer may re-enable the button early.
   const preparesAhead = Boolean(status?.setup)
+  const setupState = status?.setup?.state
+  // A failure (or a fresh preparation after Try again) ends the click that was in flight.
+  useEffect(() => {
+    if (setupState === 'failed' || setupState === 'preparing') setOpening(false)
+  }, [setupState])
   useEffect(() => {
     if (!opening || !preparesAhead) return
     const timer = setTimeout(() => setOpening(false), OPENING_TIMEOUT_MS)

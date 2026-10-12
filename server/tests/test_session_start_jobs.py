@@ -249,3 +249,68 @@ def test_background_preparation_uses_bounded_daemon_workers_not_a_thread_per_ses
         release.set()
         assert _wait_for(lambda: client.get(f"/sessions/{second}/start-status", headers=headers2).json()["setup"]["state"] == "ready")
         assert started == [first, second]
+
+
+def test_questions_prepared_before_a_character_is_chosen_are_rebuilt_for_the_character(monkeypatch):
+    """Preparing starts as soon as the questions are owed, which can be before a character is seated; the
+    generic "the party" questions must not stay in place once one is."""
+    from server import db
+    from server.tests.test_opening_setup import _ensure_user
+
+    real_build = sessions._build_opening_setup_questionnaire
+    seen: list[tuple[str, dict | None]] = []
+
+    def recording_build(folder, meta, setup=None):
+        seen.append((sessions._selected_character_from_meta(meta).get("name", ""), dict((setup or {}).get("seed") or {}) or None))
+        return real_build(folder, meta, setup)
+
+    monkeypatch.setattr(sessions, "_build_opening_setup_questionnaire", recording_build)
+    with TestClient(main.app) as client:
+        session_id, headers = _session(client, "setup-prep-character@example.com")
+        status_url = f"/sessions/{session_id}/start-status"
+        meta_path = sessions.BASE / session_id / "meta.json"
+        meta = json.loads(meta_path.read_text())
+        original_members = meta["members"]
+        meta["members"] = [{**m, "character_id": None, "character_name": None} for m in original_members]  # nobody seated yet
+        meta_path.write_text(json.dumps(meta))
+        sessions._START_STATUS.pop(session_id, None)
+        sessions._SETUP_PREP.pop(session_id, None)
+
+        client.get(status_url, headers=headers)
+        assert _wait_for(lambda: client.get(status_url, headers=headers).json()["setup"]["state"] == "ready")
+        first_call = len(seen)
+        assert first_call == 1 and seen[0][0] == "the party"
+
+        # Seating a character makes the prepared questions stale: the next status poll rebuilds them.
+        user = _ensure_user("setup-prep-character@example.com")
+        character = db.create_character(owner_id=user.id, name="Late Arrival", level=2, class_name="Bard", sheet={})
+        assert client.post(f"/sessions/{session_id}/character", headers=headers, json={"character_id": character.id}).status_code == 200
+        polled = client.get(status_url, headers=headers).json()["setup"]
+        assert polled["state"] == "preparing"
+        assert _wait_for(lambda: client.get(status_url, headers=headers).json()["setup"]["state"] == "ready")
+        assert len(seen) == 2 and seen[1][0] == "Late Arrival"
+        assert seen[1][1] == (json.loads(meta_path.read_text())["opening_setup"].get("seed") or None), "the chosen opening is kept, not redrawn"
+
+        # Nothing changed since: no further rebuilds.
+        client.get(status_url, headers=headers)
+        client.get(f"/sessions/{session_id}/opening-setup", headers=headers)
+        assert len(seen) == 2
+
+
+def test_player_run_tables_do_not_start_preparing_questions_on_their_own(monkeypatch):
+    from server import db
+
+    builds: list[str] = []
+    monkeypatch.setattr(sessions, "_build_opening_setup_questionnaire", lambda folder, meta, setup=None: builds.append(folder.name) or {"questionnaire_id": "q", "questions": [], "campaign_brief": {}})
+    with TestClient(main.app) as client:
+        session_id, headers = _session(client, "setup-prep-player-run@example.com")
+        meta = json.loads((sessions.BASE / session_id / "meta.json").read_text())
+        campaign = db.get_campaign_by_id(str(meta["campaign_id"]))
+        db.set_campaign_settings(campaign.id, campaign.owner_id, {"player_run_mode": True})
+        sessions._START_STATUS.pop(session_id, None)
+        sessions._SETUP_PREP.pop(session_id, None)
+
+        status = client.get(f"/sessions/{session_id}/start-status", headers=headers).json()
+        assert status["state"] == "needs_setup" and status["setup"]["state"] == "ready"
+        time.sleep(0.3)
+        assert builds == [], "opening a human-GM table must not queue model work"

@@ -1187,6 +1187,11 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     setOpeningSetupError(null)
     try {
       const res = await apiFetch(`/sessions/${sessionId}/opening-setup`)
+      if (res.status === 503) {
+        // The questions could not be prepared. Stay on the gameplay screen: its card shows the reason
+        // and the Try again button, which the setup screen below does not have.
+        return
+      }
       if (!res.ok) {
         const err = await res.json().catch(() => ({} as any))
         throw new Error(err?.detail || 'Failed to load opening setup')
