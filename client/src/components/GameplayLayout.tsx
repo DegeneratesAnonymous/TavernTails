@@ -10,6 +10,8 @@ import ContextDebugPanel from './ContextDebugPanel'
 import StoryDashboard, { StoryDashboardData } from './StoryDashboard'
 import Chat from './Chat'
 import { apiFetch, buildWsUrl } from '../api'
+import RecapDialog from './scene/RecapDialog'
+import { markSeen, shouldShowRecap } from './scene/sceneAssistApi'
 import SiteMenu from './SiteMenu'
 import SiteNavMenu from './SiteNavMenu'
 type Props = {
@@ -142,6 +144,8 @@ export default function GameplayLayout({
   const [campaignTitle, setCampaignTitle] = useState('Current Campaign')
   const [waitingOverride, setWaitingOverride] = useState<{player: string, expiresAt: number} | null>(null)
   const [suggestions, setSuggestions] = useState<string[]>([])
+  const [sceneKey, setSceneKey] = useState('')
+  const [recapOpen, setRecapOpen] = useState(false)
   const [turnState, setTurnState] = useState<{order: string[]; active?: string | null}>({order: [], active: null})
   const [remoteRoll, setRemoteRoll] = useState<{by?: string | null; total?: number | null; expression?: string | null} | null>(null)
   const [sceneCues, setSceneCues] = useState<SceneCue[]>([])
@@ -298,6 +302,21 @@ export default function GameplayLayout({
       window.removeEventListener('narrative:suggestions', handler)
     }
   },[])
+
+  // Coming back after a while: show where the story stands before dropping the player into it.
+  useEffect(() => {
+    if (!sessionId) return
+    if (shouldShowRecap(sessionId)) setRecapOpen(true)
+    markSeen(sessionId)
+    const timer = window.setInterval(() => markSeen(sessionId), 5 * 60 * 1000)
+    const onLeave = () => markSeen(sessionId)
+    window.addEventListener('pagehide', onLeave)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('pagehide', onLeave)
+      markSeen(sessionId)
+    }
+  }, [sessionId])
 
   useEffect(()=>{
     const handler = (event: Event)=>{
@@ -648,6 +667,7 @@ export default function GameplayLayout({
       if (!s) return
       // A real scene has arrived (the setup placeholder does not count), so the session has started.
       if (!s.setup_pending && (s.narrative_body || s.text)) setSessionStarted(true)
+      setSceneKey(String(s.id || ''))
       const clock = s.world_clock || {}
       const currentSituation = s.current_situation || {}
       // Prefer world_moves (new field); fall back to hooks (legacy)
@@ -832,7 +852,6 @@ export default function GameplayLayout({
   const restContextAllowed = /\b(camp|downtime|travel|safe[_\s-]?location|post[_\s-]?combat|rest|make camp|safe|quiet|shelter)\b/.test(restContextText)
     && !/\b(combat[_\s-]?round|combat[_\s-]?setup|danger|imminent|hostile|threatened)\b/.test(restContextText)
   const playerInitiativeMod = Math.floor(((Number(playerStats?.stats?.dex) || 10) - 10) / 2)
-  const resolutionOptions: string[] = []
   const contextCards = [
     {key: 'objective', label: 'Objective', value: sceneSummary.objective},
     {key: 'observed', label: 'Observed', value: sceneSummary.observed},
@@ -846,12 +865,6 @@ export default function GameplayLayout({
     if(!text) return ''
     const first = text.match(/^(.+?[.!?])(\s|$)/)?.[1] || text
     return first.length > 130 ? `${first.slice(0, 127).trim()}...` : first
-  }
-  const calmActionText = (value: string) => {
-    const text = String(value || '').trim().replace(/\s+/g, ' ')
-    if(!text) return ''
-    if(text === text.toUpperCase()) return text.toLowerCase().replace(/^\w/, c => c.toUpperCase())
-    return text
   }
   const rollSkillLabel = (roll: {type: string; skill?: string}) => (
     String(roll.skill || roll.type || 'Roll').replace(/\bcheck\b/ig, '').trim() || 'Roll'
@@ -1726,6 +1739,11 @@ export default function GameplayLayout({
                   </>
                 )}
               </div>
+              {sessionId && sessionStarted && (
+                <button className="btn btn-secondary btn-sm" type="button" onClick={() => setRecapOpen(true)}>
+                  Previously
+                </button>
+              )}
               {/* Ready button lives here — far from the chat send button */}
               {sessionId && (
                 <button
@@ -1790,6 +1808,7 @@ export default function GameplayLayout({
                 <section className="scene-area" aria-label="Scene view">
                   <NarrativeView
                     sessionId={sessionId}
+                    mine={[playerStats?.name || '', currentUsername || ''].filter(Boolean)}
                     entities={entityHints}
                     presentationMode={sessionMode}
                     focusMode={focusMode}
@@ -2067,6 +2086,7 @@ export default function GameplayLayout({
                               >
                                 <span>{title}</span>
                                 <strong>{rollExpressionFor(roll)}</strong>
+                                {roll.reason ? <p className="resolution-check-why">{roll.reason}</p> : null}
                                 <div className="resolution-check-actions">
                                   <button type="button" disabled={isRolling} onClick={() => handleRollDrawer(roll, i)}>
                                     {isRolling ? 'Rolling' : 'Roll'}
@@ -2101,40 +2121,6 @@ export default function GameplayLayout({
                             <strong>{npc.initiative_hint || 'watching'}</strong>
                           </div>
                         ))}
-                      </section>
-                    ) : null}
-
-                    {/* Opening / New Scene Bundle */}
-                    {(situationType === 'campaign_opening' || situationType === 'new_scene_opening') && uiPayload.objective ? (
-                      <section className="resolution-section resolution-opening">
-                        <span className="resolution-section-label">Scene hook</span>
-                        {uiPayload.objective ? (
-                          <div className="resolution-row">
-                            <span>Problem</span>
-                            <strong>{uiPayload.objective}</strong>
-                          </div>
-                        ) : null}
-                        {uiPayload.key_npc ? (
-                          <div className="resolution-row">
-                            <span>Key NPC</span>
-                            <strong>{uiPayload.key_npc}</strong>
-                          </div>
-                        ) : null}
-                        {uiPayload.starting_question ? (
-                          <div className="resolution-row resolution-row--question">
-                            <span>First question</span>
-                            <strong>{uiPayload.starting_question}</strong>
-                          </div>
-                        ) : null}
-                        {Array.isArray(uiPayload.suggested_first_actions) && uiPayload.suggested_first_actions.length > 0 ? (
-                          <div className="resolution-lead-list">
-                            {uiPayload.suggested_first_actions.slice(0, 3).map((action: string, i: number) => (
-                              <button key={i} type="button" className="resolution-lead" onClick={() => setActionDraft(action)}>
-                                {calmActionText(action)}
-                              </button>
-                            ))}
-                          </div>
-                        ) : null}
                       </section>
                     ) : null}
 
@@ -2177,55 +2163,17 @@ export default function GameplayLayout({
                             {uiPayload.npc_attitude || 'neutral'}
                           </strong>
                         </div>
-                        {uiPayload.npc_goal ? (
-                          <div className="resolution-row">
-                            <span>Wants</span>
-                            <strong>{uiPayload.npc_goal}</strong>
-                          </div>
-                        ) : null}
-                        {Array.isArray(uiPayload.known_leverage) && uiPayload.known_leverage.length > 0 ? (
-                          <div className="resolution-row">
-                            <span>Leverage</span>
-                            <strong>{uiPayload.known_leverage.slice(0, 2).join(', ')}</strong>
-                          </div>
-                        ) : null}
-                        {Array.isArray(uiPayload.possible_checks) && uiPayload.possible_checks.length > 0 ? (
-                          <div className="resolution-lead-list">
-                            {uiPayload.possible_checks.slice(0, 3).map((check: string, i: number) => (
-                              <button key={i} type="button" className="resolution-lead"
-                                onClick={() => setActionDraft(`I attempt ${check} against ${uiPayload.npc_name}`)}>
-                                {check}
-                              </button>
-                            ))}
-                          </div>
-                        ) : null}
                       </section>
                     ) : null}
 
                     {/* Investigation Bundle */}
-                    {(situationType === 'investigation' || situationType === 'mystery_reveal') && (uiPayload.mystery_question || (uiPayload.visible_clues?.length > 0)) ? (
+                    {(situationType === 'investigation' || situationType === 'mystery_reveal') && uiPayload.mystery_question ? (
                       <section className="resolution-section resolution-investigation">
                         <span className="resolution-section-label">Investigation</span>
                         {uiPayload.mystery_question ? (
                           <div className="resolution-row resolution-row--question">
                             <span>Question</span>
                             <strong>{uiPayload.mystery_question}</strong>
-                          </div>
-                        ) : null}
-                        {Array.isArray(uiPayload.visible_clues) && uiPayload.visible_clues.length > 0 ? (
-                          <div className="resolution-lead-list">
-                            {uiPayload.visible_clues.slice(0, 4).map((clue: string, i: number) => (
-                              <button key={i} type="button" className="resolution-lead"
-                                onClick={() => setActionDraft(`I examine ${clue}`)}>
-                                {clue}
-                              </button>
-                            ))}
-                          </div>
-                        ) : null}
-                        {uiPayload.time_pressure ? (
-                          <div className="resolution-row resolution-row--urgent">
-                            <span>Time pressure</span>
-                            <strong>{uiPayload.time_pressure}</strong>
                           </div>
                         ) : null}
                       </section>
@@ -2270,44 +2218,7 @@ export default function GameplayLayout({
                       </section>
                     ) : null}
 
-                    {/* Legacy: investigation leads from situation strip (fallback when no bundle) */}
-                    {!uiPayload.visible_clues && situation.visibleClues && situation.visibleClues.length > 0 ? (
-                      <section className="resolution-section">
-                        <span className="resolution-section-label">Investigation leads</span>
-                        <div className="resolution-lead-list">
-                          {situation.visibleClues.slice(0, 4).map((lead, i) => (
-                            <button
-                              key={i}
-                              type="button"
-                              className="resolution-lead"
-                              onClick={() => setActionDraft(`I examine ${lead}`)}
-                            >
-                              {lead}
-                            </button>
-                          ))}
-                        </div>
-                      </section>
-                    ) : null}
-
-                    {resolutionOptions.length > 0 ? (
-                      <section className="resolution-section">
-                        <span className="resolution-section-label">Approaches</span>
-                        <div className="resolution-option-list">
-                          {resolutionOptions.map((option, i) => (
-                            <button
-                              key={`${option}-${i}`}
-                              type="button"
-                              className="resolution-option"
-                              onClick={() => setActionDraft(option)}
-                            >
-                              {option}
-                            </button>
-                          ))}
-                        </div>
-                      </section>
-                    ) : null}
-
-                    {!remoteRoll && diceRolls.length === 0 && !encounterActive && !observedSummary && resolutionOptions.length === 0 ? (
+                    {!remoteRoll && diceRolls.length === 0 && !encounterActive && !observedSummary ? (
                       <section className="resolution-section resolution-empty">
                         <span className="resolution-section-label">No check required</span>
                         <p>Describe what {playerStats?.name || 'the character'} does next. TavernTails will call for resolution when the fiction needs it.</p>
@@ -2424,6 +2335,8 @@ export default function GameplayLayout({
                     variant="dock"
                     character={playerStats ?? null}
                     promptLabel={playerStats?.name ? `What does ${playerStats.name} do?` : 'What do you do?'}
+                    composerPlaceholder="Say what you do, in your own words…"
+                    assist={{ sceneKey, playerReady }}
                     aboveComposer={null}
                     composerInject={actionDraft}
                     onComposerInjectConsumed={() => setActionDraft(null)}
@@ -2745,6 +2658,7 @@ export default function GameplayLayout({
           ) : null}
         </>
       )}
+      <RecapDialog sessionId={sessionId} open={recapOpen} onClose={() => setRecapOpen(false)} />
     </div>
   )
 }

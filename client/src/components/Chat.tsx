@@ -9,6 +9,7 @@ import MessageList from './chat/MessageList'
 import PinnedBar from './chat/PinnedBar'
 import Composer from './chat/Composer'
 import { ChatFilter, selectMessages } from './chat/messageFilters'
+import ActionAssist from './scene/ActionAssist'
 import NpcSnapshotModal from './chat/NpcSnapshotModal'
 import {CharacterSummary} from './CharacterPanel'
 
@@ -38,6 +39,9 @@ type Props = {
   promptLabel?: string
   currentUserId?: number | null
   composerInject?: string | null
+  /** Show the Suggest button, who-is-waiting line and table safety above the box (play screen only). */
+  assist?: { sceneKey?: string; playerReady?: boolean; showSuggest?: boolean } | null
+  composerPlaceholder?: string
   onComposerInjectConsumed?: () => void
   character?: CharacterSummary | null
   compactLog?: boolean
@@ -132,7 +136,7 @@ const ADVANCED_TOOLS: AdvancedTool[] = [
 
 const ADVANCED_TOOLS_FOR_PANEL = ADVANCED_TOOLS.map((t) => ({ id: t.id, label: t.label, description: t.description }))
 
-export default function Chat({sessionId, variant = 'full', aboveComposer, promptLabel, currentUserId, composerInject, onComposerInjectConsumed, character, compactLog = false, onExpandLog, onMessageSent, showSystemTab = false}: Props){
+export default function Chat({sessionId, variant = 'full', aboveComposer, promptLabel, currentUserId, composerInject, onComposerInjectConsumed, assist, composerPlaceholder, character, compactLog = false, onExpandLog, onMessageSent, showSystemTab = false}: Props){
   // Chat owns both persisted messages and local-only status/tool messages.
   // The dock variant hides heavy tools so GameplayLayout can use it as a log.
   const [messages, setMessages] = useState<Msg[]>([])
@@ -810,8 +814,18 @@ export default function Chat({sessionId, variant = 'full', aboveComposer, prompt
         </div>
       ) : null}
 
+      {assist && sessionId ? (
+        <ActionAssist
+          sessionId={sessionId}
+          value={value}
+          onFill={setValue}
+          sceneKey={assist.sceneKey}
+          playerReady={assist.playerReady}
+          showSuggest={assist.showSuggest}
+        />
+      ) : null}
       {promptLabel ? <div className="chat-composer-prompt">{promptLabel}</div> : null}
-      <Composer sessionId={sessionId} value={value} onChange={setValue} onSend={() => handleSend()} rolling={rolling} character={character} />
+      <Composer sessionId={sessionId} value={value} onChange={setValue} onSend={() => handleSend()} rolling={rolling} character={character} placeholder={composerPlaceholder} />
     </div>
   )
 }

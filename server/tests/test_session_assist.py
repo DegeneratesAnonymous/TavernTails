@@ -225,6 +225,7 @@ def test_round_shows_who_has_acted_and_who_is_ready(table):
     assert by_name["Arin Quickstep"]["acted"] and by_name["Arin Quickstep"]["ready"]
     assert not by_name["Mox"]["acted"] and not by_name["Mox"]["ready"]
     assert status["waiting_on"] == ["Mox"] and status["quiet"] == ["Mox"] and not status["all_ready"]
+    assert status["paused"] is False and status["avoid"] == []
 
 
 def test_round_recap_lists_what_the_table_did_and_rolled():
@@ -257,6 +258,7 @@ def test_asking_the_story_to_leave_something_out_reaches_the_next_scene(table):
 
 def test_any_player_can_pause_but_only_the_owner_can_resume_and_the_scene_waits(table):
     assert _safety(table, "friend", kind="pause").json()["paused"] is True
+    assert table["client"].get(f"/sessions/{table['sid']}/round", headers=_auth(table["owner"])).json()["paused"] is True
     assert table["client"].post(f"/sessions/{table['sid']}/advance-scene", headers=_auth(table["owner"]), json={}).status_code == 409
     assert _safety(table, "friend", kind="resume").status_code == 403
     assert _safety(table, "owner", kind="resume").json()["paused"] is False

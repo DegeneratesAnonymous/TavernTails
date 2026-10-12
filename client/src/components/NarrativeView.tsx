@@ -2,6 +2,9 @@ import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import { buildApiUrl } from '../api'
 import './NarrativeView.css'
 import SceneStartProgress from './SceneStartProgress'
+import SceneOrientation from './scene/SceneOrientation'
+import { fetchNotice, store } from './scene/sceneAssistApi'
+import type { RoundRecap, SceneView } from './scene/sceneAssistApi'
 
 type VisualStateMeta = {
   visual_type?: string
@@ -49,6 +52,8 @@ type Scene = {
   experience_mode?: string
   memory_updates?: Record<string, any>
   dice_rolls?: any[]
+  scene_view?: SceneView
+  round_recap?: RoundRecap
 }
 
 export type EntityHint = {
@@ -59,11 +64,16 @@ export type EntityHint = {
 
 type Props = {
   sessionId?: string | null
-  showChoicesInScene?: boolean
+  /** The names this player acts under; only their own actions in "Last round" offer a clarification. */
+  mine?: string[]
   entities?: EntityHint[]
   presentationMode?: 'read' | 'play' | 'world'
   focusMode?: boolean
   onExitRead?: () => void
+}
+
+function locationLabelForSpeech(scene: { visual_state?: { location_name?: string }; location?: unknown; title?: string }): string {
+  return scene.visual_state?.location_name || displayText(scene.location) || scene.title || 'The scene'
 }
 
 function displayText(value: any): string {
@@ -116,12 +126,25 @@ function annotateText(text: string, entities: EntityHint[]): React.ReactNode {
   return <>{parts}</>
 }
 
-export default function NarrativeView({sessionId, showChoicesInScene = false, entities = [], presentationMode = 'play', focusMode = false, onExitRead}: Props){
+type TextSize = 's' | 'm' | 'l' | 'xl'
+const TEXT_SIZES: Record<TextSize, number> = { s: 14, m: 15.5, l: 18, xl: 21 }
+const TEXT_ORDER: TextSize[] = ['s', 'm', 'l', 'xl']
+
+function readTextSize(): TextSize {
+  const saved = store.get('tt:text-size')
+  return TEXT_ORDER.includes(saved as TextSize) ? (saved as TextSize) : 'm'
+}
+
+const canSpeak = () => typeof window !== 'undefined' && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined'
+
+export default function NarrativeView({sessionId, mine = [], entities = [], presentationMode = 'play', focusMode = false, onExitRead}: Props){
   // Scene ownership is intentionally local: this component fetches and renders
   // prose/art, then broadcasts scene metadata for the surrounding play layout.
   const [scene, setScene] = useState<Scene|null>(null)
   const [waitingForScene, setWaitingForScene] = useState(false)
-  const [choicesOpen, setChoicesOpen] = useState(false)
+  const [notice, setNotice] = useState('')
+  const [textSize, setTextSize] = useState<TextSize>(() => readTextSize())
+  const [speaking, setSpeaking] = useState(false)
   const [imageError, setImageError] = useState(false)
   const narrativeCardRef = useRef<HTMLDivElement | null>(null)
   const [bookPage, setBookPage] = useState(0)
@@ -145,6 +168,23 @@ export default function NarrativeView({sessionId, showChoicesInScene = false, en
   }, [scene?.id, sessionId])
 
   useEffect(() => { setImageError(false) }, [scene?.id])
+
+  // What this player's character picks up on: private to them, made once per scene.
+  useEffect(() => {
+    setNotice('')
+    if (!sessionId || !scene?.id || presentationMode !== 'play') return
+    let alive = true
+    void fetchNotice(sessionId).then(result => { if (alive && result?.notice) setNotice(result.notice) })
+    return () => { alive = false }
+  }, [sessionId, scene?.id, presentationMode])
+
+  // Stop reading aloud when the scene changes or the view goes away.
+  useEffect(() => {
+    return () => {
+      if (canSpeak()) window.speechSynthesis.cancel()
+      setSpeaking(false)
+    }
+  }, [scene?.id])
 
   useEffect(() => {
     if (narrativeCardRef.current) {
@@ -172,7 +212,6 @@ export default function NarrativeView({sessionId, showChoicesInScene = false, en
 
   useEffect(() => {
     if(!scene) return
-    setChoicesOpen(false)
     window.dispatchEvent(new CustomEvent('narrative:choices', {
       detail: {
         sceneId: scene.id,
@@ -283,6 +322,29 @@ export default function NarrativeView({sessionId, showChoicesInScene = false, en
 
   const hasChoices = Array.isArray(scene.choices) && scene.choices.length > 0
 
+  const changeTextSize = (delta: number) => {
+    const next = TEXT_ORDER[Math.min(TEXT_ORDER.length - 1, Math.max(0, TEXT_ORDER.indexOf(textSize) + delta))]
+    setTextSize(next)
+    store.set('tt:text-size', next)
+  }
+  const toggleSpeech = () => {
+    if (!canSpeak()) return
+    if (speaking) {
+      window.speechSynthesis.cancel()
+      setSpeaking(false)
+      return
+    }
+    const utterance = new SpeechSynthesisUtterance(`${locationLabelForSpeech(scene)}. ${(scene.narrative_body || scene.text || '').split('\n\nCitations: ')[0]}`)
+    utterance.onend = () => setSpeaking(false)
+    utterance.onerror = () => setSpeaking(false)
+    window.speechSynthesis.cancel()
+    window.speechSynthesis.speak(utterance)
+    setSpeaking(true)
+  }
+  const clarify = (text: string) => {
+    window.dispatchEvent(new CustomEvent('narrative:suggest-action', { detail: { action: text } }))
+  }
+
   const parseCitations = (text: string) => {
     const marker = '\n\nCitations: '
     const idx = text.indexOf(marker)
@@ -317,9 +379,6 @@ export default function NarrativeView({sessionId, showChoicesInScene = false, en
 
   const parsed = parseCitations(scene.narrative_body || scene.text || '')
   const narrativeParagraphs = parsed.main.split(/\n{2,}/).map(p => p.trim()).filter(Boolean)
-  // Two-column prose only helps after the body is long enough; tune this with
-  // the matching `.narrative-prose-flow--columns` CSS.
-  const narrativeWordCount = parsed.main.split(/\s+/).filter(Boolean).length
   const playerPromptFallback = splitNarrativePrompt(parsed.main)
   const playerPrompt = scene.player_prompt || playerPromptFallback.playerPrompt
 
@@ -470,15 +529,27 @@ export default function NarrativeView({sessionId, showChoicesInScene = false, en
 
             <div className="narrative-divider" aria-hidden="true">❖ ❖ ❖</div>
 
-            <div className={`narrative-prose-flow ${narrativeWordCount >= 150 ? 'narrative-prose-flow--columns' : ''}`}>
+            <div className="scene-tools" aria-label="Reading options">
+              <button type="button" onClick={() => changeTextSize(-1)} disabled={textSize === 's'} aria-label="Smaller text">A−</button>
+              <button type="button" onClick={() => changeTextSize(1)} disabled={textSize === 'xl'} aria-label="Larger text">A+</button>
+              {canSpeak() ? (
+                <button type="button" onClick={toggleSpeech} aria-pressed={speaking}>{speaking ? 'Stop reading' : 'Read aloud'}</button>
+              ) : null}
+            </div>
+
+            <div className="narrative-prose-flow">
               {narrativeParagraphs.length > 0 ? (
                 narrativeParagraphs.map((paragraph, index) => (
-                  <p key={index} className="narrative-text">{annotateText(paragraph, entities)}</p>
+                  <p key={index} className="narrative-text" style={{ fontSize: TEXT_SIZES[textSize] }}>{annotateText(paragraph, entities)}</p>
                 ))
               ) : (
-                <p className="narrative-text">{annotatedNarration}</p>
+                <p className="narrative-text" style={{ fontSize: TEXT_SIZES[textSize] }}>{annotatedNarration}</p>
               )}
             </div>
+
+            {presentationMode === 'play' ? (
+              <SceneOrientation view={scene.scene_view} recap={scene.round_recap} notice={notice} mine={mine} onClarify={clarify} />
+            ) : null}
 
             {playerPrompt && presentationMode !== 'play' ? (
               <div className="narrative-player-prompt">{playerPrompt}</div>
@@ -502,27 +573,6 @@ export default function NarrativeView({sessionId, showChoicesInScene = false, en
               </div>
             ) : null}
 
-            {showChoicesInScene && hasChoices ? (
-              <div className="narrative-choices-wrap">
-                <button
-                  type="button"
-                  className="narrative-choices-toggle"
-                  aria-expanded={choicesOpen}
-                  onClick={() => setChoicesOpen(v => !v)}
-                >
-                  {choicesOpen ? 'Hide choices' : `Show choices (${scene.choices.length})`}
-                </button>
-                {choicesOpen ? (
-                  <div className="narrative-choices">
-                    {scene.choices.map(c => (
-                      <button key={c.id} className="narrative-choice-btn" onClick={() => choose(c.id)}>
-                        {c.label}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
 
           </div>{/* /narrative-card */}
         </div>{/* /narrative-overlay */}

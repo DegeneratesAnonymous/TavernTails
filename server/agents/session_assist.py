@@ -439,8 +439,11 @@ def round_status(folder: Path, meta: dict, scene: dict) -> dict[str, Any]:
             "actions": acted.get(uid, 0) if uid is not None else 0,
             "ready": bool(ready.get(email)),
         })
+    safety = table_safety(meta)
     return {
         "members": members,
+        "paused": bool(safety.get("paused")),
+        "avoid": list(safety.get("avoid") or []),
         "waiting_on": [m["name"] for m in members if not m["ready"]],
         "quiet": [m["name"] for m in members if not m["acted"]],
         "all_ready": bool(members) and all(m["ready"] for m in members),
