@@ -2095,6 +2095,12 @@ def _mark_setup_ready(session_id: str) -> None:
 
 
 def _run_setup_prep(session_id: str) -> None:
+    if is_player_run_mode(session_id):
+        # The owner switched to a human GM after this job was queued: no model work for this table. Drop
+        # the record so the status falls back to "the click builds the questions".
+        with _SETUP_PREP_GUARD:
+            _SETUP_PREP.pop(session_id, None)
+        return
     try:
         _prepare_opening_questionnaire(session_id)
     except _SetupPrepError:

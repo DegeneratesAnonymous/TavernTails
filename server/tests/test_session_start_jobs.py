@@ -6,11 +6,33 @@ import json
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+import pytest
 from fastapi.testclient import TestClient
+from sqlmodel import create_engine
 
-from server import main
+from server import db, main
 from server.agents import sessions
 from server.tests.test_opening_setup import _auth, _create_campaign_session
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _thread_safe_database(tmp_path_factory):
+    """These tests poll the API while a background worker reads and writes the database.
+
+    Other test modules (test_db, test_admin) leave ``db.engine`` pointing at one shared in-memory
+    connection that is not safe to use from two threads at once, so a poll can corrupt a worker's
+    read (an IndexError inside SQLAlchemy). Production uses a real connection pool; give this module
+    one too, and put the shared engine back afterwards.
+    """
+    original = db.engine
+    path = tmp_path_factory.mktemp("setup-jobs") / "jobs.db"
+    db.engine = create_engine(f"sqlite:///{path}", connect_args={"check_same_thread": False})
+    db.create_db_and_tables()
+    try:
+        yield
+    finally:
+        db.engine.dispose()
+        db.engine = original
 
 
 def _session(client: TestClient, email: str) -> tuple[str, dict]:
@@ -254,7 +276,6 @@ def test_background_preparation_uses_bounded_daemon_workers_not_a_thread_per_ses
 def test_questions_prepared_before_a_character_is_chosen_are_rebuilt_for_the_character(monkeypatch):
     """Preparing starts as soon as the questions are owed, which can be before a character is seated; the
     generic "the party" questions must not stay in place once one is."""
-    from server import db
     from server.tests.test_opening_setup import _ensure_user
 
     real_build = sessions._build_opening_setup_questionnaire
@@ -298,7 +319,6 @@ def test_questions_prepared_before_a_character_is_chosen_are_rebuilt_for_the_cha
 
 
 def test_player_run_tables_do_not_start_preparing_questions_on_their_own(monkeypatch):
-    from server import db
 
     builds: list[str] = []
     monkeypatch.setattr(sessions, "_build_opening_setup_questionnaire", lambda folder, meta, setup=None: builds.append(folder.name) or {"questionnaire_id": "q", "questions": [], "campaign_brief": {}})
@@ -345,7 +365,6 @@ def test_questions_prepared_for_one_player_are_rebuilt_when_another_joins(monkey
 
 
 def test_a_failed_on_demand_build_at_a_player_run_table_is_reported_so_it_can_be_retried(monkeypatch):
-    from server import db
 
     def failing_build(folder, meta, setup=None):
         raise RuntimeError("model unavailable")
@@ -377,3 +396,23 @@ def test_a_finished_build_does_not_erase_a_failure_recorded_for_a_newer_one():
         assert sessions._SETUP_PREP[sid] == {"state": "ready", "error": None}
     finally:
         sessions._SETUP_PREP.pop(sid, None)
+
+
+def test_a_queued_job_is_dropped_if_the_table_became_player_run_before_a_worker_reached_it(monkeypatch):
+
+    builds: list[str] = []
+    monkeypatch.setattr(sessions, "_build_opening_setup_questionnaire", lambda folder, meta, setup=None: builds.append(folder.name) or {"questionnaire_id": "q", "questions": [], "campaign_brief": {}})
+    with TestClient(main.app) as client:
+        session_id, headers = _session(client, "setup-prep-late-player-run@example.com")
+        meta = json.loads((sessions.BASE / session_id / "meta.json").read_text())
+        campaign = db.get_campaign_by_id(str(meta["campaign_id"]))
+        sessions._START_STATUS.pop(session_id, None)
+        # queued while the table still had an AI storyteller...
+        sessions._SETUP_PREP[session_id] = {"state": "preparing", "error": None, "started_at": time.time(), "ended": None}
+        # ...then the owner turns it into a player-run table before a worker picks the job up
+        db.set_campaign_settings(campaign.id, campaign.owner_id, {"player_run_mode": True})
+        sessions._run_setup_prep(session_id)
+        assert builds == []
+        assert session_id not in sessions._SETUP_PREP
+        status = client.get(f"/sessions/{session_id}/start-status", headers=headers).json()
+        assert status["setup"]["state"] == "ready" and status["setup"]["builds_on_click"] is True
