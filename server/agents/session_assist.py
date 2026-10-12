@@ -136,7 +136,8 @@ def hidden_strings(scene: dict) -> list[str]:
     out: list[str] = []
     for key in GM_ONLY_SCENE_KEYS:
         out += _strings(scene.get(key))
-    director = scene.get("scene_director_data") if isinstance(scene.get("scene_director_data"), dict) else {}
+    director = scene.get("scene_director_data")
+    director = director if isinstance(director, dict) else {}
     out += _strings(director.get("hidden_pressure"))
     npcs = [director.get("primary_npc"), *(director.get("secondary_entities") or [])]
     for npc in npcs:
@@ -399,7 +400,7 @@ def build_recap(folder: Path, scene: dict, meta: dict, character: dict[str, str]
         "title": _clean(meta.get("name")),
         "character": character.get("name") or "",
         "previously": [e for e in earlier[-3:] if e],
-        "right_now": sv.get("situation") or _first_sentences(scene.get("narrative_body") or scene.get("text"), 2),
+        "right_now": sv.get("situation") or _first_sentences(str(scene.get("narrative_body") or scene.get("text") or ""), 2),
         "place": sv.get("place") or "",
         "present": sv.get("present") or [],
         "open_question": sv.get("hook") or "",

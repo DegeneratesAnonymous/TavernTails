@@ -18,6 +18,10 @@ def _clean(value: object) -> str:
     return " ".join(str(value or "").split()).strip()
 
 
+def _dict(value: Any) -> dict:
+    return value if isinstance(value, dict) else {}
+
+
 def _body(scene: dict) -> str:
     return _clean(scene.get("narrative_body") or scene.get("text"))
 
@@ -62,7 +66,7 @@ def present_people(scene: dict) -> list[dict[str, str]]:
     body = _body(scene)
     low = body.lower()
     sentences = _sentences(body)
-    director = scene.get("scene_director_data") if isinstance(scene.get("scene_director_data"), dict) else {}
+    director = _dict(scene.get("scene_director_data"))
     candidates = [director.get("primary_npc"), *(director.get("secondary_entities") or [])]
     candidates += list((scene.get("opening_scene") or {}).get("named_npcs") or [])
     people: list[dict[str, str]] = []
@@ -83,9 +87,9 @@ def open_question(scene: dict) -> str:
     explicit = _clean(scene.get("open_question"))
     if explicit:
         return explicit
-    director = scene.get("scene_director_data") if isinstance(scene.get("scene_director_data"), dict) else {}
-    bundle = scene.get("content_bundle") if isinstance(scene.get("content_bundle"), dict) else {}
-    required = bundle.get("required_content") if isinstance(bundle.get("required_content"), dict) else {}
+    director = _dict(scene.get("scene_director_data"))
+    bundle = _dict(scene.get("content_bundle"))
+    required = _dict(bundle.get("required_content"))
     for source in (scene.get("visible_clues"), director.get("player_visible_clues"), [required.get("first_clue_or_question")]):
         for item in source or []:
             text = _clean(item.get("text") if isinstance(item, dict) else item)
@@ -96,7 +100,7 @@ def open_question(scene: dict) -> str:
 
 def situation(scene: dict) -> str:
     """One line on what is going on right now, from the scene's own summary when it has one."""
-    summary = scene.get("scene_summary") if isinstance(scene.get("scene_summary"), dict) else {}
+    summary = _dict(scene.get("scene_summary"))
     for text in (summary.get("observed"), (scene.get("opening_scene") or {}).get("visible_problem")):
         text = _clean(text)
         if text:
