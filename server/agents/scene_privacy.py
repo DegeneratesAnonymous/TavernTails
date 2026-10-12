@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .scene_view import build_scene_view
+
 # Planning and secrets owned by the GM, at the top level of a scene.
 GM_ONLY_SCENE_KEYS = frozenset({
     "campaign_storyboard", "session_storyboard", "arc_plan", "scene_beat_plan", "selected_scene_beat",
@@ -43,4 +45,5 @@ def player_view(scene: Any) -> Any:
         if isinstance(director.get("secondary_entities"), list):
             director["secondary_entities"] = [_clean_npc(e) for e in director["secondary_entities"]]
         view["scene_director_data"] = director
+    view["scene_view"] = build_scene_view(scene)  # built from the story text, so it carries nothing the player has not met
     return view

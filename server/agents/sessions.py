@@ -91,6 +91,7 @@ from .story_state import (
     update_state_after_scene,
 )
 from .story_validator import validate_story_quality as validate_story_structure
+from .table_state import round_recap, table_safety, with_table_safety
 from .ui_payload_builder import build_ui_payload as build_full_ui_payload
 from .visual_director import run_visual_pipeline
 from .visual_state import load_visual_state, save_visual_state
@@ -2503,7 +2504,8 @@ def get_party(session_id: str, current_user=Depends(get_current_user)):
         'session_id': session_id,
         'members': out_members,
         'invites': out_invites,
-        'npcs': npcs,
+        # The DM's notes on what each NPC knows, wants and hides are not for the table.
+        'npcs': npcs if _is_dm(meta, current_user) else player_npc_list(npcs),
     }
 
 
@@ -4227,6 +4229,9 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         campaign_contract.setdefault("campaign_scale_profile", campaign_scale_profile)
     if story_shape_profile:
         campaign_contract.setdefault("story_shape_profile", story_shape_profile)
+    if table_safety(meta).get("paused"):
+        raise HTTPException(status_code=409, detail='The table is paused')
+    campaign_contract = with_table_safety(campaign_contract, meta)
 
     if is_player_run_mode(session_id):
         raise HTTPException(status_code=400, detail='advance-scene is not available in player-run mode')
@@ -5338,6 +5343,11 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
     simulation_agent.atomic_write_json(folder / 'last_simulation_delta.json', simulation_delta)
     simulation_agent.atomic_write_json(folder / 'last_memory_delta.json', memory_delta)
     simulation_agent.append_canon_memory(folder, scene_index, memory_delta)
+    # What the table did this round, kept with the scene it led to so a player can see their actions mattered.
+    new_scene["round_recap"] = round_recap(
+        recent_messages,
+        _story_roll_entries_since(campaign_id, None, _story_last_timestamp(_load_story_entries(folder))),
+    )
     simulation_agent.atomic_write_json(folder / 'scene.json', new_scene)
 
     cur = _load_story_entries(folder)
