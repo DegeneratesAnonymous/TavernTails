@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .scene_view import build_scene_view
+
 # Planning and secrets owned by the GM, at the top level of a scene.
 GM_ONLY_SCENE_KEYS = frozenset({
     "campaign_storyboard", "session_storyboard", "arc_plan", "scene_beat_plan", "selected_scene_beat",
@@ -22,12 +24,23 @@ def _clean_npc(npc: Any) -> Any:
     return {k: v for k, v in npc.items() if k not in GM_ONLY_NPC_KEYS} if isinstance(npc, dict) else npc
 
 
+_HIDDEN_NPC_KEYS = GM_ONLY_NPC_KEYS | {"known_information", "current_goal", "hidden_pressure", "gm_notes", "notes"}
+
+
+def _strip_hidden(value: Any) -> Any:
+    """``value`` with every GM-only key removed at any depth (a generated NPC keeps its notes inside ``traits``)."""
+    if isinstance(value, dict):
+        return {k: _strip_hidden(v) for k, v in value.items() if k not in _HIDDEN_NPC_KEYS}
+    if isinstance(value, list):
+        return [_strip_hidden(v) for v in value]
+    return value
+
+
 def player_npc_list(npcs: Any) -> Any:
     """``npcs.json`` as a player may read it: the DM's notes on what each NPC knows, wants and hides are removed."""
     if not isinstance(npcs, list):
         return npcs
-    hidden = GM_ONLY_NPC_KEYS | {"known_information", "current_goal", "hidden_pressure"}
-    return [{k: v for k, v in npc.items() if k not in hidden} if isinstance(npc, dict) else npc for npc in npcs]
+    return [_strip_hidden(npc) if isinstance(npc, dict) else npc for npc in npcs]
 
 
 def player_view(scene: Any) -> Any:
@@ -43,4 +56,5 @@ def player_view(scene: Any) -> Any:
         if isinstance(director.get("secondary_entities"), list):
             director["secondary_entities"] = [_clean_npc(e) for e in director["secondary_entities"]]
         view["scene_director_data"] = director
+    view["scene_view"] = build_scene_view(scene)  # built from the story text, so it carries nothing the player has not met
     return view

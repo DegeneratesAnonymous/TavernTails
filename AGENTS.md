@@ -8,6 +8,8 @@ entry points, storage boundaries, and generation flow are mapped in
 | --- | --- |
 | Narration and prose quality | `server/agents/narrative.py`, `narrative_linter.py` |
 | Scene planning and validation | `server/agents/scene_director.py`, `scene_validator.py` |
+| Opening scene composition | `server/agents/scene_weaver.py`, `opening_voice.py`, `opening_setup.py` |
+| What a player sees and can ask for | `server/agents/scene_view.py`, `session_assist.py`, `table_state.py` |
 | NPC profiles and state | `server/agents/npc.py`, `campaign_memory.py`, `simulation.py` |
 | Story guidance and continuity | `server/agents/narrative_director.py`, `storyboard.py` |
 | Campaign setup and the world underneath | `server/agents/campaign_card.py`, `world_skeleton.py` |

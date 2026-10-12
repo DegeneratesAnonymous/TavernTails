@@ -24,6 +24,7 @@ from .generation_intent import (
 from .generation_intent import STOP_WORDS as _GROUNDING_STOP_WORDS
 from .generation_intent import clean_text as _clean_raw
 from .generation_intent import trim_sentence as _trim_sentence
+from .opening_voice import anchor_sentences as _anchor_sentences
 
 _PERSONAL_HISTORY_PATTERNS = (
     re.compile(
@@ -1039,18 +1040,16 @@ def build_opening_scene_contract(
     sensory = _opening_sensory_detail(location, req, object_name)
     visible_problem = _opening_visible_problem(req, npc_name, object_name)
     personal_hook = _opening_personal_hook(anch, pc, object_name, location)
-    pressure = _opening_pressure(req, npc_name)
+    pressure = _opening_pressure(req, npc_name, time_of_day)
     actions = _opening_action_options(npc_name, object_name, location, visible_problem)
     pc_start = pc[0].upper() + pc[1:]
-    narrative = (
-        f"{location} is already too quiet for {time_of_day}.\n\n"
-        f"{pc_start} arrives through {sensory}. {visible_problem}\n\n"
-        f"{personal_hook}\n\n"
-        f"{npc_name} is close enough to intervene, but not calm enough to hide what is wrong. "
-        f"{pressure}\n\n"
-        f"{pc_start} can {', '.join(action[0].lower() + action[1:] for action in actions[:3])}, "
-        f"or {actions[3][0].lower() + actions[3][1:]}."
-    )
+    npc_role = npc_label.split("(", 1)[1].rstrip(") ").strip() if "(" in npc_label else ""
+    narrative = "\n\n".join(part for part in (
+        f"{location} is quieter than {_time_phrase(time_of_day)} should allow. {pc_start} arrives through {sensory}.",
+        f"{visible_problem} {_npc_presence(npc_name, npc_role)}",
+        personal_hook,
+        f"{pressure} {_open_question_line(str(req.get('first_clue_or_question') or ''))}".strip(),
+    ) if part)
     if req.get("approved_object") and (req.get("field_provenance") or {}).get("approved_object") in {"user", "imported", "confirmed_canon"}:
         # Do not decorate an authored possession with a second template prop,
         # a guilty witness or an invented deadline during deterministic repair.
@@ -1060,8 +1059,7 @@ def build_opening_scene_contract(
         narrative = "\n\n".join([
             f"At {location}, {pc_start} pauses to examine {definite(object_name)}.",
             *sentences,
-            f"{pc_start} can {', '.join(action[0].lower() + action[1:] for action in actions[:3])}.",
-        ])
+        ])  # no list of things the character can do: the options stay as data, never in the story
     intent = source_intent or intent_from_opening(required=req, brief=brief, anchor=anch, player_name=pc)
     source_trace = build_source_trace(
         {
@@ -1611,39 +1609,74 @@ def pc_start_sentence(pc: str) -> str:
 
 
 def _opening_personal_hook(anchor: dict[str, Any], pc: str, object_name: str, location: str) -> str:
+    """Why the character is here, in the character's own terms and in one sentence.
+
+    The player's setup answers are restated as narration (never quoted, and never described as "a reason already
+    in motion").  The generic lines below are used only when the player gave no usable answer.
+    """
+    start = pc_start_sentence(pc)
+    woven = _anchor_sentences(anchor, pc)
+    if woven:
+        return woven if object_name == NEUTRAL_OBJECT else f"{woven} The {object_name} makes it urgent."
     arrival = _clean_raw(str(anchor.get("arrival_reason") or ""))
     stake = _clean_raw(str(anchor.get("personal_stake") or ""))
     fear = _clean_raw(str(anchor.get("fear_of_loss") or ""))
-    if object_name == NEUTRAL_OBJECT:
-        start = pc_start_sentence(pc)
-        if arrival and stake:
-            return f"{start} reaches {location} with a reason already in motion, and what is happening here turns that reason into an immediate choice."
-        if arrival:
-            return f"{start} reaches {location} with a reason of their own, and what is happening here makes it urgent."
-        if stake:
-            return f"For {pc}, what is happening at {location} is personal enough that leaving it to strangers would cost more than time."
-        if fear:
-            return f"{start} feels the weight of what could be lost as the room's trouble draws every eye."
-        return f"{pc_start_sentence(pc)} can see for themselves that something at {location} is no ordinary matter."
+    subject = "what is happening here" if object_name == NEUTRAL_OBJECT else f"the {object_name}"
     if arrival and stake:
-        return f"{pc_start_sentence(pc)} reaches {location} with a reason already in motion, and the {object_name} turns that reason into an immediate choice."
+        return f"What brought {pc} here was already under way, and {subject} turns it into an immediate choice."
     if arrival:
-        return f"{pc_start_sentence(pc)} reaches {location} with a reason of their own, and the {object_name} makes it urgent."
+        return f"{start} had a reason of their own for coming, and {subject} makes it urgent."
     if stake:
-        return f"For {pc}, the {object_name} is personal enough that leaving it to strangers would cost more than time."
+        return f"For {pc}, {subject} is personal enough that leaving it to strangers would cost more than time."
     if fear:
-        return f"{pc_start_sentence(pc)} feels the weight of what could be lost as the {object_name} draws every eye."
-    return f"{pc_start_sentence(pc)} can see for themselves that the {object_name} at {location} is no ordinary matter."
+        return f"{start} feels the weight of what could be lost as {subject} draws every eye."
+    return f"{start} can see for themselves that {subject} at {location} is no ordinary matter."
 
 
-def _opening_pressure(required: dict[str, Any], npc_name: str) -> str:
+_TIME_PHRASES = {"day": "daytime", "dawn": "dawn", "morning": "morning", "noon": "midday", "afternoon": "the afternoon",
+                 "dusk": "dusk", "evening": "evening", "night": "night", "midnight": "midnight"}
+
+
+def _time_phrase(time_of_day: str) -> str:
+    return _TIME_PHRASES.get(str(time_of_day or "day").strip().lower(), str(time_of_day or "day").strip().lower())
+
+
+def _npc_presence(npc_name: str, role: str = "") -> str:
+    """Introduce the person present by what they are, then by name, and say where they stand."""
+    stand = "close enough to step in, but not calm enough to stay quiet about it"
+    if npc_name == UNNAMED_WITNESS:
+        return f"{UNNAMED_WITNESS} stands {stand}."
+    if role:
+        article = "an" if role[:1].lower() in "aeiou" else "a"
+        return f"{article.capitalize()} {role}, {npc_name}, stands {stand}."
+    return f"{npc_name} stands {stand}."
+
+
+def _open_question_line(clue: str) -> str:
+    """The scene's one unanswered question, stated once and as part of the story."""
+    clue = _clean_raw(clue)
+    if not clue or not _is_raw_question(clue):
+        return ""
+    return f"No one here will answer it aloud: {clue[0].lower() + clue[1:]}"
+
+
+def _opening_pressure(required: dict[str, Any], npc_name: str, time_of_day: str = "day") -> str:
+    """The clock, stated in new words: the campaign brief the player just read already carries the stakes sentence."""
     stakes = _clean_raw(str(required.get("specific_stakes") or ""))
     lower = stakes.lower()
     if _is_weak_player_facing_text(stakes):
         stakes = ""
         lower = ""
-    if "dusk" in lower or "dawn" in lower or "hour" in lower:
-        return f"{npc_name} keeps glancing at the sinking light because the lead will be gone before the next watch changes."
+    evening = str(time_of_day or "").lower() in {"dusk", "evening", "night", "midnight"}
+    lead_gone = "the lead will be gone, and with it the only chance to act on it."
+    if "dusk" in lower:
+        if evening:
+            return f"{npc_name} keeps glancing at the sinking light because the lead will be gone before the next watch changes."
+        return f"By dusk {lead_gone}"
+    if "dawn" in lower:
+        return f"By dawn {lead_gone}"
+    if "hour" in lower:
+        return f"Within the hour {lead_gone}"
     if "road" in lower or "pass" in lower or "close" in lower:
         return f"By dusk, the pass wardens will close the road and {_mid_sentence(npc_name)} will lose the only cooperative witness."
     if "harbor" in lower or "envoy" in lower:

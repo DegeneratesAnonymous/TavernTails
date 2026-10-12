@@ -1672,7 +1672,7 @@
 .session-active.session-mode-play .gameplay-body{
   display: grid;
   grid-template-columns: 1fr clamp(260px, 22vw, 340px);
-  grid-template-rows: minmax(0, 1fr) clamp(230px, 30vh, 340px);
+  grid-template-rows: minmax(0, 1fr) clamp(270px, 32vh, 360px);
   grid-template-areas:
     "workspace panel"
     "actions   panel";
@@ -2248,7 +2248,7 @@
 
   .session-active.session-mode-play .gameplay-body{
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) clamp(174px, 22vh, 230px);
+    grid-template-rows: minmax(0, 1fr) clamp(250px, 30vh, 300px);
     grid-template-areas:
       "workspace"
       "actions";
@@ -3630,3 +3630,6 @@
   overflow-y: auto;
   padding: 12px;
 }
+
+/* Why a check was asked for, shown plainly rather than only on hover */
+.resolution-check-why { margin: 2px 0 6px; font-size: 0.8rem; color: var(--muted-text, rgba(244, 233, 201, 0.7)); }

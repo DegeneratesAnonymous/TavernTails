@@ -31,9 +31,10 @@ type Props = {
   onSend: () => void
   rolling?: boolean
   character?: CharacterSummary | null
+  placeholder?: string
 }
 
-export default function Composer({ sessionId, value, onChange, onSend, rolling, character }: Props) {
+export default function Composer({ sessionId, value, onChange, onSend, rolling, character, placeholder }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [acIndex, setAcIndex] = useState(0)
 
@@ -144,7 +145,7 @@ export default function Composer({ sessionId, value, onChange, onSend, rolling, 
           value={value}
           onChange={e => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={sessionId ? 'Message… type @ to reference character' : 'Select a session'}
+          placeholder={sessionId ? (placeholder || 'Message… type @ to reference character') : 'Select a session'}
           disabled={!sessionId || rolling}
           autoComplete="off"
         />

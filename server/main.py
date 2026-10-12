@@ -30,6 +30,7 @@ from .agents.npc import router as npc_router
 from .agents.player import router as player_router
 from .agents.rolls import router as rolls_router
 from .agents.scene import router as scene_router
+from .agents.session_assist import router as session_assist_router
 from .agents.sessions import router as sessions_router
 from .agents.storyboard import router as storyboard_router
 from .agents.suggestions import router as suggestions_router
@@ -146,6 +147,7 @@ app.include_router(messages_router)
 app.include_router(narrative_router)
 app.include_router(content_router)
 app.include_router(sessions_router)
+app.include_router(session_assist_router)
 app.include_router(characters_router)
 app.include_router(campaigns_router)
 app.include_router(generate_router)
