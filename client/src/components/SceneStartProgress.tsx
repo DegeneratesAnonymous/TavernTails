@@ -10,7 +10,7 @@ type StartStatus = {
   error: string | null
   scene_ready: boolean
   /** Present while the opening questions are owed: whether they are ready to answer yet. */
-  setup?: { state: 'preparing' | 'ready' | 'failed'; error: string | null; elapsed_s: number }
+  setup?: { state: 'preparing' | 'ready' | 'failed'; error: string | null; elapsed_s: number; builds_on_click?: boolean }
 }
 
 type Props = {
@@ -82,7 +82,7 @@ export default function SceneStartProgress({ sessionId, onReady }: Props) {
   // within a few seconds was lost: give the button back. Older servers (no `setup` in the status) build
   // the questions inside that very request, which can legitimately run for minutes; the dashboard swaps
   // this screen out when that request finishes or fails, so no timer may re-enable the button early.
-  const preparesAhead = Boolean(status?.setup)
+  const preparesAhead = Boolean(status?.setup) && !status?.setup?.builds_on_click
   const setupState = status?.setup?.state
   // A failure (or a fresh preparation after Try again) ends the click that was in flight.
   useEffect(() => {

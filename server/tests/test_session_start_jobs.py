@@ -312,6 +312,7 @@ def test_player_run_tables_do_not_start_preparing_questions_on_their_own(monkeyp
 
         status = client.get(f"/sessions/{session_id}/start-status", headers=headers).json()
         assert status["state"] == "needs_setup" and status["setup"]["state"] == "ready"
+        assert status["setup"]["builds_on_click"] is True, "the client must know the click itself builds the questions"
         time.sleep(0.3)
         assert builds == [], "opening a human-GM table must not queue model work"
 
@@ -363,3 +364,16 @@ def test_a_failed_on_demand_build_at_a_player_run_table_is_reported_so_it_can_be
         assert client.get(f"/sessions/{session_id}/opening-setup", headers=headers).status_code == 503
         failed = client.get(status_url, headers=headers).json()["setup"]
         assert failed["state"] == "failed" and "model unavailable" in failed["error"]
+
+
+def test_a_finished_build_does_not_erase_a_failure_recorded_for_a_newer_one():
+    sid = "mark-ready-guard"
+    try:
+        sessions._SETUP_PREP[sid] = {"state": "failed", "error": "model unavailable"}
+        sessions._mark_setup_ready(sid)
+        assert sessions._SETUP_PREP[sid]["state"] == "failed"
+        sessions._SETUP_PREP[sid] = {"state": "preparing", "error": None}
+        sessions._mark_setup_ready(sid)
+        assert sessions._SETUP_PREP[sid] == {"state": "ready", "error": None}
+    finally:
+        sessions._SETUP_PREP.pop(sid, None)

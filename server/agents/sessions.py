@@ -2087,6 +2087,13 @@ def _prepare_opening_questionnaire(session_id: str) -> dict:
         return meta
 
 
+def _mark_setup_ready(session_id: str) -> None:
+    """Record a finished build, without erasing a failure recorded by a newer build for the same session."""
+    with _SETUP_PREP_GUARD:
+        if (_SETUP_PREP.get(session_id) or {}).get("state") != "failed":
+            _SETUP_PREP[session_id] = {"state": "ready", "error": None}
+
+
 def _run_setup_prep(session_id: str) -> None:
     try:
         _prepare_opening_questionnaire(session_id)
@@ -2095,7 +2102,7 @@ def _run_setup_prep(session_id: str) -> None:
     except Exception as err:  # noqa: BLE001 - reported to the player, who can try again
         _SETUP_PREP[session_id] = {"state": "failed", "error": str(err)[:300] or "The opening questions could not be prepared."}
         return
-    _SETUP_PREP[session_id] = {"state": "ready", "error": None}
+    _mark_setup_ready(session_id)
 
 
 def _opening_setup_prep_status(session_id: str, meta: dict, *, start: bool = True) -> dict:
@@ -2109,8 +2116,9 @@ def _opening_setup_prep_status(session_id: str, meta: dict, *, start: bool = Tru
         return {"state": "failed", "error": recorded.get("error"), "elapsed_s": 0}
     if is_player_run_mode(session_id):
         # A human GM runs this table: opening the page must not queue model work. The questions are
-        # built only if the player asks for them.
-        return {"state": "ready", "error": None, "elapsed_s": 0}
+        # built only if the player asks for them, inside that request, so the client must not treat the
+        # click as answered at once.
+        return {"state": "ready", "error": None, "elapsed_s": 0, "builds_on_click": True}
     with _SETUP_PREP_GUARD:
         prep = _SETUP_PREP.get(session_id) or {}
         ended = prep.get("ended")
@@ -2148,7 +2156,7 @@ def get_opening_setup(session_id: str, current_user=Depends(get_current_user)):
         # Joins a background build if one is running, otherwise builds here.
         meta = _prepared_meta_or_503(session_id)
         setup = meta.get("opening_setup") or setup
-        _SETUP_PREP[session_id] = {"state": "ready", "error": None}
+        _mark_setup_ready(session_id)
     return {"opening_setup": setup, "questionnaire": setup.get("questionnaire"), "completed": bool(setup.get("completed"))}
 
 

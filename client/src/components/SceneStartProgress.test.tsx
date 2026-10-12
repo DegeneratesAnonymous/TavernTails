@@ -156,3 +156,14 @@ test('a click in flight ends when the server then reports the preparation failed
     expect(await screen.findByRole('button', { name: 'Answer the opening questions' }, { timeout: 8000 })).toBeEnabled()
   } finally { server.restore() }
 }, 20000)
+
+test('a table whose click builds the questions keeps the button disabled instead of timing out', async () => {
+  jest.useFakeTimers()
+  const server = mockServer([status({ state: 'needs_setup', setup: { state: 'ready', error: null, elapsed_s: 0, builds_on_click: true } })])
+  try {
+    render(<SceneStartProgress sessionId="s1" onReady={jest.fn()} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Answer the opening questions' }))
+    act(() => { jest.advanceTimersByTime(120000) })
+    expect(screen.getByRole('button', { name: 'Opening…' })).toBeDisabled()
+  } finally { server.restore(); jest.useRealTimers() }
+})
