@@ -382,11 +382,11 @@ def build_recap(folder: Path, scene: dict, meta: dict, character: dict[str, str]
         entries = json.loads((folder / "story.json").read_text())
     except Exception:
         entries = []
-    current = _clean(scene.get("text") or scene.get("narrative_body"))
+    on_screen = {_clean(scene.get("text")), _clean(scene.get("narrative_body"))} - {""}
     earlier = [
         _first_sentences(e.get("text", ""))
         for e in entries
-        if isinstance(e, dict) and e.get("type") == "narration" and _clean(e.get("text")) and _clean(e.get("text")) != current
+        if isinstance(e, dict) and e.get("type") == "narration" and _clean(e.get("text")) and _clean(e.get("text")) not in on_screen
     ]
     last_played = None
     for name in ("scene.json", "story.json"):
@@ -399,7 +399,7 @@ def build_recap(folder: Path, scene: dict, meta: dict, character: dict[str, str]
         "title": _clean(meta.get("name")),
         "character": character.get("name") or "",
         "previously": [e for e in earlier[-3:] if e],
-        "right_now": sv.get("situation") or _first_sentences(current, 2),
+        "right_now": sv.get("situation") or _first_sentences(scene.get("narrative_body") or scene.get("text"), 2),
         "place": sv.get("place") or "",
         "present": sv.get("present") or [],
         "open_question": sv.get("hook") or "",
@@ -415,7 +415,7 @@ def recap(session_id: str, current_user=Depends(get_current_user)):
 
 # --- who has acted this round ----------------------------------------------------------------------------------
 
-def round_status(folder: Path, meta: dict, scene: dict) -> dict[str, Any]:
+def round_status(folder: Path, meta: dict, scene: dict, me: str = "") -> dict[str, Any]:
     """Who has said what they do this round, and who has said they are done: the table can see whom it waits for."""
     cursor = int(scene.get("last_resolved_message_id") or 0)
     messages = db.list_chat_messages(session_id=meta.get("id") or folder.name, limit=None, after_id=cursor)
@@ -438,6 +438,7 @@ def round_status(folder: Path, meta: dict, scene: dict) -> dict[str, Any]:
             "acted": bool(uid is not None and acted.get(uid)),
             "actions": acted.get(uid, 0) if uid is not None else 0,
             "ready": bool(ready.get(email)),
+            "you": bool(me) and email == me,
         })
     safety = table_safety(meta)
     return {
@@ -445,22 +446,27 @@ def round_status(folder: Path, meta: dict, scene: dict) -> dict[str, Any]:
         "paused": bool(safety.get("paused")),
         "avoid": list(safety.get("avoid") or []),
         "waiting_on": [m["name"] for m in members if not m["ready"]],
-        "quiet": [m["name"] for m in members if not m["acted"]],
+        "quiet": [m["name"] for m in members if not m["acted"] and not m["you"]],  # the others: you know what you did
         "all_ready": bool(members) and all(m["ready"] for m in members),
     }
 
 
 @router.get("/{session_id}/round")
 def round_view(session_id: str, current_user=Depends(get_current_user)):
-    folder, meta, _ = _load(session_id, current_user)
+    folder, meta, identifier = _load(session_id, current_user)
     try:
         scene = json.loads((folder / "scene.json").read_text())
     except Exception:
         scene = {}
-    return round_status(folder, meta, scene if isinstance(scene, dict) else {})
+    return round_status(folder, meta, scene if isinstance(scene, dict) else {}, me=identifier)
 
 
 # --- table safety ----------------------------------------------------------------------------------------------
+
+def safe_topic(text: str) -> str:
+    """A topic the table wants left out, reduced to plain words: it ends up in the story's instructions."""
+    return _clean(re.sub(r"[^\w\s,'\-]", " ", text or ""))[:120]
+
 
 class SafetyRequest(BaseModel):
     kind: str = Field(..., pattern="^(pause|resume|skip|soften)$")
@@ -474,7 +480,7 @@ async def set_table_safety(session_id: str, req: SafetyRequest, current_user=Dep
     """Any player can pause the table or ask the story to leave something out; the DM can resume."""
     folder, meta, identifier = _load(session_id, current_user)
     safety = {**{"avoid": [], "events": [], "paused": False}, **table_safety(meta)}
-    topic = _clean(req.topic)
+    topic = safe_topic(req.topic)
     member = _member(meta, identifier)
     who = _clean(member.get("character_name")) or _clean(getattr(current_user, "username", "")) or identifier
     if req.kind == "resume":

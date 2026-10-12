@@ -104,6 +104,9 @@ def test_no_provider_campaign_and_multiple_rounds(monkeypatch):
     rested = advance("I take a long rest.")
     assert rested["simulation_debug"]["time_resolver"]["elapsed_minutes"] == 480
     asked = advance("I ask Ada Reed when she last wound the watch.")
+    # The scene keeps what the table did to reach it, so a player can see their action mattered.
+    assert [a["text"] for a in asked["scene"]["round_recap"]["actions"]] == ["I ask Ada Reed when she last wound the watch."]
+    assert asked["scene"]["scene_view"]["place"]  # and the orientation summary is part of what a client receives
     assert director_requests[-1].is_opening_scene is False
     assert director_requests[-1].player_actions == ["I ask Ada Reed when she last wound the watch."]
     assert asked["simulation_debug"]["time_resolver"]["elapsed_minutes"] == 5

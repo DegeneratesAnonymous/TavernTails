@@ -532,6 +532,9 @@ export default function NarrativeView({sessionId, mine = [], entities = [], pres
             <div className="scene-tools" aria-label="Reading options">
               <button type="button" onClick={() => changeTextSize(-1)} disabled={textSize === 's'} aria-label="Smaller text">A−</button>
               <button type="button" onClick={() => changeTextSize(1)} disabled={textSize === 'xl'} aria-label="Larger text">A+</button>
+              {sessionId ? (
+                <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('narrative:recap'))}>Previously</button>
+              ) : null}
               {canSpeak() ? (
                 <button type="button" onClick={toggleSpeech} aria-pressed={speaking}>{speaking ? 'Stop reading' : 'Read aloud'}</button>
               ) : null}

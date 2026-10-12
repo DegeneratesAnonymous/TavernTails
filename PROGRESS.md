@@ -209,3 +209,17 @@ multi-round regression coverage and an opt-in live-model journey. Focused
 checks: 233 passed, 1 live test skipped. Live model and browser UX validation
 remain outstanding; see `docs/PLAYTHROUGH_REVIEW.md` for reproductions,
 acceptance criteria, provider test instructions and rollback.
+
+## 2026-10-12 — Scenes a player can follow and act on
+
+An opening scene was a stack of separately valid pieces (quoted setup answers, a template, appended
+repairs) that repeated itself and read as a list. Openings are now written whole by
+`scene_weaver.py` when fallbacks would otherwise assemble them, and the fallback template reads as
+one scene. The play screen drops the choice list and the panels that showed an NPC's wants, leverage,
+clue buttons and suggested first actions; it shows who is here and the one open question, "Last
+round", what the character notices, a **Suggest** button that fills the player's own text box on
+request (checked so it cannot leak the story), a recap, who the table is waiting for, table safety
+(pause / skip this), text size and read aloud. The party route no longer returns the DM's NPC notes.
+Checks: backend 1,332 passed (the async worker tests need `pytest-asyncio`, which is absent here, and
+were not run); client 60 passed; lint, typecheck and production build clean; two live-model openings pass
+`server/tests/test_live_opening_scenes.py --llm`.

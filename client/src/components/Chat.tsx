@@ -814,18 +814,20 @@ export default function Chat({sessionId, variant = 'full', aboveComposer, prompt
         </div>
       ) : null}
 
-      {assist && sessionId ? (
-        <ActionAssist
-          sessionId={sessionId}
-          value={value}
-          onFill={setValue}
-          sceneKey={assist.sceneKey}
-          playerReady={assist.playerReady}
-          showSuggest={assist.showSuggest}
-        />
-      ) : null}
-      {promptLabel ? <div className="chat-composer-prompt">{promptLabel}</div> : null}
-      <Composer sessionId={sessionId} value={value} onChange={setValue} onSend={() => handleSend()} rolling={rolling} character={character} placeholder={composerPlaceholder} />
+      <div className="chat-input-stack">
+        {assist && sessionId ? (
+          <ActionAssist
+            sessionId={sessionId}
+            value={value}
+            onFill={setValue}
+            sceneKey={assist.sceneKey}
+            playerReady={assist.playerReady}
+            showSuggest={assist.showSuggest}
+            label={promptLabel}
+          />
+        ) : promptLabel ? <div className="chat-composer-prompt">{promptLabel}</div> : null}
+        <Composer sessionId={sessionId} value={value} onChange={setValue} onSend={() => handleSend()} rolling={rolling} character={character} placeholder={composerPlaceholder} />
+      </div>
     </div>
   )
 }

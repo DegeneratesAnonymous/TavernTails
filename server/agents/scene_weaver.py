@@ -16,7 +16,6 @@ from typing import Any
 from .opening_voice import first_to_third, usable_answer
 
 logger = logging.getLogger("taverntails.scene_weaver")
-_DEBUG = False
 
 MIN_WORDS = 90
 MAX_WORDS = 260
@@ -77,6 +76,7 @@ def build_facts(
         "npc_role": npc_role,
         "open_question": _clean(required.get("first_clue_or_question")),
         "stakes": _clean(required.get("specific_stakes")) or _clean(contract.get("pressure_or_timer")),
+        "clock": _clean(contract.get("pressure_or_timer")),
         "object": _clean(required.get("approved_object")) or "",
         "reason_for_coming": usable_answer(anchor.get("arrival_reason")),
         "why_it_matters": usable_answer(anchor.get("personal_stake")),
@@ -106,6 +106,8 @@ def _fact_lines(facts: dict[str, Any]) -> list[str]:
         lines.append(f"THE MYSTERY NOBODY CAN EXPLAIN YET (state it as something people avoid, never as a question): {facts['open_question']}")
     if facts.get("stakes"):
         lines.append(f"WHAT IS AT STAKE / THE CLOCK (restate in new words, do not copy it): {facts['stakes']}")
+    if facts.get("clock") and facts["clock"] != facts.get("stakes"):
+        lines.append(f"A CLOCK THE SCENE MUST CONVEY (restate in new words, as something that will happen later): {facts['clock']}")
     for label, key in (
         ("WHY " + player.upper() + " CAME (their own words, first person)", "reason_for_coming"),
         ("WHY IT MATTERS TO " + player.upper() + " (their own words)", "why_it_matters"),
@@ -252,14 +254,13 @@ def weave_opening(facts: dict[str, Any], *, attempts: int = 3, timeout: float = 
             logger.exception("scene weave call failed")
             return ""
         if not raw:
+            logger.info("scene weave: the model returned nothing (attempt %s)", attempt + 1)
             return ""
         draft = _strip_wrapping(raw)
         issues = check_woven(draft, facts)
         if not issues:
             return draft
         logger.info("scene weave attempt %s rejected: %s", attempt + 1, "; ".join(issues))
-        if _DEBUG:
-            print("REJECTED:", issues)
         feedback = "\n".join(f"- {issue}" for issue in issues)
     return ""
 

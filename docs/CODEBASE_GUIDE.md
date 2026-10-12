@@ -13,6 +13,7 @@ client and renders the application component in `client/src/App.tsx`.
 | Character CRUD and imports | `server/agents/characters.py`, `ddb_sheet.py`, `ocr_sheet.py` | `components/dashboard/CharacterWizard.tsx`, `ImportCharacterView.tsx` |
 | Session start and advance | `server/agents/sessions.py`, `server/generation_workers.py` | `components/GameplayLayout.tsx`, `hooks/useSessionRequests.ts` |
 | Chat and dice | `server/agents/chat.py`, `rolls.py`, `ws.py` | `components/Chat.tsx`, `components/chat/` |
+| Scene presentation and player help | `server/agents/scene_view.py`, `session_assist.py`, `table_state.py`, `scene_weaver.py`, `opening_voice.py` | `components/NarrativeView.tsx`, `components/scene/` |
 | Campaign memory | `server/agents/campaign_memory.py`, `context_orchestrator.py` | campaign/session views |
 | Documents and references | `server/agents/documents.py`, `references.py`, `server/storage/documents.py` | `components/DocumentsPanel.tsx` |
 | Persistent records | `server/db.py` | accessed through `api.ts` |
@@ -41,6 +42,13 @@ The session routes in `sessions.py` coordinate generation and persist its result
    deterministic fallback; diagnostics record that choice.
 5. `simulation.py` advances world time and state on continuation. The session
    stores the scene/story and updates memory/storyboard/visual state.
+5a. An opening that fallbacks and repairs patched together (a template, quoted setup answers,
+   appended fragments) gets one last pass: `sessions._compose_final_opening` asks
+   `scene_weaver.py` for a single scene written whole from the established facts, checks it
+   mechanically (paragraphs, no questions or option menus, names, time of day, nothing copied from
+   the player's answers or the campaign brief) and keeps it only if the contract, anchor and
+   first-scene validators all accept it. Otherwise the existing scene is kept. The player's
+   first-person setup answers are restated as narration by `opening_voice.py`, never quoted back.
 6. `scene_privacy.py` strips GM-only fields (hidden pressure, NPC knowledge and
    wants, storyboard and arc plans) from every scene sent to a client. The full
    scene stays in `scene.json` for the AI GM; any new route or broadcast that
@@ -93,6 +101,25 @@ New campaigns start from the player's own description, not from a form of AI set
 
 The classic creation paths stay behind "Use the classic setup" until the card flow has been
 play-tested. They do not build a world skeleton.
+
+## Taking in a scene and acting on it
+
+The play screen shows the story as one column of prose, then plain information: who the story has
+named (`scene_view.py`, built from the story text, never from GM-only fields), the one unanswered
+question, and what the player's character notices. It does not list actions: the player types what
+they do, and presses **Suggest** only if they want an idea.
+
+| Route (`session_assist.py`) | What it does |
+| --- | --- |
+| `POST /sessions/{id}/suggest-action` | One action for the caller's own character, built from the story text and their character only. Rejected (and replaced by a safe fallback) if it names something the story has not shown, repeats GM-only text, states an outcome, or repeats an earlier suggestion. The model is never sent GM-only fields. |
+| `POST /sessions/{id}/notice` | What the caller's character picks up on, once per scene and character, under the same checks. |
+| `GET /sessions/{id}/recap` | "Previously": earlier scenes, where things stand, who is here, what is open. |
+| `GET /sessions/{id}/round` | Who has acted and who is ready this round, and whether the table is paused. |
+| `POST /sessions/{id}/table-safety` | Any player can pause the table or ask the story to leave something out (carried into the next scene's contract by `table_state.with_table_safety`); only the owner or DM resumes. Scene advance returns 409 while paused. |
+
+Each new scene also stores `round_recap` (what the table did and rolled to reach it), shown as "Last
+round". `choices` and `suggested_actions` stay on the scene as data for the validators but are not
+shown to players. Client pieces live in `client/src/components/scene/`.
 
 ## Storage boundaries
 

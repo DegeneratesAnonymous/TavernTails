@@ -577,6 +577,7 @@ def _compose_final_opening(
     )
     body = scene_weaver.weave_opening(facts)
     if not body:
+        logger.info("composed opening skipped: no draft passed the writer's own checks")
         return scene
     prompt = f"What does {pc or player_name or 'the party'} do?"
     candidate = {**scene, "narrative_body": body, "player_prompt": prompt, "text": f"{body}\n\n{prompt}"}
@@ -587,7 +588,11 @@ def _compose_final_opening(
     checked = {
         **contract,
         "personal_hook": scene_weaver.best_sentence(body, anchor_text, facts["location"]) or contract.get("personal_hook", ""),
-        "pressure_or_timer": scene_weaver.best_sentence(body, facts.get("stakes", ""), facts["location"]) or contract.get("pressure_or_timer", ""),
+        "pressure_or_timer": (
+            scene_weaver.best_sentence(body, facts.get("stakes", ""), facts["location"])
+            or scene_weaver.best_sentence(body, facts.get("clock", ""), facts["location"])
+            or contract.get("pressure_or_timer", "")
+        ),
     }
     contract_check = validate_opening_scene_contract(
         scene=candidate, opening_scene=checked, campaign_brief=campaign_brief,

@@ -19,13 +19,15 @@ type Props = {
   idleNudgeMs?: number
   /** Forces the button off; otherwise the player's own choice in the Table menu decides. */
   showSuggest?: boolean
+  /** "What does Arin do?", shown on the same line as the buttons so the box stays compact. */
+  label?: string
 }
 
 /**
  * What sits above the player's text box. It never lists actions: an idea appears only when the player presses
  * Suggest, and then it goes into their own box where they can change it or ignore it.
  */
-export default function ActionAssist({ sessionId, value, onFill, sceneKey = '', playerReady = false, idleNudgeMs = 90000, showSuggest: allowSuggest = true }: Props) {
+export default function ActionAssist({ sessionId, value, onFill, sceneKey = '', playerReady = false, idleNudgeMs = 90000, showSuggest: allowSuggest = true, label = '' }: Props) {
   const [hintOpen, setHintOpen] = useState(() => store.get(HINT_KEY) !== '1')
   const [suggestOn, setSuggestOn] = useState(() => store.get(SUGGEST_KEY) !== '0')
   const showSuggest = allowSuggest && suggestOn
@@ -37,6 +39,8 @@ export default function ActionAssist({ sessionId, value, onFill, sceneKey = '', 
   const [menuOpen, setMenuOpen] = useState(false)
   const [topic, setTopic] = useState('')
   const [note, setNote] = useState('')
+  const [menuPos, setMenuPos] = useState<{ right: number; bottom: number } | null>(null)
+  const menuButton = useRef<HTMLButtonElement | null>(null)
   const previous = useRef<string[]>([])
   const lastFilled = useRef('')
   const valueRef = useRef(value)
@@ -112,6 +116,13 @@ export default function ActionAssist({ sessionId, value, onFill, sceneKey = '', 
     setHintOpen(false)
   }
 
+  // The menu is placed against the window so a panel with hidden overflow cannot clip it.
+  const toggleMenu = () => {
+    const rect = menuButton.current?.getBoundingClientRect()
+    if (rect) setMenuPos({ right: Math.max(8, window.innerWidth - rect.right), bottom: Math.max(8, window.innerHeight - rect.top + 6) })
+    setMenuOpen(open => !open)
+  }
+
   const sendSafety = async (kind: SafetyKind) => {
     if (!sessionId) return
     const result = await postSafety(sessionId, kind, kind === 'skip' || kind === 'soften' ? topic : '')
@@ -150,6 +161,7 @@ export default function ActionAssist({ sessionId, value, onFill, sceneKey = '', 
       {error ? <p className="assist-error" role="alert">{error}</p> : null}
       {note ? <p className="assist-note" role="status">{note}</p> : null}
       <div className="assist-row">
+        {label ? <span className="assist-label">{label}</span> : null}
         {showSuggest ? (
           <button type="button" className="assist-suggest" onClick={suggest} disabled={!sessionId || busy}>
             {busy ? 'Thinking…' : 'Suggest'}
@@ -159,9 +171,9 @@ export default function ActionAssist({ sessionId, value, onFill, sceneKey = '', 
           {playerReady && waiting.length ? `Waiting on ${waiting.join(', ')}` : !playerReady && quiet.length ? `${quiet.join(', ')} ${quiet.length === 1 ? "hasn't" : "haven't"} said what they do yet` : ''}
         </span>
         <span className="assist-menu-wrap">
-          <button type="button" className="assist-table" aria-expanded={menuOpen} onClick={() => setMenuOpen(o => !o)}>Table</button>
+          <button type="button" className="assist-table" ref={menuButton} aria-expanded={menuOpen} onClick={toggleMenu}>Table</button>
           {menuOpen ? (
-            <div className="assist-menu" role="menu" aria-label="Table safety">
+            <div className="assist-menu" role="menu" aria-label="Table safety" style={menuPos || undefined}>
               <button type="button" role="menuitem" onClick={() => sendSafety('pause')}>Pause the table</button>
               <label>
                 <span>Leave out (optional)</span>

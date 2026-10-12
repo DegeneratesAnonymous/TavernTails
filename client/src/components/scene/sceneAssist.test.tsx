@@ -260,6 +260,17 @@ describe('the scene on screen', () => {
     server.restore()
   })
 
+  test('"Previously" asks for the recap', async () => {
+    const server = openScene()
+    const heard = jest.fn()
+    window.addEventListener('narrative:recap', heard)
+    render(<NarrativeView sessionId="s1" entities={[]} presentationMode="play" />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Previously' }))
+    expect(heard).toHaveBeenCalled()
+    window.removeEventListener('narrative:recap', heard)
+    server.restore()
+  })
+
   test('tells the player what their character notices', async () => {
     const server = openScene()
     render(<NarrativeView sessionId="s1" entities={[]} presentationMode="play" />)

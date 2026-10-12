@@ -46,8 +46,8 @@ export function RoundRecapStrip({ recap, mine = [], onClarify }: { recap?: Round
   if (!actions.length && !rolls.length) return null
   const own = mine.map(n => n.trim().toLowerCase()).filter(Boolean)
   return (
-    <details className="scene-recap" open>
-      <summary>Last round</summary>
+    <details className="scene-recap">
+      <summary>Last round · {actions.length} {actions.length === 1 ? 'action' : 'actions'}{rolls.length ? ` · ${rolls.length} ${rolls.length === 1 ? 'roll' : 'rolls'}` : ''}</summary>
       <ul>
         {actions.map((a, i) => (
           <li key={`a-${i}`}>
@@ -72,9 +72,9 @@ export function RoundRecapStrip({ recap, mine = [], onClarify }: { recap?: Round
 export default function SceneOrientation({ view, recap, notice, mine, onClarify }: Props) {
   return (
     <div className="scene-orientation">
-      <RoundRecapStrip recap={recap} mine={mine} onClarify={onClarify} />
       <SceneFacts view={view} />
       {notice ? <p className="scene-notice" aria-label="What you notice">{notice}</p> : null}
+      <RoundRecapStrip recap={recap} mine={mine} onClarify={onClarify} />
     </div>
   )
 }

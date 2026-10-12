@@ -303,6 +303,13 @@ export default function GameplayLayout({
     }
   },[])
 
+  // The "Previously" button sits with the reading tools in the scene and asks for the recap by event.
+  useEffect(() => {
+    const open = () => setRecapOpen(true)
+    window.addEventListener('narrative:recap', open)
+    return () => window.removeEventListener('narrative:recap', open)
+  }, [])
+
   // Coming back after a while: show where the story stands before dropping the player into it.
   useEffect(() => {
     if (!sessionId) return
@@ -1739,11 +1746,6 @@ export default function GameplayLayout({
                   </>
                 )}
               </div>
-              {sessionId && sessionStarted && (
-                <button className="btn btn-secondary btn-sm" type="button" onClick={() => setRecapOpen(true)}>
-                  Previously
-                </button>
-              )}
               {/* Ready button lives here — far from the chat send button */}
               {sessionId && (
                 <button

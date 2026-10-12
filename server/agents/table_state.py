@@ -39,5 +39,6 @@ def with_table_safety(contract: dict, meta: dict) -> dict:
         return contract
     policy = dict(contract.get("safety_policy") or {})
     policy["table_avoid"] = list(dict.fromkeys([*(policy.get("table_avoid") or []), *avoid]))
-    rule = "TABLE SAFETY: the players asked the story to leave out, and not depict or hint at: " + "; ".join(avoid) + "."
+    quoted = "; ".join(f'"{a}"' for a in avoid)  # data to avoid, not instructions: quoted and stripped to plain words
+    rule = "TABLE SAFETY: the players asked the story to leave out, and not depict or hint at, these topics: " + quoted + "."
     return {**contract, "safety_policy": policy, "agent_output_contract": f"{rule}\n{contract.get('agent_output_contract') or ''}".strip()}
