@@ -182,3 +182,38 @@ def test_questions_that_fail_to_prepare_are_reported_and_can_be_retried(monkeypa
         assert retried.status_code == 200 and retried.json()["state"] in ("preparing", "ready")
         assert _wait_for(lambda: client.get(status_url, headers=headers).json()["setup"]["state"] == "ready")
         assert client.get(f"/sessions/{session_id}/opening-setup", headers=headers).json()["questionnaire"]["questions"]
+
+
+def test_a_request_waiting_on_a_failing_build_shares_the_failure_instead_of_rebuilding(monkeypatch):
+    import threading
+
+    release = threading.Event()
+    builds: list[str] = []
+
+    def failing_build(folder, meta, setup=None):
+        builds.append(folder.name)
+        release.wait(5)
+        raise RuntimeError("model unavailable")
+
+    monkeypatch.setattr(sessions, "_build_opening_setup_questionnaire", failing_build)
+    with TestClient(main.app) as client:
+        session_id, headers = _session(client, "setup-prep-shared-fail@example.com")
+        sessions._START_STATUS.pop(session_id, None)
+        status_url = f"/sessions/{session_id}/start-status"
+        client.get(status_url, headers=headers)  # starts the background build, which blocks in failing_build
+        assert _wait_for(lambda: builds == [session_id])
+
+        # The player presses the button while the build is still running; that request waits on the build.
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            waiting = pool.submit(client.get, f"/sessions/{session_id}/opening-setup", headers=headers)
+            time.sleep(0.2)
+            release.set()
+            response = waiting.result()
+        assert response.status_code == 503 and "model unavailable" in response.json()["detail"]
+        assert builds == [session_id], "the waiter must share the failure, not run the build again"
+        assert client.get(status_url, headers=headers).json()["setup"]["state"] == "failed"
+
+        # Only an explicit retry clears the failure and builds again.
+        monkeypatch.setattr(sessions, "_build_opening_setup_questionnaire", lambda folder, meta, setup=None: {"questionnaire_id": "q", "questions": [], "campaign_brief": {}})
+        assert client.post(f"/sessions/{session_id}/opening-setup/prepare", headers=headers).status_code == 200
+        assert _wait_for(lambda: client.get(status_url, headers=headers).json()["setup"]["state"] == "ready")

@@ -1968,6 +1968,18 @@ _SETUP_PREP_GUARD = threading.Lock()
 _SETUP_BUILD_LOCKS: dict[str, threading.Lock] = {}
 
 
+class _SetupPrepError(Exception):
+    """The opening questions could not be built; the reason is shown to the player."""
+
+
+def _prepared_meta_or_503(session_id: str) -> dict:
+    """``_prepare_opening_questionnaire`` for request handlers: a failed build is a 503, not a rebuild."""
+    try:
+        return _prepare_opening_questionnaire(session_id)
+    except _SetupPrepError as err:
+        raise HTTPException(status_code=503, detail=f"The opening questions are not ready: {err}. Try again from the setup screen.") from err
+
+
 def _setup_build_lock(session_id: str) -> threading.Lock:
     with _SETUP_PREP_GUARD:
         return _SETUP_BUILD_LOCKS.setdefault(session_id, threading.Lock())
@@ -1986,8 +1998,19 @@ def _prepare_opening_questionnaire(session_id: str) -> dict:
         setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
         if setup.get("completed") or setup.get("questionnaire"):
             return meta
+        # A build that failed while this caller waited for the lock is shared, not run again: a retry is
+        # the player's choice (/opening-setup/prepare clears the record), so nobody lands back in the
+        # multi-minute path by accident.
+        failed = _SETUP_PREP.get(session_id) or {}
+        if failed.get("state") == "failed":
+            raise _SetupPrepError(str(failed.get("error") or "The opening questions could not be prepared."))
         built_setup = dict(setup)
-        questionnaire = _build_opening_setup_questionnaire(folder, meta, built_setup)
+        try:
+            questionnaire = _build_opening_setup_questionnaire(folder, meta, built_setup)
+        except Exception as err:  # noqa: BLE001 - recorded for everyone waiting, then re-raised
+            reason = str(err)[:300] or "The opening questions could not be prepared."
+            _SETUP_PREP[session_id] = {"state": "failed", "error": reason}
+            raise _SetupPrepError(reason) from err
         # Re-read: the build took a while and other requests may have written the meta meanwhile.
         meta = json.loads(meta_path.read_text())
         setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
@@ -2006,6 +2029,8 @@ def _prepare_opening_questionnaire(session_id: str) -> dict:
 def _run_setup_prep(session_id: str) -> None:
     try:
         _prepare_opening_questionnaire(session_id)
+    except _SetupPrepError:
+        return  # already recorded, with its reason, for the status poll and anyone waiting
     except Exception as err:  # noqa: BLE001 - reported to the player, who can try again
         _SETUP_PREP[session_id] = {"state": "failed", "error": str(err)[:300] or "The opening questions could not be prepared."}
         return
@@ -2048,7 +2073,7 @@ def get_opening_setup(session_id: str, current_user=Depends(get_current_user)):
         return {"opening_setup": setup, "completed": True, "anchors": setup.get("anchors") or []}
     if not setup.get("questionnaire"):
         # Joins a background build if one is running, otherwise builds here.
-        meta = _prepare_opening_questionnaire(session_id)
+        meta = _prepared_meta_or_503(session_id)
         setup = meta.get("opening_setup") or setup
         _SETUP_PREP[session_id] = {"state": "ready", "error": None}
     return {"opening_setup": setup, "questionnaire": setup.get("questionnaire"), "completed": bool(setup.get("completed"))}
@@ -2079,7 +2104,7 @@ def submit_opening_setup(session_id: str, payload: OpeningSetupSubmit, current_u
     meta = json.loads(meta_path.read_text())
     _require_session_member(meta, current_user)
     if not (meta.get("opening_setup") or {}).get("questionnaire"):
-        meta = _prepare_opening_questionnaire(session_id)
+        meta = _prepared_meta_or_503(session_id)
     setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
     questionnaire = setup.get("questionnaire") or {}
     if payload.questionnaire_id != questionnaire.get("questionnaire_id"):
@@ -2140,7 +2165,7 @@ def skip_opening_setup(session_id: str, payload: OpeningSetupSkip | None = None,
     meta = json.loads(meta_path.read_text())
     _require_session_member(meta, current_user)
     if not (meta.get("opening_setup") or {}).get("questionnaire"):
-        meta = _prepare_opening_questionnaire(session_id)
+        meta = _prepared_meta_or_503(session_id)
     setup = meta.get("opening_setup") or _opening_setup_default(bool(meta.get("campaign_id")))
     questionnaire = setup.get("questionnaire") or {}
     character = _selected_character_from_meta(meta)
