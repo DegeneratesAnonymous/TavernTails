@@ -1,5 +1,5 @@
 import React from 'react'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import SceneStartProgress, { formatElapsed } from './SceneStartProgress'
 
 const STAGES = [
@@ -115,4 +115,27 @@ test('questions that failed to prepare can be tried again', async () => {
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
     await waitFor(() => expect(server.calls.some(c => c.method === 'POST' && c.url.endsWith('/sessions/s1/opening-setup/prepare'))).toBe(true))
   } finally { server.restore() }
+})
+
+test('an older server that builds the questions inside the request keeps the button disabled until the screen is replaced', async () => {
+  jest.useFakeTimers()
+  const server = mockServer([status({ state: 'needs_setup' })]) // no `setup`: the questions are built by the click itself
+  try {
+    render(<SceneStartProgress sessionId="s1" onReady={jest.fn()} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Answer the opening questions' }))
+    act(() => { jest.advanceTimersByTime(120000) })
+    expect(screen.getByRole('button', { name: 'Opening…' })).toBeDisabled()
+  } finally { server.restore(); jest.useRealTimers() }
+})
+
+test('a click that is lost on a server that prepares ahead gives the button back', async () => {
+  jest.useFakeTimers()
+  const server = mockServer([status({ state: 'needs_setup', setup: { state: 'ready', error: null, elapsed_s: 0 } })])
+  try {
+    render(<SceneStartProgress sessionId="s1" onReady={jest.fn()} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Answer the opening questions' }))
+    expect(screen.getByRole('button', { name: 'Opening…' })).toBeDisabled()
+    act(() => { jest.advanceTimersByTime(21000) })
+    expect(screen.getByRole('button', { name: 'Answer the opening questions' })).toBeEnabled()
+  } finally { server.restore(); jest.useRealTimers() }
 })

@@ -78,13 +78,16 @@ export default function SceneStartProgress({ sessionId, onReady }: Props) {
     return () => { cancelled = true; if (timer) clearTimeout(timer) }
   }, [sessionId, onReady, startScene])
 
-  // The dashboard swaps this screen for the questions once they load; if that never happens (an error
-  // the dashboard shows elsewhere, a lost request), give the button back instead of spinning forever.
+  // Servers that prepare the questions ahead answer the click at once, so a click that changed nothing
+  // within a few seconds was lost: give the button back. Older servers (no `setup` in the status) build
+  // the questions inside that very request, which can legitimately run for minutes; the dashboard swaps
+  // this screen out when that request finishes or fails, so no timer may re-enable the button early.
+  const preparesAhead = Boolean(status?.setup)
   useEffect(() => {
-    if (!opening) return
+    if (!opening || !preparesAhead) return
     const timer = setTimeout(() => setOpening(false), OPENING_TIMEOUT_MS)
     return () => clearTimeout(timer)
-  }, [opening])
+  }, [opening, preparesAhead])
 
   const openSetup = () => {
     setOpening(true)

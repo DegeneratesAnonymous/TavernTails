@@ -1,10 +1,10 @@
 import asyncio
 import json
+import queue
 import re
 import threading
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -1968,14 +1968,35 @@ _SETUP_PREP: dict[str, dict[str, Any]] = {}
 _SETUP_PREP_GUARD = threading.Lock()
 _SETUP_BUILD_LOCKS: dict[str, threading.Lock] = {}
 _SETUP_PREP_WORKERS = 2
-_SETUP_PREP_POOL: ThreadPoolExecutor | None = None
+_SETUP_PREP_QUEUE: queue.Queue[tuple[str, threading.Event]] | None = None
+_SETUP_QUEUE_GUARD = threading.Lock()  # separate from _SETUP_PREP_GUARD, which the caller already holds
 
 
-def _setup_prep_pool() -> ThreadPoolExecutor:
-    global _SETUP_PREP_POOL
-    if _SETUP_PREP_POOL is None:
-        _SETUP_PREP_POOL = ThreadPoolExecutor(max_workers=_SETUP_PREP_WORKERS, thread_name_prefix="opening-setup")
-    return _SETUP_PREP_POOL
+def _setup_prep_worker(jobs: queue.Queue[tuple[str, threading.Event]]) -> None:
+    while True:
+        session_id, done = jobs.get()
+        try:
+            _run_setup_prep(session_id)
+        finally:
+            done.set()
+
+
+def _submit_setup_prep(session_id: str) -> threading.Event:
+    """Queue one preparation for a small fixed set of daemon workers; returns an event set when it ends.
+
+    Daemon workers, not an executor: an executor's threads are joined at interpreter exit, so a restart
+    would wait through every queued multi-minute build. These die with the process.
+    """
+    global _SETUP_PREP_QUEUE
+    done = threading.Event()
+    with _SETUP_QUEUE_GUARD:
+        if _SETUP_PREP_QUEUE is None:
+            jobs: queue.Queue[tuple[str, threading.Event]] = queue.Queue()
+            for index in range(_SETUP_PREP_WORKERS):
+                threading.Thread(target=_setup_prep_worker, args=(jobs,), daemon=True, name=f"opening-setup-{index}").start()
+            _SETUP_PREP_QUEUE = jobs
+        _SETUP_PREP_QUEUE.put((session_id, done))
+    return done
 
 
 class _SetupPrepError(Exception):
@@ -2053,14 +2074,15 @@ def _opening_setup_prep_status(session_id: str, setup: dict, *, start: bool = Tr
         return {"state": "ready", "error": None, "elapsed_s": 0}
     with _SETUP_PREP_GUARD:
         prep = _SETUP_PREP.get(session_id) or {}
-        future = prep.get("future")
-        running = prep.get("state") == "preparing" and future is not None and not future.done()
+        ended = prep.get("ended")
+        running = prep.get("state") == "preparing" and ended is not None and not ended.is_set()
         if not running and prep.get("state") != "failed" and start:
-            # A small shared pool, not a thread per session: the builds mostly wait on the one model
-            # queue, so more workers would only pile up. Extra sessions show "preparing" until a slot frees.
-            future = _setup_prep_pool().submit(_run_setup_prep, session_id)
-            prep = {"state": "preparing", "error": None, "started_at": time.time(), "future": future}
+            # A small shared set of workers, not a thread per session: the builds mostly wait on the one
+            # model queue, so more workers would only pile up. Extra sessions show "preparing" until free.
+            prep = {"state": "preparing", "error": None, "started_at": time.time(), "ended": None}
             _SETUP_PREP[session_id] = prep
+            # Registered before the job can finish, so a fast job's own "ready" is never overwritten.
+            prep["ended"] = _submit_setup_prep(session_id)
         elif not running and prep.get("state") == "preparing":
             # The job ended between its save and this read; the meta we were handed predates the save.
             prep = {"state": "ready", "error": None}

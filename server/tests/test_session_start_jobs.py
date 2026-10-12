@@ -219,7 +219,7 @@ def test_a_request_waiting_on_a_failing_build_shares_the_failure_instead_of_rebu
         assert _wait_for(lambda: client.get(status_url, headers=headers).json()["setup"]["state"] == "ready")
 
 
-def test_background_preparation_uses_a_bounded_pool_not_a_thread_per_session(monkeypatch):
+def test_background_preparation_uses_bounded_daemon_workers_not_a_thread_per_session(monkeypatch):
     import threading
 
     release = threading.Event()
@@ -231,7 +231,7 @@ def test_background_preparation_uses_a_bounded_pool_not_a_thread_per_session(mon
         return {"questionnaire_id": "q", "questions": [], "campaign_brief": {}}
 
     monkeypatch.setattr(sessions, "_build_opening_setup_questionnaire", blocked_build)
-    monkeypatch.setattr(sessions, "_SETUP_PREP_POOL", None)
+    monkeypatch.setattr(sessions, "_SETUP_PREP_QUEUE", None)
     monkeypatch.setattr(sessions, "_SETUP_PREP_WORKERS", 1)
     with TestClient(main.app) as client:
         first, headers = _session(client, "setup-pool-a@example.com")
@@ -245,6 +245,7 @@ def test_background_preparation_uses_a_bounded_pool_not_a_thread_per_session(mon
         time.sleep(0.2)
         assert started == [first], "with one worker the second session waits its turn"
         assert threading.active_count() <= before + 1
+        assert all(t.daemon for t in threading.enumerate() if t.name.startswith("opening-setup")), "workers must not block shutdown"
         release.set()
         assert _wait_for(lambda: client.get(f"/sessions/{second}/start-status", headers=headers2).json()["setup"]["state"] == "ready")
         assert started == [first, second]
