@@ -79,6 +79,8 @@ def build_facts(
         "stakes": _clean(required.get("specific_stakes")) or _clean(contract.get("pressure_or_timer")),
         "clock": _clean(contract.get("pressure_or_timer")),
         "object": _clean(required.get("approved_object")) or "",
+        # An object the player or campaign confirmed must survive the rewrite; a generated one is only context.
+        "object_confirmed": (required.get("field_provenance") or {}).get("approved_object") in {"user", "imported", "confirmed_canon"},
         "reason_for_coming": usable_answer(anchor.get("arrival_reason")),
         "why_it_matters": usable_answer(anchor.get("personal_stake")),
         "what_they_fear_losing": usable_answer(anchor.get("fear_of_loss")),
@@ -179,6 +181,32 @@ def _answer_used(answer: str, lower_text: str, location: str) -> bool:
     return sum(1 for w in words if w[:5] in lower_text) >= min(2, len(words))
 
 
+_WET_OR_STORMY = re.compile(
+    r"\b(?:rain|rains|raining|rainy|drizzle|downpour|snow|snowing|snowfall|sleet|hail|storm|stormy|thunder|lightning|blizzard|fog|foggy|mist|misty)\b",
+    re.IGNORECASE)
+_CLEAR_SKY = re.compile(r"\b(?:clear sky|clear skies|cloudless|unclouded|bright sun|sunny)\b", re.IGNORECASE)
+
+
+def _mentions(lower_text: str, phrase: str) -> bool:
+    """True when the text names ``phrase``: the whole phrase, or every meaningful word of it."""
+    phrase = phrase.lower().strip()
+    if phrase in lower_text:
+        return True
+    words = re.findall(r"[a-z]{4,}", phrase)
+    return bool(words) and all(w[:5] in lower_text for w in words)
+
+
+def _weather_conflict(body: str, facts: dict[str, Any]) -> str:
+    """A complaint when the present weather in the prose contradicts the scene's own weather field; ``""`` otherwise."""
+    weather = (facts.get("weather") or "").lower()
+    future = f"{facts.get('stakes', '')} {facts.get('clock', '')}"
+    if weather in {"clear", "sunny", "fair"} and _WET_OR_STORMY.search(body) and not _WET_OR_STORMY.search(future):
+        return f"Describes rain, snow, fog or storm although the weather is {weather}."
+    if _WET_OR_STORMY.search(weather) and _CLEAR_SKY.search(body):
+        return f"Describes clear skies although the weather is {weather}."
+    return ""
+
+
 def check_woven(text: str, facts: dict[str, Any]) -> list[str]:
     """Why ``text`` is not an acceptable opening; empty when it is."""
     from .scene_validator import _names_place  # imported here: scene_validator imports this package's siblings
@@ -216,6 +244,12 @@ def check_woven(text: str, facts: dict[str, Any]) -> list[str]:
         if len(known.split()) >= 6 and known in lower:
             issues.append(f"Copies a sentence the player has already read ('{known[:60]}'); use new words.")
             break
+    obj = facts.get("object") or ""
+    if obj and facts.get("object_confirmed") and not _mentions(lower, obj):
+        issues.append(f"Never shows the established {obj}; it must be in the scene.")
+    weather_issue = _weather_conflict(body, facts)
+    if weather_issue:
+        issues.append(weather_issue)
     time = facts["time_of_day"].lower()
     future = f"{facts.get('stakes', '')} {facts.get('clock', '')}"  # a deadline at night is in the future, not the present
     if time in _DAY_TIMES and _NIGHT_WORDS.search(body) and not _NIGHT_WORDS.search(future):

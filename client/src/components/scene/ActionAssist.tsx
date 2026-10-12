@@ -57,7 +57,7 @@ export default function ActionAssist({ sessionId, value, onFill, sceneKey = '', 
     setOffered('')
     setError('')
     setNudge(false)
-  }, [sceneKey])
+  }, [sceneKey, sessionId, characterId])
 
   // Gentle nudge for someone staring at an empty box.
   useEffect(() => {

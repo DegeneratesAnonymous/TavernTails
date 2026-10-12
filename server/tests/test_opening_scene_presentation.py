@@ -277,3 +277,26 @@ def test_a_night_opening_may_mention_a_deadline_in_the_morning():
     draft = draft.replace("The bells will ring dusk soon", "The gate opens in the morning, and the bells will ring then")
     assert not [i for i in scene_weaver.check_woven(draft, facts) if "daylight" in i]
     assert [i for i in scene_weaver.check_woven(draft.replace("night is cold", "sunshine is warm and the night is cold"), _facts(time_of_day="night")) if "daylight" in i]
+
+
+def test_a_confirmed_object_must_survive_the_rewrite_but_a_generated_one_need_not():
+    confirmed = {**REQUIRED, "approved_object": "silver reliquary", "field_provenance": {"approved_object": "user"}}
+    facts = scene_weaver.build_facts(location="Greywood Market", time_of_day="day", player_name="Bastog", anchor=ANCHOR, required=confirmed)
+    assert "Never shows the established silver reliquary" in " ".join(scene_weaver.check_woven(GOOD_DRAFT, facts))
+    with_it = GOOD_DRAFT.replace("A chapel reliquary sits on that table", "A silver reliquary sits on that table")
+    assert not [i for i in scene_weaver.check_woven(with_it, facts) if "established" in i]
+    generated = {**confirmed, "field_provenance": {"approved_object": "generated"}}
+    facts = scene_weaver.build_facts(location="Greywood Market", time_of_day="day", player_name="Bastog", anchor=ANCHOR, required=generated)
+    assert not [i for i in scene_weaver.check_woven(GOOD_DRAFT, facts) if "established" in i]
+
+
+@pytest.mark.parametrize("weather, sentence, bad", [
+    ("clear", "Rain hammers the awnings.", True),
+    ("clear", "The sky is clear and the awnings stand still.", False),
+    ("rain", "A clear sky stretches over the square.", True),
+    ("rain", "Rain drums on the awnings.", False),
+])
+def test_the_weather_in_the_story_matches_the_weather_of_the_scene(weather, sentence, bad):
+    draft = GOOD_DRAFT.replace("the morning is cold enough that breath shows in the air", sentence.rstrip("."))
+    issues = " ".join(scene_weaver.check_woven(draft, _facts(weather=weather)))
+    assert ("although the weather is" in issues) is bad

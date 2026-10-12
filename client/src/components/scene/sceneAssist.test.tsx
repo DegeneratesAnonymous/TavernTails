@@ -146,6 +146,18 @@ describe('a suggestion belongs to the scene it was asked for', () => {
     global.fetch = original
   })
 
+  test('switching characters clears the idea on offer, so it cannot be used for the other character', async () => {
+    window.localStorage.setItem('tt:hint-dismissed', '1')
+    const server = mockFetch({ '/round': ROUND, '/suggest-action': { suggestion: 'I ask Ada Reed what she saw.' } })
+    const onFill = jest.fn()
+    const { rerender } = render(<ActionAssist sessionId="s1" value="I pick the lock" onFill={onFill} sceneKey="a" idleNudgeMs={0} characterId={1} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Suggest' }))
+    expect(await screen.findByText(/Idea: I ask Ada Reed/)).toBeInTheDocument()
+    rerender(<ActionAssist sessionId="s1" value="I pick the lock" onFill={onFill} sceneKey="a" idleNudgeMs={0} characterId={2} />)
+    await waitFor(() => expect(screen.queryByText(/Idea:/)).not.toBeInTheDocument())
+    server.restore()
+  })
+
   test('the character the player is acting as is sent with the request', async () => {
     window.localStorage.setItem('tt:hint-dismissed', '1')
     const server = mockFetch({ '/round': ROUND, '/suggest-action': { suggestion: 'I look around.' } })

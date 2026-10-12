@@ -29,7 +29,14 @@ from .. import db, steward_llm
 from ..auth import get_current_user
 from ..realtime import broadcaster
 from .scene_privacy import GM_ONLY_NPC_KEYS, GM_ONLY_SCENE_KEYS, player_view
-from .sessions import BASE, _is_dm, _normalize_email, _require_session_member
+from .sessions import (
+    BASE,
+    _is_dm,
+    _load_story_entries,
+    _normalize_email,
+    _require_session_member,
+    _story_last_timestamp,
+)
 from .table_state import table_safety
 
 logger = logging.getLogger("taverntails.session_assist")
@@ -405,6 +412,8 @@ def notice(session_id: str, req: NoticeRequest | None = None, current_user=Depen
     text = generate_notice(player_view(scene), character_for(member), hidden_strings(scene))
     # The model call is slow and made outside the lock; the file is re-read inside it so two players arriving together
     # each keep the other's entry, and each writer uses its own temporary file.
+    if not text:
+        return {"notice": "", "cached": False}  # a failure is not a notice: the next request may try again
     with _NOTICE_LOCK:
         cache = _read_notices(cache_path)
         cache[key] = text
@@ -467,6 +476,11 @@ def round_status(folder: Path, meta: dict, scene: dict, me: str = "") -> dict[st
     """Who has said what they do this round, and who has said they are done: the table can see whom it waits for."""
     cursor = int(scene.get("last_resolved_message_id") or 0)
     messages = db.list_chat_messages(session_id=meta.get("id") or folder.name, limit=None, after_id=cursor)
+    if scene.get("last_resolved_message_id") is None:
+        # A save from before the watermark existed: the last narration marks where this round began.
+        last = _story_last_timestamp(_load_story_entries(folder))
+        if last:
+            messages = [m for m in messages if m.created_at and m.created_at.replace(tzinfo=timezone.utc) > last]
     acted: dict[int, int] = {}
     for m in messages:
         if m.role in ("gm", "narrator", "system") or not _clean(m.message) or m.sender_id is None:

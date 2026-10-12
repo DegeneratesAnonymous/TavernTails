@@ -361,3 +361,36 @@ def test_a_notice_may_not_turn_backstory_into_something_in_the_room(monkeypatch)
     assert assist.generate_notice(view, char, HIDDEN).startswith("You notice how Ada Reed")
     # a suggestion, by contrast, may draw on what the character knows from their own past
     assert not assist.check_suggestion("I ask Ada Reed about Blackthorn.", visible=assist.visible_text(view, char), hidden=HIDDEN)
+
+
+def test_a_failed_notice_is_not_remembered(table, monkeypatch):
+    calls = []
+    monkeypatch.setattr(steward_llm, "chat_complete", lambda *a, **k: calls.append(1) and None)
+    client, headers = table["client"], _auth(table["owner"])
+    assert client.post(f"/sessions/{table['sid']}/notice", headers=headers, json={}).json()["notice"] == ""
+    monkeypatch.setattr(steward_llm, "chat_complete", lambda *a, **k: "You notice how Ada Reed keeps one hand flat on the page.")
+    again = client.post(f"/sessions/{table['sid']}/notice", headers=headers, json={}).json()
+    assert again["notice"].startswith("You notice") and not again["cached"]  # the second try was allowed
+
+
+def test_round_status_on_an_older_save_counts_only_messages_since_the_last_narration(table):
+    from datetime import datetime, timedelta, timezone
+
+    owner = db.get_user_by_identifier(table["owner"])
+    old = db.log_chat_message("I did this long ago.", session_id=table["sid"], sender_id=owner.id, sender_name="Arin", role="player")
+    scene = json.loads((table["folder"] / "scene.json").read_text())
+    scene.pop("last_resolved_message_id", None)
+    (table["folder"] / "scene.json").write_text(json.dumps(scene))
+    later = (datetime.now(timezone.utc) + timedelta(seconds=5)).isoformat()
+    (table["folder"] / "story.json").write_text(json.dumps([{"type": "narration", "ts": later, "text": PROSE}]))
+    status = table["client"].get(f"/sessions/{table['sid']}/round", headers=_auth(table["friend"])).json()
+    assert old.id and not any(m["acted"] for m in status["members"])  # that message predates the scene on screen
+
+
+def test_a_long_round_keeps_the_latest_actions():
+    class Msg:
+        def __init__(self, n):
+            self.sender_name, self.message, self.role = "Arin", f"action {n}", "player"
+
+    recap = round_recap([Msg(n) for n in range(20)], participants={"arin"})
+    assert [a["text"] for a in recap["actions"]] == [f"action {n}" for n in range(8, 20)]

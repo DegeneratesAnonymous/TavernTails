@@ -26,7 +26,7 @@ def round_recap(messages: list, roll_entries: list[dict] | None = None, particip
         # Rolls belong to a campaign, which can hold several sessions: keep only the ones made by this table.
         if r.get("type") == "roll" and (participants or set()) and _clean((r.get("roll") or {}).get("by")).lower() in (participants or set())
     ]
-    return {"actions": actions[:12], "rolls": rolls[:12]}
+    return {"actions": actions[-12:], "rolls": rolls[-12:]}  # the latest: they are what led to the scene
 
 
 def table_safety(meta: dict) -> dict[str, Any]:
