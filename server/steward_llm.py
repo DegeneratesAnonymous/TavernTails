@@ -134,6 +134,32 @@ def _steward_payload(messages, scope, max_tokens, temperature, timeout) -> dict:
     return payload
 
 
+# Steward sits behind nginx: while Steward restarts, nginx answers 502/504 (or refuses the connection) for ~10-60 s.
+# A genuine model failure is a 503 with a JSON error body, which is not retried here.
+_RESTART_STATUSES = {502, 504}
+_RESTART_BACKOFF_SECONDS = (2.0, 4.0, 8.0, 12.0, 14.0)
+
+
+def _post_riding_out_restarts(client, url: str, *, json: dict, timeout: float, sleep=time.sleep):
+    """POST to Steward; if it is restarting (502/504 or a refused connection), wait and retry within ~40 s."""
+    last_exc: Exception | None = None
+    response = None
+    for delay in (0.0, *_RESTART_BACKOFF_SECONDS):
+        if delay:
+            sleep(delay)
+        try:
+            response = client.post(url, json=json, timeout=timeout)
+        except (httpx.ConnectError, httpx.RemoteProtocolError, httpx.ReadError) as exc:
+            last_exc = exc
+            continue
+        if response.status_code not in _RESTART_STATUSES:
+            return response
+        last_exc = None
+    if response is not None:
+        return response
+    raise last_exc  # type: ignore[misc]
+
+
 def _chat_complete(
     messages: list[dict],
     *,
@@ -164,7 +190,8 @@ def _chat_complete(
         started = time.perf_counter()
         try:
             client = _client_for(steward_host)
-            r = client.post(
+            r = _post_riding_out_restarts(
+                client,
                 f"{steward_host}/api/games/taverntails/ai",
                 json=_steward_payload(messages, scope, max_tokens, temperature, timeout),
                 timeout=steward_attempt_timeout,
