@@ -207,8 +207,8 @@ def weave(threads: list[dict[str, Any]], truth: dict[str, str] | None, factions:
     for t in threads:
         by_name[t["name"].casefold()] = by_name.get(t["name"].casefold(), 0) + 1
     names = _world_names(truth, factions, npcs)
-    supplied = _supplied(threads, truth, factions, npcs, campaign_name)
     for thread in threads:
+        supplied = _supplied([thread], truth, factions, npcs, campaign_name)  # only this character's facts, plus the world's
         draft = drafts.get(str(thread["character_id"]))
         if draft is None and by_name[thread["name"].casefold()] == 1:  # a name identifies a draft only when it is unique
             draft = drafts.get(thread["name"].casefold())

@@ -190,7 +190,7 @@ def test_a_failed_review_is_an_error_and_does_not_mark_the_story_reviewed(table,
     assert c.post(f"/sessions/{table['sid']}/goals/review", headers=h).status_code == 502
     assert c.get(f"/sessions/{table['sid']}/goals", headers=h).json()["scenes_since_review"] == 2
     monkeypatch.setattr(steward_llm, "chat_complete", lambda *a, **k: json.dumps({"updates": []}))
-    assert c.post(f"/sessions/{table['sid']}/goals/review", headers=h).json() == {"suggestions": []}
+    assert c.post(f"/sessions/{table['sid']}/goals/review", headers=h).json() == {"suggestions": [], "more": False}
     assert c.get(f"/sessions/{table['sid']}/goals", headers=h).json()["scenes_since_review"] == 0
 
 
@@ -206,10 +206,52 @@ def test_a_review_reads_only_scenes_added_since_the_last_one(table, monkeypatch)
     h = _auth(table["owner"].email)
     assert c.post(f"/sessions/{table['sid']}/goals/review", headers=h).status_code == 200
     assert "oil-stained sill" in seen[0] and "ferry debt" in seen[0]
-    assert c.post(f"/sessions/{table['sid']}/goals/review", headers=h).json() == {"suggestions": []}
+    assert c.post(f"/sessions/{table['sid']}/goals/review", headers=h).json() == {"suggestions": [], "more": False}
     assert len(seen) == 1  # nothing new, so the model is not asked again
     story = json.loads((table["folder"] / "story.json").read_text())
     story.append({"type": "narration", "text": "Dawn came up over the quiet harbour."})
     (table["folder"] / "story.json").write_text(json.dumps(story))
     assert c.post(f"/sessions/{table['sid']}/goals/review", headers=h).status_code == 200
     assert "Dawn came up" in seen[1] and "oil-stained sill" not in seen[1]
+
+
+def _sugg(table, who, goal, evidence):
+    return {"id": table[who].id, "goal": goal, "status": "progressed", "evidence": evidence}
+
+
+def test_suggestions_are_kept_for_the_whole_table_until_acted_on(table, monkeypatch):
+    reply = json.dumps({"updates": [_sugg(table, "tam", "repay the ferry debt", "paid the last coin of the ferry debt")]})
+    monkeypatch.setattr(steward_llm, "chat_complete", lambda *a, **k: reply)
+    c = _client()
+    c.post(f"/sessions/{table['sid']}/goals/review", headers=_auth(table["owner"].email))
+    # Tam's player sees the suggestion about their own goal even though someone else did the checking.
+    seen = c.get(f"/sessions/{table['sid']}/goals", headers=_auth(table["friend"].email)).json()["suggestions"]
+    assert [(s["character"], s["you"]) for s in seen] == [("Tam", True)]
+    assert c.get(f"/sessions/{table['sid']}/goals", headers=_auth(table["owner"].email)).json()["suggestions"][0]["you"] is False
+    # Only their own player can dismiss it; applying the change also clears it.
+    body = {"character_id": table["tam"].id, "goal_id": seen[0]["goal_id"]}
+    assert c.post(f"/sessions/{table['sid']}/goals/dismiss", json=body, headers=_auth(table["owner"].email)).status_code == 403
+    assert c.post(f"/sessions/{table['sid']}/goals/dismiss", json=body, headers=_auth(table["friend"].email)).json() == {"suggestions": []}
+
+
+def test_the_review_cursor_moves_only_past_scenes_the_model_was_shown(table, monkeypatch):
+    story = [{"type": "narration", "text": f"Scene {i}. " + "word " * 5} for i in range(12)]
+    (table["folder"] / "story.json").write_text(json.dumps(story))
+    shown: list[str] = []
+    monkeypatch.setattr(steward_llm, "chat_complete", lambda m, **k: shown.append(m[-1]["content"]) or json.dumps({"updates": []}))
+    c = _client()
+    h = _auth(table["owner"].email)
+    first = c.post(f"/sessions/{table['sid']}/goals/review", headers=h).json()
+    assert first["more"] is True and "Scene 0." in shown[0] and "Scene 7." in shown[0] and "Scene 8." not in shown[0]
+    second = c.post(f"/sessions/{table['sid']}/goals/review", headers=h).json()
+    assert second["more"] is False and "Scene 8." in shown[1] and "Scene 11." in shown[1] and "Scene 0." not in shown[1]
+
+
+def test_reopening_a_goal_respects_the_active_limit(table):
+    c = _client()
+    h = _auth(table["owner"].email)
+    mira = table["mira"]
+    goals = [{"term": "mid", "text": f"active goal {i}"} for i in range(6)] + [{"term": "long", "text": "an old goal", "status": "done"}]
+    db.update_character(mira.id, table["owner"].id, {"sheet_patch": {"goals": goals}})
+    res = c.post(f"/sessions/{table['sid']}/goals/apply", json={"character_id": mira.id, "goal_id": gr.goal_id("an old goal"), "status": "active"}, headers=h)
+    assert res.status_code == 409

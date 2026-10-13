@@ -4,6 +4,7 @@ import GoalsDialog from './GoalsDialog'
 
 const LIST = {
   scenes_since_review: 3,
+  suggestions: [],
   characters: [
     { character_id: 1, name: 'Mira', you: true, goals: [{ id: 'g1', term: 'long', text: 'find who burned the granary', because: 'my street went hungry', but: '', status: 'active', note: '' }] },
     { character_id: 2, name: 'Tam', you: false, goals: [{ id: 'g2', term: 'long', text: 'repay the ferry debt', because: '', but: '', status: 'active', note: '' }] },
@@ -16,8 +17,9 @@ function server(extra: Record<string, unknown> = {}) {
   global.fetch = jest.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
     const href = String(url)
     calls.push({ url: href, method: init?.method || 'GET', body: init?.body ? JSON.parse(String(init.body)) : null })
-    const key = Object.keys(extra).find((k) => href.endsWith(k))
-    const body = key ? extra[key] : href.endsWith('/goals') ? LIST : {}
+    const key = Object.keys(extra).find((k) => href.endsWith(k))  // longest key wins below
+    const value = key ? extra[key] : href.endsWith('/goals') ? LIST : {}
+    const body = typeof value === 'function' ? (value as () => unknown)() : value
     return { ok: true, status: 200, json: async () => body } as Response
   }) as unknown as typeof fetch
   return { calls, restore: () => { global.fetch = original } }
@@ -38,8 +40,11 @@ test('everyone’s goals are shown, but only your own can be changed', async () 
 })
 
 test('the story’s suggestion is shown with its quote and changes nothing until the player acts', async () => {
+  const suggestion = { character: 'Mira', character_id: 1, goal_id: 'g1', goal: 'find who burned the granary', status: 'progressed', evidence: 'knew the granary fire was no accident', you: true }
+  let reviewed = false
   const s = server({
-    '/goals/review': { suggestions: [{ character: 'mira', character_id: 1, goal_id: 'g1', goal: 'find who burned the granary', status: 'progressed', evidence: 'knew the granary fire was no accident', you: true }] },
+    '/goals/review': () => { reviewed = true; return { suggestions: [suggestion], more: false } },
+    '/goals': () => ({ ...LIST, suggestions: reviewed ? [suggestion] : [] }),
   })
   try {
     render(<GoalsDialog sessionId="s1" open onClose={() => {}} />)

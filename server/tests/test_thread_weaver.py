@@ -391,3 +391,21 @@ def test_a_finished_thread_stays_resolved_across_session_starts_until_a_new_goal
     db.update_character(mira.id, db.get_character_by_id(mira.id).owner_id, {"sheet_patch": {"goals": [{"term": "long", "text": "rebuild the granary"}]}})
     tw.ensure_threads(db.get_campaign_by_id(camp.id), members, call=lambda *a, **k: None)
     assert mira.id in [int(r.data["character_id"]) for r in tw.b_plot_rows(camp.id)]
+
+
+def test_a_draft_may_not_borrow_another_characters_facts():
+    threads = [_thread(character_id=1, allies=["Tam Ferrier"]), _thread(character_id=2, name="Tam", goals=[{"term": "long", "text": "repay the ferry debt"}], rivals=["Odo Brask"])]
+    reply = json.dumps({"threads": [
+        {"id": 1, "character": "Mira", "connection": "The Salt Court's fires are the ones Mira hunts, and Odo Brask is behind them.", "complication": "Fires spread.", "beat": "A fire near Hale Orrin."},
+        {"id": 2, "character": "Tam", "connection": "Hale Orrin holds the ferry debt Tam owes.", "complication": "The debt grows.", "beat": "Hale Orrin calls it in."},
+    ]})
+    out = tw.weave(threads, TRUTH, FACTIONS, NPCS, "Saltmere", call=lambda *a, **k: reply)
+    assert out[1]["source"] == "template" and "Odo Brask" not in out[1]["connection"]  # Odo is Tam's rival, not Mira's
+    assert out[2]["source"] == "model"
+
+
+def test_opening_answers_in_another_script_cannot_be_dropped():
+    from server.agents.scene_weaver import _answers_used
+
+    assert not _answers_used(["私は灰の市場で妹を探している"], "mira walked through the market at noon.", "Saltmere")
+    assert _answers_used(["私は灰の市場で妹を探している"], "mira walked through 灰の市場 looking for her sister 妹.", "Saltmere")

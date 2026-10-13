@@ -361,3 +361,10 @@ describe('the scene on screen', () => {
     server.restore()
   })
 })
+
+test('a hook in another script is still shown unless the story really contains it', () => {
+  const { rerender } = render(<SceneFacts view={{ hook: '灰の市場の裏で何が起きているのか' }} body="The market was quiet." />)
+  expect(screen.getByText(/灰の市場の裏で何が起きているのか/)).toBeInTheDocument()
+  rerender(<SceneFacts view={{ hook: '灰の市場の裏で何が起きているのか' }} body="誰も 灰の市場の裏で何が起きているのか 知らない。" />)
+  expect(screen.queryByText(/Unanswered/)).not.toBeInTheDocument()
+})

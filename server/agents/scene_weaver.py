@@ -210,6 +210,11 @@ def _answers_used(answers: list[str], lower_text: str, location: str) -> bool:
     words: set[str] = set()
     for answer in answers:
         words |= _meaningful(answer, location)
+    if not words:
+        # Answers with no Latin words (another script) cannot be compared by word; compare by character pairs, so
+        # an opening that omits them entirely is not accepted as having kept them.
+        pairs = {a[i:i + 2] for a in answers for a in [re.sub(r"[\W_]+", "", a.lower())] for i in range(len(a) - 1)}
+        return not pairs or sum(1 for p in pairs if p in lower_text) >= min(3, len(pairs))
     return sum(1 for w in words if w[:5] in lower_text) >= min(2, len(words))
 
 

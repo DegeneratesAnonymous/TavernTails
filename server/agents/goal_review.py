@@ -197,6 +197,35 @@ def _own_character(meta: dict, user, character_id: int):
 # Routes
 # ---------------------------------------------------------------------------
 
+def _save_state(folder: Path, state: dict[str, Any]) -> None:
+    try:
+        (folder / STATE_FILE).write_text(json.dumps(state))
+    except OSError:
+        logger.exception("could not save goal review state")
+
+
+def _pending(folder: Path, meta: dict, user) -> list[dict[str, Any]]:
+    """Suggestions nobody has acted on yet, for every seated character, shown to everyone at the table."""
+    members = _members(meta, user)
+    names = {c.id: c.name for c, _ in members}
+    mine = {c.id for c, is_mine in members if is_mine}
+    active = {(c.id, g["id"]) for c, _ in members for g in _sheet_goals(c, meta.get("campaign_id")) if g["status"] == "active"}
+    return [
+        {**s, "character": names[s["character_id"]], "you": s["character_id"] in mine}
+        for s in _state(folder).get("suggestions", [])
+        if isinstance(s, dict) and (s.get("character_id"), s.get("goal_id")) in active and s.get("character_id") in names
+    ]
+
+
+def _drop_suggestions(folder: Path, character_id: int, goal: str | None = None) -> None:
+    state = _state(folder)
+    state["suggestions"] = [
+        s for s in state.get("suggestions", [])
+        if not (isinstance(s, dict) and s.get("character_id") == character_id and (goal is None or s.get("goal_id") == goal))
+    ]
+    _save_state(folder, state)
+
+
 @router.get("/{session_id}/goals")
 def get_goals(session_id: str, current_user=Depends(get_current_user)):
     folder, meta, _ = _load(session_id, current_user)
@@ -204,6 +233,7 @@ def get_goals(session_id: str, current_user=Depends(get_current_user)):
     return {
         "characters": [{"character_id": c.id, "name": c.name, "you": mine, "goals": _sheet_goals(c, meta.get("campaign_id"))} for c, mine in _members(meta, current_user)],
         "scenes_since_review": since,
+        "suggestions": _pending(folder, meta, current_user),
     }
 
 
@@ -211,36 +241,62 @@ def get_goals(session_id: str, current_user=Depends(get_current_user)):
 async def review_goals(session_id: str, current_user=Depends(get_current_user)):
     folder, meta, _ = _load(session_id, current_user)
     narrations = _narrations(folder)
-    reviewed = max(0, min(int(_state(folder).get("narrations", 0)), len(narrations)))
+    state = _state(folder)
+    reviewed = max(0, min(int(state.get("narrations", 0)), len(narrations)))
     fresh = narrations[reviewed:]  # only scenes added since the last check, so an old suggestion is never repeated
     if not fresh:
-        return {"suggestions": []}
-    story = "\n\n".join(fresh[-8:])[-STORY_CHARS:]
+        return {"suggestions": _pending(folder, meta, current_user), "more": False}
+    # Oldest first, as many as fit: the cursor moves only past scenes the model was actually shown.
+    batch: list[str] = []
+    size = 0
+    for text in fresh:
+        if batch and (len(batch) >= 8 or size + len(text) > STORY_CHARS):
+            break
+        batch.append(text[:STORY_CHARS])
+        size += len(batch[-1])
     members = _members(meta, current_user)
-    found = await run_generation(suggest_updates, [c for c, _mine in members], story, campaign_id=meta.get("campaign_id"))
+    found = await run_generation(suggest_updates, [c for c, _mine in members], "\n\n".join(batch), campaign_id=meta.get("campaign_id"))
     if found is None:
         # Do not mark the story as reviewed: the players would be told nothing moved and never asked again.
         raise HTTPException(status_code=502, detail="The story could not be checked just now. Try again in a moment.")
-    try:
-        (folder / STATE_FILE).write_text(json.dumps({"narrations": len(narrations)}))
-    except OSError:
-        pass
-    mine = {c.id for c, is_mine in members if is_mine}
-    names = {c.id: c.name for c, _ in members}
-    return {"suggestions": [{**s, "character": names.get(s["character_id"], ""), "you": s["character_id"] in mine} for s in found]}
+    # Suggestions are kept for the whole table, so whoever checked first does not use them up.
+    state = _state(folder)
+    keep = {(s["character_id"], s["goal_id"]): s for s in state.get("suggestions", []) if isinstance(s, dict)}
+    keep.update({(s["character_id"], s["goal_id"]): s for s in found})
+    _save_state(folder, {**state, "narrations": reviewed + len(batch), "suggestions": list(keep.values())})
+    return {"suggestions": _pending(folder, meta, current_user), "more": reviewed + len(batch) < len(narrations)}
+
+
+class DismissBody(BaseModel):
+    character_id: int
+    goal_id: str = Field(max_length=16)
+
+
+@router.post("/{session_id}/goals/dismiss")
+def dismiss_suggestion(session_id: str, body: DismissBody, current_user=Depends(get_current_user)):
+    folder, meta, _ = _load(session_id, current_user)
+    _own_character(meta, current_user, body.character_id)
+    _drop_suggestions(folder, body.character_id, body.goal_id)
+    return {"suggestions": _pending(folder, meta, current_user)}
 
 
 @router.post("/{session_id}/goals/apply")
 def apply_goal(session_id: str, body: ApplyBody, current_user=Depends(get_current_user)):
-    _folder, meta, _ = _load(session_id, current_user)
+    folder, meta, _ = _load(session_id, current_user)
     character = _own_character(meta, current_user, body.character_id)
-    if body.goal_id not in {g["id"] for g in _sheet_goals(character, meta.get("campaign_id"))}:
+    current = _sheet_goals(character, meta.get("campaign_id"))
+    target = next((g for g in current if g["id"] == body.goal_id), None)
+    if target is None:
         raise HTTPException(status_code=404, detail="Goal not found")
+    if body.status == "active" and target["status"] != "active" and sum(1 for g in current if g["status"] == "active") >= ACTIVE_LIMIT:
+        raise HTTPException(status_code=409, detail="That is plenty of goals at once. Finish or drop one first.")
 
     def change(goals: list[dict[str, str]]) -> list[dict[str, str]]:
         return [{**g, "status": body.status, "note": body.note or g["note"]} if g["id"] == body.goal_id else g for g in goals]
 
-    return {"goals": _edit_goals(character, meta.get("campaign_id"), change)}
+    goals = _edit_goals(character, meta.get("campaign_id"), change)
+    _drop_suggestions(folder, body.character_id, body.goal_id)
+    return {"goals": goals}
 
 
 @router.post("/{session_id}/goals/add")

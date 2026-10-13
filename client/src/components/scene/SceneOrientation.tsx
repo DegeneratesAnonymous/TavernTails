@@ -16,12 +16,13 @@ type Props = {
 }
 
 /** Who is here and the one question the scene leaves open. Information only: nothing here suggests an action. */
-const plain = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+const plain = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
 
 export function SceneFacts({ view, body = '' }: { view?: SceneView | null; body?: string }) {
   const people = view?.present || []
   // The question is shown here only when the story itself does not already ask it.
-  const asked = (view?.hook || '').trim() !== '' && plain(body).includes(plain(view?.hook || ''))
+  const hookText = plain(view?.hook || '')
+  const asked = hookText !== '' && plain(body).includes(hookText)
   const hook = asked ? '' : (view?.hook || '').trim()
   if (!people.length && !hook) return null
   return (

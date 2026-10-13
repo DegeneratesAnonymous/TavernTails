@@ -322,3 +322,11 @@ def test_a_role_that_is_capitalised_like_a_title_reads_as_a_role():
     opening = build_opening_scene_contract(required={**REQUIRED, "named_npc_or_visible_threat": "Callum Grieve (Last Patient)"},
                                            anchor={}, campaign_brief={}, player_name="Ari")
     assert "A last patient, Callum Grieve, stands" in opening["opening_narrative"]
+
+
+def test_two_seats_with_the_same_character_name_are_a_party(tmp_path):
+    from server.agents import sessions
+
+    meta = {"members": [{"email": "a@x", "character_id": 1, "character_name": "Mira"}, {"email": "b@x", "character_id": 2, "character_name": "Mira"}]}
+    assert sessions._is_party(tmp_path, meta, {"id": 1}) is True
+    assert sessions._is_party(tmp_path, {"members": [{"email": "a@x", "character_id": 1, "character_name": "Mira"}]}, {"id": 1}) is False

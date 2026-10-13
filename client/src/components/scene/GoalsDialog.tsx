@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { addGoal, applyGoal, fetchGoals, reviewGoals } from './goalsApi'
-import type { CharacterGoals, Goal, GoalList, GoalSuggestion } from './goalsApi'
+import { addGoal, applyGoal, dismissSuggestion, fetchGoals, reviewGoals } from './goalsApi'
+import type { CharacterGoals, Goal, GoalList } from './goalsApi'
 import './SceneAssist.css'
 
 type Props = { sessionId: string | null | undefined; open: boolean; onClose: () => void }
@@ -15,7 +15,6 @@ const SUGGESTION_LABEL = { progressed: 'moved forward', done: 'looks finished', 
 export default function GoalsDialog({ sessionId, open, onClose }: Props) {
   const [list, setList] = useState<GoalList | null>(null)
   const [failed, setFailed] = useState(false)
-  const [suggestions, setSuggestions] = useState<GoalSuggestion[] | null>(null)
   const [checking, setChecking] = useState(false)
   const [message, setMessage] = useState('')
   const [adding, setAdding] = useState<{ characterId: number; term: Goal['term']; text: string; because: string } | null>(null)
@@ -32,7 +31,6 @@ export default function GoalsDialog({ sessionId, open, onClose }: Props) {
 
   useEffect(() => {
     if (!open) return
-    setSuggestions(null)
     setMessage('')
     setAdding(null)
     void load()
@@ -68,19 +66,23 @@ export default function GoalsDialog({ sessionId, open, onClose }: Props) {
     setMessage('')
     const result = await reviewGoals(sessionId)
     setChecking(false)
-    if (!result) { setMessage('Could not check the story just now.'); return }
-    setSuggestions(result.suggestions)
-    if (!result.suggestions.length) setMessage('Nothing in the recent story clearly moved a goal.')
-    void load()
+    if (!result) { setMessage('Could not check the story just now. Nothing was marked as checked; try again.'); return }
+    await load()
+    if (result.more) setMessage('There are more scenes to read. Check again to continue.')
+    else if (!result.suggestions.length) setMessage('Nothing in the recent story clearly moved a goal.')
   }
 
   async function change(character: CharacterGoals, goal: Goal, status: Goal['status']) {
     if (!sessionId) return
     const result = await applyGoal(sessionId, { character_id: character.character_id, goal_id: goal.id, status })
     if (!result) { setMessage('Could not change that goal.'); return }
-    setSuggestions((prev) => prev && prev.filter((s) => s.goal_id !== goal.id))
     await load()
     if (status === 'done') setAdding({ characterId: character.character_id, term: goal.term === 'short' ? 'mid' : 'long', text: '', because: '' })
+  }
+
+  async function dismiss(characterId: number, goalId: string) {
+    if (!sessionId) return
+    if (await dismissSuggestion(sessionId, { character_id: characterId, goal_id: goalId })) await load()
   }
 
   async function submitNew() {
@@ -108,7 +110,7 @@ export default function GoalsDialog({ sessionId, open, onClose }: Props) {
             {c.goals.length ? (
               <ul className="goal-list">
                 {c.goals.map((g) => {
-                  const suggestion = suggestions?.find((s) => s.goal_id === g.id && s.character_id === c.character_id)
+                  const suggestion = list.suggestions?.find((s) => s.goal_id === g.id && s.character_id === c.character_id)
                   return (
                     <li key={g.id} className={`goal goal--${g.status}`}>
                       <span><strong>{TERM_LABEL[g.term]}:</strong> {g.text}{g.because ? `, because ${g.because}` : ''}{g.but ? `, but ${g.but}` : ''}</span>
@@ -116,6 +118,7 @@ export default function GoalsDialog({ sessionId, open, onClose }: Props) {
                       {suggestion ? (
                         <p className="goal-suggestion" role="status">
                           The story suggests this {SUGGESTION_LABEL[suggestion.status]}: “{suggestion.evidence}”
+                          {c.you ? <button type="button" onClick={() => void dismiss(c.character_id, g.id)}>Not really</button> : null}
                         </p>
                       ) : null}
                       {c.you ? (

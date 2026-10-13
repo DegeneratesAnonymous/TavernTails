@@ -1948,7 +1948,7 @@ def _build_opening_setup_questionnaire(folder: Path, meta: dict, setup: dict | N
         # scene happens where the brief said it would instead of at a second, independently drawn place.
         setup["seed"] = opening_seed
     character = _selected_character_from_meta(meta)
-    party_mode = len(_session_player_names(folder, meta)) > 1 or not character.get("id")
+    party_mode = _is_party(folder, meta, character)
     return generate_questionnaire(
         session_id=str(meta.get("id") or folder.name),
         campaign_id=campaign_id,
@@ -2123,6 +2123,11 @@ def _setup_build_lock(session_id: str) -> threading.Lock:
         return _SETUP_BUILD_LOCKS.setdefault(session_id, threading.Lock())
 
 
+def _is_party(folder: Path, meta: dict, character: dict) -> bool:
+    """More than one seat (counted by seat, not by distinct name: two players can share a character name)."""
+    return len(_session_player_names(folder, meta)) > 1 or len(meta.get('members') or []) > 1 or not character.get("id")
+
+
 def _character_story(meta: dict, character: dict) -> dict | None:
     """The seated character's own story (goals, ties), when their player has written one."""
     if not character.get("id"):
@@ -2135,7 +2140,7 @@ def _character_story(meta: dict, character: dict) -> dict | None:
 def _questionnaire_signature(folder: Path, meta: dict) -> str:
     """What the questions depend on: the seated character, their written story, and whether the table is a party."""
     character = _selected_character_from_meta(meta)
-    party_mode = len(_session_player_names(folder, meta)) > 1 or not character.get("id")
+    party_mode = _is_party(folder, meta, character)
     story = _character_story(meta, character)
     story_key = hashlib.sha1(json.dumps(story, sort_keys=True).encode()).hexdigest()[:8] if story else ''
     return f"{character.get('id') or ''}|{'party' if party_mode else 'solo'}|{story_key}"
