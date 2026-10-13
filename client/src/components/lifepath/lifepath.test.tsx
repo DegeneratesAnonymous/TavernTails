@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import LifePathBuilder from './LifePathBuilder'
 import BackstoryWizard from './BackstoryWizard'
 import {
-  characterPayload, characterStages, entriesFor, linkOf, stageDone, worldContextFromAnswers, worldContextFromCampaign, worldStages,
+  characterPayload, characterStages, entriesFor, linkOf, stageDone, worldContextFromAnswers, worldContextFromCampaign, worldFactsText, worldStages,
   type Answers, type WorldContext,
 } from '../../data/lifepath'
 
@@ -244,5 +244,21 @@ describe('review fixes', () => {
     expect(screen.getByRole('radio', { name: 'Grim and grounded' })).not.toBeChecked()
     fireEvent.click(screen.getByRole('radio', { name: 'Warm and cozy' }))
     expect(screen.getByLabelText('Something else')).toHaveValue('')
+  })
+})
+
+describe('world facts reach the campaign', () => {
+  test('choices the narrative leaves out are listed under it, and ones it already covers are not', () => {
+    const answers: Answers = {
+      powers: a({ fields: { name0: 'Salt Court', wants0: 'to control the grain', name1: 'Reed Guild', wants1: 'to keep the ferries free' } }),
+      places: a({ fields: { p0: 'Ashen Market', p1: 'Low Dock' } }),
+      rules: a({ typed: 'Magic is rare' }),
+    }
+    const text = worldFactsText(answers, 'The Salt Court controls the grain. People gather at the Ashen Market and Low Dock.')
+    expect(text).toContain('Also true of this world:')
+    expect(text).toContain('Reed Guild wants to keep the ferries free')
+    expect(text).toContain('Magic is rare')
+    expect(text).not.toContain('Salt Court wants to control the grain')
+    expect(worldFactsText({}, 'Just the story.')).toBe('Just the story.')
   })
 })

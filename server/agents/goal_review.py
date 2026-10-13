@@ -87,35 +87,47 @@ def _norm(text: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^\w\s']", " ", text.casefold())).strip()
 
 
-def check_suggestions(raw: dict[str, Any] | None, goals_by_character: dict[str, dict[str, dict[str, str]]], story: str) -> list[dict[str, str]]:
-    """Keep a suggestion only if it names a real active goal and quotes words that are really in the story."""
-    kept: list[dict[str, str]] = []
+def check_suggestions(
+    raw: dict[str, Any] | None, goals_by_character: dict[str, dict[str, dict[str, str]]], story: str,
+    names: dict[str, list[str]] | None = None,
+) -> list[dict[str, Any]]:
+    """Keep a suggestion only if it names a real active goal and quotes words that are really in the story.
+
+    ``goals_by_character`` is keyed by character id.  A reply names its character by id; a name is accepted only
+    when exactly one seated character has it.
+    """
+    kept: list[dict[str, Any]] = []
     haystack = _norm(story)
     for item in (raw or {}).get("updates") or []:
         if not isinstance(item, dict):
             continue
-        who = clean_text(item.get("character")).casefold()
-        goal = goals_by_character.get(who, {}).get(clean_text(item.get("goal")).casefold())
+        key = str(item.get("id", "")).strip()
+        if key not in goals_by_character:
+            matches = (names or {}).get(clean_text(item.get("character")).casefold(), [])
+            key = matches[0] if len(matches) == 1 else ""
+        goal = goals_by_character.get(key, {}).get(clean_text(item.get("goal")).casefold())
         evidence = clean_text(item.get("evidence"))
         status = clean_text(item.get("status")).casefold()
         if goal and status in SUGGESTION_STATUSES and len(_norm(evidence)) >= 12 and _norm(evidence) in haystack:
-            kept.append({"character": who, "goal_id": goal["id"], "goal": goal["text"], "status": status, "evidence": evidence[:200]})
+            kept.append({"character_id": int(key), "goal_id": goal["id"], "goal": goal["text"], "status": status, "evidence": evidence[:200]})
     return kept
 
 
-def suggest_updates(characters: list[Any], story: str, *, call=None, campaign_id: str | None = None) -> list[dict[str, str]]:
+def suggest_updates(characters: list[Any], story: str, *, call=None, campaign_id: str | None = None) -> list[dict[str, Any]]:
     by_character: dict[str, dict[str, dict[str, str]]] = {}
+    names: dict[str, list[str]] = {}
     lines = []
     for character in characters:
         active = [g for g in _sheet_goals(character, campaign_id) if g["status"] == "active"]
         if active:
-            by_character[character.name.casefold()] = {g["text"].casefold(): g for g in active}
-            lines.append(f"- {character.name}: " + "; ".join(f"{g['term']} goal: {g['text']}" for g in active))
+            by_character[str(character.id)] = {g["text"].casefold(): g for g in active}
+            names.setdefault(character.name.casefold(), []).append(str(character.id))
+            lines.append(f"- id {character.id}, {character.name}: " + "; ".join(f"{g['term']} goal: {g['text']}" for g in active))
     if not lines or not story.strip():
         return []
     system = (
         "You help a tabletop group keep track of character goals. Read the recent story and say which goals it moved. "
-        'Reply with ONLY JSON: {"updates":[{"character":"<name>","goal":"<the goal text, exactly as given>",'
+        'Reply with ONLY JSON: {"updates":[{"id":<the character\'s id number>,"goal":"<the goal text, exactly as given>",'
         '"status":"progressed|done|blocked","evidence":"<a short exact quote from the story>"}]}. '
         "Only include a goal the story clearly moved. The quote must be copied from the story. Use [] if none."
     )
@@ -127,7 +139,7 @@ def suggest_updates(characters: list[Any], story: str, *, call=None, campaign_id
     except Exception:
         logger.exception("goal review call failed")
         return []
-    return check_suggestions(parse_json_object(str(raw or "")), by_character, story)
+    return check_suggestions(parse_json_object(str(raw or "")), by_character, story, names)
 
 
 # ---------------------------------------------------------------------------
@@ -202,9 +214,9 @@ async def review_goals(session_id: str, current_user=Depends(get_current_user)):
         (folder / STATE_FILE).write_text(json.dumps({"narrations": len(narrations)}))
     except OSError:
         pass
-    mine = {c.name.casefold(): c.id for c, is_mine in members if is_mine}
-    ids = {c.name.casefold(): c.id for c, _ in members}
-    return {"suggestions": [{**s, "character_id": ids.get(s["character"]), "you": s["character"] in mine} for s in found]}
+    mine = {c.id for c, is_mine in members if is_mine}
+    names = {c.id: c.name for c, _ in members}
+    return {"suggestions": [{**s, "character": names.get(s["character_id"], ""), "you": s["character_id"] in mine} for s in found]}
 
 
 @router.post("/{session_id}/goals/apply")

@@ -53,3 +53,8 @@ def test_a_possessive_of_a_locked_name_is_not_a_drift():
 
 def test_a_drifted_name_is_repaired_inside_a_possessive():
     assert ct.repair_names("The Salt Council's guards left.", [("Salt Council", "Salt Court")]) == "The Salt Court's guards left."
+
+
+def test_a_title_after_a_locked_name_is_not_a_drift():
+    assert ct.name_drifts("The Salt Court Guard raised a hand.", ["Salt Court"]) == []
+    assert ct.name_drifts("The Silver Hand Envoy arrived.", ["Silver Hand"]) == []

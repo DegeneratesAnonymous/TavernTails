@@ -325,17 +325,25 @@ def goal_id(text: str) -> str:
 
 
 def _clean_goals(goals: list[dict[str, str]]) -> list[dict[str, str]]:
-    out = []
+    out: list[dict[str, str]] = []
+    used: set[str] = set()
     for goal in goals[:GOAL_LIMIT]:
         text = clean_text(goal.get("text"))
-        if text:
-            out.append({
-                "id": goal_id(text),
-                "term": str(goal.get("term")) if goal.get("term") in ("short", "mid", "long") else "mid",
-                "text": text[:300], "because": clean_text(goal.get("because"))[:300], "but": clean_text(goal.get("but"))[:300],
-                "status": str(goal.get("status")) if goal.get("status") in GOAL_STATUSES else "active",
-                "note": clean_text(goal.get("note"))[:200],
-            })
+        if not text:
+            continue
+        term = str(goal.get("term")) if goal.get("term") in ("short", "mid", "long") else "mid"
+        gid = goal_id(text)
+        if gid in used:  # the same words under two horizons are two goals, each with its own id
+            gid = goal_id(f"{text}|{term}")
+        while gid in used:
+            gid = goal_id(f"{text}|{term}|{len(used)}")
+        used.add(gid)
+        out.append({
+            "id": gid, "term": term, "text": text[:300],
+            "because": clean_text(goal.get("because"))[:300], "but": clean_text(goal.get("but"))[:300],
+            "status": str(goal.get("status")) if goal.get("status") in GOAL_STATUSES else "active",
+            "note": clean_text(goal.get("note"))[:200],
+        })
     return out
 
 

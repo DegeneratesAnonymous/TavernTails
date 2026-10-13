@@ -22,7 +22,7 @@ import {
   type CampaignCard,
   type WorldVisibility,
 } from './campaignCard'
-import type { Answers } from '../../data/lifepath'
+import { worldFactsText, type Answers } from '../../data/lifepath'
 import WorldBuilder from '../lifepath/WorldBuilder'
 import { deleteWorld, getWorld, listWorlds, type SavedWorldSummary } from '../lifepath/lifepathApi'
 
@@ -92,8 +92,9 @@ export default function CampaignCardCreator({ seat, owner, validateSeat, fallbac
     const { world } = found
     if (mode === 'use') {
       if (text.trim() && text !== autoText && !window.confirm('Replace what you have written with this world?')) return
-      setText(world.narrative)
-      setAutoText(world.narrative)
+      const full = worldFactsText((world.answers ?? {}) as Answers, world.narrative)
+      setText(full)
+      setAutoText(full)
       setUsedWorld({ id: world.id, name: world.name })
       setShowWorlds(false)
     } else {
@@ -205,7 +206,7 @@ export default function CampaignCardCreator({ seat, owner, validateSeat, fallbac
           savedName={building.savedName}
           onCancel={() => setBuilding(null)}
           onUse={(w) => {
-            setText(w.narrative)
+            setText(worldFactsText(w.answers, w.narrative))
             setAutoText(null)
             setUsedWorld({ id: w.savedId, name: w.context.world_name || building.savedName || 'Your world' })
             setBuilding(null)

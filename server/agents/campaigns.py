@@ -406,7 +406,7 @@ def create_campaign(req: CampaignCreate, background_tasks: BackgroundTasks, curr
     except Exception:
         # The campaign exists, so this is not fatal, but it must not pass unseen: the contract or the world may be missing.
         logger.exception("campaign %s: setup did not finish", campaign_id)
-        warnings.append("Some campaign setup did not finish. The campaign was created and setup is retried when you start.")
+        warnings.append("Some campaign setup did not finish. The campaign was created, but its world or contract may be incomplete (the contract is rebuilt when a session starts; the world can be retried from its World panel).")
         db.set_campaign_metadata_keys(campaign_id, owner_id, {"setup_incomplete": True})
     # Optionally create an initial linked session and persist that link to campaign.metadata
     created_session = None

@@ -80,13 +80,14 @@ export default function BackstoryWizard({ character, campaignId, world, onFinish
 
   const payloadFor = (state: LifePathResult) => characterPayload(stages, state.answers, world, state.narrative, label)
 
+  const latestKey = latest ? JSON.stringify([latest.narrative, latest.answers]) : ''
   useEffect(() => {
     if (!latest || mode === 'campaign' || !latest.narrative.trim()) { setChanges(null); return }
     let live = true
     void previewApply(character.id, mode, payloadFor(latest)).then((r) => { if (live) setChanges(r?.changes ?? null) })
     return () => { live = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, latest?.narrative, character.id])
+  }, [mode, latestKey, character.id])
 
   async function finish(state: LifePathResult) {
     setBusy(true)

@@ -83,11 +83,13 @@ export default function LifePathBuilder({
     setAnswers((prev) => ({ ...prev, [id]: change(answerFor(prev, id)) }))
 
   async function draft() {
+    const forSignature = signature
     setDrafting(true)
     setError(null)
     const out = await draftNarrative({
       kind, name: name || resolvedWorld.world_name, entries, freeform, link: kind === 'character' ? link : null, context: resolvedWorld,
     })
+    setDraftedFor(forSignature) // what this draft was written from, even if it failed, so a failure is not retried in a loop
     setDrafting(false)
     if (!out) {
       setError('Could not draft that just now. You can write it yourself below.')
@@ -96,14 +98,15 @@ export default function LifePathBuilder({
     setNarrative(out.narrative)
     setSource(out.source)
     setEdited(false)
-    setDraftedFor(signature)
   }
 
+  // Write the story when it is first reached, and again if the choices changed while an earlier draft was being
+  // written (the player went back and changed something). Edited text is never replaced without being asked.
   useEffect(() => {
     if (!atNarrative || drafting) return
-    if (!narrative || (draftedFor !== signature && !edited)) void draft()
+    if (draftedFor === '' || (draftedFor !== signature && !edited)) void draft()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [atNarrative])
+  }, [atNarrative, drafting, signature, draftedFor, edited])
 
   const go = (next: number) => {
     setIndex(next)

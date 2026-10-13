@@ -8,6 +8,7 @@ touch a thread is checked against the text, so a scene that ignored the request 
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -76,7 +77,8 @@ def guidance(beat: dict[str, str]) -> str:
 def touched(scene_text: str, beat: dict[str, str]) -> bool:
     """True when the scene names the character and uses a word from their goal or the suggested beat."""
     text = scene_text or ""
-    if not beat.get("character") or beat["character"].casefold() not in text.casefold():
+    name = beat.get("character") or ""
+    if not name or not re.search(rf"(?<![\w'’-]){re.escape(name)}(?![\w-])", text, re.IGNORECASE):
         return False
     wanted = content_tokens(clean_text(beat.get("goal", "")) + " " + clean_text(beat.get("beat", "")))
     return not wanted or bool(wanted & content_tokens(text))

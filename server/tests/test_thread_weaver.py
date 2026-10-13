@@ -298,3 +298,11 @@ def test_finishing_a_goal_updates_the_stored_thread_at_once(tmp_path):
     row = tw.b_plot_rows(camp.id)[0]
     assert row.data["current_situation"] == "Tam wants to buy a boat." and row.data["signature"] == ""
     assert braid is not None
+
+
+def test_a_short_name_is_not_found_inside_other_words(tmp_path):
+    from server.agents import braid
+
+    beat = {"character": "Al", "goal": "find the granary arsonist", "beat": "a fire near the granary"}
+    assert not braid.touched("The salt hall smelled of smoke near the granary arsonist's lamp.", beat)
+    assert braid.touched("Al found the granary arsonist's lamp.", beat)

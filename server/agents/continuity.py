@@ -68,7 +68,7 @@ def name_drifts(text: str, names: Iterable[str]) -> list[tuple[str, str]]:
             continue
         for name in locked:
             parts, locked_parts = run.split(), name.split()
-            if parts[0] == locked_parts[0] or parts[-1] == locked_parts[-1]:
+            if len(parts) == len(locked_parts) and (parts[0] == locked_parts[0] or parts[-1] == locked_parts[-1]):
                 if run != name and difflib.SequenceMatcher(None, run.casefold(), name.casefold()).ratio() >= SIMILAR:
                     if (run, name) not in found:
                         found.append((run, name))

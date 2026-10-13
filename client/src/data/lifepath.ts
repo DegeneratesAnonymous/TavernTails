@@ -409,3 +409,21 @@ export function worldContextFromCampaign(meta: {
     narrative: fromCard.narrative || text('setting_summary'),
   }
 }
+
+const words = (text: string) => new Set((text.toLowerCase().match(/[a-z']{4,}/g) ?? []).map((w) => w.slice(0, 5))) // crude stems
+
+/**
+ * The chosen facts the narrative leaves out, as a short list to add under it. The narrative only has to mention
+ * most choices, so factions, places and table rules could otherwise vanish between the builder and the campaign.
+ */
+export function worldFactsText(answers: Answers, narrative: string): string {
+  const have = words(narrative)
+  const lines = entriesFor(worldStages(), answers)
+    .filter((e) => ['conflict', 'powers', 'places', 'start', 'rules'].includes(e.stage))
+    .map((e) => clean(e.clause || e.answer))
+    .filter((line) => {
+      const need = [...words(line)]
+      return need.length > 0 && need.filter((w) => have.has(w)).length / need.length < 0.7
+    })
+  return lines.length ? `${narrative.trimEnd()}\n\nAlso true of this world:\n${lines.map((l) => `- ${l}`).join('\n')}` : narrative
+}

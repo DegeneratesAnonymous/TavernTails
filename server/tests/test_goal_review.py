@@ -70,7 +70,7 @@ def test_only_members_can_see_goals(table):
 def test_suggestions_need_a_real_quote_and_a_real_goal():
     mira = type("C", (), {"id": 1, "name": "Mira", "sheet": {"goals": [{"term": "long", "text": "find who burned the granary"}]}})()
     story = "Mira found the oil-stained sill behind the Ashen Market and knew the granary fire was no accident."
-    good = {"updates": [{"character": "Mira", "goal": "find who burned the granary", "status": "progressed", "evidence": "found the oil-stained sill behind the Ashen Market"}]}
+    good = {"updates": [{"id": 1, "goal": "find who burned the granary", "status": "progressed", "evidence": "found the oil-stained sill behind the Ashen Market"}]}
     assert len(gr.suggest_updates([mira], story, call=lambda *a, **k: json.dumps(good))) == 1
     invented_quote = {"updates": [{**good["updates"][0], "evidence": "confronted the magistrate in the square"}]}
     assert gr.suggest_updates([mira], story, call=lambda *a, **k: json.dumps(invented_quote)) == []
@@ -83,13 +83,13 @@ def test_suggestions_need_a_real_quote_and_a_real_goal():
 
 def test_review_route_marks_whose_goal_it_is_and_resets_the_count(table, monkeypatch):
     reply = json.dumps({"updates": [
-        {"character": "Mira", "goal": "find who burned the granary", "status": "progressed", "evidence": "knew the granary fire was no accident"},
-        {"character": "Tam", "goal": "repay the ferry debt", "status": "done", "evidence": "paid the last coin of the ferry debt"},
+        {"id": table["mira"].id, "goal": "find who burned the granary", "status": "progressed", "evidence": "knew the granary fire was no accident"},
+        {"id": table["tam"].id, "goal": "repay the ferry debt", "status": "done", "evidence": "paid the last coin of the ferry debt"},
     ]})
     monkeypatch.setattr(steward_llm, "chat_complete", lambda *a, **k: reply)
     c = _client()
     res = c.post(f"/sessions/{table['sid']}/goals/review", headers=_auth(table["owner"].email)).json()["suggestions"]
-    assert {(s["character"], s["you"]) for s in res} == {("mira", True), ("tam", False)}
+    assert {(s["character"], s["you"]) for s in res} == {("Mira", True), ("Tam", False)}
     assert c.get(f"/sessions/{table['sid']}/goals", headers=_auth(table["owner"].email)).json()["scenes_since_review"] == 0
 
 
@@ -163,3 +163,21 @@ def test_goals_kept_for_one_campaign_are_the_goals_in_effect(table):
     assert done.status_code == 200
     assert db.get_campaign_by_id(camp.id).metadata_json["player_backstories"][0]["goals"][0]["status"] == "done"
     assert all(g.get("status", "active") == "active" for g in db.get_character_by_id(table["mira"].id).sheet["goals"])  # the sheet is untouched
+
+
+def test_a_suggestion_names_its_character_by_id_so_a_shared_name_is_not_confused():
+    one = type("C", (), {"id": 1, "name": "Mira", "sheet": {"goals": [{"term": "long", "text": "find the arsonist"}]}})()
+    two = type("C", (), {"id": 2, "name": "Mira", "sheet": {"goals": [{"term": "long", "text": "repay the debt"}]}})()
+    story = "Mira found the arsonist's lamp behind the granary, and the debt was paid in full at dawn."
+    reply = json.dumps({"updates": [{"id": 1, "goal": "find the arsonist", "status": "progressed", "evidence": "found the arsonist's lamp behind the granary"}]})
+    found = gr.suggest_updates([one, two], story, call=lambda *a, **k: reply)
+    assert [(s["character_id"], s["goal"]) for s in found] == [(1, "find the arsonist")]
+    by_name = json.dumps({"updates": [{"character": "Mira", "goal": "repay the debt", "status": "done", "evidence": "the debt was paid in full at dawn"}]})
+    assert gr.suggest_updates([one, two], story, call=lambda *a, **k: by_name) == []  # an ambiguous name is not a match
+
+
+def test_the_same_goal_words_under_two_horizons_are_two_goals():
+    from server.agents import lifepath
+
+    goals = lifepath._clean_goals([{"term": "long", "text": "Survive the siege"}, {"term": "short", "text": "Survive the siege"}])
+    assert len({g["id"] for g in goals}) == 2
