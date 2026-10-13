@@ -13,6 +13,8 @@ entry points, storage boundaries, and generation flow are mapped in
 | NPC profiles and state | `server/agents/npc.py`, `campaign_memory.py`, `simulation.py` |
 | Story guidance and continuity | `server/agents/narrative_director.py`, `storyboard.py` |
 | Campaign setup and the world underneath | `server/agents/campaign_card.py`, `world_skeleton.py` |
+| World and backstory builders, B-plot threads, goals | `server/agents/lifepath.py`, `saved_worlds.py`, `thread_weaver.py`, `braid.py`, `goal_review.py` |
+| Scene consistency and campaign voice | `server/agents/continuity.py`, `voice.py` |
 | Notes and recaps | `server/agents/notes.py`, `memory_extractor.py` |
 | Images and visual continuity | `server/agents/image.py`, `visual_director.py`, `visual_state.py` |
 
