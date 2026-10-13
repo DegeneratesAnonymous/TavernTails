@@ -124,3 +124,10 @@
 .action-log-panel .chat-input-stack .action-assist { padding: 4px 10px 0; margin: 0; }
 .assist-label { flex: 1 1 auto; min-width: 0; color: rgba(245, 200, 66, 0.9); font-size: 0.8rem; font-weight: 800; letter-spacing: 0.02em; }
 .assist-row .assist-status { flex: 0 1 auto; }
+
+.goals-dialog .goal-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.goals-dialog .goal--done, .goals-dialog .goal--dropped { opacity: 0.65; }
+.goals-dialog .goal-actions { display: inline-flex; gap: 6px; margin-left: 8px; }
+.goals-dialog .goal-suggestion { margin: 4px 0 0; font-size: 0.85rem; color: var(--accent, #c8941a); }
+.goals-dialog .goal-new { display: grid; gap: 6px; margin-top: 8px; }
+.goals-dialog footer { display: flex; gap: 8px; justify-content: space-between; flex-wrap: wrap; }

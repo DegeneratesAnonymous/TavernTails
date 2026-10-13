@@ -10,6 +10,7 @@ import ContextDebugPanel from './ContextDebugPanel'
 import StoryDashboard, { StoryDashboardData } from './StoryDashboard'
 import Chat from './Chat'
 import { apiFetch, buildWsUrl } from '../api'
+import GoalsDialog from './scene/GoalsDialog'
 import RecapDialog from './scene/RecapDialog'
 import { markSeen, shouldShowRecap } from './scene/sceneAssistApi'
 import SiteMenu from './SiteMenu'
@@ -146,6 +147,7 @@ export default function GameplayLayout({
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [sceneKey, setSceneKey] = useState('')
   const [recapOpen, setRecapOpen] = useState(false)
+  const [goalsOpen, setGoalsOpen] = useState(false)
   const [turnState, setTurnState] = useState<{order: string[]; active?: string | null}>({order: [], active: null})
   const [remoteRoll, setRemoteRoll] = useState<{by?: string | null; total?: number | null; expression?: string | null} | null>(null)
   const [sceneCues, setSceneCues] = useState<SceneCue[]>([])
@@ -308,6 +310,12 @@ export default function GameplayLayout({
     const open = () => setRecapOpen(true)
     window.addEventListener('narrative:recap', open)
     return () => window.removeEventListener('narrative:recap', open)
+  }, [])
+
+  useEffect(() => {
+    const open = () => setGoalsOpen(true)
+    window.addEventListener('narrative:goals', open)
+    return () => window.removeEventListener('narrative:goals', open)
   }, [])
 
   // Coming back after a while: show where the story stands before dropping the player into it. A tab left open
@@ -2672,6 +2680,7 @@ export default function GameplayLayout({
         </>
       )}
       <RecapDialog sessionId={sessionId} open={recapOpen} onClose={() => setRecapOpen(false)} />
+      <GoalsDialog sessionId={sessionId} open={goalsOpen} onClose={() => setGoalsOpen(false)} />
     </div>
   )
 }

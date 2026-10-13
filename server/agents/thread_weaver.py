@@ -45,7 +45,8 @@ def _goals(raw: Any) -> list[dict[str, str]]:
     out = []
     for goal in raw if isinstance(raw, list) else []:
         if isinstance(goal, dict) and clean_text(goal.get("text")):
-            out.append({k: clean_text(goal.get(k)) for k in ("term", "text", "because", "but")})
+            if goal.get("status") not in ("done", "dropped"):  # finished and abandoned goals no longer drive scenes
+                out.append({k: clean_text(goal.get(k)) for k in ("term", "text", "because", "but")})
     return sorted(out, key=lambda g: TERMS.index(g["term"]) if g["term"] in TERMS else 1)
 
 

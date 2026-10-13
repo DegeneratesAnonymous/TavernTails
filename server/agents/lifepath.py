@@ -16,6 +16,7 @@ conflict is required.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 from collections.abc import Callable
@@ -297,14 +298,25 @@ def _merge_list(old: Any, new: list[str]) -> list[str]:
     return out
 
 
+GOAL_STATUSES = ("active", "done", "dropped")
+
+
+def goal_id(text: str) -> str:
+    """A goal's stable id: the same words always give the same id, so a goal can be found again."""
+    return hashlib.sha1(clean_text(text).casefold().encode()).hexdigest()[:8]
+
+
 def _clean_goals(goals: list[dict[str, str]]) -> list[dict[str, str]]:
     out = []
     for goal in goals[:GOAL_LIMIT]:
         text = clean_text(goal.get("text"))
         if text:
             out.append({
+                "id": goal_id(text),
                 "term": str(goal.get("term")) if goal.get("term") in ("short", "mid", "long") else "mid",
                 "text": text[:300], "because": clean_text(goal.get("because"))[:300], "but": clean_text(goal.get("but"))[:300],
+                "status": str(goal.get("status")) if goal.get("status") in GOAL_STATUSES else "active",
+                "note": clean_text(goal.get("note"))[:200],
             })
     return out
 

@@ -19,7 +19,7 @@ from ..auth import get_current_user
 from ..generation_workers import run_generation
 from ..realtime import broadcaster
 from ..storage import documents as doc_storage
-from . import braid, scene_weaver, thread_weaver, world_skeleton
+from . import braid, continuity, scene_weaver, thread_weaver, voice, world_skeleton
 from . import image as image_agent
 from . import narrative as narrative_agent
 from . import narrative_composer as narrative_composer_agent
@@ -2990,7 +2990,7 @@ async def _start_session_impl(session_id: str, payload: "StartSessionRequest", c
         campaign_contract.setdefault("story_shape_profile", story_shape_profile)
     if table_safety(meta).get("paused"):
         raise HTTPException(status_code=409, detail='The table is paused')
-    campaign_contract = with_table_safety(campaign_contract, meta)
+    campaign_contract = voice.with_voice(with_table_safety(campaign_contract, meta), {'settings': campaign_settings})
 
     # --- Context Orchestrator: assemble ranked context packet ---
     from .context_collector import summarize_active_threads, summarize_recent_world_changes
@@ -4282,7 +4282,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         campaign_contract.setdefault("story_shape_profile", story_shape_profile)
     if table_safety(meta).get("paused"):
         raise HTTPException(status_code=409, detail='The table is paused')
-    campaign_contract = with_table_safety(campaign_contract, meta)
+    campaign_contract = voice.with_voice(with_table_safety(campaign_contract, meta), {'settings': campaign_settings})
 
     if is_player_run_mode(session_id):
         raise HTTPException(status_code=400, detail='advance-scene is not available in player-run mode')
@@ -5042,6 +5042,19 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         campaign_contract=campaign_contract,
         evidence=_scene_evidence(adv_director_data),
     )
+    # Names the table established stay exact, and a scene may not echo the last few.
+    locked_names: list[str] = []
+    recent_scene_texts: list[str] = []
+    try:
+        locked_names = continuity.locked_names(
+            db.get_campaign_by_id(str(campaign_id)) if campaign_id else None,
+            [n for t in await run_generation(thread_weaver.character_threads, db.get_campaign_by_id(str(campaign_id)) if campaign_id else None, meta.get('members') or [])
+             for n in (*t['allies'], *t['rivals'], t['patron'])],
+        )
+        recent_scene_texts = [str(e.get('text') or '') for e in _load_story_entries(folder) if e.get('type') == 'narration'][-3:]
+    except Exception:
+        logger.exception("continuity inputs unavailable")
+    continuity_check: dict[str, Any] = continuity.check_scene(narrative.narrative, locked_names, recent_scene_texts)
     retry_used = False
     fallback_used = False
     contract_minimum = int((campaign_contract.get("validator_policy") or {}).get("minimum_scene_score") or MINIMUM_SCORE) if campaign_contract else MINIMUM_SCORE
@@ -5050,10 +5063,11 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         quality_score = max(quality_score, 85)
         quality_issues = []
         contract_validator = {"score": 100, "failed_expectations": [], "canon_violations": [], "backstory_boundary_violations": [], "agency_issues": [], "tone_issues": [], "recommended_fix": ""}
-    if quality_score < minimum_score or contract_validator.get("failed_expectations"):
+        continuity_check["issues"] = []  # a worked-out action response is deterministic; it is not rewritten for wording
+    if quality_score < minimum_score or contract_validator.get("failed_expectations") or continuity_check["issues"]:
         retry_used = True
         feedback = build_retry_feedback(
-            quality_issues + list(contract_validator.get("failed_expectations", [])),
+            quality_issues + list(contract_validator.get("failed_expectations", [])) + list(continuity_check["issues"]),
             quality_score,
             adv_scene_director_output.location.name,
             adv_scene_director_output.primary_npc.name,
@@ -5072,6 +5086,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             campaign_contract=campaign_contract,
             evidence=_scene_evidence(adv_director_data),
         )
+        continuity_check = continuity.check_scene(narrative.narrative, locked_names, recent_scene_texts)
 
     if quality_score < minimum_score:
         fallback_used = True
@@ -5092,6 +5107,12 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             prompt=f"What does {adv_player_name} do?",
             tone=style,
         )
+
+    drifts = continuity.name_drifts(narrative.narrative, locked_names)
+    if drifts:
+        # A near-miss of an established name ("Salt Council" for "Salt Court") is put right, not shown.
+        narrative = narrative.model_copy(update={"narrative": continuity.repair_names(narrative.narrative, drifts)})
+        logger.info("repaired drifted names: %s", drifts)
 
     now = datetime.now(timezone.utc)
     scene_index = f"scene-{uuid.uuid4().hex[:8]}"

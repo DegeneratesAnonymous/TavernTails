@@ -21,6 +21,7 @@ from .agents.chat import router as chat_router
 from .agents.content import router as content_router
 from .agents.documents import router as documents_router
 from .agents.generate import router as generate_router
+from .agents.goal_review import router as goal_review_router
 from .agents.image import router as image_router
 from .agents.lifepath import router as lifepath_router
 from .agents.messages import router as messages_router
@@ -151,6 +152,7 @@ app.include_router(content_router)
 app.include_router(sessions_router)
 app.include_router(session_assist_router)
 app.include_router(lifepath_router)
+app.include_router(goal_review_router)
 app.include_router(saved_worlds_router)
 app.include_router(characters_router)
 app.include_router(campaigns_router)
