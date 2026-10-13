@@ -21,7 +21,7 @@ import InboxPanel from './dashboard/InboxPanel'
 import MyTicketsPanel from './dashboard/MyTicketsPanel'
 import PageHeader from './ui/PageHeader'
 import BackstoryWizard from './lifepath/BackstoryWizard'
-import { worldContextFromCard } from '../data/lifepath'
+import { worldContextFromCampaign } from '../data/lifepath'
 import EmptyState from './ui/EmptyState'
 import Modal from './ui/Modal'
 import Toast from './ui/Toast'
@@ -1682,7 +1682,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                     <BackstoryWizard
                       character={{ id: Number(bridgeCharacter.id), name: bridgeCharacter.name, sheet: bridgeCharacter.sheet }}
                       campaignId={activeCampaignId}
-                      world={worldContextFromCard((activeCampaign as any)?.metadata_json?.campaign_card)}
+                      world={worldContextFromCampaign((activeCampaign as any)?.metadata_json)}
                       onCancel={() => { setBackstoryOpen(false); void fetchCharacters() }}
                       onFinished={() => {
                         setBackstoryOpen(false)

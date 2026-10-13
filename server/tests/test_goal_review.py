@@ -68,7 +68,7 @@ def test_only_members_can_see_goals(table):
 
 
 def test_suggestions_need_a_real_quote_and_a_real_goal():
-    mira = type("C", (), {"name": "Mira", "sheet": {"goals": [{"term": "long", "text": "find who burned the granary"}]}})()
+    mira = type("C", (), {"id": 1, "name": "Mira", "sheet": {"goals": [{"term": "long", "text": "find who burned the granary"}]}})()
     story = "Mira found the oil-stained sill behind the Ashen Market and knew the granary fire was no accident."
     good = {"updates": [{"character": "Mira", "goal": "find who burned the granary", "status": "progressed", "evidence": "found the oil-stained sill behind the Ashen Market"}]}
     assert len(gr.suggest_updates([mira], story, call=lambda *a, **k: json.dumps(good))) == 1
@@ -145,3 +145,21 @@ def test_too_many_active_goals_is_refused(table):
     h = _auth(table["owner"].email)
     codes = [c.post(f"/sessions/{table['sid']}/goals/add", json={"character_id": table["mira"].id, "text": f"goal number {i}"}, headers=h).status_code for i in range(6)]
     assert codes[-1] == 409 and codes.count(200) == 4  # two goals already, six active at most
+
+
+def test_goals_kept_for_one_campaign_are_the_goals_in_effect(table):
+    camp = db.create_campaign(owner_id=table["owner"].id, name="Saltmere")
+    meta = json.loads((table["folder"] / "meta.json").read_text())
+    meta["campaign_id"] = camp.id
+    (table["folder"] / "meta.json").write_text(json.dumps(meta))
+    db.set_campaign_metadata_keys(camp.id, table["owner"].id, {"player_backstories": [
+        {"character_id": str(table["mira"].id), "backstory": "x", "goals": [{"term": "long", "text": "burn the ledger"}]},
+    ]})
+    c = _client()
+    h = _auth(table["owner"].email)
+    mira = next(x for x in c.get(f"/sessions/{table['sid']}/goals", headers=h).json()["characters"] if x["name"] == "Mira")
+    assert [g["text"] for g in mira["goals"]] == ["burn the ledger"]  # not the sheet's goals
+    done = c.post(f"/sessions/{table['sid']}/goals/apply", json={"character_id": table["mira"].id, "goal_id": gr.goal_id("burn the ledger"), "status": "done"}, headers=h)
+    assert done.status_code == 200
+    assert db.get_campaign_by_id(camp.id).metadata_json["player_backstories"][0]["goals"][0]["status"] == "done"
+    assert all(g.get("status", "active") == "active" for g in db.get_character_by_id(table["mira"].id).sheet["goals"])  # the sheet is untouched

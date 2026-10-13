@@ -160,7 +160,7 @@ def _messages(threads: list[dict[str, Any]], truth: dict[str, str] | None, facti
     system = (
         "You are the game master's private planner. Each character below has a personal story (goals, ties, a link to the "
         "main trouble). Connect each one to the main trouble. Reply with ONLY a JSON object: "
-        '{"threads":[{"character":"<name>","connection":"how the hidden truth or a faction touches this character\'s goal",'
+        '{"threads":[{"id":<the number given for the character>,"character":"<name>","connection":"how the hidden truth or a faction touches this character\'s goal",'
         '"complication":"what the main trouble does to their goal if nobody acts","beat":"one scene idea that serves both"}]}. '
         f"Each value is one plain sentence under {MAX_FIELD} characters. Use only the names listed. Do not invent people, "
         "places or groups. Do not give the character new goals."
@@ -171,7 +171,7 @@ def _messages(threads: list[dict[str, Any]], truth: dict[str, str] | None, facti
     world += [f"Faction {f['name']}: wants {f['wants']}" for f in factions]
     world += [f"Person {n['name']} ({n.get('role', '')}): {n.get('wants', '')}" for n in npcs]
     chars = [
-        f"- {t['name']}: " + "; ".join(
+        f"- id {t['character_id']}, {t['name']}: " + "; ".join(
             [*(f"{g['term']} goal: {g['text']}" for g in t["goals"]),
              *( [f"link: {t['link']['name']}"] if t["link"] and t["link"]["name"] else [] ),
              *( [f"allies: {', '.join(t['allies'])}"] if t["allies"] else [] ),
@@ -193,13 +193,19 @@ def weave(threads: list[dict[str, Any]], truth: dict[str, str] | None, factions:
             data = parse_json_object(str(raw or "")) or {}
             for item in data.get("threads") or []:
                 if isinstance(item, dict):
-                    drafts[clean_text(item.get("character")).casefold()] = item
+                    key = str(item.get("id", "")).strip() or clean_text(item.get("character")).casefold()
+                    drafts[key] = item
         except Exception:
             logger.exception("thread weave call failed")
+    by_name: dict[str, int] = {}
+    for t in threads:
+        by_name[t["name"].casefold()] = by_name.get(t["name"].casefold(), 0) + 1
     names = _world_names(truth, factions, npcs)
     supplied = _supplied(threads, truth, factions, npcs, campaign_name)
     for thread in threads:
-        draft = drafts.get(thread["name"].casefold())
+        draft = drafts.get(str(thread["character_id"]))
+        if draft is None and by_name[thread["name"].casefold()] == 1:  # a name identifies a draft only when it is unique
+            draft = drafts.get(thread["name"].casefold())
         fields = {k: clean_text((draft or {}).get(k))[:MAX_FIELD] for k in ("connection", "complication", "beat")}
         ok = bool(draft) and all(fields.values())
         if ok:
@@ -274,7 +280,7 @@ def ensure_threads(campaign: db.Campaign | None, members: Iterable[dict[str, Any
                 ))
             else:
                 before = dict(row.data or {})
-                row.data, row.name, row.updated_at = data, name, now
+                row.data, row.name, row.updated_at, row.status = data, name, now, "active"
                 s.add(row)
                 s.add(CampaignChangeLog(
                     id=uuid.uuid4().hex[:12], campaign_id=campaign_id, entity_id=row.id, change_type="update",
@@ -285,7 +291,34 @@ def ensure_threads(campaign: db.Campaign | None, members: Iterable[dict[str, Any
     return threads
 
 
-def b_plot_rows(campaign_id: str) -> list[CampaignEntity]:
+def b_plot_rows(campaign_id: str, character_ids: Iterable[int] | None = None) -> list[CampaignEntity]:
+    """The campaign's active B-plot rows, limited to ``character_ids`` (the session's roster) when given."""
+    wanted = None if character_ids is None else {int(c) for c in character_ids}
     with Session(db.engine) as s:
-        rows = s.exec(select(CampaignEntity).where(CampaignEntity.campaign_id == campaign_id, CampaignEntity.entity_type == "story_thread")).all()
-        return [r for r in rows if TAG in (r.tags or [])]
+        rows = s.exec(select(CampaignEntity).where(
+            CampaignEntity.campaign_id == campaign_id, CampaignEntity.entity_type == "story_thread", CampaignEntity.status == "active",
+        )).all()
+        return [r for r in rows if TAG in (r.tags or []) and (wanted is None or int((r.data or {}).get("character_id", -1)) in wanted)]
+
+
+def refresh_after_goal_change(campaign_id: str, character_id: int, goals: list[dict[str, Any]]) -> None:
+    """A goal changed: bring the character's stored thread in line now, and have it rewoven at the next session start.
+
+    Finished and dropped goals stop driving scenes at once; with none left the thread is resolved.
+    """
+    active = _goals(goals)
+    with Session(db.engine) as s:
+        row = s.get(CampaignEntity, _row_id(campaign_id, character_id))
+        if row is None:
+            return
+        data = dict(row.data or {})
+        name = row.name.removesuffix("'s story")
+        if active:
+            data.update({"current_situation": f"{name} wants to {active[0]['text']}.", "primary_goal": active[0]["text"], "signature": ""})
+            row.status = "active"
+        else:
+            data["signature"] = ""
+            row.status = "resolved"
+        row.data, row.updated_at = data, datetime.now(timezone.utc)
+        s.add(row)
+        s.commit()

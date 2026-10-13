@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import LifePathBuilder from './LifePathBuilder'
 import BackstoryWizard from './BackstoryWizard'
 import {
-  characterPayload, characterStages, entriesFor, linkOf, stageDone, worldContextFromAnswers, worldStages,
+  characterPayload, characterStages, entriesFor, linkOf, stageDone, worldContextFromAnswers, worldContextFromCampaign, worldStages,
   type Answers, type WorldContext,
 } from '../../data/lifepath'
 
@@ -223,5 +223,26 @@ describe('saving a backstory', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Undo' }))
     await waitFor(() => expect(calls.some((c) => c.url.includes('/lifepath/characters/7/undo'))).toBe(true))
+  })
+})
+
+describe('review fixes', () => {
+  test('a classic campaign with no card still gives the builder its world from settings', () => {
+    const ctx = worldContextFromCampaign({
+      settings: { world_name: 'Saltmere', opening_trouble: 'Grain is burning', starting_location: 'Ashen Market', tone: 'grim' },
+      variables: { factions: [{ name: 'Salt Court' }] },
+    })
+    expect(ctx).toMatchObject({ world_name: 'Saltmere', conflict: 'Grain is burning', places: ['Ashen Market'], factions: ['Salt Court'], tone: 'grim' })
+  })
+
+  test('typing your own answer replaces a chosen card, and choosing a card clears the typed text', () => {
+    const stages = worldStages().filter((s) => s.id === 'tone')
+    render(<LifePathBuilder kind="world" title="W" stages={stages} name="" world={WORLD} doneLabel="Save" onCancel={() => {}} onDone={() => {}} />)
+    fireEvent.click(screen.getByRole('radio', { name: 'Grim and grounded' }))
+    expect(screen.getByRole('radio', { name: 'Grim and grounded' })).toBeChecked()
+    fireEvent.change(screen.getByLabelText('Something else'), { target: { value: 'cozy but with teeth' } })
+    expect(screen.getByRole('radio', { name: 'Grim and grounded' })).not.toBeChecked()
+    fireEvent.click(screen.getByRole('radio', { name: 'Warm and cozy' }))
+    expect(screen.getByLabelText('Something else')).toHaveValue('')
   })
 })

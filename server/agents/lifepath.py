@@ -449,8 +449,13 @@ def keep_for_campaign(campaign_id: str, character_id: int, payload: BackstoryPay
     if not character:
         raise HTTPException(status_code=404, detail="Character not found")
     meta = dict(campaign.metadata_json or {})
+    fields = {k: getattr(payload, k).strip() for k in (*TEXT_FIELDS, "alignment", "patron") if getattr(payload, k).strip()}
+    # The campaign has no sheet to put these on, so they go in the story text its contract and scenes read.
+    labelled = "\n".join(f"{k.replace('_', ' ').capitalize()}: {v.replace(chr(10), '; ')}" for k, v in fields.items() if k != "patron")
     entry = {
-        "character_id": str(character_id), "character_name": character.name, "backstory": payload.backstory.strip(),
+        "character_id": str(character_id), "character_name": character.name,
+        "backstory": "\n\n".join(p for p in (payload.backstory.strip(), labelled) if p),
+        "fields": fields, "lifepath": payload.lifepath,
         "goals": _clean_goals(payload.goals), "allies": payload.allies, "rivals": payload.rivals, "patron": payload.patron,
         "link": payload.link.model_dump() if payload.link else None,
     }

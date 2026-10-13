@@ -249,3 +249,19 @@ def test_invented_relatives_are_caught_unless_the_player_said_them():
     assert lifepath.invented_kin("She was raised by her grandmother.", "my grandmother raised me") == []
     issues = lifepath.check_narrative(GOOD.replace("Mira was raised", "Her father taught her. Mira was raised"), _req())
     assert any("father" in i for i in issues)
+
+
+def test_campaign_only_keeps_every_field_the_character_sheet_would_have_had(owner):
+    arin = db.create_character(owner_id=owner.id, name="Arin", level=1, class_name="Rogue", sheet={})
+    camp = db.create_campaign(owner_id=owner.id, name="Saltmere")
+    res = TestClient(main.app).post(
+        f"/lifepath/campaigns/{camp.id}/characters/{arin.id}",
+        json={"backstory": "Tale.", "bonds": "My family", "flaws": "Proud\nReckless", "ideals": "Justice", "alignment": "Chaotic Good",
+              "personality_traits": "Dry humour", "lifepath": {"label": "Saltmere"}},
+        headers=_auth(owner.email),
+    )
+    assert res.status_code == 200
+    entry = db.get_campaign_by_id(camp.id).metadata_json["player_backstories"][0]
+    assert entry["fields"]["flaws"] == "Proud\nReckless" and entry["fields"]["alignment"] == "Chaotic Good"
+    assert "Flaws: Proud; Reckless" in entry["backstory"] and entry["backstory"].startswith("Tale.")
+    assert entry["lifepath"] == {"label": "Saltmere"}

@@ -251,7 +251,7 @@ function StageBody({ stage, answers, update }: StageBodyProps) {
               role="radio"
               aria-checked={a.picked[0] === o.id}
               className={`wizard-option-card${a.picked[0] === o.id ? ' is-selected' : ''}`}
-              onClick={() => update(stage.id, (x) => ({ ...x, picked: x.picked[0] === o.id ? [] : [o.id] }))}
+              onClick={() => update(stage.id, (x) => ({ ...x, picked: x.picked[0] === o.id ? [] : [o.id], typed: x.picked[0] === o.id ? x.typed : '' }))}
             >
               <span className="wizard-option-name">{o.label}</span>
             </button>
@@ -263,7 +263,7 @@ function StageBody({ stage, answers, update }: StageBodyProps) {
             className="input"
             value={a.typed}
             maxLength={400}
-            onChange={(e) => update(stage.id, (x) => ({ ...x, typed: e.target.value }))}
+            onChange={(e) => update(stage.id, (x) => ({ ...x, typed: e.target.value, picked: e.target.value.trim() ? [] : x.picked }))}
             placeholder="In your own words"
           />
         </label>

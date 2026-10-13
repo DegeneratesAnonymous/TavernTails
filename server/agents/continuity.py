@@ -24,6 +24,7 @@ _WORD = re.compile(r"[a-z']+")
 SIMILAR = 0.72
 SHINGLE = 4
 REPEAT_LIMIT = 0.15
+NEAR_DUPLICATE = 0.5  # a rewrite that still shares this much with a recent scene is replaced, not shown
 
 
 def locked_names(campaign: db.Campaign | None, thread_names: Iterable[str] = ()) -> list[str]:
@@ -97,6 +98,7 @@ def repeated_wording(text: str, recent: Iterable[str]) -> float:
 def check_scene(text: str, names: Iterable[str], recent: Iterable[str]) -> dict[str, object]:
     """``{"issues": [...], "drifts": [...]}``.  Drifts are repaired by the caller; issues are sent back for a rewrite."""
     issues: list[str] = []
-    if repeated_wording(text, recent) > REPEAT_LIMIT:
+    repeat = repeated_wording(text, recent)
+    if repeat > REPEAT_LIMIT:
         issues.append("Repeats wording from the previous scenes. Use new images and vary the sentence shapes.")
-    return {"issues": issues, "drifts": name_drifts(text, names)}
+    return {"issues": issues, "repeat": repeat, "drifts": name_drifts(text, names)}

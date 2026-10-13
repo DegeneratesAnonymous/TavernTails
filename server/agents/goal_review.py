@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from .. import db, steward_llm
 from ..auth import get_current_user
 from ..generation_workers import run_generation
+from . import thread_weaver
 from .generation_intent import clean_text
 from .lifepath import GOAL_LIMIT, GOAL_STATUSES, _clean_goals, goal_id
 from .premise_seed import parse_json_object
@@ -48,7 +49,20 @@ def _members(meta: dict, user) -> list[tuple[Any, bool]]:
     return out
 
 
-def _sheet_goals(character) -> list[dict[str, str]]:
+def _campaign_entry(campaign_id: str | None, character_id: int) -> dict[str, Any] | None:
+    """The campaign's own backstory for a character, when their player kept one for this campaign only."""
+    campaign = db.get_campaign_by_id(str(campaign_id)) if campaign_id else None
+    for entry in (campaign.metadata_json or {}).get("player_backstories", []) if campaign else []:
+        if isinstance(entry, dict) and str(entry.get("character_id")) == str(character_id) and entry.get("goals"):
+            return entry
+    return None
+
+
+def _sheet_goals(character, campaign_id: str | None = None) -> list[dict[str, str]]:
+    """The goals in effect: the campaign's own copy when there is one (it overrides the sheet), else the sheet's."""
+    entry = _campaign_entry(campaign_id, character.id)
+    if entry is not None:
+        return _clean_goals([g for g in entry["goals"] if isinstance(g, dict)])
     sheet = character.sheet if isinstance(character.sheet, dict) else {}
     return _clean_goals([g for g in sheet.get("goals", []) if isinstance(g, dict)])
 
@@ -89,11 +103,11 @@ def check_suggestions(raw: dict[str, Any] | None, goals_by_character: dict[str, 
     return kept
 
 
-def suggest_updates(characters: list[Any], story: str, *, call=None) -> list[dict[str, str]]:
+def suggest_updates(characters: list[Any], story: str, *, call=None, campaign_id: str | None = None) -> list[dict[str, str]]:
     by_character: dict[str, dict[str, dict[str, str]]] = {}
     lines = []
     for character in characters:
-        active = [g for g in _sheet_goals(character) if g["status"] == "active"]
+        active = [g for g in _sheet_goals(character, campaign_id) if g["status"] == "active"]
         if active:
             by_character[character.name.casefold()] = {g["text"].casefold(): g for g in active}
             lines.append(f"- {character.name}: " + "; ".join(f"{g['term']} goal: {g['text']}" for g in active))
@@ -121,16 +135,21 @@ def suggest_updates(characters: list[Any], story: str, *, call=None) -> list[dic
 # ---------------------------------------------------------------------------
 
 def _edit_goals(character, campaign_id: str | None, change) -> list[dict[str, str]]:
-    """Apply ``change(goals) -> goals`` to the character's sheet, and to this campaign's own copy if it keeps one."""
-    goals = change(_sheet_goals(character))
-    db.update_character(character.id, character.owner_id, {"sheet_patch": {"goals": goals}})
-    if campaign_id:
+    """Apply ``change(goals) -> goals`` where the goals in effect live (the campaign's copy, else the sheet), then
+    bring the character's stored story thread in line so scenes stop serving a goal that was just finished."""
+    goals = change(_sheet_goals(character, campaign_id))
+    if _campaign_entry(campaign_id, character.id) is not None and campaign_id:
         def mutate(meta: dict[str, Any]) -> None:
-            for entry in meta.get("player_backstories") or []:
-                if isinstance(entry, dict) and str(entry.get("character_id")) == str(character.id) and entry.get("goals"):
-                    entry["goals"] = change(_clean_goals([g for g in entry["goals"] if isinstance(g, dict)]))
-            meta["player_backstories"] = list(meta.get("player_backstories") or [])
+            entries = [dict(e) if isinstance(e, dict) else e for e in meta.get("player_backstories") or []]
+            for entry in entries:
+                if isinstance(entry, dict) and str(entry.get("character_id")) == str(character.id):
+                    entry["goals"] = goals
+            meta["player_backstories"] = entries
         db.update_campaign_metadata(campaign_id, mutate)
+    else:
+        db.update_character(character.id, character.owner_id, {"sheet_patch": {"goals": goals}})
+    if campaign_id:
+        thread_weaver.refresh_after_goal_change(campaign_id, character.id, goals)
     return goals
 
 
@@ -167,7 +186,7 @@ def get_goals(session_id: str, current_user=Depends(get_current_user)):
     folder, meta, _ = _load(session_id, current_user)
     since = max(0, len(_narrations(folder)) - int(_state(folder).get("narrations", 0)))
     return {
-        "characters": [{"character_id": c.id, "name": c.name, "you": mine, "goals": _sheet_goals(c)} for c, mine in _members(meta, current_user)],
+        "characters": [{"character_id": c.id, "name": c.name, "you": mine, "goals": _sheet_goals(c, meta.get("campaign_id"))} for c, mine in _members(meta, current_user)],
         "scenes_since_review": since,
     }
 
@@ -178,7 +197,7 @@ async def review_goals(session_id: str, current_user=Depends(get_current_user)):
     narrations = _narrations(folder)
     story = "\n\n".join(narrations[-8:])[-STORY_CHARS:]
     members = _members(meta, current_user)
-    found = await run_generation(suggest_updates, [c for c, _mine in members], story)
+    found = await run_generation(suggest_updates, [c for c, _mine in members], story, campaign_id=meta.get("campaign_id"))
     try:
         (folder / STATE_FILE).write_text(json.dumps({"narrations": len(narrations)}))
     except OSError:
@@ -192,7 +211,7 @@ async def review_goals(session_id: str, current_user=Depends(get_current_user)):
 def apply_goal(session_id: str, body: ApplyBody, current_user=Depends(get_current_user)):
     _folder, meta, _ = _load(session_id, current_user)
     character = _own_character(meta, current_user, body.character_id)
-    if body.goal_id not in {g["id"] for g in _sheet_goals(character)}:
+    if body.goal_id not in {g["id"] for g in _sheet_goals(character, meta.get("campaign_id"))}:
         raise HTTPException(status_code=404, detail="Goal not found")
 
     def change(goals: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -205,7 +224,7 @@ def apply_goal(session_id: str, body: ApplyBody, current_user=Depends(get_curren
 def add_goal(session_id: str, body: AddBody, current_user=Depends(get_current_user)):
     _folder, meta, _ = _load(session_id, current_user)
     character = _own_character(meta, current_user, body.character_id)
-    current = _sheet_goals(character)
+    current = _sheet_goals(character, meta.get("campaign_id"))
     if sum(1 for g in current if g["status"] == "active") >= ACTIVE_LIMIT or len(current) >= GOAL_LIMIT:
         raise HTTPException(status_code=409, detail="That is plenty of goals at once. Finish or drop one first.")
     if goal_id(body.text) in {g["id"] for g in current}:

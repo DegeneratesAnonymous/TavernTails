@@ -153,6 +153,7 @@ def _two_threads(tmp_path):
     ]
     camp = db.create_campaign(owner_id=owner.id, name="Braid")
     tw.ensure_threads(db.get_campaign_by_id(camp.id), [{"character_id": c.id} for c in chars], call=lambda *a, **k: None)
+    (tmp_path / "meta.json").write_text(json.dumps({"members": [{"character_id": c.id} for c in chars]}))
     return camp, chars
 
 
@@ -261,3 +262,39 @@ def test_a_failed_campaign_setup_is_reported_not_swallowed(monkeypatch):
                                     headers={"Authorization": f"Bearer {create_access_token(owner.email)}"})
     assert res.status_code == 201 and res.json()["warnings"]
     assert db.get_campaign_by_id(res.json()["campaign"]["id"]).metadata_json.get("setup_incomplete") is True
+
+
+def test_a_session_only_brings_in_its_own_characters(tmp_path):
+    from server.agents import braid
+
+    camp, chars = _two_threads(tmp_path)
+    (tmp_path / "meta.json").write_text(json.dumps({"members": [{"character_id": chars[0].id}]}))
+    for _ in range(2):
+        braid.record_scene(tmp_path, "The market stirred.", None)
+    assert braid.next_b_beat(tmp_path, str(camp.id))["character"] == "Mira"
+    braid.record_scene(tmp_path, "Mira chased the find who burned the granary lead.", braid.next_b_beat(tmp_path, str(camp.id)))
+    for _ in range(2):
+        braid.record_scene(tmp_path, "The market stirred.", None)
+    assert braid.next_b_beat(tmp_path, str(camp.id))["character"] == "Mira"  # Tam is not seated here
+
+
+def test_two_characters_with_the_same_name_keep_their_own_drafts():
+    threads = [_thread(character_id=1), _thread(character_id=2, goals=[{"term": "long", "text": "repay the ferry debt"}])]
+    reply = json.dumps({"threads": [
+        {"id": 1, "character": "Mira", "connection": "The Salt Court's fires are what Mira hunts.", "complication": "Fires spread.", "beat": "A fire near Hale Orrin."},
+        {"id": 2, "character": "Mira", "connection": "Hale Orrin holds the ferry debt Mira owes.", "complication": "The debt grows.", "beat": "Hale Orrin calls it in."},
+    ]})
+    out = tw.weave(threads, TRUTH, FACTIONS, NPCS, "Saltmere", call=lambda *a, **k: reply)
+    assert "Salt Court" in out[1]["connection"] and "ferry debt" in out[2]["connection"]
+
+
+def test_finishing_a_goal_updates_the_stored_thread_at_once(tmp_path):
+    from server.agents import braid
+
+    camp, chars = _two_threads(tmp_path)
+    tw.refresh_after_goal_change(camp.id, chars[0].id, [{"term": "long", "text": "find who burned the granary", "status": "done"}])
+    assert [r.name for r in tw.b_plot_rows(camp.id)] == ["Tam's story"]  # Mira has nothing left to pursue
+    tw.refresh_after_goal_change(camp.id, chars[1].id, [{"term": "long", "text": "repay the ferry debt", "status": "done"}, {"term": "mid", "text": "buy a boat"}])
+    row = tw.b_plot_rows(camp.id)[0]
+    assert row.data["current_situation"] == "Tam wants to buy a boat." and row.data["signature"] == ""
+    assert braid is not None

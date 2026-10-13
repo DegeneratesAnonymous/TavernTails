@@ -33,12 +33,27 @@ def _save(folder: Path, state: dict[str, Any]) -> None:
         pass
 
 
+def _roster(folder: Path) -> list[int]:
+    """The character ids seated in this session, so another session's characters are never brought into its scenes."""
+    try:
+        members = json.loads((folder / "meta.json").read_text()).get("members") or []
+    except (OSError, ValueError):
+        return []
+    ids: list[int] = []
+    for member in members:
+        try:
+            ids.append(int(str(member.get("character_id"))))
+        except ValueError:
+            continue
+    return ids
+
+
 def next_b_beat(folder: Path, campaign_id: str) -> dict[str, str] | None:
     """The thread to advance in the coming scene, or None when this scene belongs to the main trouble."""
     state = _load(folder)
     if int(state.get("since_b", 0)) < EVERY - 1:
         return None
-    rows = sorted(b_plot_rows(campaign_id), key=lambda r: str(r.data.get("character_id")))
+    rows = sorted(b_plot_rows(campaign_id, _roster(folder)), key=lambda r: str(r.data.get("character_id")))
     if not rows:
         return None
     row = rows[int(state.get("turn", 0)) % len(rows)]

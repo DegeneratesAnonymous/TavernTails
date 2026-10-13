@@ -5101,7 +5101,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         )
         continuity_check = continuity.check_scene(narrative.narrative, locked_names, recent_scene_texts)
 
-    if quality_score < minimum_score:
+    if quality_score < minimum_score or float(continuity_check.get("repeat") or 0) > continuity.NEAR_DUPLICATE:
         fallback_used = True
         fallback_text = build_fallback_scene(
             location_name=adv_scene_director_output.location.name or current_location_name or 'the current location',

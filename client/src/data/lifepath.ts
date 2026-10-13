@@ -389,3 +389,23 @@ export function worldContextFromCard(card: {
     narrative: v('premise') || clean(card?.premise),
   }
 }
+
+/** The world for a campaign: its confirmed card, else (classic or cardless setup) its authored settings. */
+export function worldContextFromCampaign(meta: {
+  campaign_card?: Parameters<typeof worldContextFromCard>[0]
+  settings?: Record<string, unknown>
+  variables?: { factions?: Array<{ name: string } | string> }
+} | null | undefined): WorldContext {
+  const fromCard = worldContextFromCard(meta?.campaign_card)
+  const s = meta?.settings ?? {}
+  const text = (key: string) => clean(String(s[key] ?? ''))
+  const factions = (meta?.variables?.factions ?? []).map((f) => clean(typeof f === 'string' ? f : f?.name)).filter(Boolean)
+  return {
+    world_name: fromCard.world_name || text('world_name'),
+    conflict: fromCard.conflict || text('opening_trouble'),
+    factions: fromCard.factions.length ? fromCard.factions : factions,
+    places: fromCard.places.length ? fromCard.places : [text('starting_location')].filter(Boolean),
+    tone: fromCard.tone || text('tone'),
+    narrative: fromCard.narrative || text('setting_summary'),
+  }
+}
