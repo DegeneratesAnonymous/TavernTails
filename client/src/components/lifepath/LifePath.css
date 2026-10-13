@@ -4,13 +4,13 @@
 .lifepath-rail button[aria-current='step'] { border-color: var(--accent, #c8941a); color: var(--text); }
 .lifepath-rail button.is-done { color: var(--text); }
 .lifepath h2 { margin: 0; font-size: 20px; }
-.lifepath-hint { color: var(--muted-text); font-size: 13px; margin: 4px 0 0; }
+.lifepath-hint { color: var(--muted-text); font-size: 13px; margin: 4px 0 12px; }
 .lifepath-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
 .lifepath-cards .wizard-option-card { min-height: 56px; }
 .lifepath label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
-.lifepath input, .lifepath textarea, .lifepath select { background: var(--surface); color: var(--text); border: 1px solid var(--tt-border); border-radius: 8px; padding: 8px 10px; font: inherit; }
+.lifepath input.input, .lifepath textarea.input, .lifepath select.input { font: inherit; }
 .lifepath textarea { min-height: 84px; resize: vertical; }
-.lifepath-narrative { min-height: 220px; line-height: 1.55; }
+.lifepath textarea.lifepath-narrative { min-height: 260px; line-height: 1.55; }
 .lifepath-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .lifepath-goal { border: 1px solid var(--tt-border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 .lifepath-goal-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }

@@ -163,7 +163,7 @@ export default function LifePathBuilder({
           <label>
             <span className="sr-only">Your story</span>
             <textarea
-              className="lifepath-narrative"
+              className="input lifepath-narrative"
               value={narrative}
               disabled={drafting}
               onChange={(e) => { setNarrative(e.target.value); setEdited(true) }}
@@ -178,7 +178,7 @@ export default function LifePathBuilder({
           )}
           <label style={{ marginTop: 8 }}>
             Anything else you want in it?
-            <textarea value={freeform} onChange={(e) => setFreeform(e.target.value)} placeholder="Optional. Added the next time it is written." />
+            <textarea className="input" value={freeform} onChange={(e) => setFreeform(e.target.value)} placeholder="Optional. Added the next time it is written." />
           </label>
           <div className="lifepath-actions" style={{ marginTop: 8 }}>
             <button
@@ -223,6 +223,7 @@ function Field({ stageId, field, label, placeholder, a, update }: {
     <label>
       {label}
       <input
+        className="input"
         value={a.fields[field] ?? ''}
         placeholder={placeholder}
         maxLength={160}
@@ -259,6 +260,7 @@ function StageBody({ stage, answers, update }: StageBodyProps) {
         <label style={{ marginTop: 10 }}>
           {stage.typedLabel ?? 'Something else'}
           <textarea
+            className="input"
             value={a.typed}
             maxLength={400}
             onChange={(e) => update(stage.id, (x) => ({ ...x, typed: e.target.value }))}
@@ -273,6 +275,7 @@ function StageBody({ stage, answers, update }: StageBodyProps) {
       <label>
         <span className="sr-only">{stage.question}</span>
         <textarea
+          className="input"
           value={a.typed}
           maxLength={400}
           placeholder={stage.typedPlaceholder}
@@ -336,7 +339,7 @@ function StageBody({ stage, answers, update }: StageBodyProps) {
       <div style={{ display: 'grid', gap: 12 }}>
         <label>
           Alignment
-          <select value={a.fields.alignment ?? ''} onChange={(e) => update(stage.id, (x) => ({ ...x, fields: { ...x.fields, alignment: e.target.value } }))}>
+          <select className="input" value={a.fields.alignment ?? ''} onChange={(e) => update(stage.id, (x) => ({ ...x, fields: { ...x.fields, alignment: e.target.value } }))}>
             <option value="">Not sure yet</option>
             {ALIGNMENTS.map((al) => <option key={al} value={al}>{al}</option>)}
           </select>

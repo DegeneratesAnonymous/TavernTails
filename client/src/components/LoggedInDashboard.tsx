@@ -1642,6 +1642,8 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
             ))
             const bridgeCharacter = characters.find(c => Number(c.id) === Number(activeCharacterId))
             const bridgeCharacterName = bridgeCharacter?.name || 'your character'
+            const hasKeptBackstory = ((activeCampaign as any)?.metadata_json?.player_backstories || [])
+              .some((entry: any) => String(entry?.character_id) === String(bridgeCharacter?.id))
             // The fallback name is lowercase mid-sentence; at the start of a sentence it needs a capital.
             const bridgeCharacterLead = bridgeCharacterName.charAt(0).toUpperCase() + bridgeCharacterName.slice(1)
             const answerFor = (question: any) => {
@@ -1682,7 +1684,13 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                       campaignId={activeCampaignId}
                       world={worldContextFromCard((activeCampaign as any)?.metadata_json?.campaign_card)}
                       onCancel={() => { setBackstoryOpen(false); void fetchCharacters() }}
-                      onFinished={() => { setBackstoryOpen(false); void fetchCharacters() }}
+                      onFinished={() => {
+                        setBackstoryOpen(false)
+                        void fetchCharacters()
+                        void fetchCampaigns()
+                        // The questions offer the player's own backstory answers, so they are asked for again.
+                        if (openingSetupSessionId) void loadOpeningSetup(openingSetupSessionId)
+                      }}
                     />
                   </div>
                 </section>
@@ -1738,7 +1746,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                           ))}
                         </div>
                       ) : null}
-                      {bridgeCharacter && !bridgeCharacter.sheet?.lifepath && (
+                      {bridgeCharacter && !bridgeCharacter.sheet?.lifepath && !hasKeptBackstory && (
                         <div className="opening-hook-editor">
                           <div className="opening-hook-editor-head">
                             <strong>{bridgeCharacterLead}'s backstory</strong>

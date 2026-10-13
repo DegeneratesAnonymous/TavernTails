@@ -70,7 +70,7 @@ export default function WorldBuilder({ initialAnswers, savedId = null, savedName
           {keep && (
             <label>
               World name in my library
-              <input value={name || proposed} onChange={(e) => setName(e.target.value)} maxLength={120} />
+              <input className="input" value={name || proposed} onChange={(e) => setName(e.target.value)} maxLength={120} />
             </label>
           )}
           {error && <div className="alert alert-error">{error}</div>}
