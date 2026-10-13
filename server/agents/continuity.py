@@ -60,7 +60,7 @@ def name_drifts(text: str, names: Iterable[str]) -> list[tuple[str, str]]:
     exact = {n.casefold() for n in locked}
     found: list[tuple[str, str]] = []
     for match in _RUN.finditer(text or ""):
-        run = match.group(0)
+        run = re.sub(r"['’]s$", "", match.group(0))  # "the Reed Guild's" is the Reed Guild
         words = run.split()
         if words[0].casefold() in {"the", "a", "an"}:
             run = " ".join(words[1:])
@@ -78,7 +78,7 @@ def name_drifts(text: str, names: Iterable[str]) -> list[tuple[str, str]]:
 
 def repair_names(text: str, drifts: Iterable[tuple[str, str]]) -> str:
     for variant, name in drifts:
-        text = re.sub(rf"(?<![\w'’-]){re.escape(variant)}(?![\w'’-])", name, text)
+        text = re.sub(rf"(?<![\w'’-]){re.escape(variant)}(?![\w-])", name, text)
     return text
 
 

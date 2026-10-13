@@ -42,3 +42,14 @@ def test_locked_names_come_from_the_world_the_card_and_the_players_ties():
     })
     names = ct.locked_names(db.get_campaign_by_id(camp.id), ["Tam Ferrier, a ferryman", "Mira"])
     assert names == ["Saltmere Reach", "Ashen Market", "Salt Court", "Hale Orrin", "Tam Ferrier"]
+
+
+def test_a_possessive_of_a_locked_name_is_not_a_drift():
+    text = "The Salt Court's guards watched the Reed Guild's barges."
+    assert ct.name_drifts(text, ["Salt Court", "Reed Guild"]) == []
+    assert ct.repair_names(text, ct.name_drifts(text, ["Salt Court", "Reed Guild"])) == text
+    assert ct.name_drifts("The Salt Council's guards left.", ["Salt Court"]) == [("Salt Council", "Salt Court")]
+
+
+def test_a_drifted_name_is_repaired_inside_a_possessive():
+    assert ct.repair_names("The Salt Council's guards left.", [("Salt Council", "Salt Court")]) == "The Salt Court's guards left."
