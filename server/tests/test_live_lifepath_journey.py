@@ -34,7 +34,7 @@ def test_a_backstory_is_woven_into_the_story():
 
     card = client.post("/campaigns/card", json={"text": WORLD}).json()["card"]
     created = client.post("/campaigns", json={
-        "card": card, "owner_role": "player", "owner_character_id": mira.id, "create_session": True, "generate_world": True,
+        "name": "Saltmere", "card": card, "owner_role": "player", "owner_character_id": mira.id, "create_session": True, "generate_world": True,
     })
     assert created.status_code == 201, created.text
     assert not created.json().get("warnings"), created.json()["warnings"]

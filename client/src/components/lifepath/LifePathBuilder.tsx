@@ -146,7 +146,7 @@ export default function LifePathBuilder({
           </div>
           {stage.required && !stageDone(stage, answers) && (
             <p className="lifepath-note" role="status">
-              {stage.kind === 'link' ? 'Pick how your story touches the main trouble, or let the story decide.' : 'Choose one, or write your own, to continue.'}
+              {stage.kind === 'link' ? 'Pick how your story touches the main trouble, or let the story decide.' : stage.kind === 'powers' ? 'Name at least one power to continue.' : stage.kind === 'places' ? 'Name at least one place to continue.' : stage.kind === 'goals' ? 'Write a long goal to continue.' : 'Choose one, or write your own, to continue.'}
             </p>
           )}
         </section>
