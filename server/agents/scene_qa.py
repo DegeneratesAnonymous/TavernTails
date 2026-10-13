@@ -805,14 +805,18 @@ def _in_world(sentence: str) -> str:
 _NOUN_PHRASE_START = re.compile(r"^(a|an|some|two|three|several|another)\s", re.I)
 
 
+_HAS_VERB = re.compile(r"\b(is|are|was|were|lies|lay|sits|sat|hangs|hung|stands|stood|found|has|have|had|bears|bore)\b", re.I)
+
+
 def _clue_sentence(clue: str) -> str:
     """A clue stored as a noun phrase ("a charred scrap of paper …") becomes a sentence, never a loose fragment."""
     text = " ".join(str(clue or "").split()).strip()
     if not text:
         return ""
     bare = text.rstrip(".")
-    if _NOUN_PHRASE_START.match(bare):
+    if _NOUN_PHRASE_START.match(bare) and not _HAS_VERB.search(bare):
         bare = f"Lying in plain sight is {bare[0].lower()}{bare[1:]}"
+    bare = bare[0].upper() + bare[1:] if bare else bare
     return bare if bare.endswith(("*", "\"", "'", "”")) else _in_world(bare)
 
 
