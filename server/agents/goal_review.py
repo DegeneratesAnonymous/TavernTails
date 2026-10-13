@@ -211,7 +211,11 @@ def get_goals(session_id: str, current_user=Depends(get_current_user)):
 async def review_goals(session_id: str, current_user=Depends(get_current_user)):
     folder, meta, _ = _load(session_id, current_user)
     narrations = _narrations(folder)
-    story = "\n\n".join(narrations[-8:])[-STORY_CHARS:]
+    reviewed = max(0, min(int(_state(folder).get("narrations", 0)), len(narrations)))
+    fresh = narrations[reviewed:]  # only scenes added since the last check, so an old suggestion is never repeated
+    if not fresh:
+        return {"suggestions": []}
+    story = "\n\n".join(fresh[-8:])[-STORY_CHARS:]
     members = _members(meta, current_user)
     found = await run_generation(suggest_updates, [c for c, _mine in members], story, campaign_id=meta.get("campaign_id"))
     if found is None:

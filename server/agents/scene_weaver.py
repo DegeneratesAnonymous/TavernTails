@@ -249,8 +249,8 @@ def _resolves_goal(body: str, goals: list[str]) -> bool:
     for sentence in _sentences(body):
         if not _ACHIEVED.search(sentence):
             continue
-        tokens = content_tokens(sentence)
-        if any(len(content_tokens(g) & tokens) >= 2 for g in goals):
+        tokens = {t[:5] for t in content_tokens(sentence)}  # crude stems: "defeat" matches "defeated"
+        if any(len({t[:5] for t in content_tokens(g)} & tokens) >= 2 for g in goals):
             return True
     return False
 

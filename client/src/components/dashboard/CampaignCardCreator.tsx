@@ -95,6 +95,7 @@ export default function CampaignCardCreator({ seat, owner, validateSeat, fallbac
       const full = worldFactsText((world.answers ?? {}) as Answers, world.narrative)
       setText(full)
       setAutoText(full)
+      setStarter({}) // an abandoned genre or seed must not be mixed with the world just chosen
       setUsedWorld({ id: world.id, name: world.name })
       setShowWorlds(false)
     } else {
@@ -209,6 +210,7 @@ export default function CampaignCardCreator({ seat, owner, validateSeat, fallbac
           onUse={(w) => {
             setText(worldFactsText(w.answers, w.narrative))
             setAutoText(null)
+            setStarter({})
             setUsedWorld({ id: w.savedId, name: w.context.world_name || building.savedName || 'Your world' })
             setBuilding(null)
           }}

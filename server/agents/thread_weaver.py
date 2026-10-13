@@ -250,6 +250,8 @@ def ensure_threads(campaign: db.Campaign | None, members: Iterable[dict[str, Any
         existing = {t["character_id"]: s.get(CampaignEntity, _row_id(campaign_id, t["character_id"])) for t in threads}
     def current(thread: dict[str, Any]) -> bool:
         row = existing[thread["character_id"]]
+        if row is not None and row.status == "resolved" and not thread["goals"]:
+            return True  # nothing left to pursue and no new goal: it stays resolved, whatever ties remain
         return row is not None and (row.data or {}).get("signature") == _signature(thread, truth, factions)
 
     stale = [t for t in threads if not current(t)]

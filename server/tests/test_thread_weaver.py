@@ -370,3 +370,24 @@ def test_a_players_assumed_words_are_kept_but_our_scaffolding_is_not():
     assert usable_answer("I assumed my brother was dead") == "I assumed my brother was dead"
     assert usable_answer("No prior formula, law, or magical property is assumed.") == ""
     assert usable_answer("Mira can investigate the ledger using their established skills without assuming knowledge.") == ""
+
+
+def test_a_goal_in_another_verb_form_still_counts_as_resolved():
+    from server.agents.scene_weaver import _resolves_goal
+
+    assert _resolves_goal("The dragon lies defeated in the square.", ["defeat the dragon"])
+    assert not _resolves_goal("The dragon circles the square.", ["defeat the dragon"])
+
+
+def test_a_finished_thread_stays_resolved_across_session_starts_until_a_new_goal_is_set(tmp_path):
+    camp, chars = _two_threads(tmp_path)
+    mira = chars[0]
+    db.update_character(mira.id, db.get_character_by_id(mira.id).owner_id, {"sheet_patch": {
+        "goals": [{"term": "long", "text": "find who burned the granary", "status": "done"}], "allies": ["Tam"]}})
+    tw.refresh_after_goal_change(camp.id, mira.id, [{"term": "long", "text": "find who burned the granary", "status": "done"}])
+    members = [{"character_id": mira.id}]
+    tw.ensure_threads(db.get_campaign_by_id(camp.id), members, call=lambda *a, **k: None)
+    assert mira.id not in [int(r.data["character_id"]) for r in tw.b_plot_rows(camp.id)]  # still resolved
+    db.update_character(mira.id, db.get_character_by_id(mira.id).owner_id, {"sheet_patch": {"goals": [{"term": "long", "text": "rebuild the granary"}]}})
+    tw.ensure_threads(db.get_campaign_by_id(camp.id), members, call=lambda *a, **k: None)
+    assert mira.id in [int(r.data["character_id"]) for r in tw.b_plot_rows(camp.id)]

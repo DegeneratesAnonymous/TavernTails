@@ -299,3 +299,11 @@ def test_saving_two_characters_backstories_keeps_both(owner):
     client.post(f"/lifepath/campaigns/{camp.id}/characters/{a.id}", json={"backstory": "A again."}, headers=_auth(owner.email))
     kept = db.get_campaign_by_id(camp.id).metadata_json["player_backstories"]
     assert len(kept) == 2 and next(e for e in kept if e["character_name"] == "A")["backstory"] == "A again."
+
+
+def test_the_players_own_note_is_never_lost_from_a_draft():
+    req = _req(freeform="The bell in the tower never rang again")
+    out = lifepath.write_narrative(req, call=lambda *a, **k: GOOD)
+    assert out["source"] == "model" and "bell in the tower" in out["narrative"]
+    mentioned = GOOD + "\n\nThe bell in the tower never rang again."
+    assert lifepath.write_narrative(req, call=lambda *a, **k: mentioned)["narrative"] == mentioned  # not added twice

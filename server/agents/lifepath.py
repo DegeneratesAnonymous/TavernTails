@@ -270,6 +270,18 @@ def build_template(req: NarrativeRequest) -> str:
     return "\n\n".join(" ".join(sentences[i:i + 3]) for i in range(0, len(sentences), 3))
 
 
+def _with_freeform(draft: str, req: NarrativeRequest) -> str:
+    """The player's own note is never lost: if the draft left it out, it is added as written."""
+    note = clean_text(req.freeform)
+    if not note:
+        return draft
+    wanted = content_tokens(note)
+    covered = note.casefold() in draft.casefold() if not wanted else len(wanted & content_tokens(draft)) / len(wanted) >= 0.6
+    if covered:
+        return draft
+    return f"{draft.rstrip()}\n\n{trim_sentence(first_to_third(note) if req.kind == 'character' else note)}"
+
+
 def write_narrative(req: NarrativeRequest, *, call: Callable[..., Any] | None = None) -> dict[str, Any]:
     """``{"narrative", "source", "issues"}``: a checked model draft, else the template."""
     ask = call or steward_llm.chat_complete
@@ -287,7 +299,7 @@ def write_narrative(req: NarrativeRequest, *, call: Callable[..., Any] | None = 
                 break
             last_issues = check_narrative(draft, req)
             if not last_issues:
-                return {"narrative": draft, "source": "model", "issues": []}
+                return {"narrative": _with_freeform(draft, req), "source": "model", "issues": []}
             feedback = " ".join(last_issues)
     return {"narrative": build_template(req), "source": "template", "issues": last_issues}
 

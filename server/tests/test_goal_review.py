@@ -192,3 +192,24 @@ def test_a_failed_review_is_an_error_and_does_not_mark_the_story_reviewed(table,
     monkeypatch.setattr(steward_llm, "chat_complete", lambda *a, **k: json.dumps({"updates": []}))
     assert c.post(f"/sessions/{table['sid']}/goals/review", headers=h).json() == {"suggestions": []}
     assert c.get(f"/sessions/{table['sid']}/goals", headers=h).json()["scenes_since_review"] == 0
+
+
+def test_a_review_reads_only_scenes_added_since_the_last_one(table, monkeypatch):
+    seen: list[str] = []
+
+    def fake(messages, **kw):
+        seen.append(messages[-1]["content"])
+        return json.dumps({"updates": []})
+
+    monkeypatch.setattr(steward_llm, "chat_complete", fake)
+    c = _client()
+    h = _auth(table["owner"].email)
+    assert c.post(f"/sessions/{table['sid']}/goals/review", headers=h).status_code == 200
+    assert "oil-stained sill" in seen[0] and "ferry debt" in seen[0]
+    assert c.post(f"/sessions/{table['sid']}/goals/review", headers=h).json() == {"suggestions": []}
+    assert len(seen) == 1  # nothing new, so the model is not asked again
+    story = json.loads((table["folder"] / "story.json").read_text())
+    story.append({"type": "narration", "text": "Dawn came up over the quiet harbour."})
+    (table["folder"] / "story.json").write_text(json.dumps(story))
+    assert c.post(f"/sessions/{table['sid']}/goals/review", headers=h).status_code == 200
+    assert "Dawn came up" in seen[1] and "oil-stained sill" not in seen[1]
