@@ -802,6 +802,20 @@ def _in_world(sentence: str) -> str:
     return cleaned if cleaned.endswith((".", "!", "?")) else f"{cleaned}."
 
 
+_NOUN_PHRASE_START = re.compile(r"^(a|an|some|two|three|several|another)\s", re.I)
+
+
+def _clue_sentence(clue: str) -> str:
+    """A clue stored as a noun phrase ("a charred scrap of paper …") becomes a sentence, never a loose fragment."""
+    text = " ".join(str(clue or "").split()).strip()
+    if not text:
+        return ""
+    bare = text.rstrip(".")
+    if _NOUN_PHRASE_START.match(bare):
+        bare = f"Lying in plain sight is {bare[0].lower()}{bare[1:]}"
+    return bare if bare.endswith(("*", "\"", "'", "”")) else _in_world(bare)
+
+
 def apply_targeted_scene_repairs(
     scene: dict[str, Any],
     qa_result: dict[str, Any],
@@ -858,18 +872,18 @@ def apply_targeted_scene_repairs(
         # Preserve the declaration without inventing success or NPC reactions.
         repair_paras.append(_in_world(f'{pc.capitalize() if pc == "the party" else pc} attempts the declared action: “{latest.rstrip(".")}”'))
     if "location_identity" in targets and truth.approved_location:
-        repair_paras.append(_in_world(f"This is {truth.approved_location}, and everyone present knows it"))
+        repair_paras.append(_in_world(f"All of this is happening in {truth.approved_location}"))
     if "npc_intro" in targets and truth.approved_primary_npc:
         npc = truth.approved_primary_npc.split("(")[0].strip()
         repair_paras.append(_in_world(f"{npc} stands close enough to speak"))
     if "clue_presentation" in targets and truth.approved_clue:
         clue = truth.approved_clue.rstrip(".")
-        repair_paras.append(_in_world(f"The question no one can answer: {clue}" if clue.endswith("?") or clue.lower().startswith(("who ", "what ", "why ", "where ", "when ", "how ")) else clue))
+        repair_paras.append(_in_world(f"The question no one can answer: {clue}") if clue.endswith("?") or clue.lower().startswith(("who ", "what ", "why ", "where ", "when ", "how ")) else _clue_sentence(clue))
     if "stakes" in targets and truth.approved_stakes:
         repair_paras.append(_in_world(truth.approved_stakes))
     if "specificity" in targets:
         concrete_bits = [bit for bit in (truth.approved_clue, truth.approved_stakes) if bit]
-        repair_paras.extend(_in_world(bit) for bit in concrete_bits[:3])
+        repair_paras.extend(_clue_sentence(bit) if bit is truth.approved_clue else _in_world(bit) for bit in concrete_bits[:3])
         if truth.approved_object and not re.search(r"[.!?]", truth.approved_object):
             if truth.approved_object.lower() not in narrative.lower():
                 repair_paras.append(_in_world(f"You can examine {truth.approved_object}"))
