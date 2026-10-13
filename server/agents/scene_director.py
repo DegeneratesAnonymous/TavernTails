@@ -188,7 +188,7 @@ def _deterministic_director(req: SceneDirectorRequest) -> SceneDirectorOutput:
     if hook:
         inciting = hook
     elif thread:
-        inciting = thread if thread.rstrip().endswith((".", "!", "?")) else f"{thread} has reached a breaking point."
+        inciting = thread if thread.rstrip().endswith((".", "!", "?")) else f"It has reached a breaking point: {thread}."
     elif recent:
         inciting = recent
     else:

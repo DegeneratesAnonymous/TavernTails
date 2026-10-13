@@ -403,6 +403,27 @@ def _sdd_field_clean(text: str) -> str:
     return text
 
 
+_FALLBACK_SPOKEN = (
+    "Do not look at me, look at what is in front of you",
+    "Keep your voice low and your eyes open",
+    "Whatever you decide, decide before they do",
+)
+_FALLBACK_PRESSURE = (
+    "Nothing at {loc} has settled since {pc} last looked",
+    "{npc} keeps glancing at the door as the crowd shifts",
+    "The mood at {loc} turns another notch while {pc} weighs it",
+)
+_FALLBACK_CLOCK = (
+    "Whatever is going to happen will not wait much longer",
+    "Every moment of hesitation hands the choice to someone else",
+    "The window to act is narrowing",
+)
+
+
+def _fallback_norm(text: str) -> str:
+    return " ".join(re.sub(r"[^a-z0-9 ]+", " ", str(text or "").lower()).split())
+
+
 def build_fallback_scene(
     location_name: str,
     npc_name: str,
@@ -414,8 +435,13 @@ def build_fallback_scene(
     sensory_detail: str = "",
     campaign_name: str = "",
     approved_object: str = "",
+    recent_text: str = "",
+    variation: int = 0,
 ) -> str:
     """Return a quality-guaranteed opening scene from template + Scene Director data.
+
+    ``recent_text`` (earlier scenes) and ``variation`` (how many there are) keep consecutive template scenes from
+    pasting the same sentences and the same shell: a fact already told is not restated, and the shell rotates.
 
     Used when two Narrative Agent attempts both score below MINIMUM_SCORE.
     Template follows the Golden Scene Rule: named location, sensory detail, visible event,
@@ -517,6 +543,19 @@ def build_fallback_scene(
     if approved and len(approved) <= 80 and not re.search(r"[.!?]", approved):
         evidence_object = definite(approved)
 
+    if recent_text:
+        told = _fallback_norm(recent_text)
+
+        def _already_told(sentence: str) -> bool:
+            return bool(sentence) and _fallback_norm(sentence) in told
+
+        if _already_told(incident_line):
+            incident_line = _FALLBACK_SPOKEN[variation % len(_FALLBACK_SPOKEN)]
+        if _already_told(conflict_evidence):
+            conflict_evidence = _FALLBACK_PRESSURE[variation % len(_FALLBACK_PRESSURE)].format(loc=loc, pc=pc, npc=npc)
+        if _already_told(stakes_line):
+            stakes_line = _FALLBACK_CLOCK[variation % len(_FALLBACK_CLOCK)]
+
     variant_seed = "|".join([loc, npc, campaign_name or "", incident_line, conflict_evidence])
     if _has_any(premise_hay, _REEF_WORDS):
         variant = 0
@@ -530,6 +569,7 @@ def build_fallback_scene(
         variant = 4
     else:
         variant = int(hashlib.sha1(variant_seed.encode("utf-8")).hexdigest()[:2], 16) % 5
+    variant = (variant + max(0, int(variation))) % 5
     decision_line = "The first choice is practical, not theatrical: secure the evidence, question the person closest to it, or move before the trail is rearranged."
     if state.lower() in {"focused and wary", "urgent"}:
         state = [
