@@ -5121,6 +5121,8 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             sensory_detail=(adv_scene_director_output.location.sensory_details[:1] or [''])[0],
             campaign_name=meta.get('name') or session_id,
             approved_object=adv_established_object,
+            recent_text="\n".join(str(t) for t in recent_scene_texts),
+            variation=len(recent_scene_texts),
         )
         narrative = narrative_agent.NarrativeResponse(
             narrative=fallback_text,
