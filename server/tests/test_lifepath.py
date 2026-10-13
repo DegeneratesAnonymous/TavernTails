@@ -237,3 +237,8 @@ def test_saved_world_limit(monkeypatch):
     assert client.post("/worlds", json={"name": "Two"}, headers=_auth(user.email)).status_code == 409
     for w in client.get("/worlds", headers=_auth(user.email)).json()["worlds"]:
         client.delete(f"/worlds/{w['id']}", headers=_auth(user.email))
+
+
+def test_possessives_are_checked_by_name():
+    assert lifepath.invented_names("She works beside Hale Orrin's office.", "Hale Orrin") == []
+    assert lifepath.invented_names("She works beside Hale Orrin's office.", "Mira") == ["Hale", "Orrin"]

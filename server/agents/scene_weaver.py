@@ -52,6 +52,7 @@ def build_facts(
     required: dict | None,
     opening_scene: dict | None = None,
     brief_sentences: list[str] | None = None,
+    goals: list[str] | None = None,
 ) -> dict[str, Any]:
     """Everything the opening may say, taken only from what the campaign and the player already established."""
     anchor = anchor or {}
@@ -86,6 +87,7 @@ def build_facts(
         "what_they_fear_losing": usable_answer(anchor.get("fear_of_loss")),
         "knows_here": usable_answer(anchor.get("known_npc_connection")),
         "brief_sentences": list(brief_sentences or []),
+        "goals": [_clean(g) for g in goals or [] if _clean(g)],
     }
     facts["must_use"] = _must_use(facts)
     return facts
@@ -132,6 +134,9 @@ def _fact_lines(facts: dict[str, Any]) -> list[str]:
     ):
         if facts.get(key):
             lines.append(f"{label}: {facts[key]}")
+    if facts.get("goals"):
+        lines.append(f"WHAT {player.upper()} IS AFTER IN THE LONGER RUN (optional: at most one clause of color; "
+                     "do not make the scene about it, and do not say it is achieved): " + "; ".join(facts["goals"]))
     if facts.get("must_use"):
         lines.append(f"USE AT LEAST TWO OF THESE WORDS, NATURALLY, WHERE {player.upper()}'S REASON COMES UP: "
                      + ", ".join(facts["must_use"]))

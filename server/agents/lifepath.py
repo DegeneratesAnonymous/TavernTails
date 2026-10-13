@@ -108,7 +108,7 @@ def invented_names(text: str, supplied: str) -> list[str]:
         run = match.group(0)
         before = text[: match.start()].rstrip(" \t\"“‘'(")
         starts_sentence = not before or before[-1] in ".!?\n"
-        words = run.split()
+        words = [re.sub(r"['’]s$", "", w) for w in run.split()]  # "Orrin's" names Orrin
         if starts_sentence:
             if len(words) == 1:
                 continue
