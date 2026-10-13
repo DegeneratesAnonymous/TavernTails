@@ -255,3 +255,60 @@ test('open questions can be removed and limits stop at the server cap', async ()
     server.restore()
   }
 })
+
+describe('saved worlds', () => {
+  const renderCreator = () => render(
+    <CampaignCardCreator
+      seat={<div>seat</div>} owner={{ owner_role: 'dm', owner_character_id: null }} validateSeat={() => null}
+      fallbackName="The Last Lantern" onCreated={() => {}} onClassic={() => {}}
+    />,
+  )
+
+  function worldsServer() {
+    const original = global.fetch
+    global.fetch = jest.fn(async (url: RequestInfo | URL) => {
+      const href = String(url)
+      const body = href.endsWith('/worlds')
+        ? { worlds: [{ id: 'w1', name: 'Saltmere', preview: 'A harbour under a salt court.', version: 1, updated_at: null }] }
+        : href.endsWith('/worlds/w1')
+          ? { world: { id: 'w1', name: 'Saltmere', preview: '', version: 1, updated_at: null, narrative: 'A harbour under a salt court.', context: {}, answers: {} } }
+          : {}
+      return { ok: true, status: 200, json: async () => body } as Response
+    }) as unknown as typeof fetch
+    return () => { global.fetch = original }
+  }
+
+  test('a saved world fills the description box', async () => {
+    const restore = worldsServer()
+    try {
+      renderCreator()
+      fireEvent.click(screen.getByRole('button', { name: /my worlds/i }))
+      fireEvent.click(await screen.findByRole('button', { name: 'Use' }))
+      await waitFor(() => expect((screen.getByLabelText('Describe your campaign') as HTMLTextAreaElement).value).toBe('A harbour under a salt court.'))
+      expect(screen.getByRole('status')).toHaveTextContent('Saltmere')
+    } finally { restore() }
+  })
+
+  test('using a saved world asks before replacing what the player wrote', async () => {
+    const restore = worldsServer()
+    const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false)
+    try {
+      renderCreator()
+      fireEvent.change(screen.getByLabelText('Describe your campaign'), { target: { value: 'My own idea.' } })
+      fireEvent.click(screen.getByRole('button', { name: /my worlds/i }))
+      fireEvent.click(await screen.findByRole('button', { name: 'Use' }))
+      await waitFor(() => expect(confirm).toHaveBeenCalled())
+      expect((screen.getByLabelText('Describe your campaign') as HTMLTextAreaElement).value).toBe('My own idea.')
+    } finally { confirm.mockRestore(); restore() }
+  })
+
+  test('the step-by-step builder opens from the description screen and can be cancelled', () => {
+    renderCreator()
+    fireEvent.click(screen.getByRole('button', { name: /build it step by step/i }))
+    expect(screen.getByRole('heading', { name: /what is this world called/i })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Skip' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.getByLabelText('Describe your campaign')).toBeInTheDocument()
+  })
+})

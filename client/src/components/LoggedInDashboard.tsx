@@ -20,6 +20,8 @@ import BlockReportModal from './ui/BlockReportModal'
 import InboxPanel from './dashboard/InboxPanel'
 import MyTicketsPanel from './dashboard/MyTicketsPanel'
 import PageHeader from './ui/PageHeader'
+import BackstoryWizard from './lifepath/BackstoryWizard'
+import { worldContextFromCard } from '../data/lifepath'
 import EmptyState from './ui/EmptyState'
 import Modal from './ui/Modal'
 import Toast from './ui/Toast'
@@ -97,6 +99,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [openingSetupError, setOpeningSetupError] = useState<string | null>(null)
   const [openingSetupCharacterHook, setOpeningSetupCharacterHook] = useState('')
   const [openingSetupHookEditing, setOpeningSetupHookEditing] = useState(false)
+  const [backstoryOpen, setBackstoryOpen] = useState(false)
 
   const [showQuickstartSetup, setShowQuickstartSetup] = useState(false)
   const [quickstartCampaignName, setQuickstartCampaignName] = useState('')
@@ -1632,7 +1635,8 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
               || (current.answer_source === 'custom' && String(current.custom_value || '').trim())
               || (current.option_id && current.option_id !== 'ai_choose')
             ))
-            const bridgeCharacterName = characters.find(c => Number(c.id) === Number(activeCharacterId))?.name || 'your character'
+            const bridgeCharacter = characters.find(c => Number(c.id) === Number(activeCharacterId))
+            const bridgeCharacterName = bridgeCharacter?.name || 'your character'
             // The fallback name is lowercase mid-sentence; at the start of a sentence it needs a capital.
             const bridgeCharacterLead = bridgeCharacterName.charAt(0).toUpperCase() + bridgeCharacterName.slice(1)
             const answerFor = (question: any) => {
@@ -1663,6 +1667,21 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
               }
               setOpeningSetupAnswers(next)
               setOpeningSetupReview(true)
+            }
+            if (backstoryOpen && bridgeCharacter) {
+              return (
+                <section className="opening-bridge-shell">
+                  <div className="opening-bridge-card">
+                    <BackstoryWizard
+                      character={{ id: Number(bridgeCharacter.id), name: bridgeCharacter.name, sheet: bridgeCharacter.sheet }}
+                      campaignId={activeCampaignId}
+                      world={worldContextFromCard((activeCampaign as any)?.metadata_json?.campaign_card)}
+                      onCancel={() => { setBackstoryOpen(false); void fetchCharacters() }}
+                      onFinished={() => { setBackstoryOpen(false); void fetchCharacters() }}
+                    />
+                  </div>
+                </section>
+              )
             }
             return (
               <section className="opening-bridge-shell">
@@ -1714,6 +1733,17 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                           ))}
                         </div>
                       ) : null}
+                      {bridgeCharacter && !bridgeCharacter.sheet?.lifepath && (
+                        <div className="opening-hook-editor">
+                          <div className="opening-hook-editor-head">
+                            <strong>{bridgeCharacterLead}'s backstory</strong>
+                            <button type="button" className="opening-custom-toggle" onClick={() => setBackstoryOpen(true)}>
+                              Build it with a few questions
+                            </button>
+                          </div>
+                          <p>Answer a few questions about where {bridgeCharacterName} comes from and how their story touches this trouble. Optional.</p>
+                        </div>
+                      )}
                       <div className="opening-hook-editor">
                         <div className="opening-hook-editor-head">
                           <strong>{bridgeCharacterLead} is involved because...</strong>

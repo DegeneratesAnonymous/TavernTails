@@ -22,6 +22,7 @@ from .agents.content import router as content_router
 from .agents.documents import router as documents_router
 from .agents.generate import router as generate_router
 from .agents.image import router as image_router
+from .agents.lifepath import router as lifepath_router
 from .agents.messages import router as messages_router
 from .agents.moderation import router as moderation_router
 from .agents.narrative import router as narrative_router
@@ -29,6 +30,7 @@ from .agents.notes import router as notes_router
 from .agents.npc import router as npc_router
 from .agents.player import router as player_router
 from .agents.rolls import router as rolls_router
+from .agents.saved_worlds import router as saved_worlds_router
 from .agents.scene import router as scene_router
 from .agents.session_assist import router as session_assist_router
 from .agents.sessions import router as sessions_router
@@ -148,6 +150,8 @@ app.include_router(narrative_router)
 app.include_router(content_router)
 app.include_router(sessions_router)
 app.include_router(session_assist_router)
+app.include_router(lifepath_router)
+app.include_router(saved_worlds_router)
 app.include_router(characters_router)
 app.include_router(campaigns_router)
 app.include_router(generate_router)
