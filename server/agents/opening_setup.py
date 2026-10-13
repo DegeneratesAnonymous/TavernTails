@@ -1647,6 +1647,7 @@ def _npc_presence(npc_name: str, role: str = "") -> str:
     if npc_name == UNNAMED_WITNESS:
         return f"{UNNAMED_WITNESS} stands {stand}."
     if role:
+        role = role.lower() if role.istitle() else role  # "Last Patient" is a role, not a title: "a last patient"
         article = "an" if role[:1].lower() in "aeiou" else "a"
         return f"{article.capitalize()} {role}, {npc_name}, stands {stand}."
     return f"{npc_name} stands {stand}."

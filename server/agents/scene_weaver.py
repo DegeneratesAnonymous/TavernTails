@@ -13,7 +13,7 @@ import logging
 import re
 from typing import Any
 
-from .opening_voice import first_to_third, usable_answer
+from .opening_voice import _kind, first_to_third, usable_answer
 
 logger = logging.getLogger("taverntails.scene_weaver")
 
@@ -65,7 +65,7 @@ def build_facts(
     if npc_name.lower().startswith("the nearest"):
         npc_name = ""  # the placeholder for "no named contact" is not a name
     what_is_happening = _clean(required.get("inciting_event")) or _clean(contract.get("visible_problem"))
-    return {
+    facts = {
         "location": _clean(location) or _clean(required.get("starting_location")),
         "time_of_day": _clean(time_of_day) or "day",
         "weather": _clean(weather),
@@ -87,6 +87,19 @@ def build_facts(
         "knows_here": usable_answer(anchor.get("known_npc_connection")),
         "brief_sentences": list(brief_sentences or []),
     }
+    facts["must_use"] = _must_use(facts)
+    return facts
+
+
+def _must_use(facts: dict[str, Any]) -> list[str]:
+    """Plain words from the player's answers the scene is asked to use, so the model knows what will satisfy the check."""
+    skip = set(re.findall(r"[a-z']+", str(facts.get("location", "")).lower())) | _FILLER
+    words: list[str] = []
+    for key in ("reason_for_coming", "why_it_matters", "what_they_fear_losing"):
+        for w in re.findall(r"[a-z']+", str(facts.get(key) or "").lower()):
+            if len(w) > 4 and w not in skip and w not in words:
+                words.append(w)
+    return words[:8]
 
 
 def _fact_lines(facts: dict[str, Any]) -> list[str]:
@@ -119,6 +132,9 @@ def _fact_lines(facts: dict[str, Any]) -> list[str]:
     ):
         if facts.get(key):
             lines.append(f"{label}: {facts[key]}")
+    if facts.get("must_use"):
+        lines.append(f"USE AT LEAST TWO OF THESE WORDS, NATURALLY, WHERE {player.upper()}'S REASON COMES UP: "
+                     + ", ".join(facts["must_use"]))
     return lines
 
 
@@ -174,10 +190,20 @@ _FILLER = frozenset({"about", "before", "after", "their", "there", "where", "whi
                      "because", "something", "someone", "being", "other", "these", "those", "never", "every"})
 
 
-def _answer_used(answer: str, lower_text: str, location: str) -> bool:
-    """True when the scene carries at least two meaningful words of ``answer`` that are not part of the place name."""
+def _meaningful(answer: str, location: str) -> set[str]:
     skip = set(re.findall(r"[a-z']+", location.lower())) | _FILLER
-    words = {w for w in re.findall(r"[a-z']+", answer.lower()) if len(w) > 4 and w not in skip}
+    return {w for w in re.findall(r"[a-z']+", answer.lower()) if len(w) > 4 and w not in skip}
+
+
+def _answers_used(answers: list[str], lower_text: str, location: str) -> bool:
+    """True when the scene carries at least two meaningful words from the player's answers taken together.
+
+    Setup answers are often short and canned ("Study first sign of trouble before it is hidden"); judging each alone
+    rejected good scenes that carried the gist of the character's reason, so the answers are pooled.
+    """
+    words: set[str] = set()
+    for answer in answers:
+        words |= _meaningful(answer, location)
     return sum(1 for w in words if w[:5] in lower_text) >= min(2, len(words))
 
 
@@ -257,11 +283,15 @@ def check_woven(text: str, facts: dict[str, Any]) -> list[str]:
     if time in _NIGHT_TIMES and _DAY_WORDS.search(body) and not _DAY_WORDS.search(future):
         issues.append("Describes daylight although the scene happens at " + time + ".")
     brought = [facts[k] for k in ("reason_for_coming", "why_it_matters", "what_they_fear_losing") if facts.get(k)]
-    if brought and not any(_answer_used(answer, lower, facts["location"]) for answer in brought):
-        issues.append(f"Never says why {player} came or what they stand to lose; work their reason into the scene.")
+    if brought and not _answers_used(brought, lower, facts["location"]):
+        # Say what to include: the player's own words are not hidden, and a model told only "work it in" often cannot.
+        issues.append(f"Never says why {player} came or what they stand to lose. Work this into the scene in your own "
+                      f"words: {' / '.join(a.rstrip('.') for a in brought)}.")
     # The character's own words are paraphrased, never copied: an eight-word run from an answer is a quote.
     for key in ("reason_for_coming", "why_it_matters", "what_they_fear_losing", "knows_here"):
         answer = facts.get(key) or ""
+        if answer and _kind(answer) != "clause":
+            continue  # a short canned option ("Study first sign of trouble") may be echoed; a sentence the player wrote may not
         copied = _ngrams(body, 8) & (_ngrams(answer, 8) | _ngrams(first_to_third(answer), 8)) if answer else set()
         if copied:
             run = " ".join(sorted(copied)[0])

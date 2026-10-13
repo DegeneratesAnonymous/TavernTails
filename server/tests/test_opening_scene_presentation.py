@@ -300,3 +300,25 @@ def test_the_weather_in_the_story_matches_the_weather_of_the_scene(weather, sent
     draft = GOOD_DRAFT.replace("the morning is cold enough that breath shows in the air", sentence.rstrip("."))
     issues = " ".join(scene_weaver.check_woven(draft, _facts(weather=weather)))
     assert ("although the weather is" in issues) is bad
+
+
+def test_short_canned_answers_count_together_so_a_good_scene_is_not_rejected():
+    facts = _facts(reason_for_coming="Study first sign of trouble before it is hidden", why_it_matters="",
+                   what_they_fear_losing="A person who still believes in me")
+    draft = GOOD_DRAFT.replace("Bastog's oath rests on showing the relic was carried here from somewhere else, and the cloth is the only proof within reach.",
+                               "Bastog has come to study the first sign of trouble before anyone hides it, and fears losing the one person who believes in them.")
+    assert not [i for i in scene_weaver.check_woven(draft, facts) if "Never says why" in i]
+    bare = " ".join(scene_weaver.check_woven(GOOD_DRAFT, facts))
+    assert "Never says why" in bare and "Study first sign of trouble" in bare  # and the retry is told what to include
+
+
+def test_generated_reason_to_care_lines_are_never_narrated_as_the_players_own():
+    canned = "Arin Quickstep has useful skills for asking who handled the first sign of trouble, how it moved, and who had access."
+    assert usable_answer(canned) == ""
+    assert usable_answer("Never let my sister vanish again") != ""
+
+
+def test_a_role_that_is_capitalised_like_a_title_reads_as_a_role():
+    opening = build_opening_scene_contract(required={**REQUIRED, "named_npc_or_visible_threat": "Callum Grieve (Last Patient)"},
+                                           anchor={}, campaign_brief={}, player_name="Ari")
+    assert "A last patient, Callum Grieve, stands" in opening["opening_narrative"]

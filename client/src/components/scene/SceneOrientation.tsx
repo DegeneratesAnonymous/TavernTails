@@ -11,12 +11,18 @@ type Props = {
   /** Names the current player acts under, so only their own actions offer a clarification. */
   mine?: string[]
   onClarify?: (text: string) => void
+  /** The story text, so the open question is not shown twice. */
+  body?: string
 }
 
 /** Who is here and the one question the scene leaves open. Information only: nothing here suggests an action. */
-export function SceneFacts({ view }: { view?: SceneView | null }) {
+const plain = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+
+export function SceneFacts({ view, body = '' }: { view?: SceneView | null; body?: string }) {
   const people = view?.present || []
-  const hook = (view?.hook || '').trim()
+  // The question is shown here only when the story itself does not already ask it.
+  const asked = (view?.hook || '').trim() !== '' && plain(body).includes(plain(view?.hook || ''))
+  const hook = asked ? '' : (view?.hook || '').trim()
   if (!people.length && !hook) return null
   return (
     <div className="scene-facts">
@@ -69,10 +75,10 @@ export function RoundRecapStrip({ recap, mine = [], onClarify }: { recap?: Round
   )
 }
 
-export default function SceneOrientation({ view, recap, notice, mine, onClarify }: Props) {
+export default function SceneOrientation({ view, recap, notice, mine, onClarify, body }: Props) {
   return (
     <div className="scene-orientation">
-      <SceneFacts view={view} />
+      <SceneFacts view={view} body={body} />
       {notice ? <p className="scene-notice" aria-label="What you notice">{notice}</p> : null}
       <RoundRecapStrip recap={recap} mine={mine} onClarify={onClarify} />
     </div>

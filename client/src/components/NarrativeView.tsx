@@ -553,7 +553,7 @@ export default function NarrativeView({sessionId, mine = [], characterId = null,
             </div>
 
             {presentationMode === 'play' ? (
-              <SceneOrientation view={scene.scene_view} recap={scene.round_recap} notice={notice} mine={mine} onClarify={clarify} />
+              <SceneOrientation view={scene.scene_view} recap={scene.round_recap} notice={notice} mine={mine} onClarify={clarify} body={parsed.main} />
             ) : null}
 
             {playerPrompt && presentationMode !== 'play' ? (
