@@ -81,7 +81,7 @@ ability scores, skills or proficiencies.
 How a backstory reaches play (the B plot inside the main story):
 
 1. `thread_weaver.ensure_threads` runs at session start. For each seated character with goals, ties or
-   a link it writes one GM-only `story_thread` row connecting their goal to the world skeleton's hidden
+   a link it writes one GM-only `character_thread` row (not ranked into the main conflict) connecting their goal to the world skeleton's hidden
    truth and factions (checked draft, plain fallback; rebuilt only when inputs change).
 2. `braid.next_b_beat` asks, at most one scene in three, for the next character's thread to be advanced
    while the main trouble stays present; a scene that ignored the request does not reset the count.

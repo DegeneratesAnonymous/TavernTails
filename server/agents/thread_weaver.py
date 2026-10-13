@@ -3,8 +3,9 @@
 A character's backstory builder collects goals, ties and a required link to the world's main trouble.  Before a
 session starts, this module reads those threads next to the world skeleton's hidden truth and factions and writes,
 for each character, a GM-only story thread: how the main trouble touches their goal, what it does to that goal if
-nobody acts, and one scene idea that serves both.  The threads are ordinary ``story_thread`` memory rows, so the
-context orchestrator offers them to the scene writers the same way it offers the skeleton's own.
+nobody acts, and one scene idea that serves both.  The threads are GM-only ``character_thread`` memory rows. They are kept apart from the
+story threads the context orchestrator ranks into a scene's main conflict, and reach scenes through ``braid`` and the
+character's doc block instead.
 
 The model's answer is only a draft.  A connection that names nothing from the world, or a name nobody supplied,
 is replaced by a plain sentence built from what the player chose; a thread is rebuilt only when its inputs change.
@@ -33,6 +34,10 @@ from .premise_seed import parse_json_object
 logger = logging.getLogger("taverntails.thread_weaver")
 
 TAG = "b_plot"
+# Not "story_thread": the context orchestrator ranks story threads into the scene writers' main conflict, and a character's
+# thread (named for the player, so it scores high) would take over the main trouble.  It reaches scenes through ``braid``
+# and the character's doc block instead.
+ENTITY_TYPE = "character_thread"
 MAX_FIELD = 240
 TERMS = ("long", "mid", "short")
 
@@ -284,7 +289,7 @@ def ensure_threads(campaign: db.Campaign | None, members: Iterable[dict[str, Any
             name = f"{thread['name']}'s story"
             if row is None:
                 s.add(CampaignEntity(
-                    id=_row_id(campaign_id, thread["character_id"]), campaign_id=campaign_id, entity_type="story_thread", name=name,
+                    id=_row_id(campaign_id, thread["character_id"]), campaign_id=campaign_id, entity_type=ENTITY_TYPE, name=name,
                     status="active", visibility="gm_only", tags=[TAG], data=data, created_at=now, updated_at=now,
                 ))
             else:
@@ -305,7 +310,7 @@ def b_plot_rows(campaign_id: str, character_ids: Iterable[int] | None = None) ->
     wanted = None if character_ids is None else {int(c) for c in character_ids}
     with Session(db.engine) as s:
         rows = s.exec(select(CampaignEntity).where(
-            CampaignEntity.campaign_id == campaign_id, CampaignEntity.entity_type == "story_thread", CampaignEntity.status == "active",
+            CampaignEntity.campaign_id == campaign_id, CampaignEntity.entity_type == ENTITY_TYPE, CampaignEntity.status == "active",
         )).all()
         return [r for r in rows if TAG in (r.tags or []) and (wanted is None or int((r.data or {}).get("character_id", -1)) in wanted)]
 

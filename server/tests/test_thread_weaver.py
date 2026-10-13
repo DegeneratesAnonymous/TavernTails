@@ -127,8 +127,9 @@ def test_rows_are_written_once_updated_on_change_and_offered_to_the_scene_writer
     changed = tw.b_plot_rows(camp.id)
     assert len(changed) == 1 and changed[0].data["signature"] != first_signature
     assert "clear the market's name" in changed[0].data["current_situation"]
-    packet = orchestrate(campaign_id=str(camp.id), player_name="Mira", player_actions=[], use_cache=False)
-    assert any("Mira" in t.title for t in packet.story_threads)
+    # A character's thread must never be ranked into the scene writers' main conflict.
+    packet = orchestrate(campaign_id=str(camp.id), player_name="Mira", player_actions=["Mira asks about the granary"], use_cache=False)
+    assert not any("Mira" in t.title for t in packet.story_threads)
     with Session(db.engine) as s:
         assert len(s.exec(select(db.CampaignEntity).where(db.CampaignEntity.campaign_id == camp.id)).all()) == 1
 
