@@ -78,7 +78,7 @@ def test_suggestions_need_a_real_quote_and_a_real_goal():
     assert gr.suggest_updates([mira], story, call=lambda *a, **k: json.dumps(invented_goal)) == []
     bad_status = {"updates": [{**good["updates"][0], "status": "achieved forever"}]}
     assert gr.suggest_updates([mira], story, call=lambda *a, **k: json.dumps(bad_status)) == []
-    assert gr.suggest_updates([mira], story, call=lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down"))) == []
+    assert gr.suggest_updates([mira], story, call=lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down"))) is None  # a failed review is not "nothing moved"
 
 
 def test_review_route_marks_whose_goal_it_is_and_resets_the_count(table, monkeypatch):
@@ -181,3 +181,14 @@ def test_the_same_goal_words_under_two_horizons_are_two_goals():
 
     goals = lifepath._clean_goals([{"term": "long", "text": "Survive the siege"}, {"term": "short", "text": "Survive the siege"}])
     assert len({g["id"] for g in goals}) == 2
+
+
+def test_a_failed_review_is_an_error_and_does_not_mark_the_story_reviewed(table, monkeypatch):
+    monkeypatch.setattr(steward_llm, "chat_complete", lambda *a, **k: None)
+    c = _client()
+    h = _auth(table["owner"].email)
+    assert c.post(f"/sessions/{table['sid']}/goals/review", headers=h).status_code == 502
+    assert c.get(f"/sessions/{table['sid']}/goals", headers=h).json()["scenes_since_review"] == 2
+    monkeypatch.setattr(steward_llm, "chat_complete", lambda *a, **k: json.dumps({"updates": []}))
+    assert c.post(f"/sessions/{table['sid']}/goals/review", headers=h).json() == {"suggestions": []}
+    assert c.get(f"/sessions/{table['sid']}/goals", headers=h).json()["scenes_since_review"] == 0

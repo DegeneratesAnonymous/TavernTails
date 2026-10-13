@@ -55,6 +55,11 @@ def _strings(raw: Any) -> list[str]:
     return [clean_text(i) for i in items if clean_text(i)]
 
 
+def _pick(entry: dict[str, Any], sheet: dict[str, Any], key: str, sheet_key: str | None = None) -> Any:
+    """The campaign's own value when it has the field at all (an empty one is a choice); else the sheet's."""
+    return entry[key] if key in entry else sheet.get(sheet_key or key)
+
+
 def character_threads(campaign: db.Campaign | None, members: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     """One thread per seated character that has goals, ties or a link.
 
@@ -77,15 +82,16 @@ def character_threads(campaign: db.Campaign | None, members: Iterable[dict[str, 
             continue
         sheet = character.sheet if isinstance(character.sheet, dict) else {}
         entry = kept.get(str(char_id), {})
-        link = entry.get("link") or sheet.get("backstory_link") or None
+
+        link = _pick(entry, sheet, "link", "backstory_link") or None
         thread = {
             "character_id": char_id,
             "name": character.name or "",
-            "backstory": clean_text(entry.get("backstory") or sheet.get("backstory"))[:500],
-            "goals": _goals(entry.get("goals") or sheet.get("goals")),
-            "allies": _strings(entry.get("allies") or sheet.get("allies")),
-            "rivals": _strings(entry.get("rivals") or sheet.get("rivals")),
-            "patron": clean_text(entry.get("patron") or sheet.get("patron")),
+            "backstory": clean_text(_pick(entry, sheet, "backstory"))[:500],
+            "goals": _goals(_pick(entry, sheet, "goals")),
+            "allies": _strings(_pick(entry, sheet, "allies")),
+            "rivals": _strings(_pick(entry, sheet, "rivals")),
+            "patron": clean_text(_pick(entry, sheet, "patron")),
             "link": {"kind": str(link.get("kind", "")), "name": clean_text(link.get("name"))} if isinstance(link, dict) else None,
         }
         if thread["goals"] or thread["allies"] or thread["rivals"] or thread["patron"] or thread["link"]:
@@ -209,7 +215,7 @@ def weave(threads: list[dict[str, Any]], truth: dict[str, str] | None, factions:
         fields = {k: clean_text((draft or {}).get(k))[:MAX_FIELD] for k in ("connection", "complication", "beat")}
         ok = bool(draft) and all(fields.values())
         if ok:
-            joined = " ".join(fields.values())
+            joined = ". ".join(fields.values())
             ok = not invented_names(joined, supplied) and "?" not in joined and _touches_world(fields["connection"], thread, names, truth)
         result[thread["character_id"]] = {**(fields if ok else _fallback(thread, truth)), "source": "model" if ok else "template"}
     return result
@@ -269,6 +275,7 @@ def ensure_threads(campaign: db.Campaign | None, members: Iterable[dict[str, Any
                 "plot": "B",
                 "character_id": thread["character_id"],
                 "weave_source": out["source"],
+                "link": thread["link"],
                 "signature": _signature(thread, truth, factions),
             }
             row = s.get(CampaignEntity, _row_id(campaign_id, thread["character_id"]))
@@ -313,11 +320,17 @@ def refresh_after_goal_change(campaign_id: str, character_id: int, goals: list[d
             return
         data = dict(row.data or {})
         name = row.name.removesuffix("'s story")
+        data["signature"] = ""
         if active:
-            data.update({"current_situation": f"{name} wants to {active[0]['text']}.", "primary_goal": active[0]["text"], "signature": ""})
+            # Everything that came from the old goal goes with it: the connection, the complication and the scene idea.
+            plain = _fallback({"name": name, "goals": active, "link": data.get("link")}, None)
+            data.update({
+                "current_situation": f"{name} wants to {active[0]['text']}.", "primary_goal": active[0]["text"],
+                "gm_notes": plain["connection"], "story_engine": plain["connection"],
+                "stakes": plain["complication"], "next_recommended_dm_move": plain["beat"], "weave_source": "template",
+            })
             row.status = "active"
         else:
-            data["signature"] = ""
             row.status = "resolved"
         row.data, row.updated_at = data, datetime.now(timezone.utc)
         s.add(row)

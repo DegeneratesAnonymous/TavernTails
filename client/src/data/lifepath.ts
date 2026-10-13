@@ -420,10 +420,12 @@ export function worldFactsText(answers: Answers, narrative: string): string {
   const have = words(narrative)
   const lines = entriesFor(worldStages(), answers)
     .filter((e) => ['conflict', 'powers', 'places', 'start', 'rules'].includes(e.stage))
-    .map((e) => clean(e.clause || e.answer))
-    .filter((line) => {
-      const need = [...words(line)]
-      return need.length > 0 && need.filter((w) => have.has(w)).length / need.length < 0.7
+    .filter((e) => {
+      // Judged on what the player chose, not on the sentence we built around it.
+      const need = [...words(e.answer)]
+      if (need.length === 0) return !narrative.includes(clean(e.answer)) // another script: compared as written
+      return need.filter((w) => have.has(w)).length / need.length < 0.7
     })
+    .map((e) => clean(e.clause || e.answer))
   return lines.length ? `${narrative.trimEnd()}\n\nAlso true of this world:\n${lines.map((l) => `- ${l}`).join('\n')}` : narrative
 }

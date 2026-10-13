@@ -262,3 +262,27 @@ describe('world facts reach the campaign', () => {
     expect(worldFactsText({}, 'Just the story.')).toBe('Just the story.')
   })
 })
+
+describe('third review', () => {
+  test('a fact written in another script is kept when the narrative leaves it out', () => {
+    const answers: Answers = { places: a({ fields: { p0: '灰の市場' } }), rules: a({ typed: '魔法は珍しい' }) }
+    const text = worldFactsText(answers, 'A harbour town.')
+    expect(text).toContain('灰の市場')
+    expect(text).toContain('魔法は珍しい')
+    expect(worldFactsText(answers, 'A harbour town with 灰の市場 and 魔法は珍しい.')).not.toContain('Also true')
+  })
+
+  test('editing a saved world keeps the text the player wrote instead of drafting a new one', async () => {
+    const calls: string[] = []
+    const original = global.fetch
+    global.fetch = jest.fn(async (url: RequestInfo | URL) => { calls.push(String(url)); return { ok: true, status: 200, json: async () => ({}) } as Response }) as unknown as typeof fetch
+    try {
+      const stages = worldStages().filter((s) => s.id === 'rules')
+      render(<LifePathBuilder kind="world" title="W" stages={stages} name="" world={WORLD} initialNarrative="My own prose." doneLabel="Save" onCancel={() => {}} onDone={() => {}} />)
+      fireEvent.click(screen.getByRole('button', { name: /Write it up|Skip/ }))
+      expect(await screen.findByLabelText('Narrative')).toHaveValue('My own prose.')
+      await new Promise((r) => setTimeout(r, 50))
+      expect(calls.some((u) => u.includes('/lifepath/narrative'))).toBe(false)
+    } finally { global.fetch = original }
+  })
+})

@@ -99,12 +99,31 @@ _STARTERS = frozenset(
 _CAP_RUN = re.compile(r"[A-Z][a-z][\w'’-]*(?: [A-Z][a-z][\w'’-]*)*")
 
 
+def _name_phrases(supplied: str) -> set[str]:
+    """The whole names in the supplied text: each capitalised run, lower-cased, without a possessive."""
+    return {re.sub(r"['’]s\b", "", m.group(0)).casefold() for m in _CAP_RUN.finditer(supplied)}
+
+
+def _covered_by_names(words: list[str], phrases: set[str]) -> bool:
+    """True when ``words`` split exactly into whole supplied names (so "Hale Vey" is not "Hale Orrin" + "Maren Vey")."""
+    ok = [False] * (len(words) + 1)
+    ok[0] = True
+    for i in range(len(words)):
+        if ok[i]:
+            for j in range(i + 1, len(words) + 1):
+                if " ".join(words[i:j]).casefold() in phrases:
+                    ok[j] = True
+    return ok[len(words)]
+
+
 def invented_names(text: str, supplied: str) -> list[str]:
     """Proper names in ``text`` that ``supplied`` does not contain.
 
-    A single capitalised word that opens a sentence is just a sentence start and is ignored.
+    A single capitalised word that opens a sentence is just a sentence start and is ignored.  A name of several
+    words must be a whole supplied name (or several, side by side): its words may not be borrowed from different names.
     """
     found: list[str] = []
+    phrases = _name_phrases(supplied)
     for match in _CAP_RUN.finditer(text):
         run = match.group(0)
         before = text[: match.start()].rstrip(" \t\"“‘'(")
@@ -117,11 +136,16 @@ def invented_names(text: str, supplied: str) -> list[str]:
                 words = words[1:]
                 if not words:
                     continue
-        if name_in_text(" ".join(words), supplied):
+        words = [w for w in words if w.lower() not in _STARTERS] or words
+        if name_in_text(" ".join(words), supplied) or _covered_by_names(words, phrases):
             continue
-        for word in words:
-            if word.lower() not in _STARTERS and not name_in_text(word, supplied) and word not in found:
-                found.append(word)
+        if len(words) == 1:
+            found.append(words[0]) if words[0] not in found else None
+            continue
+        missing = [w for w in words if not name_in_text(w, supplied)]
+        for item in missing or [" ".join(words)]:  # every word is supplied but not as this name: report the name
+            if item not in found:
+                found.append(item)
     return found
 
 
@@ -173,8 +197,11 @@ def check_narrative(text: str, req: NarrativeRequest) -> list[str]:
 
 
 def _entry_used(body: str, entry: Entry) -> bool:
-    wanted = content_tokens(entry.clause or entry.answer)
-    return not wanted or bool(wanted & content_tokens(body))
+    text = entry.clause or entry.answer
+    wanted = content_tokens(text)
+    if not wanted:  # no Latin words to compare (another script): the words themselves must appear
+        return clean_text(entry.answer).casefold() in body.casefold() or clean_text(text).casefold() in body.casefold()
+    return bool(wanted & content_tokens(body))
 
 
 # ---------------------------------------------------------------------------
@@ -217,7 +244,7 @@ def _messages(req: NarrativeRequest, feedback: str) -> list[dict[str, str]]:
 def _sentence(req: NarrativeRequest, entry: Entry) -> str:
     """One entry as a sentence for the template.  Characters' clauses are predicates, the world's are sentences."""
     if entry.clause.strip():
-        text = clean_text(entry.clause)
+        text = first_to_third(clean_text(entry.clause))  # a goal's "because my sister vanished" is about the character
         if req.kind == "character" and req.name:
             text = f"{req.name} {text}"
     else:

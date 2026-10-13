@@ -306,3 +306,39 @@ def test_a_short_name_is_not_found_inside_other_words(tmp_path):
     beat = {"character": "Al", "goal": "find the granary arsonist", "beat": "a fire near the granary"}
     assert not braid.touched("The salt hall smelled of smoke near the granary arsonist's lamp.", beat)
     assert braid.touched("Al found the granary arsonist's lamp.", beat)
+
+
+def test_a_blank_campaign_field_is_a_choice_not_a_gap(tmp_path):
+    owner = _user("weaver-owner4@example.com")
+    mira = db.create_character(owner_id=owner.id, name="Mira", level=1, class_name="Rogue", sheet={
+        "goals": [{"term": "long", "text": "sheet goal"}], "rivals": ["Sheet Rival"], "patron": "Sheet Patron",
+    })
+    camp = db.create_campaign(owner_id=owner.id, name="Saltmere")
+    db.set_campaign_metadata_keys(camp.id, owner.id, {"player_backstories": [
+        {"character_id": str(mira.id), "backstory": "x", "goals": [{"term": "long", "text": "campaign goal"}], "rivals": [], "patron": "", "allies": [], "link": None},
+    ]})
+    thread = tw.character_threads(db.get_campaign_by_id(camp.id), [{"character_id": mira.id}])[0]
+    assert thread["rivals"] == [] and thread["patron"] == "" and thread["goals"][0]["text"] == "campaign goal"
+
+
+def test_changing_the_active_goal_replaces_everything_derived_from_the_old_one(tmp_path):
+    camp, chars = _two_threads(tmp_path)
+    before = tw.b_plot_rows(camp.id)[0].data
+    assert "granary" in before["next_recommended_dm_move"] or "ferry" in before["next_recommended_dm_move"]
+    old_goal = before["primary_goal"]
+    tw.refresh_after_goal_change(camp.id, int(before["character_id"]), [
+        {"term": "long", "text": old_goal, "status": "done"}, {"term": "mid", "text": "buy a boat"},
+    ])
+    after = next(r for r in tw.b_plot_rows(camp.id) if r.data["character_id"] == before["character_id"]).data
+    assert old_goal not in " ".join(str(after[k]) for k in ("next_recommended_dm_move", "gm_notes", "stakes", "story_engine", "current_situation"))
+    assert "buy a boat" in after["next_recommended_dm_move"]
+
+
+def test_an_opening_may_not_say_the_characters_goal_is_already_done():
+    from server.agents.scene_weaver import _resolves_goal
+
+    goals = ["find who burned the granary"]
+    assert _resolves_goal("Mira has already found who burned the granary.", goals)
+    assert _resolves_goal("At last Mira solved who burned the granary.", goals)
+    assert not _resolves_goal("Mira wants to find who burned the granary, and asks around.", goals)
+    assert not _resolves_goal("The granary stood finally empty.", goals)

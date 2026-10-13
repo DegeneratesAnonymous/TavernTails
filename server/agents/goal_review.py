@@ -53,7 +53,7 @@ def _campaign_entry(campaign_id: str | None, character_id: int) -> dict[str, Any
     """The campaign's own backstory for a character, when their player kept one for this campaign only."""
     campaign = db.get_campaign_by_id(str(campaign_id)) if campaign_id else None
     for entry in (campaign.metadata_json or {}).get("player_backstories", []) if campaign else []:
-        if isinstance(entry, dict) and str(entry.get("character_id")) == str(character_id) and entry.get("goals"):
+        if isinstance(entry, dict) and str(entry.get("character_id")) == str(character_id) and "goals" in entry:
             return entry
     return None
 
@@ -113,7 +113,8 @@ def check_suggestions(
     return kept
 
 
-def suggest_updates(characters: list[Any], story: str, *, call=None, campaign_id: str | None = None) -> list[dict[str, Any]]:
+def suggest_updates(characters: list[Any], story: str, *, call=None, campaign_id: str | None = None) -> list[dict[str, Any]] | None:
+    """The checked suggestions, ``[]`` when the story moved nothing, or ``None`` when the review itself failed."""
     by_character: dict[str, dict[str, dict[str, str]]] = {}
     names: dict[str, list[str]] = {}
     lines = []
@@ -138,8 +139,11 @@ def suggest_updates(characters: list[Any], story: str, *, call=None, campaign_id
                   task_scope="taverntails_analysis", max_tokens=500, temperature=0.2, timeout=60.0)
     except Exception:
         logger.exception("goal review call failed")
-        return []
-    return check_suggestions(parse_json_object(str(raw or "")), by_character, story, names)
+        return None
+    parsed = parse_json_object(str(raw or ""))
+    if parsed is None:
+        return None
+    return check_suggestions(parsed, by_character, story, names)
 
 
 # ---------------------------------------------------------------------------
@@ -210,6 +214,9 @@ async def review_goals(session_id: str, current_user=Depends(get_current_user)):
     story = "\n\n".join(narrations[-8:])[-STORY_CHARS:]
     members = _members(meta, current_user)
     found = await run_generation(suggest_updates, [c for c, _mine in members], story, campaign_id=meta.get("campaign_id"))
+    if found is None:
+        # Do not mark the story as reviewed: the players would be told nothing moved and never asked again.
+        raise HTTPException(status_code=502, detail="The story could not be checked just now. Try again in a moment.")
     try:
         (folder / STATE_FILE).write_text(json.dumps({"narrations": len(narrations)}))
     except OSError:

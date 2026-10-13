@@ -5077,6 +5077,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         quality_issues = []
         contract_validator = {"score": 100, "failed_expectations": [], "canon_violations": [], "backstory_boundary_violations": [], "agency_issues": [], "tone_issues": [], "recommended_fix": ""}
         continuity_check["issues"] = []  # a worked-out action response is deterministic; it is not rewritten for wording
+        continuity_check["repeat"] = 0
     if quality_score < minimum_score or contract_validator.get("failed_expectations") or continuity_check["issues"]:
         retry_used = True
         feedback = build_retry_feedback(

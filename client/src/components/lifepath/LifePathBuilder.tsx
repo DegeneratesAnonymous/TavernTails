@@ -40,6 +40,8 @@ type Props = {
   /** For a character: the world it is set in. A world builds its own from the answers. */
   world: WorldContext
   initialAnswers?: Answers
+  /** The text the player already wrote (a saved world being edited). It is kept, never replaced without asking. */
+  initialNarrative?: string
   doneLabel: string
   busy?: boolean
   onCancel: () => void
@@ -53,13 +55,13 @@ type Props = {
 }
 
 export default function LifePathBuilder({
-  kind, title, stages, name, world, initialAnswers, doneLabel, busy, onCancel, onDone, onChange, renderFinish, finishBlocked,
+  kind, title, stages, name, world, initialAnswers, initialNarrative, doneLabel, busy, onCancel, onDone, onChange, renderFinish, finishBlocked,
 }: Props) {
   const [answers, setAnswers] = useState<Answers>(initialAnswers ?? {})
   const [index, setIndex] = useState(0)
   const [seen, setSeen] = useState(0)
-  const [narrative, setNarrative] = useState('')
-  const [edited, setEdited] = useState(false)
+  const [narrative, setNarrative] = useState(initialNarrative ?? '')
+  const [edited, setEdited] = useState(!!initialNarrative)
   const [freeform, setFreeform] = useState('')
   const [drafting, setDrafting] = useState(false)
   const [source, setSource] = useState<NarrativeResult['source'] | null>(null)
@@ -104,9 +106,10 @@ export default function LifePathBuilder({
   // written (the player went back and changed something). Edited text is never replaced without being asked.
   useEffect(() => {
     if (!atNarrative || drafting) return
-    if (draftedFor === '' || (draftedFor !== signature && !edited)) void draft()
+    if (!narrative && draftedFor === '') void draft()
+    else if (draftedFor !== '' && draftedFor !== signature && !edited) void draft()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [atNarrative, drafting, signature, draftedFor, edited])
+  }, [atNarrative, drafting, signature, draftedFor, edited, narrative])
 
   const go = (next: number) => {
     setIndex(next)
@@ -115,7 +118,7 @@ export default function LifePathBuilder({
 
   const state: LifePathResult = { answers, narrative, entries, link, world: resolvedWorld }
   useEffect(() => { onChange?.(state) }, [narrative, signature]) // eslint-disable-line react-hooks/exhaustive-deps
-  const stale = atNarrative && !!narrative && draftedFor !== signature
+  const stale = atNarrative && !!narrative && draftedFor !== '' && draftedFor !== signature
 
   return (
     <div className="lifepath" role="group" aria-label={title}>

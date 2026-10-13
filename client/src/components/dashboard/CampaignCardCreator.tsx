@@ -73,7 +73,7 @@ export default function CampaignCardCreator({ seat, owner, validateSeat, fallbac
   const [busy, setBusy] = useState<'reading' | 'creating' | null>(null)
   const [error, setError] = useState<string | null>(null)
   // The step-by-step world builder, and the player's saved worlds.
-  const [building, setBuilding] = useState<{ answers?: Answers; savedId?: string | null; savedName?: string } | null>(null)
+  const [building, setBuilding] = useState<{ answers?: Answers; narrative?: string; savedId?: string | null; savedName?: string } | null>(null)
   const [showWorlds, setShowWorlds] = useState(false)
   const [worlds, setWorlds] = useState<SavedWorldSummary[] | null>(null)
   const [usedWorld, setUsedWorld] = useState<{ id: string | null; name: string } | null>(null)
@@ -98,7 +98,7 @@ export default function CampaignCardCreator({ seat, owner, validateSeat, fallbac
       setUsedWorld({ id: world.id, name: world.name })
       setShowWorlds(false)
     } else {
-      setBuilding({ answers: world.answers as Answers, savedId: world.id, savedName: world.name })
+      setBuilding({ answers: world.answers as Answers, narrative: world.narrative, savedId: world.id, savedName: world.name })
     }
   }
 
@@ -202,6 +202,7 @@ export default function CampaignCardCreator({ seat, owner, validateSeat, fallbac
       <div className="wizard-body card-creator">
         <WorldBuilder
           initialAnswers={building.answers}
+          initialNarrative={building.narrative}
           savedId={building.savedId}
           savedName={building.savedName}
           onCancel={() => setBuilding(null)}

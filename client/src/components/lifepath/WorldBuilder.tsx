@@ -8,6 +8,7 @@ export type WorldUse = { narrative: string; answers: Answers; context: WorldCont
 
 type Props = {
   initialAnswers?: Answers
+  initialNarrative?: string
   /** Set when editing a world from the library. */
   savedId?: string | null
   savedName?: string
@@ -17,7 +18,7 @@ type Props = {
 
 const EMPTY: WorldContext = { world_name: '', conflict: '', factions: [], places: [], tone: '', narrative: '' }
 
-export default function WorldBuilder({ initialAnswers, savedId = null, savedName = '', onCancel, onUse }: Props) {
+export default function WorldBuilder({ initialAnswers, initialNarrative, savedId = null, savedName = '', onCancel, onUse }: Props) {
   const stages = useMemo(() => worldStages(), [])
   const [keep, setKeep] = useState(true)
   const [name, setName] = useState(savedName)
@@ -56,6 +57,7 @@ export default function WorldBuilder({ initialAnswers, savedId = null, savedName
       name={proposed}
       world={EMPTY}
       initialAnswers={initialAnswers}
+      initialNarrative={initialNarrative}
       doneLabel="Use this world"
       busy={busy}
       onCancel={onCancel}

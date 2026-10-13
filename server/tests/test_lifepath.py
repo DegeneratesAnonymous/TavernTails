@@ -265,3 +265,23 @@ def test_campaign_only_keeps_every_field_the_character_sheet_would_have_had(owne
     assert entry["fields"]["flaws"] == "Proud\nReckless" and entry["fields"]["alignment"] == "Chaotic Good"
     assert "Flaws: Proud; Reckless" in entry["backstory"] and entry["backstory"].startswith("Tale.")
     assert entry["lifepath"] == {"label": "Saltmere"}
+
+
+def test_a_name_may_not_be_assembled_from_two_supplied_names():
+    supplied = "Hale Orrin and Maren Vey"
+    assert lifepath.invented_names("She met Hale Vey at the dock.", supplied) == ["Hale Vey"]
+    assert lifepath.invented_names("She met Hale Orrin and Maren Vey at the dock.", supplied) == []
+    assert lifepath.invented_names("She trusted Hale.", supplied) == []  # a short reference to a supplied name
+
+
+def test_an_answer_in_another_script_must_appear_in_the_draft():
+    entry = lifepath.Entry(stage="places", answer="灰の市場", clause="")
+    req = _req(entries=[entry], link=lifepath.Link(kind="story"))
+    assert any("choices" in i for i in lifepath.check_narrative("Mira grew up far from here.\n\nShe left young and never came back, and nothing more is known about it at all.", req))
+    assert not any("choices" in i for i in lifepath.check_narrative("Mira grew up in 灰の市場 and left young, never looking back at all.\n\nShe returned only once.", req))
+
+
+def test_first_person_words_inside_a_fallback_clause_are_made_third_person():
+    entries = [lifepath.Entry(stage="goals", answer="x", clause="wants to find them because my sister vanished", source="typed")]
+    text = lifepath.build_template(_req(entries=entries, link=None))
+    assert "my sister" not in text and "their sister vanished" in text

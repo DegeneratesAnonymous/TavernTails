@@ -13,6 +13,7 @@ import logging
 import re
 from typing import Any
 
+from .generation_intent import content_tokens
 from .opening_voice import _kind, first_to_third, usable_answer
 
 logger = logging.getLogger("taverntails.scene_weaver")
@@ -238,6 +239,22 @@ def _weather_conflict(body: str, facts: dict[str, Any]) -> str:
     return ""
 
 
+_ACHIEVED = re.compile(
+    r"\b(?:already|finally|at last|has found|had found|have found|discovered|defeated|solved|achieved|succeeded|"
+    r"completed|avenged|cleared|accomplished|uncovered|exposed)\b", re.IGNORECASE)
+
+
+def _resolves_goal(body: str, goals: list[str]) -> bool:
+    """True when a sentence about one of the character's goals says it has already been done."""
+    for sentence in _sentences(body):
+        if not _ACHIEVED.search(sentence):
+            continue
+        tokens = content_tokens(sentence)
+        if any(len(content_tokens(g) & tokens) >= 2 for g in goals):
+            return True
+    return False
+
+
 def check_woven(text: str, facts: dict[str, Any]) -> list[str]:
     """Why ``text`` is not an acceptable opening; empty when it is."""
     from .scene_validator import _names_place  # imported here: scene_validator imports this package's siblings
@@ -267,6 +284,8 @@ def check_woven(text: str, facts: dict[str, Any]) -> list[str]:
         issues.append("Says 'the party'; use the character's name.")
     if re.search(r"\b(?:the scene|the player|these facts|the story plan)\b", lower):
         issues.append("Refers to the scene, the player or the facts directly.")
+    if _resolves_goal(body, facts.get("goals") or []):
+        issues.append("Says the character has already achieved a goal; a goal is only something they are after.")
     sentences = [s.lower().rstrip(".!?") for s in _sentences(body)]
     if len(set(sentences)) < len(sentences):
         issues.append("Repeats a sentence.")
