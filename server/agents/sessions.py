@@ -5062,7 +5062,8 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         locked_names = continuity.locked_names(
             db.get_campaign_by_id(str(campaign_id)) if campaign_id else None,
             [n for t in await run_generation(thread_weaver.character_threads, db.get_campaign_by_id(str(campaign_id)) if campaign_id else None, meta.get('members') or [])
-             for n in (*t['allies'], *t['rivals'], t['patron'])],
+             for n in (*t['allies'], *t['rivals'], t['patron'])]
+            + [str(m.get('character_name') or '') for m in meta.get('members') or []],  # the seated characters' own names
         )
         recent_scene_texts = [str(e.get('text') or '') for e in _load_story_entries(folder) if e.get('type') == 'narration'][-3:]
     except Exception:
@@ -5122,10 +5123,15 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             tone=style,
         )
 
-    drifts = continuity.name_drifts(narrative.narrative, locked_names)
+    shown_text = [narrative.narrative, narrative.prompt, *(narrative.suggested_actions or [])]
+    drifts = continuity.name_drifts("\n".join(str(t) for t in shown_text), locked_names)
     if drifts:
-        # A near-miss of an established name ("Salt Council" for "Salt Court") is put right, not shown.
-        narrative = narrative.model_copy(update={"narrative": continuity.repair_names(narrative.narrative, drifts)})
+        # A near-miss of an established name ("Salt Council" for "Salt Court") is put right everywhere it is shown.
+        narrative = narrative.model_copy(update={
+            "narrative": continuity.repair_names(narrative.narrative, drifts),
+            "prompt": continuity.repair_names(narrative.prompt, drifts),
+            "suggested_actions": [continuity.repair_names(str(a), drifts) for a in narrative.suggested_actions or []] or narrative.suggested_actions,
+        })
         logger.info("repaired drifted names: %s", drifts)
 
     now = datetime.now(timezone.utc)

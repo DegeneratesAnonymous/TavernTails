@@ -285,3 +285,17 @@ def test_first_person_words_inside_a_fallback_clause_are_made_third_person():
     entries = [lifepath.Entry(stage="goals", answer="x", clause="wants to find them because my sister vanished", source="typed")]
     text = lifepath.build_template(_req(entries=entries, link=None))
     assert "my sister" not in text and "their sister vanished" in text
+
+
+def test_saving_two_characters_backstories_keeps_both(owner):
+    a = db.create_character(owner_id=owner.id, name="A", level=1, class_name="Rogue", sheet={})
+    b = db.create_character(owner_id=owner.id, name="B", level=1, class_name="Bard", sheet={})
+    camp = db.create_campaign(owner_id=owner.id, name="Two")
+    client = TestClient(main.app)
+    for who, text in ((a, "A's tale."), (b, "B's tale.")):
+        assert client.post(f"/lifepath/campaigns/{camp.id}/characters/{who.id}", json={"backstory": text}, headers=_auth(owner.email)).status_code == 200
+    kept = db.get_campaign_by_id(camp.id).metadata_json["player_backstories"]
+    assert sorted(e["character_name"] for e in kept) == ["A", "B"]
+    client.post(f"/lifepath/campaigns/{camp.id}/characters/{a.id}", json={"backstory": "A again."}, headers=_auth(owner.email))
+    kept = db.get_campaign_by_id(camp.id).metadata_json["player_backstories"]
+    assert len(kept) == 2 and next(e for e in kept if e["character_name"] == "A")["backstory"] == "A again."

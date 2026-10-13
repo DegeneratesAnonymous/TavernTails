@@ -483,7 +483,6 @@ def keep_for_campaign(campaign_id: str, character_id: int, payload: BackstoryPay
     character = db.get_character_for_owner(character_id=character_id, owner_id=current_user.id)
     if not character:
         raise HTTPException(status_code=404, detail="Character not found")
-    meta = dict(campaign.metadata_json or {})
     fields = {k: getattr(payload, k).strip() for k in (*TEXT_FIELDS, "alignment", "patron") if getattr(payload, k).strip()}
     # The campaign has no sheet to put these on, so they go in the story text its contract and scenes read.
     labelled = "\n".join(f"{k.replace('_', ' ').capitalize()}: {v.replace(chr(10), '; ')}" for k, v in fields.items() if k != "patron")
@@ -494,7 +493,12 @@ def keep_for_campaign(campaign_id: str, character_id: int, payload: BackstoryPay
         "goals": _clean_goals(payload.goals), "allies": payload.allies, "rivals": payload.rivals, "patron": payload.patron,
         "link": payload.link.model_dump() if payload.link else None,
     }
-    kept = [b for b in meta.get("player_backstories", []) if isinstance(b, dict) and str(b.get("character_id")) != str(character_id)]
-    # An empty contract is rebuilt, with this backstory folded in, the next time the campaign is used.
-    db.set_campaign_metadata_keys(campaign_id, current_user.id, {"player_backstories": [*kept, entry], "campaign_contract": {}})
+
+    def merge(meta: dict[str, Any]) -> None:
+        # Merged inside the metadata lock, so two players saving at once cannot drop each other's backstory.
+        kept = [b for b in meta.get("player_backstories", []) if isinstance(b, dict) and str(b.get("character_id")) != str(character_id)]
+        meta["player_backstories"] = [*kept, entry]
+        meta["campaign_contract"] = {}  # rebuilt, with this backstory folded in, the next time the campaign is used
+
+    db.update_campaign_metadata(campaign_id, merge)
     return {"ok": True}

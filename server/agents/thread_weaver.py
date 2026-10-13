@@ -317,10 +317,21 @@ def refresh_after_goal_change(campaign_id: str, character_id: int, goals: list[d
     with Session(db.engine) as s:
         row = s.get(CampaignEntity, _row_id(campaign_id, character_id))
         if row is None:
+            missing = True
+        else:
+            missing = False
+            data = dict(row.data or {})
+            name = row.name.removesuffix("'s story")
+            data["signature"] = ""
+    if missing:
+        # A first goal added during play: write the thread now (from the player's own words), and reweave it at the next start.
+        if active:
+            ensure_threads(db.get_campaign_by_id(campaign_id), [{"character_id": character_id}], call=lambda *a, **k: None)
+        return
+    with Session(db.engine) as s:
+        row = s.get(CampaignEntity, _row_id(campaign_id, character_id))
+        if row is None:
             return
-        data = dict(row.data or {})
-        name = row.name.removesuffix("'s story")
-        data["signature"] = ""
         if active:
             # Everything that came from the old goal goes with it: the connection, the complication and the scene idea.
             plain = _fallback({"name": name, "goals": active, "link": data.get("link")}, None)

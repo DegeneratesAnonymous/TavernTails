@@ -342,3 +342,31 @@ def test_an_opening_may_not_say_the_characters_goal_is_already_done():
     assert _resolves_goal("At last Mira solved who burned the granary.", goals)
     assert not _resolves_goal("Mira wants to find who burned the granary, and asks around.", goals)
     assert not _resolves_goal("The granary stood finally empty.", goals)
+
+
+def test_a_character_thread_is_hidden_with_the_rest_of_the_secret_world(tmp_path):
+    from server.agents import world_skeleton
+
+    camp, _ = _two_threads(tmp_path)
+    hidden, _hooks = world_skeleton.skeleton_row_ids(db.get_campaign_by_id(camp.id))
+    assert {r.id for r in tw.b_plot_rows(camp.id)} <= hidden
+
+
+def test_a_first_goal_added_during_play_gets_a_thread_at_once():
+    owner = _user("weaver-owner5@example.com")
+    mira = db.create_character(owner_id=owner.id, name="Mira", level=1, class_name="Rogue", sheet={})
+    camp = db.create_campaign(owner_id=owner.id, name="Late")
+    assert tw.ensure_threads(db.get_campaign_by_id(camp.id), [{"character_id": mira.id}]) == []
+    assert tw.b_plot_rows(camp.id) == []
+    db.update_character(mira.id, owner.id, {"sheet_patch": {"goals": [{"term": "long", "text": "find the arsonist"}]}})
+    tw.refresh_after_goal_change(camp.id, mira.id, [{"term": "long", "text": "find the arsonist"}])
+    rows = tw.b_plot_rows(camp.id)
+    assert len(rows) == 1 and rows[0].data["primary_goal"] == "find the arsonist"
+
+
+def test_a_players_assumed_words_are_kept_but_our_scaffolding_is_not():
+    from server.agents.opening_voice import usable_answer
+
+    assert usable_answer("I assumed my brother was dead") == "I assumed my brother was dead"
+    assert usable_answer("No prior formula, law, or magical property is assumed.") == ""
+    assert usable_answer("Mira can investigate the ledger using their established skills without assuming knowledge.") == ""
