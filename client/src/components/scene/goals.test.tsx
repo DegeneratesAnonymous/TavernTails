@@ -1,5 +1,5 @@
 import React from 'react'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import GoalsDialog from './GoalsDialog'
 
 const LIST = {
@@ -30,10 +30,10 @@ test('everyone’s goals are shown, but only your own can be changed', async () 
     const mira = await screen.findByRole('region', { name: 'Mira’s goals' })
     expect(mira).toHaveTextContent('find who burned the granary, because my street went hungry')
     expect(mira).toHaveTextContent('(you)')
-    expect(mira.querySelectorAll('button')).not.toHaveLength(0)
+    expect(within(mira).getAllByRole('button').length).toBeGreaterThan(0)
     const tam = screen.getByRole('region', { name: 'Tam’s goals' })
     expect(tam).toHaveTextContent('repay the ferry debt')
-    expect(Array.from(tam.querySelectorAll('button'))).toHaveLength(0)
+    expect(within(tam).queryAllByRole('button')).toHaveLength(0)
   } finally { s.restore() }
 })
 
@@ -54,7 +54,7 @@ test('finishing a goal asks what is wanted next and can add it', async () => {
   try {
     render(<GoalsDialog sessionId="s1" open onClose={() => {}} />)
     const mira = await screen.findByRole('region', { name: 'Mira’s goals' })
-    fireEvent.click(Array.from(mira.querySelectorAll('button')).find((b) => b.textContent === 'Done')!)
+    fireEvent.click(within(mira).getByRole('button', { name: 'Done' }))
     fireEvent.change(await screen.findByLabelText('New goal'), { target: { value: 'bring the Court to account' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add goal' }))
     await waitFor(() => expect(s.calls.some((c) => c.url.endsWith('/goals/add') && c.body.text === 'bring the Court to account')).toBe(true))

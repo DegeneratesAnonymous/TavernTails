@@ -49,6 +49,25 @@ type NotificationItem = {
 
 const PERSISTENT_VIEWS = new Set(['gameplay', 'home', 'campaign-setup', 'view-characters', 'account', 'admin', 'documents', 'explore', 'guides'])
 
+type OpeningAnswer = { option_id?: string; custom_value?: string; answer_source?: 'user_choice' | 'ai_choice' | 'custom'; answer_text?: string; question_text?: string }
+
+/** The opening answers that come from the player's own backstory, offered by the server as the "backstory" option. */
+function backstoryAnswers(questions: any[]): Record<string, OpeningAnswer> {
+  const answers: Record<string, OpeningAnswer> = {}
+  for (const question of questions || []) {
+    const own = Array.isArray(question?.options) ? question.options.find((opt: any) => opt?.id === 'backstory') : null
+    if (own) {
+      answers[question.id] = {
+        option_id: own.id,
+        answer_source: 'user_choice',
+        answer_text: String(own.value || own.label || ''),
+        question_text: String(question.question || ''),
+      }
+    }
+  }
+  return answers
+}
+
 const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [view, setView] = useState<string>(() => {
     if (typeof window === 'undefined') return 'home'
@@ -1126,16 +1145,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
           )
           setOpeningSetupCharacterHook(generatedHook)
           setOpeningSetupHookEditing(false)
-          const nextAnswers: Record<string, { option_id?: string; custom_value?: string; answer_source?: 'user_choice' | 'ai_choice' | 'custom'; answer_text?: string; question_text?: string }> = {}
-          for (const question of questions || []) {
-            const first = Array.isArray(question.options) ? question.options.find((opt: any) => opt?.id !== 'ai_choose') : null
-            if (first?.id) nextAnswers[question.id] = {
-              option_id: first.id,
-              answer_source: 'user_choice',
-              answer_text: String(first.value || first.label || ''),
-              question_text: String(question.question || ''),
-            }
-          }
+          const nextAnswers = backstoryAnswers(questions)
           setOpeningSetupAnswers(nextAnswers)
           setOpeningSetupCustomOpen({})
           setOpeningSetupStep(-1)
@@ -1176,14 +1186,9 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     }
   }, [])
 
-  const defaultOpeningAnswers = useCallback((questions: any[]) => {
-    const nextAnswers: Record<string, { option_id?: string; custom_value?: string; answer_source?: 'user_choice' | 'ai_choice' | 'custom'; answer_text?: string; question_text?: string }> = {}
-    for (const question of questions || []) {
-      const first = Array.isArray(question.options) ? question.options.find((opt: any) => opt?.id !== 'ai_choose') : null
-      if (first?.id) nextAnswers[question.id] = buildOpeningAnswer(question, first, 'user_choice')
-    }
-    return nextAnswers
-  }, [buildOpeningAnswer])
+  // Only answers the player already wrote in their own backstory are filled in. The rest are left for them to choose:
+  // pre-selecting the first canned option for every question made every opening read the same.
+  const defaultOpeningAnswers = useCallback((questions: any[]) => backstoryAnswers(questions), [])
 
   const loadOpeningSetup = useCallback(async (sessionId: string) => {
     setOpeningSetupBusy(true)

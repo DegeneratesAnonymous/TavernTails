@@ -129,6 +129,7 @@ def generate_questionnaire(
     character: dict[str, Any] | None = None,
     backstory_hooks: list[dict[str, Any]] | None = None,
     party_mode: bool = False,
+    story: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     contract = campaign_contract or {}
     seed = opening_seed or {}
@@ -154,13 +155,14 @@ def generate_questionnaire(
     object_hint = _object_hint(seed, contract) or _opening_object_name({**contract, **seed})
     provisional_anchor = generate_provisional_character_anchor(character=char, premise={**contract, **seed})
     questions: list[OpeningSetupQuestion] = []
+    own = _own_story_options(story, party_mode=party_mode)
     subject = "the party" if party_mode else char_name
     questions.append(OpeningSetupQuestion(
         id="arrival_reason",
         kind="arrival_reason",
         question=f"What brought {subject} here?",
         helper_text=f"{trouble} {urgency}",
-        options=_with_ai(_options([
+        options=_with_ai(own.get("arrival_reason", []) + _options([
             ("study", f"Study {object_hint} before it is hidden"),
             ("escort", f"Escort someone through {display_loc} before trouble closes in"),
             ("search", f"Find someone connected to {rumor.lower()}"),
@@ -172,7 +174,7 @@ def generate_questionnaire(
         kind="personal_stake",
         question=f"Why does this matter to {subject}?",
         helper_text=provisional_anchor.get("reason_to_care") or urgency,
-        options=_with_ai(_options([
+        options=_with_ai(own.get("personal_stake", []) + _options([
             ("knowledge", provisional_anchor.get("reason_to_care") or f"It matches something I know about {display_loc}"),
             ("person", "Someone I care about could be exposed"),
             ("promise", "I gave my word to protect someone caught in this"),
@@ -184,7 +186,7 @@ def generate_questionnaire(
         kind="followed_complication",
         question=f"What complication followed {subject} here?",
         helper_text=rumor,
-        options=_with_ai(_options([
+        options=_with_ai(own.get("followed_complication", []) + _options([
             ("debt", "A rival or debt collector is close behind"),
             ("rumor", f"A rumor about me reached {display_loc} first"),
             ("evidence", f"I carry evidence tied to {object_hint}"),
@@ -196,7 +198,7 @@ def generate_questionnaire(
         kind="fear_of_loss",
         question=f"What does {subject} fear losing?",
         helper_text="The first scene begins before the truth is known.",
-        options=_with_ai(_options([
+        options=_with_ai(own.get("fear_of_loss", []) + _options([
             ("person", "A person who still believes in me"),
             ("name", "My good name"),
             ("home", f"A place near {display_loc} I cannot abandon"),
@@ -222,7 +224,7 @@ def generate_questionnaire(
             kind="npc_connection",
             question=f"Who does {subject} trust or distrust here?",
             helper_text=f"{npc} is visible before the first scene settles into answers.",
-            options=_with_ai(_options([
+            options=_with_ai(own.get("npc_connection", []) + _options([
                 ("npc_known", provisional_anchor.get("known_connection_to_starting_problem") or f"{npc} once helped me"),
                 ("family", "Someone here recognizes my name"),
                 ("blame", "Someone blames me for an earlier failure"),
@@ -1172,6 +1174,40 @@ def validate_opening_scene_contract(
         "unsupported_claims": unsupported,
         "internal_language": internal,
         "malformed_sentences": malformed,
+    }
+
+
+def _own_story_options(story: dict[str, Any] | None, *, party_mode: bool) -> dict[str, list[OpeningSetupOption]]:
+    """Answers the player already wrote in their backstory, offered first so they need not be asked again.
+
+    Each is the player's own words restated in the first person; the player still confirms it on the review
+    screen, and it is graded like any other answer they chose.  Nothing is offered that the backstory does not say.
+    """
+    if not story or party_mode:
+        return {}
+    goals = sorted(story.get("goals") or [], key=lambda g: {"short": 0, "mid": 1, "long": 2}.get(g.get("term"), 1))
+    first = goals[0] if goals else {}
+    out: dict[str, str] = {}
+    if first.get("text"):
+        out["arrival_reason"] = f"I came to {first['text'].rstrip('.')}"
+    because = next((g["because"] for g in goals if g.get("because")), "")
+    if because:
+        out["personal_stake"] = f"It matters because {because.rstrip('.')}"
+    rivals = story.get("rivals") or []
+    but = next((g["but"] for g in goals if g.get("but")), "")
+    if rivals:
+        out["followed_complication"] = f"{str(rivals[0]).rstrip('.')} is close behind me"
+    elif but:
+        out["followed_complication"] = f"I am up against this: {but.rstrip('.')}"
+    allies = story.get("allies") or []
+    if allies:
+        out["fear_of_loss"] = f"I could not bear to lose {str(allies[0]).rstrip('.')}"
+    friend = (story.get("patron") or "").strip() or (str(allies[0]).strip() if allies else "")
+    if friend:
+        out["npc_connection"] = f"{friend.rstrip('.')} stands with me" if not story.get("patron") else f"{friend.rstrip('.')} backs me"
+    return {
+        qid: [OpeningSetupOption(id="backstory", label=f"From my backstory: {text}", value=text, effects={"anchor_field": "backstory"})]
+        for qid, text in out.items()
     }
 
 

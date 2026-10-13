@@ -125,6 +125,19 @@ def invented_names(text: str, supplied: str) -> list[str]:
     return found
 
 
+# Relationships and genders a draft likes to add; allowed only when the player's own words use them.
+_KIN = frozenset(
+    "mother father mom dad mum brother sister son daughter wife husband grandmother grandfather grandma grandpa "
+    "uncle aunt cousin nephew niece lover fiance fiancee girlfriend boyfriend child children orphan".split()
+)
+
+
+def invented_kin(text: str, supplied: str) -> list[str]:
+    """Family and relationship words in ``text`` that the player's own words never use."""
+    have = set(re.findall(r"[a-z]+", supplied.lower()))
+    return sorted({w for w in re.findall(r"[a-z]+", text.lower()) if w in _KIN and w not in have})
+
+
 def _link_present(text: str, req: NarrativeRequest) -> bool:
     link = req.link
     if link is None or link.kind == "story" or not link.name.strip():
@@ -147,6 +160,9 @@ def check_narrative(text: str, req: NarrativeRequest) -> list[str]:
     names = invented_names(body, _supplied_text(req))
     if names:
         issues.append("Remove these names, which the player did not give: " + ", ".join(names[:5]) + ".")
+    extra_kin = invented_kin(body, _supplied_text(req))
+    if extra_kin:
+        issues.append("Remove these, which the choices do not say: " + ", ".join(extra_kin[:4]) + ".")
     if req.kind == "character" and not _link_present(body, req):
         issues.append("State plainly how this character's story touches " + (req.link.name if req.link else "the main trouble") + ".")
     if req.entries:
@@ -176,8 +192,10 @@ def _messages(req: NarrativeRequest, feedback: str) -> list[dict[str, str]]:
         system = (
             "You write a character's backstory from the player's own choices. Write 2 to 4 short paragraphs about the "
             f"character, third person, past tense, using the name {req.name or 'the character'}. State only what the "
-            "choices say, in plain concrete prose. Do not invent names of people, places or groups. Mention how the "
-            "character's story touches the main trouble. Do not give the character abilities or numbers. Do not ask "
+            "choices say, in plain concrete prose. Do not add events, causes, relationships, ages or genders that the "
+            "choices do not state (a 'grandparent' stays a grandparent; a loss has no invented cause). Where a choice "
+            "is brief, keep what you write about it brief. Do not invent names of people, places or groups. Mention how "
+            "the character's story touches the main trouble. Do not give the character abilities or numbers. Do not ask "
             "questions."
         )
     lines = [f"- {e.stage}: {e.answer}" for e in req.entries]

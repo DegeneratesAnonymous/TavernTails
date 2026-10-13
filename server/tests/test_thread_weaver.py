@@ -190,3 +190,74 @@ def test_no_threads_means_no_thread_beats(tmp_path):
     for _ in range(5):
         braid.record_scene(tmp_path, "Text.", None)
     assert braid.next_b_beat(tmp_path, str(camp.id)) is None
+
+
+# ---- the opening questions use what the player already wrote ------------------
+
+STORY = _thread(
+    goals=[{"term": "long", "text": "bring the Court to account", "because": "they let my street starve", "but": "the witness left town"},
+           {"term": "short", "text": "find who burned the granary", "because": "", "but": ""}],
+    allies=["Tam, a ferryman"], rivals=["a magistrate who wants me quiet"], patron="the Reed Guild",
+)
+
+
+def _question(questionnaire, qid):
+    return next(q for q in questionnaire["questions"] if q["id"] == qid)
+
+
+def test_the_players_own_story_is_offered_first_in_their_own_words():
+    from server.agents.opening_setup import generate_questionnaire
+
+    out = generate_questionnaire(session_id="s", character={"id": "1", "name": "Mira"}, story=STORY)
+    arrival = _question(out, "arrival_reason")["options"]
+    assert arrival[0]["id"] == "backstory" and arrival[0]["value"] == "I came to find who burned the granary"
+    assert _question(out, "personal_stake")["options"][0]["value"] == "It matters because they let my street starve"
+    assert _question(out, "followed_complication")["options"][0]["value"] == "a magistrate who wants me quiet is close behind me"
+    assert _question(out, "fear_of_loss")["options"][0]["value"] == "I could not bear to lose Tam, a ferryman"
+    assert _question(out, "npc_connection")["options"][0]["value"] == "the Reed Guild backs me"
+    assert _question(out, "arrival_reason")["options"][-1]["id"] == "ai_choose"  # canned choices are still there
+
+
+def test_without_a_written_story_the_questions_are_unchanged():
+    from server.agents.opening_setup import generate_questionnaire
+
+    for kwargs in ({}, {"story": None}, {"story": _thread(goals=[], link=None)}):
+        out = generate_questionnaire(session_id="s", character={"id": "1", "name": "Mira"}, **kwargs)
+        assert all(o["id"] != "backstory" for q in out["questions"] for o in q["options"])
+
+
+def test_a_party_is_not_asked_to_speak_for_one_member():
+    from server.agents.opening_setup import generate_questionnaire
+
+    out = generate_questionnaire(session_id="s", character={"id": "1", "name": "Mira"}, story=STORY, party_mode=True)
+    assert all(o["id"] != "backstory" for q in out["questions"] for o in q["options"])
+
+
+def test_a_backstory_answer_is_the_players_own_in_the_anchor():
+    from server.agents.opening_setup import answers_to_anchor, generate_questionnaire
+
+    q = generate_questionnaire(session_id="s", character={"id": "1", "name": "Mira"}, story=STORY)
+    anchor = answers_to_anchor(session_id="s", character={"id": "1", "name": "Mira"}, questionnaire=q,
+                               answers=[{"question_id": "arrival_reason", "option_id": "backstory"}])
+    assert anchor["arrival_reason"] == "I came to find who burned the granary"
+    assert anchor["field_sources"]["arrival_reason"] == "player"
+    assert anchor["field_sources"]["personal_stake"] == "default"  # unanswered questions are not credited to the player
+
+
+def test_a_failed_campaign_setup_is_reported_not_swallowed(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    import server.main as main
+    from server.agents import campaigns
+    from server.auth import create_access_token
+
+    owner = _user("warn-owner@example.com")
+
+    def boom(*a, **k):
+        raise RuntimeError("contract failed")
+
+    monkeypatch.setattr(campaigns, "_contract_package_for_campaign", boom)
+    res = TestClient(main.app).post("/campaigns", json={"name": "Warn", "owner_role": "dm", "create_session": False},
+                                    headers={"Authorization": f"Bearer {create_access_token(owner.email)}"})
+    assert res.status_code == 201 and res.json()["warnings"]
+    assert db.get_campaign_by_id(res.json()["campaign"]["id"]).metadata_json.get("setup_incomplete") is True

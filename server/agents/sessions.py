@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import logging
 import queue
@@ -1961,6 +1962,7 @@ def _build_opening_setup_questionnaire(folder: Path, meta: dict, setup: dict | N
         character=character,
         backstory_hooks=backstory_hooks,
         party_mode=party_mode,
+        story=_character_story(meta, character),
     )
 
 
@@ -2121,11 +2123,22 @@ def _setup_build_lock(session_id: str) -> threading.Lock:
         return _SETUP_BUILD_LOCKS.setdefault(session_id, threading.Lock())
 
 
+def _character_story(meta: dict, character: dict) -> dict | None:
+    """The seated character's own story (goals, ties), when their player has written one."""
+    if not character.get("id"):
+        return None
+    campaign = db.get_campaign_by_id(str(meta.get("campaign_id"))) if meta.get("campaign_id") else None
+    found = thread_weaver.character_threads(campaign, [{"character_id": character["id"]}])
+    return found[0] if found else None
+
+
 def _questionnaire_signature(folder: Path, meta: dict) -> str:
-    """What the questions depend on: the seated character and whether the table is a party."""
+    """What the questions depend on: the seated character, their written story, and whether the table is a party."""
     character = _selected_character_from_meta(meta)
     party_mode = len(_session_player_names(folder, meta)) > 1 or not character.get("id")
-    return f"{character.get('id') or ''}|{'party' if party_mode else 'solo'}"
+    story = _character_story(meta, character)
+    story_key = hashlib.sha1(json.dumps(story, sort_keys=True).encode()).hexdigest()[:8] if story else ''
+    return f"{character.get('id') or ''}|{'party' if party_mode else 'solo'}|{story_key}"
 
 
 def _has_current_questionnaire(folder: Path, meta: dict) -> bool:

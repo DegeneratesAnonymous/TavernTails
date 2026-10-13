@@ -242,3 +242,10 @@ def test_saved_world_limit(monkeypatch):
 def test_possessives_are_checked_by_name():
     assert lifepath.invented_names("She works beside Hale Orrin's office.", "Hale Orrin") == []
     assert lifepath.invented_names("She works beside Hale Orrin's office.", "Mira") == ["Hale", "Orrin"]
+
+
+def test_invented_relatives_are_caught_unless_the_player_said_them():
+    assert lifepath.invented_kin("She was raised by her grandmother.", "was raised by a grandparent") == ["grandmother"]
+    assert lifepath.invented_kin("She was raised by her grandmother.", "my grandmother raised me") == []
+    issues = lifepath.check_narrative(GOOD.replace("Mira was raised", "Her father taught her. Mira was raised"), _req())
+    assert any("father" in i for i in issues)
