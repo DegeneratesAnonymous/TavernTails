@@ -37,6 +37,14 @@ describe('who is here and what is open', () => {
     expect(screen.queryAllByRole('button')).toHaveLength(0)
   })
 
+  test('the open question is not shown again when the story already asks it', () => {
+    const view = { present: [], hook: 'Who is writing in the records?' }
+    const { rerender } = render(<SceneFacts view={view} body="Nobody answers. No one here will answer it aloud: who is writing in the records?" />)
+    expect(screen.queryByText(/Unanswered/)).not.toBeInTheDocument()
+    rerender(<SceneFacts view={view} body="The records rewrite themselves." />)
+    expect(screen.getByText(/Who is writing in the records\?/)).toBeInTheDocument()
+  })
+
   test('nothing is drawn when the scene has neither', () => {
     const { container } = render(<SceneFacts view={{ present: [] }} />)
     expect(container).toBeEmptyDOMElement()
@@ -352,4 +360,11 @@ describe('the scene on screen', () => {
     expect(screen.getByRole('button', { name: 'Smaller text' })).toBeDisabled()
     server.restore()
   })
+})
+
+test('a hook in another script is still shown unless the story really contains it', () => {
+  const { rerender } = render(<SceneFacts view={{ hook: '灰の市場の裏で何が起きているのか' }} body="The market was quiet." />)
+  expect(screen.getByText(/灰の市場の裏で何が起きているのか/)).toBeInTheDocument()
+  rerender(<SceneFacts view={{ hook: '灰の市場の裏で何が起きているのか' }} body="誰も 灰の市場の裏で何が起きているのか 知らない。" />)
+  expect(screen.queryByText(/Unanswered/)).not.toBeInTheDocument()
 })

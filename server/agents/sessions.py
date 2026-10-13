@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import logging
 import queue
@@ -19,6 +20,7 @@ from ..auth import get_current_user
 from ..generation_workers import run_generation
 from ..realtime import broadcaster
 from ..storage import documents as doc_storage
+from . import braid, continuity, scene_weaver, thread_weaver, voice, world_skeleton
 from . import image as image_agent
 from . import narrative as narrative_agent
 from . import narrative_composer as narrative_composer_agent
@@ -26,7 +28,6 @@ from . import notes as notes_agent
 from . import npc as npc_agent
 from . import scene as scene_agent
 from . import scene_director as scene_director_agent
-from . import scene_weaver, world_skeleton
 from . import simulation as simulation_agent
 from . import storyboard as storyboard_agent
 from . import suggestions as suggestions_agent
@@ -548,6 +549,15 @@ def _opening_was_patched(scene: dict) -> bool:
     )
 
 
+def _opening_goals(threads: list[dict], player_name: str) -> list[str]:
+    """The seated character's own goals, shortest first, for the opening to hint at (never to be about)."""
+    for thread in threads or []:
+        if str(thread.get("name") or "").strip().casefold() == str(player_name or "").strip().casefold():
+            ordered = sorted(thread.get("goals") or [], key=lambda g: {"short": 0, "mid": 1, "long": 2}.get(g.get("term"), 1))
+            return [str(g["text"]) for g in ordered if g.get("text")][:2]
+    return []
+
+
 def _compose_final_opening(
     scene: dict,
     *,
@@ -558,6 +568,7 @@ def _compose_final_opening(
     time_of_day: str,
     weather: str,
     source_intent: OpeningIntent | None,
+    goals: list[str] | None = None,
 ) -> dict:
     """Replace a patched-together opening with one scene written whole, when that scene passes every opening check.
 
@@ -584,6 +595,7 @@ def _compose_final_opening(
         required=effective_required,
         opening_scene=contract,
         brief_sentences=brief_sentences,
+        goals=goals,
     )
     body = scene_weaver.weave_opening(facts)
     if not body:
@@ -1936,7 +1948,7 @@ def _build_opening_setup_questionnaire(folder: Path, meta: dict, setup: dict | N
         # scene happens where the brief said it would instead of at a second, independently drawn place.
         setup["seed"] = opening_seed
     character = _selected_character_from_meta(meta)
-    party_mode = len(_session_player_names(folder, meta)) > 1 or not character.get("id")
+    party_mode = _is_party(folder, meta, character)
     return generate_questionnaire(
         session_id=str(meta.get("id") or folder.name),
         campaign_id=campaign_id,
@@ -1950,6 +1962,7 @@ def _build_opening_setup_questionnaire(folder: Path, meta: dict, setup: dict | N
         character=character,
         backstory_hooks=backstory_hooks,
         party_mode=party_mode,
+        story=_character_story(meta, character),
     )
 
 
@@ -2110,11 +2123,27 @@ def _setup_build_lock(session_id: str) -> threading.Lock:
         return _SETUP_BUILD_LOCKS.setdefault(session_id, threading.Lock())
 
 
+def _is_party(folder: Path, meta: dict, character: dict) -> bool:
+    """More than one seat (counted by seat, not by distinct name: two players can share a character name)."""
+    return len(_session_player_names(folder, meta)) > 1 or len(meta.get('members') or []) > 1 or not character.get("id")
+
+
+def _character_story(meta: dict, character: dict) -> dict | None:
+    """The seated character's own story (goals, ties), when their player has written one."""
+    if not character.get("id"):
+        return None
+    campaign = db.get_campaign_by_id(str(meta.get("campaign_id"))) if meta.get("campaign_id") else None
+    found = thread_weaver.character_threads(campaign, [{"character_id": character["id"]}])
+    return found[0] if found else None
+
+
 def _questionnaire_signature(folder: Path, meta: dict) -> str:
-    """What the questions depend on: the seated character and whether the table is a party."""
+    """What the questions depend on: the seated character, their written story, and whether the table is a party."""
     character = _selected_character_from_meta(meta)
-    party_mode = len(_session_player_names(folder, meta)) > 1 or not character.get("id")
-    return f"{character.get('id') or ''}|{'party' if party_mode else 'solo'}"
+    party_mode = _is_party(folder, meta, character)
+    story = _character_story(meta, character)
+    story_key = hashlib.sha1(json.dumps(story, sort_keys=True).encode()).hexdigest()[:8] if story else ''
+    return f"{character.get('id') or ''}|{'party' if party_mode else 'solo'}|{story_key}"
 
 
 def _has_current_questionnaire(folder: Path, meta: dict) -> bool:
@@ -2947,6 +2976,17 @@ async def _start_session_impl(session_id: str, payload: "StartSessionRequest", c
         except Exception:
             pass
 
+    # Each seated character's own story (goals, ties, link to the main trouble), braided into the hidden truth.
+    character_threads: list[dict] = []
+    if campaign_id:
+        try:
+            woven_for = db.get_campaign_by_id(str(campaign_id))
+            character_threads = await run_generation(thread_weaver.ensure_threads, woven_for, meta.get('members') or [])
+            for thread in reversed(character_threads):
+                campaign_docs.insert(0, thread_weaver.thread_block(thread))
+        except Exception:
+            logger.exception("could not weave character threads")
+
     # Inject character context into campaign_docs so Storyboard can build personal hooks
     if character_context and character_context.get('_doc_block'):
         campaign_docs.insert(0, character_context['_doc_block'])
@@ -2968,7 +3008,7 @@ async def _start_session_impl(session_id: str, payload: "StartSessionRequest", c
         campaign_contract.setdefault("story_shape_profile", story_shape_profile)
     if table_safety(meta).get("paused"):
         raise HTTPException(status_code=409, detail='The table is paused')
-    campaign_contract = with_table_safety(campaign_contract, meta)
+    campaign_contract = voice.with_voice(with_table_safety(campaign_contract, meta), {'settings': campaign_settings})
 
     # --- Context Orchestrator: assemble ranked context packet ---
     from .context_collector import summarize_active_threads, summarize_recent_world_changes
@@ -3947,6 +3987,7 @@ async def _start_session_impl(session_id: str, payload: "StartSessionRequest", c
         time_of_day=time_of_day,
         weather=weather,
         source_intent=opening_source_intent,
+        goals=_opening_goals(character_threads, player_name),
     )
     if scene.get('text') != text_before_composition:
         # The story history appended the opening before it was rewritten; it must hold what the player was shown.
@@ -4259,7 +4300,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         campaign_contract.setdefault("story_shape_profile", story_shape_profile)
     if table_safety(meta).get("paused"):
         raise HTTPException(status_code=409, detail='The table is paused')
-    campaign_contract = with_table_safety(campaign_contract, meta)
+    campaign_contract = voice.with_voice(with_table_safety(campaign_contract, meta), {'settings': campaign_settings})
 
     if is_player_run_mode(session_id):
         raise HTTPException(status_code=400, detail='advance-scene is not available in player-run mode')
@@ -4830,6 +4871,10 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             "reason": f"{adv_situation.get('reason', '')}; scene beat selector: {selected_scene_beat.get('selection_reason', '')}".strip("; "),
             "requires_content_contract": adv_situation_type in REQUIRES_CONTRACT,
         }
+    b_plot_beat = braid.next_b_beat(folder, str(campaign_id)) if campaign_id else None
+    if b_plot_beat:
+        selected_scene_beat["b_plot"] = b_plot_beat
+        scene_summary = f"{scene_summary}\n\n{braid.guidance(b_plot_beat)}"
     director_guidance["selected_scene_beat"] = selected_scene_beat
     if selected_scene_beat.get("location"):
         scene_summary = f"{scene_summary}\n\nSelected scene beat: {selected_scene_beat.get('scene_purpose')} at {selected_scene_beat.get('location')}"
@@ -5015,6 +5060,20 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         campaign_contract=campaign_contract,
         evidence=_scene_evidence(adv_director_data),
     )
+    # Names the table established stay exact, and a scene may not echo the last few.
+    locked_names: list[str] = []
+    recent_scene_texts: list[str] = []
+    try:
+        locked_names = continuity.locked_names(
+            db.get_campaign_by_id(str(campaign_id)) if campaign_id else None,
+            [n for t in await run_generation(thread_weaver.character_threads, db.get_campaign_by_id(str(campaign_id)) if campaign_id else None, meta.get('members') or [])
+             for n in (*t['allies'], *t['rivals'], t['patron'])]
+            + [str(m.get('character_name') or '') for m in meta.get('members') or []],  # the seated characters' own names
+        )
+        recent_scene_texts = [str(e.get('text') or '') for e in _load_story_entries(folder) if e.get('type') == 'narration'][-3:]
+    except Exception:
+        logger.exception("continuity inputs unavailable")
+    continuity_check: dict[str, Any] = continuity.check_scene(narrative.narrative, locked_names, recent_scene_texts)
     retry_used = False
     fallback_used = False
     contract_minimum = int((campaign_contract.get("validator_policy") or {}).get("minimum_scene_score") or MINIMUM_SCORE) if campaign_contract else MINIMUM_SCORE
@@ -5023,10 +5082,12 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         quality_score = max(quality_score, 85)
         quality_issues = []
         contract_validator = {"score": 100, "failed_expectations": [], "canon_violations": [], "backstory_boundary_violations": [], "agency_issues": [], "tone_issues": [], "recommended_fix": ""}
-    if quality_score < minimum_score or contract_validator.get("failed_expectations"):
+        continuity_check["issues"] = []  # a worked-out action response is deterministic; it is not rewritten for wording
+        continuity_check["repeat"] = 0
+    if quality_score < minimum_score or contract_validator.get("failed_expectations") or continuity_check["issues"]:
         retry_used = True
         feedback = build_retry_feedback(
-            quality_issues + list(contract_validator.get("failed_expectations", [])),
+            quality_issues + list(contract_validator.get("failed_expectations", [])) + list(continuity_check["issues"]),
             quality_score,
             adv_scene_director_output.location.name,
             adv_scene_director_output.primary_npc.name,
@@ -5045,8 +5106,9 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             campaign_contract=campaign_contract,
             evidence=_scene_evidence(adv_director_data),
         )
+        continuity_check = continuity.check_scene(narrative.narrative, locked_names, recent_scene_texts)
 
-    if quality_score < minimum_score:
+    if quality_score < minimum_score or float(continuity_check.get("repeat") or 0) > continuity.NEAR_DUPLICATE:
         fallback_used = True
         fallback_text = build_fallback_scene(
             location_name=adv_scene_director_output.location.name or current_location_name or 'the current location',
@@ -5065,6 +5127,17 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
             prompt=f"What does {adv_player_name} do?",
             tone=style,
         )
+
+    shown_text = [narrative.narrative, narrative.prompt, *(narrative.suggested_actions or [])]
+    drifts = continuity.name_drifts("\n".join(str(t) for t in shown_text), locked_names)
+    if drifts:
+        # A near-miss of an established name ("Salt Council" for "Salt Court") is put right everywhere it is shown.
+        narrative = narrative.model_copy(update={
+            "narrative": continuity.repair_names(narrative.narrative, drifts),
+            "prompt": continuity.repair_names(narrative.prompt, drifts),
+            "suggested_actions": [continuity.repair_names(str(a), drifts) for a in narrative.suggested_actions or []] or narrative.suggested_actions,
+        })
+        logger.info("repaired drifted names: %s", drifts)
 
     now = datetime.now(timezone.utc)
     scene_index = f"scene-{uuid.uuid4().hex[:8]}"
@@ -5386,6 +5459,8 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         participants=_table_names(meta, recent_messages),
     )
     simulation_agent.atomic_write_json(folder / 'scene.json', new_scene)
+    if campaign_id:
+        braid.record_scene(folder, str(new_scene.get('narrative_body') or new_scene.get('text') or ''), b_plot_beat)
 
     cur = _load_story_entries(folder)
     last_story_ts = _story_last_timestamp(cur)

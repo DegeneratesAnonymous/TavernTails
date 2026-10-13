@@ -1,3 +1,4 @@
+import logging
 import uuid
 from typing import Any, Dict, List
 
@@ -12,6 +13,7 @@ from . import world_skeleton
 from .campaign_card import ConfirmedCard, apply_answers, card_to_campaign, read_campaign_card
 from .campaign_interpretation import build_full_contract_package
 
+logger = logging.getLogger("taverntails.campaigns")
 router = APIRouter(prefix="/campaigns", tags=["campaigns"])
 
 # ---------------------------------------------------------------------------
@@ -346,6 +348,7 @@ def create_campaign(req: CampaignCreate, background_tasks: BackgroundTasks, curr
     campaign_id = camp.id
     if campaign_id is None:
         raise HTTPException(status_code=500, detail='Failed to create campaign')
+    warnings: list[str] = []
     try:
         # Merge seed defaults under explicit preferences so caller can always override
         seed_defaults: dict[str, Any] = {}
@@ -401,7 +404,10 @@ def create_campaign(req: CampaignCreate, background_tasks: BackgroundTasks, curr
         elif req.card:
             world_skeleton.persist_authored(camp)  # the player's named people and factions, without a world
     except Exception:
-        pass
+        # The campaign exists, so this is not fatal, but it must not pass unseen: the contract or the world may be missing.
+        logger.exception("campaign %s: setup did not finish", campaign_id)
+        warnings.append("Some campaign setup did not finish. The campaign was created, but its world or contract may be incomplete (the contract is rebuilt when a session starts; the world can be retried from its World panel).")
+        db.set_campaign_metadata_keys(campaign_id, owner_id, {"setup_incomplete": True})
     # Optionally create an initial linked session and persist that link to campaign.metadata
     created_session = None
     try:
@@ -420,6 +426,8 @@ def create_campaign(req: CampaignCreate, background_tasks: BackgroundTasks, curr
             created_session = sid
     except Exception:
         # non-fatal: campaign created but session creation failed
+        logger.exception("campaign %s: could not create its first session", campaign_id)
+        warnings.append("The first session could not be created. You can create one from the campaign.")
         created_session = None
     out = camp.model_dump()
     # Build enriched session list from persisted metadata.
@@ -435,7 +443,7 @@ def create_campaign(req: CampaignCreate, background_tasks: BackgroundTasks, curr
                 'meta': f'/sessions/{created_session}/meta',
                 'files': f'/sessions/{created_session}/files',
             })
-    return {'campaign': out}
+    return {'campaign': out, 'warnings': warnings}
 
 
 @router.get('', summary='List campaigns visible to current user')

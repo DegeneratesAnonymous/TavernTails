@@ -57,7 +57,10 @@ def lead_sentence(text: str) -> str:
 
 _PLACEHOLDER = re.compile(
     r"has not yet decided|have not yet decided|not (?:yet )?established|remains the player.s choice|"
-    r"established background gives|without assuming|the campaign has not",
+    r"established background gives|without assuming|the campaign has not|"
+    # Our own generated "reason to care" lines: they describe the setup, not something the player wrote.
+    r"has useful skills|has the training|useful perspective|can evaluate|can read immediate|can investigate .{0,60} using their|"
+    r"\b(?:is|are) assumed\b|\bno assumed\b|does not assume|the player still decides|may choose to (?:care|examine)",
     re.IGNORECASE,
 )
 # The exact "nothing here" forms our own defaults produce. A player's own answer that merely starts with

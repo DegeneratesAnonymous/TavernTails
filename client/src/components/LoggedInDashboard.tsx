@@ -20,6 +20,8 @@ import BlockReportModal from './ui/BlockReportModal'
 import InboxPanel from './dashboard/InboxPanel'
 import MyTicketsPanel from './dashboard/MyTicketsPanel'
 import PageHeader from './ui/PageHeader'
+import BackstoryWizard from './lifepath/BackstoryWizard'
+import { worldContextFromCampaign } from '../data/lifepath'
 import EmptyState from './ui/EmptyState'
 import Modal from './ui/Modal'
 import Toast from './ui/Toast'
@@ -46,6 +48,25 @@ type NotificationItem = {
 }
 
 const PERSISTENT_VIEWS = new Set(['gameplay', 'home', 'campaign-setup', 'view-characters', 'account', 'admin', 'documents', 'explore', 'guides'])
+
+type OpeningAnswer = { option_id?: string; custom_value?: string; answer_source?: 'user_choice' | 'ai_choice' | 'custom'; answer_text?: string; question_text?: string }
+
+/** The opening answers that come from the player's own backstory, offered by the server as the "backstory" option. */
+function backstoryAnswers(questions: any[]): Record<string, OpeningAnswer> {
+  const answers: Record<string, OpeningAnswer> = {}
+  for (const question of questions || []) {
+    const own = Array.isArray(question?.options) ? question.options.find((opt: any) => opt?.id === 'backstory') : null
+    if (own) {
+      answers[question.id] = {
+        option_id: own.id,
+        answer_source: 'user_choice',
+        answer_text: String(own.value || own.label || ''),
+        question_text: String(question.question || ''),
+      }
+    }
+  }
+  return answers
+}
 
 const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [view, setView] = useState<string>(() => {
@@ -97,6 +118,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
   const [openingSetupError, setOpeningSetupError] = useState<string | null>(null)
   const [openingSetupCharacterHook, setOpeningSetupCharacterHook] = useState('')
   const [openingSetupHookEditing, setOpeningSetupHookEditing] = useState(false)
+  const [backstoryOpen, setBackstoryOpen] = useState(false)
 
   const [showQuickstartSetup, setShowQuickstartSetup] = useState(false)
   const [quickstartCampaignName, setQuickstartCampaignName] = useState('')
@@ -1123,16 +1145,7 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
           )
           setOpeningSetupCharacterHook(generatedHook)
           setOpeningSetupHookEditing(false)
-          const nextAnswers: Record<string, { option_id?: string; custom_value?: string; answer_source?: 'user_choice' | 'ai_choice' | 'custom'; answer_text?: string; question_text?: string }> = {}
-          for (const question of questions || []) {
-            const first = Array.isArray(question.options) ? question.options.find((opt: any) => opt?.id !== 'ai_choose') : null
-            if (first?.id) nextAnswers[question.id] = {
-              option_id: first.id,
-              answer_source: 'user_choice',
-              answer_text: String(first.value || first.label || ''),
-              question_text: String(question.question || ''),
-            }
-          }
+          const nextAnswers = backstoryAnswers(questions)
           setOpeningSetupAnswers(nextAnswers)
           setOpeningSetupCustomOpen({})
           setOpeningSetupStep(-1)
@@ -1173,14 +1186,9 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
     }
   }, [])
 
-  const defaultOpeningAnswers = useCallback((questions: any[]) => {
-    const nextAnswers: Record<string, { option_id?: string; custom_value?: string; answer_source?: 'user_choice' | 'ai_choice' | 'custom'; answer_text?: string; question_text?: string }> = {}
-    for (const question of questions || []) {
-      const first = Array.isArray(question.options) ? question.options.find((opt: any) => opt?.id !== 'ai_choose') : null
-      if (first?.id) nextAnswers[question.id] = buildOpeningAnswer(question, first, 'user_choice')
-    }
-    return nextAnswers
-  }, [buildOpeningAnswer])
+  // Only answers the player already wrote in their own backstory are filled in. The rest are left for them to choose:
+  // pre-selecting the first canned option for every question made every opening read the same.
+  const defaultOpeningAnswers = useCallback((questions: any[]) => backstoryAnswers(questions), [])
 
   const loadOpeningSetup = useCallback(async (sessionId: string) => {
     setOpeningSetupBusy(true)
@@ -1632,7 +1640,10 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
               || (current.answer_source === 'custom' && String(current.custom_value || '').trim())
               || (current.option_id && current.option_id !== 'ai_choose')
             ))
-            const bridgeCharacterName = characters.find(c => Number(c.id) === Number(activeCharacterId))?.name || 'your character'
+            const bridgeCharacter = characters.find(c => Number(c.id) === Number(activeCharacterId))
+            const bridgeCharacterName = bridgeCharacter?.name || 'your character'
+            const hasKeptBackstory = ((activeCampaign as any)?.metadata_json?.player_backstories || [])
+              .some((entry: any) => String(entry?.character_id) === String(bridgeCharacter?.id))
             // The fallback name is lowercase mid-sentence; at the start of a sentence it needs a capital.
             const bridgeCharacterLead = bridgeCharacterName.charAt(0).toUpperCase() + bridgeCharacterName.slice(1)
             const answerFor = (question: any) => {
@@ -1663,6 +1674,27 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
               }
               setOpeningSetupAnswers(next)
               setOpeningSetupReview(true)
+            }
+            if (backstoryOpen && bridgeCharacter) {
+              return (
+                <section className="opening-bridge-shell">
+                  <div className="opening-bridge-card">
+                    <BackstoryWizard
+                      character={{ id: Number(bridgeCharacter.id), name: bridgeCharacter.name, sheet: bridgeCharacter.sheet }}
+                      campaignId={activeCampaignId}
+                      world={worldContextFromCampaign((activeCampaign as any)?.metadata_json)}
+                      onCancel={() => { setBackstoryOpen(false); void fetchCharacters() }}
+                      onFinished={() => {
+                        setBackstoryOpen(false)
+                        void fetchCharacters()
+                        void fetchCampaigns()
+                        // The questions offer the player's own backstory answers, so they are asked for again.
+                        if (openingSetupSessionId) void loadOpeningSetup(openingSetupSessionId)
+                      }}
+                    />
+                  </div>
+                </section>
+              )
             }
             return (
               <section className="opening-bridge-shell">
@@ -1714,6 +1746,17 @@ const LoggedInDashboard: React.FC<Props> = ({ profile, onLogout }) => {
                           ))}
                         </div>
                       ) : null}
+                      {bridgeCharacter && !bridgeCharacter.sheet?.lifepath && !hasKeptBackstory && (
+                        <div className="opening-hook-editor">
+                          <div className="opening-hook-editor-head">
+                            <strong>{bridgeCharacterLead}'s backstory</strong>
+                            <button type="button" className="opening-custom-toggle" onClick={() => setBackstoryOpen(true)}>
+                              Build it with a few questions
+                            </button>
+                          </div>
+                          <p>Answer a few questions about where {bridgeCharacterName} comes from and how their story touches this trouble. Optional.</p>
+                        </div>
+                      )}
                       <div className="opening-hook-editor">
                         <div className="opening-hook-editor-head">
                           <strong>{bridgeCharacterLead} is involved because...</strong>

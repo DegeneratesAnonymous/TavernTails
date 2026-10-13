@@ -536,7 +536,7 @@ def skeleton_row_ids(campaign: db.Campaign) -> tuple[set[str], set[str]]:
     hook_ids = set((pieces.get("clock") or {}).get("entity_ids") or [])
     with Session(db.engine) as s:
         for row in s.exec(select(CampaignEntity).where(CampaignEntity.campaign_id == str(campaign.id))).all():
-            if TAG in (row.tags or []):
+            if TAG in (row.tags or []) or "b_plot" in (row.tags or []):  # a character's thread is derived from the hidden truth
                 entity_ids.add(row.id)
         for hook in s.exec(select(CampaignHook).where(CampaignHook.campaign_id == str(campaign.id))).all():
             if hook.entity_id in entity_ids:  # the clock, or any hook a GM attached to a hidden entity

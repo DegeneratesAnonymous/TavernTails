@@ -223,3 +223,18 @@ request (checked so it cannot leak the story), a recap, who the table is waiting
 Checks: backend 1,332 passed (the async worker tests need `pytest-asyncio`, which is absent here, and
 were not run); client 60 passed; lint, typecheck and production build clean; two live-model openings pass
 `server/tests/test_live_opening_scenes.py --llm`.
+
+## 2026-10-13 — World and backstory builders; backstory as the B plot
+
+Campaign creation can now run world first, then character, then a backstory wizard whose questions use the
+world's own factions, places and trouble. Both builders end in an editable narrative of the player's
+choices (roleplay only), the backstory must link to the main trouble, worlds can be saved, and a
+backstory can be added to a character, replace it with undo, or be kept for one campaign. In play, each
+character's goals and ties become GM-only story threads braided into the hidden truth, one scene in three
+advances a character's thread, goals are shared and updated by their players (the story only suggests,
+with a real quote), and continuations keep names exact, avoid echoing recent scenes and carry a campaign
+voice. The opening questions offer the player's own answers first and no longer pre-select the first
+canned option; campaign creation now reports setup failures instead of swallowing them.
+Known limits: drafts embellish lightly (checks catch invented names and relatives, not every added
+detail); "this campaign only" needs the campaign's owner; the thread-weaving call adds a bounded model
+call at session start when a thread changed.

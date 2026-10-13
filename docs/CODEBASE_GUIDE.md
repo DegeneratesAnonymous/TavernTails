@@ -14,6 +14,8 @@ client and renders the application component in `client/src/App.tsx`.
 | Session start and advance | `server/agents/sessions.py`, `server/generation_workers.py` | `components/GameplayLayout.tsx`, `hooks/useSessionRequests.ts` |
 | Chat and dice | `server/agents/chat.py`, `rolls.py`, `ws.py` | `components/Chat.tsx`, `components/chat/` |
 | Scene presentation and player help | `server/agents/scene_view.py`, `session_assist.py`, `table_state.py`, `scene_weaver.py`, `opening_voice.py` | `components/NarrativeView.tsx`, `components/scene/` |
+| World and backstory builders | `server/agents/lifepath.py`, `saved_worlds.py`, `thread_weaver.py`, `braid.py`, `goal_review.py` | `components/lifepath/`, `data/lifepath.ts`, `components/scene/GoalsDialog.tsx` |
+| Scene consistency and voice | `server/agents/continuity.py`, `voice.py` | none |
 | Campaign memory | `server/agents/campaign_memory.py`, `context_orchestrator.py` | campaign/session views |
 | Documents and references | `server/agents/documents.py`, `references.py`, `server/storage/documents.py` | `components/DocumentsPanel.tsx` |
 | Persistent records | `server/db.py` | accessed through `api.ts` |
@@ -57,6 +59,40 @@ The session routes in `sessions.py` coordinate generation and persist its result
 These stages have different inputs and responsibilities. Do not combine them
 just because they all call a model. Preserve authored facts, NPC secrecy,
 explicit action outcomes, and generation diagnostics when changing their flow.
+
+## World and backstory builders
+
+Two staged builders (`client/src/data/lifepath.ts` holds their stages; `LifePathBuilder.tsx` is the one
+component) end in an editable narrative of the player's own choices. Roleplay only: they never write
+ability scores, skills or proficiencies.
+
+- **World** (`WorldBuilder.tsx`, opened from the describe screen): tone, genre, the trouble, powers and
+  what they want, places, where it opens. The narrative fills the describe box, so the Campaign Card
+  read-back still decides what was "said". Worlds can be saved (`SavedWorld`, `/worlds`) and reused; a
+  campaign copies the text, so editing a saved world never changes a running campaign.
+- **Backstory** (`BackstoryWizard.tsx`, offered on the first screen of the opening setup): roots, family,
+  turning point, ties (ally, rival, patron), who you are, a **required link to the world's main trouble**,
+  goals (long, mid, short as "wants X because Y but Z"). The result is added to the character, replaces
+  its backstory (kept in `sheet.backstory_history`, one-step undo) or is kept for one campaign only
+  (`player_backstories`). `POST /lifepath/narrative` drafts the text; `lifepath.check_narrative` rejects
+  names, relatives, questions and a missing link that the player did not supply, and falls back to a
+  plain template.
+
+How a backstory reaches play (the B plot inside the main story):
+
+1. `thread_weaver.ensure_threads` runs at session start. For each seated character with goals, ties or
+   a link it writes one GM-only `character_thread` row (not ranked into the main conflict) connecting their goal to the world skeleton's hidden
+   truth and factions (checked draft, plain fallback; rebuilt only when inputs change).
+2. `braid.next_b_beat` asks, at most one scene in three, for the next character's thread to be advanced
+   while the main trouble stays present; a scene that ignored the request does not reset the count.
+3. The opening may hint at the character's own goal (`scene_weaver.build_facts(goals=…)`), and the
+   opening questions offer the player's own backstory answers first and no longer pre-select the first
+   canned option.
+4. Goals are shared with the table (`goal_review.py`, the Goals button). The story only *suggests* that a
+   goal moved, with a quote that must really be in the story; only the character's player changes it.
+5. Continuations keep established names exact (`continuity.name_drifts`, near-misses are repaired), are
+   sent back once when they echo the last three scenes, and carry a per-campaign voice sheet
+   (`voice.with_voice`, built from the tone and the table's own words, no model call).
 
 ## Campaign setup
 

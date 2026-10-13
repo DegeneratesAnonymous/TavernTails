@@ -22,6 +22,9 @@ import {
   type CampaignCard,
   type WorldVisibility,
 } from './campaignCard'
+import { worldFactsText, type Answers } from '../../data/lifepath'
+import WorldBuilder from '../lifepath/WorldBuilder'
+import { deleteWorld, getWorld, listWorlds, type SavedWorldSummary } from '../lifepath/lifepathApi'
 
 type SeedOption = { id: string; title: string; tagline: string; setting_summary: string; emoji: string }
 
@@ -69,6 +72,41 @@ export default function CampaignCardCreator({ seat, owner, validateSeat, fallbac
   const [generateWorld, setGenerateWorld] = useState(true)
   const [busy, setBusy] = useState<'reading' | 'creating' | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // The step-by-step world builder, and the player's saved worlds.
+  const [building, setBuilding] = useState<{ answers?: Answers; narrative?: string; savedId?: string | null; savedName?: string } | null>(null)
+  const [showWorlds, setShowWorlds] = useState(false)
+  const [worlds, setWorlds] = useState<SavedWorldSummary[] | null>(null)
+  const [usedWorld, setUsedWorld] = useState<{ id: string | null; name: string } | null>(null)
+
+  useEffect(() => {
+    if (!showWorlds) return
+    let live = true
+    void listWorlds().then((r) => { if (live) setWorlds(r?.worlds ?? []) })
+    return () => { live = false }
+  }, [showWorlds])
+
+  async function openSavedWorld(id: string, mode: 'use' | 'edit') {
+    setError(null)
+    const found = await getWorld(id)
+    if (!found) { setError('Could not open that world.'); return }
+    const { world } = found
+    if (mode === 'use') {
+      if (text.trim() && text !== autoText && !window.confirm('Replace what you have written with this world?')) return
+      const full = worldFactsText((world.answers ?? {}) as Answers, world.narrative)
+      setText(full)
+      setAutoText(full)
+      setStarter({}) // an abandoned genre or seed must not be mixed with the world just chosen
+      setUsedWorld({ id: world.id, name: world.name })
+      setShowWorlds(false)
+    } else {
+      setBuilding({ answers: world.answers as Answers, narrative: world.narrative, savedId: world.id, savedName: world.name })
+    }
+  }
+
+  async function removeWorld(id: string, name: string) {
+    if (!window.confirm(`Delete “${name}” from your library? Campaigns already made from it are not affected.`)) return
+    if (await deleteWorld(id)) setWorlds((prev) => (prev ?? []).filter((w) => w.id !== id))
+  }
 
   useEffect(() => {
     if (!showSeeds || seeds.length) return
@@ -160,6 +198,27 @@ export default function CampaignCardCreator({ seat, owner, validateSeat, fallbac
     }
   }
 
+  if (building) {
+    return (
+      <div className="wizard-body card-creator">
+        <WorldBuilder
+          initialAnswers={building.answers}
+          initialNarrative={building.narrative}
+          savedId={building.savedId}
+          savedName={building.savedName}
+          onCancel={() => setBuilding(null)}
+          onUse={(w) => {
+            setText(worldFactsText(w.answers, w.narrative))
+            setAutoText(null)
+            setStarter({})
+            setUsedWorld({ id: w.savedId, name: w.context.world_name || building.savedName || 'Your world' })
+            setBuilding(null)
+          }}
+        />
+      </div>
+    )
+  }
+
   if (!card || !arrival) {
     return (
       <div className="wizard-body card-creator">
@@ -202,6 +261,17 @@ export default function CampaignCardCreator({ seat, owner, validateSeat, fallbac
               >
                 📜 A seed
               </button>
+              <button type="button" className="wizard-segment card-creator-chip" onClick={() => setBuilding({})}>
+                🧭 Build it step by step
+              </button>
+              <button
+                type="button"
+                className={`wizard-segment card-creator-chip${showWorlds ? ' is-selected' : ''}`}
+                aria-expanded={showWorlds}
+                onClick={() => setShowWorlds((v) => !v)}
+              >
+                📚 My worlds
+              </button>
               <button
                 type="button"
                 className={`wizard-segment card-creator-chip${showLore || lore ? ' is-selected' : ''}`}
@@ -226,6 +296,28 @@ export default function CampaignCardCreator({ seat, owner, validateSeat, fallbac
                   <span className="wizard-path-desc">{seed.tagline}</span>
                 </button>
               ))}
+            </div>
+          )}
+          {showWorlds && (
+            <div className="card-creator-seeds">
+              {worlds === null && <div className="muted">Loading your worlds…</div>}
+              {worlds?.length === 0 && <div className="muted">No saved worlds yet. Build one and keep it for next time.</div>}
+              {worlds?.map((w) => (
+                <div key={w.id} className="wizard-path-card" style={{ cursor: 'default' }}>
+                  <strong className="wizard-path-label">{w.name}</strong>
+                  <span className="wizard-path-desc">{w.preview}</span>
+                  <span className="row-wrap" style={{ gap: 6 }}>
+                    <button type="button" className="btn btn-primary" onClick={() => void openSavedWorld(w.id, 'use')}>Use</button>
+                    <button type="button" className="btn btn-secondary" onClick={() => void openSavedWorld(w.id, 'edit')}>Edit</button>
+                    <button type="button" className="btn btn-quiet" onClick={() => void removeWorld(w.id, w.name)}>Delete</button>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          {usedWorld && (
+            <div className="muted" role="status">
+              Using your world “{usedWorld.name}”. It is in the box above; change it however you like.
             </div>
           )}
           {showLore && (

@@ -1,0 +1,30 @@
+.lifepath { display: flex; flex-direction: column; gap: 16px; max-width: 760px; margin: 0 auto; padding: 16px; }
+.lifepath-rail { display: flex; gap: 6px; flex-wrap: wrap; }
+.lifepath-rail button { border: 1px solid var(--tt-border); background: transparent; color: var(--muted-text); border-radius: 999px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+.lifepath-rail button[aria-current='step'] { border-color: var(--accent, #c8941a); color: var(--text); }
+.lifepath-rail button.is-done { color: var(--text); }
+.lifepath h2 { margin: 0; font-size: 20px; }
+.lifepath-hint { color: var(--muted-text); font-size: 13px; margin: 4px 0 12px; }
+.lifepath-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.lifepath-cards .wizard-option-card { min-height: 56px; }
+.lifepath label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.lifepath input.input, .lifepath textarea.input, .lifepath select.input { font: inherit; }
+.lifepath textarea { min-height: 84px; resize: vertical; }
+.lifepath textarea.lifepath-narrative { min-height: 260px; line-height: 1.55; }
+.lifepath-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.lifepath-goal { border: 1px solid var(--tt-border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.lifepath-goal-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.lifepath-actions { display: flex; gap: 8px; justify-content: space-between; flex-wrap: wrap; }
+.lifepath-note { font-size: 12px; color: var(--muted-text); }
+.lifepath-diff { display: grid; gap: 8px; font-size: 13px; }
+.lifepath-diff-row { border: 1px solid var(--tt-border); border-radius: 8px; padding: 8px; }
+.lifepath-diff-row pre { margin: 4px 0 0; white-space: pre-wrap; font: inherit; }
+.lifepath-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.lifepath-chips button { border: 1px solid var(--tt-border); background: transparent; color: var(--text); border-radius: 999px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+.lifepath-chips button.is-selected { border-color: var(--accent, #c8941a); background: color-mix(in srgb, var(--accent, #c8941a) 14%, transparent); }
+@media (max-width: 560px) { .lifepath-row, .lifepath-goal-row { grid-template-columns: 1fr; } }
+
+.lifepath input.input::placeholder, .lifepath textarea.input::placeholder { color: #6b5d45; opacity: 0.85; font-style: italic; }
+.lifepath-rail button:disabled { opacity: 0.75; color: #5a4a30; }
+.lifepath-note { color: inherit; opacity: 0.85; }
+.lifepath .wizard-option-card { box-shadow: 0 1px 4px rgba(0,0,0,0.25); }

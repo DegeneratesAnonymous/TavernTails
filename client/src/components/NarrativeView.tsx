@@ -535,7 +535,10 @@ export default function NarrativeView({sessionId, mine = [], characterId = null,
               <button type="button" onClick={() => changeTextSize(-1)} disabled={textSize === 's'} aria-label="Smaller text">A−</button>
               <button type="button" onClick={() => changeTextSize(1)} disabled={textSize === 'xl'} aria-label="Larger text">A+</button>
               {sessionId ? (
-                <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('narrative:recap'))}>Previously</button>
+                <>
+                  <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('narrative:recap'))}>Previously</button>
+                  <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('narrative:goals'))}>Goals</button>
+                </>
               ) : null}
               {canSpeak() ? (
                 <button type="button" onClick={toggleSpeech} aria-pressed={speaking}>{speaking ? 'Stop reading' : 'Read aloud'}</button>
@@ -553,7 +556,7 @@ export default function NarrativeView({sessionId, mine = [], characterId = null,
             </div>
 
             {presentationMode === 'play' ? (
-              <SceneOrientation view={scene.scene_view} recap={scene.round_recap} notice={notice} mine={mine} onClarify={clarify} />
+              <SceneOrientation view={scene.scene_view} recap={scene.round_recap} notice={notice} mine={mine} onClarify={clarify} body={parsed.main} />
             ) : null}
 
             {playerPrompt && presentationMode !== 'play' ? (

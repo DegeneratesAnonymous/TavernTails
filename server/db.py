@@ -9,7 +9,7 @@ from typing import Any, Dict, List, TypeVar, cast
 from passlib.context import CryptContext
 from sqlalchemy import Column, delete, desc, func, or_
 from sqlalchemy.types import JSON
-from sqlmodel import Field, Session, SQLModel, create_engine, select
+from sqlmodel import Field, Session, SQLModel, col, create_engine, select
 
 _T = TypeVar("_T")
 
@@ -200,6 +200,20 @@ class BannedEmail(SQLModel, table=True):
     suspended_until: datetime | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     created_by_id: int | None = Field(default=None, foreign_key="user.id")
+
+
+class SavedWorld(SQLModel, table=True):
+    """A world a player built and saved, to start campaigns from. A campaign takes a copy, not a reference."""
+
+    id: str = Field(primary_key=True)
+    owner_id: int = Field(index=True, foreign_key="user.id")
+    name: str
+    narrative: str = Field(default="")
+    context: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))  # world name, conflict, factions, places, tone
+    answers: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))  # the builder's answers, to edit again
+    version: int = Field(default=1)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # ---------------------------------------------------------------------------
@@ -1740,3 +1754,59 @@ def are_friends(user_id_a: int, user_id_b: int) -> bool:
             )
         ).first()
     return row is not None
+
+
+# ---------------------------------------------------------------------------
+# Saved worlds
+# ---------------------------------------------------------------------------
+
+MAX_SAVED_WORLDS = 50
+
+
+def list_saved_worlds(owner_id: int) -> List[SavedWorld]:
+    with Session(engine) as session:
+        return list(session.exec(select(SavedWorld).where(SavedWorld.owner_id == owner_id).order_by(col(SavedWorld.updated_at).desc())).all())
+
+
+def get_saved_world(world_id: str, owner_id: int) -> SavedWorld | None:
+    with Session(engine) as session:
+        return session.exec(select(SavedWorld).where(SavedWorld.id == world_id, SavedWorld.owner_id == owner_id)).first()
+
+
+def create_saved_world(owner_id: int, name: str, narrative: str, context: dict[str, Any], answers: dict[str, Any]) -> SavedWorld | None:
+    """Returns None when the owner already has the maximum number of saved worlds."""
+    with Session(engine) as session:
+        count = session.exec(select(func.count()).select_from(SavedWorld).where(SavedWorld.owner_id == owner_id)).one()
+        if count >= MAX_SAVED_WORLDS:
+            return None
+        world = SavedWorld(id=secrets.token_hex(8), owner_id=owner_id, name=name.strip(), narrative=narrative, context=context, answers=answers)
+        session.add(world)
+        session.commit()
+        session.refresh(world)
+        return world
+
+
+def update_saved_world(world_id: str, owner_id: int, updates: dict[str, Any]) -> SavedWorld | None:
+    with Session(engine) as session:
+        world = session.exec(select(SavedWorld).where(SavedWorld.id == world_id, SavedWorld.owner_id == owner_id)).first()
+        if not world:
+            return None
+        for key in ("name", "narrative", "context", "answers"):
+            if key in updates:
+                setattr(world, key, updates[key].strip() if key == "name" else updates[key])
+        world.version = (world.version or 1) + 1
+        world.updated_at = datetime.now(timezone.utc)
+        session.add(world)
+        session.commit()
+        session.refresh(world)
+        return world
+
+
+def delete_saved_world(world_id: str, owner_id: int) -> bool:
+    with Session(engine) as session:
+        world = session.exec(select(SavedWorld).where(SavedWorld.id == world_id, SavedWorld.owner_id == owner_id)).first()
+        if not world:
+            return False
+        session.delete(world)
+        session.commit()
+        return True
