@@ -15,6 +15,7 @@ body:
         - Creature or character
         - Item or object
         - Tile or terrain
+        - UI element (icon, button, panel)
         - Something else
     validations:
       required: true
@@ -34,7 +35,7 @@ body:
     id: anims
     attributes:
       label: What animations does it need?
-      description: Leave all empty for a picture that just stands still.
+      description: Only for creatures and characters. Leave all empty for a picture that just stands still.
       options:
         - label: Walking
         - label: Attacking
