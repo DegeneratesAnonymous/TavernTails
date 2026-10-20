@@ -19,7 +19,7 @@ Mako==1.4.3
 MarkupSafe==3.0.4
 packaging==26.0
 passlib==1.7.4
-pluggy==1.6.0
+pluggy==1.7.0
 pycparser==3.0
 pydantic==2.12.5
 requests==2.34.2
