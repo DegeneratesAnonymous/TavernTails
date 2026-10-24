@@ -1,0 +1,9 @@
+{
+  "art_backlog": {
+    "size": 32,
+    "import": {
+      "dir": "client/public/art"
+    },
+    "llm_scan": false
+  }
+}
