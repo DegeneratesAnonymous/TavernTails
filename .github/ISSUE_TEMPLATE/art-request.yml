@@ -1,0 +1,52 @@
+name: Art request
+description: Ask Steward to draw a creature, item, tile or other piece of game art
+title: "Art: "
+labels: ["art"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Steward draws this on its own, sends the drawing to you to look at, and only opens a pull request with the art after you approve it.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of art is it?
+      options:
+        - Creature or character
+        - Item or object
+        - Tile or terrain
+        - UI element (icon, button, panel)
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: looks
+    attributes:
+      label: What does it look like?
+      description: Colours, shape, mood. A sentence or two is plenty.
+    validations:
+      required: true
+  - type: input
+    id: where
+    attributes:
+      label: Where is it used in the game?
+      description: For example the first dungeon floor, or the shop screen.
+  - type: checkboxes
+    id: anims
+    attributes:
+      label: What animations does it need?
+      description: Only for creatures and characters. Leave all empty for a picture that just stands still.
+      options:
+        - label: Walking
+        - label: Attacking
+        - label: Taking damage
+        - label: Being healed
+  - type: textarea
+    id: refs
+    attributes:
+      label: Reference images
+      description: Optional. Drag pictures into this box, such as something similar or a sketch.
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
