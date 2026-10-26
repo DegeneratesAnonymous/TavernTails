@@ -21,7 +21,7 @@ packaging==26.0
 passlib==1.7.4
 pluggy==1.7.0
 pycparser==3.0
-pydantic==2.12.5
+pydantic==2.14.1
 requests==2.34.2
 Pygments==2.21.0
 pytest==9.1.1
