@@ -16,7 +16,7 @@ the test fixtures.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 logger = logging.getLogger("taverntails.seed.pf2e")
@@ -34,7 +34,7 @@ _SEONI_SHEET: dict[str, Any] = {
     },
     "import": {
         "source": "pdf",
-        "imported_at": datetime.now(timezone.utc).isoformat(),
+        "imported_at": datetime.now(UTC).isoformat(),
         "filename": "seoni_pf2e_seed.pdf",
         "warnings": [],
     },
@@ -140,7 +140,7 @@ def seed_pf2e_characters() -> None:
 
         sheet = copy.deepcopy(_SEONI_SHEET)
         # Refresh the import timestamp so each run records the actual import time.
-        sheet["import"]["imported_at"] = datetime.now(timezone.utc).isoformat()
+        sheet["import"]["imported_at"] = datetime.now(UTC).isoformat()
 
         db.create_character(
             owner_id=user.id,

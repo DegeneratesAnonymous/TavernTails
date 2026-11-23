@@ -1,5 +1,7 @@
 """Admin agent — admin-only endpoints for site management."""
 
+from datetime import UTC
+
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from .. import db
@@ -316,7 +318,7 @@ def create_ban(
     current_user=Depends(_require_admin),
 ):
     """Ban or suspend an email address or @domain.com pattern."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     email = (email or "").strip().lower()
     if not email:
@@ -327,7 +329,7 @@ def create_ban(
     until: datetime | None = None
     if ban_type == "suspend" and suspended_until:
         try:
-            until = datetime.fromisoformat(suspended_until.replace("Z", "+00:00")).astimezone(timezone.utc)
+            until = datetime.fromisoformat(suspended_until.replace("Z", "+00:00")).astimezone(UTC)
         except ValueError as err:
             raise HTTPException(status_code=400, detail="Invalid suspended_until format. Use ISO-8601.") from err
 

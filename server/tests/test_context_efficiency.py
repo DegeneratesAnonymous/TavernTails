@@ -1,4 +1,5 @@
 import json
+from datetime import UTC
 
 import pytest
 from sqlalchemy.pool import StaticPool
@@ -111,7 +112,7 @@ def test_question_checks_keep_validation_errors_before_missing_dialogue():
 def test_relevance_ranking_keeps_recent_order_for_ties(context_db):
     from datetime import datetime, timedelta, timezone
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     with db.Session(context_db) as session:
         for index, name in enumerate(['Ada', 'Bea', 'Cal']):
             session.add(db.CampaignEntity(
@@ -136,7 +137,7 @@ def test_compact_memory_reads_preserve_full_payload_ranking_and_constraints(cont
     from sqlalchemy import event
     from sqlmodel import select
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     with db.Session(context_db) as session:
         for kind, count in [('npc', 40), ('location', 6), ('story_thread', 6), ('faction', 3), ('world_event', 20)]:
             for i in range(count):

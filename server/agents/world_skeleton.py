@@ -28,7 +28,7 @@ import re
 import threading
 import uuid
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, TypeVar
 
 from sqlmodel import Session, col, select
@@ -282,7 +282,7 @@ def validate_clock(data: dict[str, Any]) -> dict[str, Any] | None:
 # ---------------------------------------------------------------------------
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _provenance(name: str, player_text: str, lore: str) -> str:

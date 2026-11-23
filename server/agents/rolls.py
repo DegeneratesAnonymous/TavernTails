@@ -1,7 +1,7 @@
 import json
 import random
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -275,7 +275,7 @@ def _append_session_roll_story(session_id: str | None, result: dict[str, Any], r
     suffix = f" for {reason}" if reason else ""
     cur.append({
         "type": "roll",
-        "ts": datetime.now(timezone.utc).isoformat(),
+        "ts": datetime.now(UTC).isoformat(),
         "text": f"{result.get('by') or 'Player'} rolled {detail}: {total}{suffix}.",
         "roll": {
             "expression": expression,

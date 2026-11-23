@@ -1,6 +1,6 @@
 """Tests for email ban / suspension and admin impersonation endpoints."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 from fastapi import FastAPI
@@ -117,7 +117,7 @@ def test_unbanned_user_can_login():
 
 
 def test_create_suspension():
-    future = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
+    future = (datetime.now(UTC) + timedelta(days=7)).isoformat()
     r = client.post(
         "/admin/bans",
         json={"email": USER_EMAIL, "reason": "temp suspension", "ban_type": "suspend", "suspended_until": future},

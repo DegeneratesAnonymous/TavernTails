@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC
 
 import pytest
 from fastapi.testclient import TestClient
@@ -381,7 +382,7 @@ def test_round_status_on_an_older_save_counts_only_messages_since_the_last_narra
     scene = json.loads((table["folder"] / "scene.json").read_text())
     scene.pop("last_resolved_message_id", None)
     (table["folder"] / "scene.json").write_text(json.dumps(scene))
-    later = (datetime.now(timezone.utc) + timedelta(seconds=5)).isoformat()
+    later = (datetime.now(UTC) + timedelta(seconds=5)).isoformat()
     (table["folder"] / "story.json").write_text(json.dumps([{"type": "narration", "ts": later, "text": PROSE}]))
     status = table["client"].get(f"/sessions/{table['sid']}/round", headers=_auth(table["friend"])).json()
     assert old.id and not any(m["acted"] for m in status["members"])  # that message predates the scene on screen

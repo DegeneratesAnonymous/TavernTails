@@ -20,7 +20,7 @@ import hashlib
 import logging
 import re
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -430,7 +430,7 @@ def apply_backstory(sheet: dict[str, Any], payload: BackstoryPayload, mode: str)
     if overwrite and touched:
         history = [h for h in old.get("backstory_history", []) if isinstance(h, dict)]
         history.append({
-            "saved_at": datetime.now(timezone.utc).isoformat(),
+            "saved_at": datetime.now(UTC).isoformat(),
             "values": {k: old.get(k) for k in touched if k != "backstory_history"},
         })
         new["backstory_history"] = history[-HISTORY_LIMIT:]

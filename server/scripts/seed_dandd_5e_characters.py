@@ -23,6 +23,7 @@ import io
 import logging
 import os
 import sys
+from datetime import UTC
 
 # Ensure the repo root is on the path so this script can be run directly.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -97,11 +98,11 @@ _THORIN_SHEET: dict = {
 
 def _build_seed_sheet() -> dict:
     """Return a fresh copy of the seed sheet with the current timestamp."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     sheet = dict(_THORIN_SHEET)
     imp = dict(sheet["import"])
-    imp["imported_at"] = datetime.now(timezone.utc).isoformat()
+    imp["imported_at"] = datetime.now(UTC).isoformat()
     sheet["import"] = imp
     return sheet
 

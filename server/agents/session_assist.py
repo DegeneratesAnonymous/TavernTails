@@ -18,7 +18,7 @@ import re
 import tempfile
 import threading
 import zlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -448,7 +448,7 @@ def build_recap(folder: Path, scene: dict, meta: dict, character: dict[str, str]
     last_played = None
     for name in ("scene.json", "story.json"):
         try:
-            stamp = datetime.fromtimestamp((folder / name).stat().st_mtime, tz=timezone.utc).isoformat()
+            stamp = datetime.fromtimestamp((folder / name).stat().st_mtime, tz=UTC).isoformat()
         except OSError:
             continue
         last_played = max(filter(None, [last_played, stamp]))
@@ -480,7 +480,7 @@ def round_status(folder: Path, meta: dict, scene: dict, me: str = "") -> dict[st
         # A save from before the watermark existed: the last narration marks where this round began.
         last = _story_last_timestamp(_load_story_entries(folder))
         if last:
-            messages = [m for m in messages if m.created_at and m.created_at.replace(tzinfo=timezone.utc) > last]
+            messages = [m for m in messages if m.created_at and m.created_at.replace(tzinfo=UTC) > last]
     acted: dict[int, int] = {}
     for m in messages:
         if m.role in ("gm", "narrator", "system") or not _clean(m.message) or m.sender_id is None:
@@ -569,7 +569,7 @@ async def set_table_safety(session_id: str, req: SafetyRequest, current_user=Dep
     else:
         key = "avoid" if req.kind == "skip" else "soften"  # skip leaves it out; soften keeps it but gently
         safety[key] = list(dict.fromkeys([*safety.get(key, []), topic or "what was just described"]))[-12:]
-    safety["events"] = [*safety.get("events", []), {"by": who, "kind": req.kind, "topic": topic, "at": datetime.now(timezone.utc).isoformat()}][-50:]
+    safety["events"] = [*safety.get("events", []), {"by": who, "kind": req.kind, "topic": topic, "at": datetime.now(UTC).isoformat()}][-50:]
     meta["table_safety"] = safety
     meta_path = folder / "meta.json"
     tmp = meta_path.with_suffix(".tmp")

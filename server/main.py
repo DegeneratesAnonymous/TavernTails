@@ -1,7 +1,7 @@
 import logging
 import os
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -95,7 +95,7 @@ _init_db_if_needed()
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    logger.info("Application startup: pid=%s ts=%s", os.getpid(), datetime.now(timezone.utc).isoformat())
+    logger.info("Application startup: pid=%s ts=%s", os.getpid(), datetime.now(UTC).isoformat())
     _init_db_if_needed()
     try:
         yield

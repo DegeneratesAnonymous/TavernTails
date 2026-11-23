@@ -10,7 +10,7 @@ The Narrative Director reads this state to decide WHAT SHOULD HAPPEN NEXT.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -376,7 +376,7 @@ def load_story_state(campaign_id: str) -> CampaignStoryState:
 
 def save_story_state(state: CampaignStoryState) -> None:
     path = _story_state_path(state.campaign_id)
-    state.updated_at = datetime.now(timezone.utc).isoformat()
+    state.updated_at = datetime.now(UTC).isoformat()
     path.write_text(state.model_dump_json())
 
 
@@ -508,7 +508,7 @@ def update_state_after_scene(
         location=location,
         story_score=story_score,
         director_recommendation_followed=director_recommendation_followed,
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        timestamp=datetime.now(UTC).isoformat(),
     )
     state.scene_history.append(entry)
     state.scene_history = state.scene_history[-20:]
@@ -590,7 +590,7 @@ def generate_session_review(
         tension_curve=tension_curve,
         campaign_dna_score=dna_score,
         story_health_score=story_health_score,
-        generated_at=datetime.now(timezone.utc).isoformat(),
+        generated_at=datetime.now(UTC).isoformat(),
     )
     return review
 

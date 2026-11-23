@@ -7,7 +7,7 @@ import re
 import threading
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -1080,7 +1080,7 @@ def _story_last_timestamp(entries: list[dict]) -> datetime | None:
         except Exception:
             continue
         if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
+            parsed = parsed.replace(tzinfo=UTC)
         if latest is None or parsed > latest:
             latest = parsed
     return latest
@@ -1105,7 +1105,7 @@ def _story_roll_entries_since(campaign_id: str | None, by: str | None, since: da
         except Exception:
             created = None
         if created and created.tzinfo is None:
-            created = created.replace(tzinfo=timezone.utc)
+            created = created.replace(tzinfo=UTC)
         if since and created and created <= since:
             continue
         total = int(roll.total or 0)
@@ -1118,7 +1118,7 @@ def _story_roll_entries_since(campaign_id: str | None, by: str | None, since: da
             detail += f" {'+' if roll.mod > 0 else ''}{roll.mod}"
         entries.append({
             "type": "roll",
-            "ts": created.isoformat() if created else datetime.now(timezone.utc).isoformat(),
+            "ts": created.isoformat() if created else datetime.now(UTC).isoformat(),
             "text": f"{roll.by or 'Player'} rolled {detail}: {total}.",
             "roll": {
                 "expression": expression,
@@ -1138,7 +1138,7 @@ def _story_action_entries_since(messages: list, since: datetime | None) -> list[
             continue
         created = getattr(msg, "created_at", None)
         if created and created.tzinfo is None:
-            created = created.replace(tzinfo=timezone.utc)
+            created = created.replace(tzinfo=UTC)
         if since and created and created <= since:
             continue
         text = (getattr(msg, "message", "") or "").strip()
@@ -1147,7 +1147,7 @@ def _story_action_entries_since(messages: list, since: datetime | None) -> list[
         sender = getattr(msg, "sender_name", None) or "Player"
         entries.append({
             "type": "player_action",
-            "ts": created.isoformat() if created else datetime.now(timezone.utc).isoformat(),
+            "ts": created.isoformat() if created else datetime.now(UTC).isoformat(),
             "text": f"{sender}: {text}",
             "message_id": getattr(msg, "id", None),
         })
@@ -1456,7 +1456,7 @@ def create_session_folder(
     meta = {
         'id': sid,
         'name': name,
-        'created_at': datetime.now(timezone.utc).isoformat(),
+        'created_at': datetime.now(UTC).isoformat(),
         'owner': owner_email,
         'campaign_id': campaign_id,
         'invites': _normalize_invites(invites or []),
@@ -1743,14 +1743,14 @@ def join_session_with_character(session_id: str, req: JoinSessionRequest, curren
             'character_id': req.character_id,
             'character_name': character.name,
             'role': 'member' if identifier != owner else 'owner',
-            'joined_at': datetime.now(timezone.utc).isoformat(),
+            'joined_at': datetime.now(UTC).isoformat(),
         })
 
     if invite:
         invite['accepted'] = True
         invite['character_id'] = req.character_id
         invite['character_name'] = character.name
-        invite['accepted_at'] = datetime.now(timezone.utc).isoformat()
+        invite['accepted_at'] = datetime.now(UTC).isoformat()
 
     data['members'] = members
     data['invites'] = invites
@@ -2706,7 +2706,7 @@ async def bootstrap_session(session_id: str, payload: BootstrapRequest, current_
     cur = _load_story_entries(folder)
     cur.append({
         'type': 'narration',
-        'ts': datetime.now(timezone.utc).isoformat(),
+        'ts': datetime.now(UTC).isoformat(),
         'text': scene['text'],
     })
     story_path.write_text(json.dumps(cur))
@@ -3840,7 +3840,7 @@ async def _start_session_impl(session_id: str, payload: "StartSessionRequest", c
 
     story_path = folder / 'story.json'
     cur = _load_story_entries(folder)
-    cur.append({'type': 'narration', 'ts': datetime.now(timezone.utc).isoformat(), 'text': scene['text']})
+    cur.append({'type': 'narration', 'ts': datetime.now(UTC).isoformat(), 'text': scene['text']})
     story_path.write_text(json.dumps(cur))
 
     # --- Step 5: Scene Analysis ---
@@ -4340,7 +4340,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         if last_narration:
             recent_messages = [
                 m for m in recent_messages
-                if m.created_at and m.created_at.replace(tzinfo=timezone.utc) > last_narration
+                if m.created_at and m.created_at.replace(tzinfo=UTC) > last_narration
             ]
     player_actions = [
         m.message for m in recent_messages
@@ -4548,7 +4548,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
                 f"The moment is still narrow enough to shape. {decision}."
             )
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         scene_index = f"scene-{uuid.uuid4().hex[:8]}"
         prompt = f"What does {adv_player_name} do?"
         fast_scene = {
@@ -5141,7 +5141,7 @@ async def advance_scene(session_id: str, payload: AdvanceSceneRequest, current_u
         })
         logger.info("repaired drifted names: %s", drifts)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     scene_index = f"scene-{uuid.uuid4().hex[:8]}"
     adv_suggested_actions = narrative.suggested_actions or adv_composer_output.suggested_actions or adv_scene_director_output.possible_actions or [
         'Investigate the most immediate clue',

@@ -16,14 +16,14 @@ perspective.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Dict
 
 logger = logging.getLogger("taverntails.seed_alien_rpg")
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _build_alien_rpg_sheet(

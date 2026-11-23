@@ -6,7 +6,7 @@ import os
 import re
 import subprocess
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -33,7 +33,7 @@ _DND5E_CANONICAL_SKILLS: frozenset[str] = frozenset({
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _unassign_character_from_sessions(character_id: int) -> None:
