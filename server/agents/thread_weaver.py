@@ -18,7 +18,7 @@ import logging
 import re
 import uuid
 from collections.abc import Callable, Iterable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlmodel import Session, select
@@ -263,7 +263,7 @@ def ensure_threads(campaign: db.Campaign | None, members: Iterable[dict[str, Any
     if not stale:
         return threads
     woven = weave(stale, truth, factions, npcs, campaign.name or "", call=call)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     with Session(db.engine) as s:
         if s.get(db.Campaign, campaign_id) is None:
             return threads
@@ -350,6 +350,6 @@ def refresh_after_goal_change(campaign_id: str, character_id: int, goals: list[d
             row.status = "active"
         else:
             row.status = "resolved"
-        row.data, row.updated_at = data, datetime.now(timezone.utc)
+        row.data, row.updated_at = data, datetime.now(UTC)
         s.add(row)
         s.commit()

@@ -4,7 +4,7 @@ Minimal, single implementation of the player router. Supports signup, login
 and profile updates. Login returns a dev JWT in `access_token`.
 """
 
-from datetime import timezone
+from datetime import UTC
 from typing import Any
 
 import httpx
@@ -100,7 +100,7 @@ def player_login(email: str | None = Body(None), name: str | None = Body(None), 
             if ban.ban_type == "suspend":
                 su = ban.suspended_until
                 if su is not None and su.tzinfo is None:
-                    su = su.replace(tzinfo=timezone.utc)
+                    su = su.replace(tzinfo=UTC)
                 until = su.strftime("%Y-%m-%d") if su else "an unspecified date"
                 raise HTTPException(status_code=403, detail=f"Account suspended until {until}.")
             raise HTTPException(status_code=403, detail="Account banned. Contact support if you believe this is an error.")

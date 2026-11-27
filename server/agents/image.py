@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends
@@ -146,7 +146,7 @@ def _make_entry(prompt: str, style: str, *, cached: bool = False, session_id: st
         "style": style,
         "image_url": image_url,
         "guidance": "",
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "cached": cached,
     }
 

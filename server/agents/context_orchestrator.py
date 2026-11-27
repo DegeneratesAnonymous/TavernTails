@@ -28,7 +28,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from pydantic import BaseModel, Field
@@ -727,7 +727,7 @@ def _load_cache(session_id: str, key: str) -> ContextPacket | None:
             return None
         ts = raw.get("generated_at", "")
         if ts:
-            age = (datetime.now(timezone.utc) - datetime.fromisoformat(ts)).total_seconds()
+            age = (datetime.now(UTC) - datetime.fromisoformat(ts)).total_seconds()
             if age > _CACHE_TTL_SECONDS:
                 return None
         return ContextPacket(**raw["packet"])
@@ -797,7 +797,7 @@ def orchestrate(
         ContextPacket with all 10 sections populated and relevance scores set.
     """
     player_actions = player_actions or []
-    now_str = datetime.now(timezone.utc).isoformat()
+    now_str = datetime.now(UTC).isoformat()
 
     # Check cache
     if use_cache and session_id:

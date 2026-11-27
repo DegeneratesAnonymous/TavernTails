@@ -33,7 +33,7 @@ def _build_kessler_sheet() -> dict:
         },
         "import": {
             "source": "seed",
-            "imported_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "imported_at": datetime.datetime.now(datetime.UTC).isoformat(),
             "filename": "kessler_wfrp.pdf",
             "warnings": [],
         },

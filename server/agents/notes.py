@@ -7,7 +7,7 @@ in MVP flows, tests, and CI without external dependencies.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import List
 
@@ -86,7 +86,7 @@ def _append_to_session_notes(session_id: str, notes: List[str], recap: str) -> N
     if not notes_path.exists():
         return
 
-    timestamp = datetime.now(timezone.utc).isoformat()
+    timestamp = datetime.now(UTC).isoformat()
     lines = [
         "\n",
         f"## {timestamp}",

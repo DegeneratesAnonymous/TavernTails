@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -114,7 +114,7 @@ def advance_scene(req: AdvanceRequest, current_user=Depends(get_current_user)):
         player_run = sessions_agent.is_player_run_mode(req.session_id)
         if player_run:
             next_scene = {
-                'id': f"scene-{int(datetime.now(timezone.utc).timestamp())}",
+                'id': f"scene-{int(datetime.now(UTC).timestamp())}",
                 'title': prev_title,
                 'image': None,
                 'text': f"{narration}",
@@ -135,7 +135,7 @@ def advance_scene(req: AdvanceRequest, current_user=Depends(get_current_user)):
                 time_of_day='day',
             ))
             next_scene = {
-                'id': f"scene-{int(datetime.now(timezone.utc).timestamp())}",
+                'id': f"scene-{int(datetime.now(UTC).timestamp())}",
                 'title': prev_title,
                 'image': None,
                 'text': f"{narration}\n\n{generated.narrative}\n\n{generated.prompt}",
@@ -150,12 +150,12 @@ def advance_scene(req: AdvanceRequest, current_user=Depends(get_current_user)):
         _write_scene(req.session_id, next_scene)
         _append_story(req.session_id, {
             'type': 'choice',
-            'ts': datetime.now(timezone.utc).isoformat(),
+            'ts': datetime.now(UTC).isoformat(),
             'choice_id': choice_id,
         })
         _append_story(req.session_id, {
             'type': 'narration',
-            'ts': datetime.now(timezone.utc).isoformat(),
+            'ts': datetime.now(UTC).isoformat(),
             'text': next_scene['text'],
         })
 

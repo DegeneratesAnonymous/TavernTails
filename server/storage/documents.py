@@ -6,7 +6,7 @@ import json
 import os
 import uuid
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -205,7 +205,7 @@ class LocalDocumentStore(DocumentStore):
             visibility=visibility,
             filename=stored_name,
             size=len(encoded),
-            created_at=datetime.now(timezone.utc).isoformat(),
+            created_at=datetime.now(UTC).isoformat(),
             folder=folder.strip('/'),
         )
         meta.append(created)
@@ -224,7 +224,7 @@ class LocalDocumentStore(DocumentStore):
             visibility=visibility or 'shared',
             filename=filename,
             size=size,
-            created_at=datetime.now(timezone.utc).isoformat(),
+            created_at=datetime.now(UTC).isoformat(),
             folder=folder.strip('/') if folder else '',
         )
         meta.append(created)
@@ -417,7 +417,7 @@ class S3DocumentStore(DocumentStore):
             visibility=visibility or 'shared',
             filename=stored_name,
             size=size,
-            created_at=datetime.now(timezone.utc).isoformat(),
+            created_at=datetime.now(UTC).isoformat(),
             folder=folder,
         )
         metas.append(meta)
@@ -453,7 +453,7 @@ class S3DocumentStore(DocumentStore):
         self.s3.put_object(Bucket=self.bucket, Key=key, Body=payload)
         # update meta.json
         metas = self.list_documents(session_id)
-        meta = DocumentMeta(id=doc_id, session_id=session_id, name=name, category=category, visibility=visibility, filename=stored_name, size=len(payload), created_at=datetime.now(timezone.utc).isoformat(), folder=folder)
+        meta = DocumentMeta(id=doc_id, session_id=session_id, name=name, category=category, visibility=visibility, filename=stored_name, size=len(payload), created_at=datetime.now(UTC).isoformat(), folder=folder)
         metas.append(meta)
         meta_key = self._meta_key(session_id)
         self.s3.put_object(Bucket=self.bucket, Key=meta_key, Body=json.dumps([asdict(m) for m in metas], indent=2).encode('utf-8'))

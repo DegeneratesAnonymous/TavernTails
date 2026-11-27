@@ -3,7 +3,7 @@ import os
 import secrets
 import threading
 from collections.abc import Callable
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any, Dict, List, TypeVar, cast
 
 from passlib.context import CryptContext
@@ -81,7 +81,7 @@ def create_db_and_tables():
 def create_campaign(owner_id: int, name: str, description: str | None = None) -> Campaign:
     import uuid
     cid = uuid.uuid4().hex[:8]
-    camp = Campaign(id=cid, owner_id=owner_id, name=name.strip(), description=description or '', created_at=datetime.now(timezone.utc).isoformat())
+    camp = Campaign(id=cid, owner_id=owner_id, name=name.strip(), description=description or '', created_at=datetime.now(UTC).isoformat())
     with Session(engine) as session:
         session.add(camp)
         session.commit()
@@ -125,7 +125,7 @@ class ChatMessage(SQLModel, table=True):
     sender_name: str | None = None
     role: str = Field(default="player")
     message: str
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     metadata_json: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
 
 
@@ -136,7 +136,7 @@ class PinnedMessage(SQLModel, table=True):
     session_id: str = Field(index=True)
     message_id: int = Field(foreign_key="chatmessage.id")
     pinned_by_id: int | None = Field(default=None, foreign_key="user.id")
-    pinned_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    pinned_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class FriendRequest(SQLModel, table=True):
@@ -144,7 +144,7 @@ class FriendRequest(SQLModel, table=True):
     from_user_id: int = Field(foreign_key="user.id")
     to_user_id: int = Field(foreign_key="user.id")
     status: str = Field(default="pending")
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class SupportTicket(SQLModel, table=True):
@@ -153,7 +153,7 @@ class SupportTicket(SQLModel, table=True):
     subject: str
     body: str
     status: str = Field(default="open")  # open | in_progress | resolved | closed
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = None
 
 
@@ -163,7 +163,7 @@ class UserBlock(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     blocker_id: int = Field(foreign_key="user.id", index=True)
     blocked_id: int = Field(foreign_key="user.id", index=True)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class UserReport(SQLModel, table=True):
@@ -175,7 +175,7 @@ class UserReport(SQLModel, table=True):
     reason: str  # harassment | spam | hate_speech | cheating | other
     details: str = Field(default="")
     status: str = Field(default="open")  # open | reviewed | dismissed
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     reviewed_at: datetime | None = None
 
 
@@ -187,7 +187,7 @@ class DirectMessage(SQLModel, table=True):
     recipient_id: int = Field(foreign_key="user.id", index=True)
     body: str
     read: bool = Field(default=False)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class BannedEmail(SQLModel, table=True):
@@ -198,7 +198,7 @@ class BannedEmail(SQLModel, table=True):
     reason: str = Field(default="")
     ban_type: str = Field(default="ban")
     suspended_until: datetime | None = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     created_by_id: int | None = Field(default=None, foreign_key="user.id")
 
 
@@ -212,8 +212,8 @@ class SavedWorld(SQLModel, table=True):
     context: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))  # world name, conflict, factions, places, tone
     answers: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))  # the builder's answers, to edit again
     version: int = Field(default=1)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 # ---------------------------------------------------------------------------
@@ -231,8 +231,8 @@ class CampaignEntity(SQLModel, table=True):
     visibility: str = Field(default="gm_only")  # gm_only | shared
     tags: list[str] = Field(default_factory=list, sa_column=Column(JSON))
     data: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class CampaignRelationship(SQLModel, table=True):
@@ -246,7 +246,7 @@ class CampaignRelationship(SQLModel, table=True):
     description: str = Field(default="")
     scores: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     secrecy_level: str = Field(default="public")  # public | private | hidden
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class CampaignHook(SQLModel, table=True):
@@ -261,8 +261,8 @@ class CampaignHook(SQLModel, table=True):
     priority: int = Field(default=5)  # 1 (low) – 10 (critical)
     status: str = Field(default="active")  # active | triggered | resolved
     deadline: str | None = Field(default=None)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class CampaignChangeLog(SQLModel, table=True):
@@ -278,7 +278,7 @@ class CampaignChangeLog(SQLModel, table=True):
     after_data: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     caused_by_player_action: bool = Field(default=False)
     related_event_id: str | None = Field(default=None)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 def _profile_with_identity(user: User) -> dict[str, Any]:
@@ -450,7 +450,7 @@ def add_session_to_campaign(campaign_id: str, owner_id: int, session_id: str) ->
 
 
 def create_roll(campaign_id: str | None, expression: str, rolls: list[int], mod: int, total: int, by: str | None) -> Roll:
-    rec = Roll(campaign_id=campaign_id, expression=expression, rolls=rolls, mod=mod, total=total, by=by, created_at=datetime.now(timezone.utc).isoformat())
+    rec = Roll(campaign_id=campaign_id, expression=expression, rolls=rolls, mod=mod, total=total, by=by, created_at=datetime.now(UTC).isoformat())
     with Session(engine) as session:
         session.add(rec)
         session.commit()
@@ -1282,7 +1282,7 @@ def admin_send_notification(user_id: int, title: str, body: str | None = None) -
             "id": _uuid.uuid4().hex,
             "title": title,
             "body": body or "",
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "read": False,
         })
         new_profile["notifications"] = notifications
@@ -1407,7 +1407,7 @@ def update_ticket_status(ticket_id: int, status: str) -> SupportTicket | None:
         if not ticket:
             return None
         ticket.status = status
-        ticket.updated_at = datetime.now(timezone.utc)
+        ticket.updated_at = datetime.now(UTC)
         session.add(ticket)
         session.commit()
         session.refresh(ticket)
@@ -1524,7 +1524,7 @@ def update_report_status(report_id: int, status: str) -> UserReport | None:
         if not report:
             return None
         report.status = status
-        report.reviewed_at = datetime.now(timezone.utc)
+        report.reviewed_at = datetime.now(UTC)
         session.add(report)
         session.commit()
         session.refresh(report)
@@ -1625,7 +1625,7 @@ def _email_is_banned_or_suspended(email: str) -> "BannedEmail | None":
     """Return the first active ban/suspension record that matches the email, or None."""
     email_lower = email.lower().strip()
     domain = "@" + email_lower.split("@")[-1] if "@" in email_lower else None
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     with Session(engine) as session:
         rows = session.exec(select(BannedEmail)).all()
         for row in rows:
@@ -1637,7 +1637,7 @@ def _email_is_banned_or_suspended(email: str) -> "BannedEmail | None":
                     su = row.suspended_until
                     # Normalize to timezone-aware for comparison
                     if su is not None and su.tzinfo is None:
-                        su = su.replace(tzinfo=timezone.utc)
+                        su = su.replace(tzinfo=UTC)
                     if su is None or su > now:
                         return row
     return None
@@ -1795,7 +1795,7 @@ def update_saved_world(world_id: str, owner_id: int, updates: dict[str, Any]) ->
             if key in updates:
                 setattr(world, key, updates[key].strip() if key == "name" else updates[key])
         world.version = (world.version or 1) + 1
-        world.updated_at = datetime.now(timezone.utc)
+        world.updated_at = datetime.now(UTC)
         session.add(world)
         session.commit()
         session.refresh(world)

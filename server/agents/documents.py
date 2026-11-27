@@ -47,7 +47,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -208,7 +208,7 @@ def _ensure_session_member(session_id: str, current_user) -> tuple[dict, str, bo
 def _audit(session_id: str, identifier: str, *, action: str, ok: bool = True, doc_id: str | None = None, visibility: str | None = None, detail: str | None = None) -> None:
     try:
         record = {
-            "ts": datetime.now(timezone.utc).isoformat(),
+            "ts": datetime.now(UTC).isoformat(),
             "actor": identifier,
             "action": action,
             "ok": bool(ok),

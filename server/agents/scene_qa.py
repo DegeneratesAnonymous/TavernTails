@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -248,7 +248,7 @@ def classify_opening_shape(scene: dict[str, Any], content_bundle: dict[str, Any]
         "stakes_type": _classify_stakes_type(str(rc.get("specific_stakes") or scene.get("immediate_stakes") or text)),
         "opening_question_type": _classify_question_type(str(rc.get("first_clue_or_question") or "")),
         "motifs_used": _motifs_from_text(text),
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
 
 
@@ -332,7 +332,7 @@ def record_opening_shape(campaign_id: str, shape: dict[str, Any]) -> None:
         return
     BASE.mkdir(exist_ok=True)
     shapes = load_recent_opening_shapes(limit=200)
-    entry = {**shape, "campaign_id": str(campaign_id), "created_at": datetime.now(timezone.utc).isoformat()}
+    entry = {**shape, "campaign_id": str(campaign_id), "created_at": datetime.now(UTC).isoformat()}
     shapes.append(entry)
     OPENING_SHAPES_PATH.write_text(json.dumps(shapes[-200:], indent=2))
 
